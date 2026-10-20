@@ -17,6 +17,11 @@ of the logged card (`memcard_replay.raw` in the log directory), so the real card
 touched and the replay sees the same saves the original did. A replay is still recorded as a
 new log, so a route can be extended by replaying it and then playing on.
 
+The log holds every port the guest polls, so a run with more controllers (`--pads`, under
+"Scripted input") replays all of them, whatever `--pads` the replay is given. When the log
+runs out, a port it ends with plugged in stays plugged in, at rest, if the replaying run has
+no controller there, rather than being pulled out from under the game.
+
 A replay is exact. Guest time is virtual (see "The clock" below): it is a function of what
 the guest executes, not of the host's clock, so the Nth pad poll of the replay is the same
 instant in the game as the Nth poll of the recording, every timed event (retrace, DVD
@@ -37,7 +42,7 @@ differs from there is the game's own doing.
 The log format is text: a header (version, game, start time and its epoch), then one line
 per change of a channel's state --
 `poll frame chan connected buttons stick_x stick_y cstick_x cstick_y trig_l trig_r`, in
-hex -- the clock's catch-up jumps where they happened (`jump <back-edge count> <edges>`,
+hex, `chan` 0 for port 1 -- the clock's catch-up jumps where they happened (`jump <back-edge count> <edges>`,
 decimal; see "The clock" below), and, when the run ended in a way the runtime saw (a
 normal exit, a fault, a failed guest check or an interrupt), a final `# end <poll> <frame>`. A replay holds the last
 state up to that end before handing over to the live pad; without the marker it hands over
