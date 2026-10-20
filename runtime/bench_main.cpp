@@ -7,7 +7,7 @@
 // which is how we judge whether a standalone headset build could sustain the game's
 // frame rate before committing to an OpenGL ES port.
 //
-// Usage: prime_bench [--seconds=N] [--warmup=N] [path/to/game.iso]
+// Usage: prime_bench [--seconds=N] [--warmup=N] [--pads=N] [path/to/game.iso]
 //
 // The first several seconds are boot and asset loading, which run at a different rate
 // than gameplay and would otherwise skew the average. Those are reported but excluded
@@ -55,9 +55,14 @@ int main(int argc, char** argv) {
     std::string iso = GCN_DEFAULT_ISO;
     int seconds = 30;
     int warmup = 8;
+    int pads = 1;
     for (int i = 1; i < argc; i++) {
         if (!strncmp(argv[i], "--seconds=", 10)) seconds = atoi(argv[i] + 10);
         else if (!strncmp(argv[i], "--warmup=", 9)) warmup = atoi(argv[i] + 9);
+        else if (!strncmp(argv[i], "--pads=", 7)) {
+            pads = atoi(argv[i] + 7);
+            if (pads < 1 || pads > 4) { fprintf(stderr, "--pads: 1 to 4 controllers, not %s\n", argv[i] + 7); return 1; }
+        }
         else if (argv[i][0] != '-') iso = argv[i];
     }
     if (!plat_readable(iso.c_str())) iso = plat_find_file("rom", ".iso");
@@ -75,6 +80,7 @@ int main(int argc, char** argv) {
     // The benchmark measures the host, so the guest runs flat out: virtual time is never
     // held back to real time here (GCN_TIMESCALE still sets a pace if one is wanted).
     if (!getenv("GCN_TIMESCALE")) clock_set_scale(0);
+    pad_set_count(pads);
     input_script_init();
     // GCN_REPLAY=<dir> plays an input log back, as --replay does on the desktop: the way to
     // drive a run on a device through a recorded route, exactly, under the virtual clock.

@@ -143,7 +143,8 @@ static void on_fault(const void* fault_addr, int code) {
 bool audio_open();
 
 // ---------------------------------------------------------------------------
-// Input: keyboard + first game controller -> GC pad 1, and controls.txt (input_map.h)
+// Input: keyboard + first game controller -> GC pad 1, and controls.txt (input_map.h).
+// --pads=N plugs in ports 2 to N as well, at rest.
 // ---------------------------------------------------------------------------
 static SDL_GameController* g_ctrl;
 
@@ -258,6 +259,7 @@ int main(int argc, char** argv) {
     // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
     const char* telemetry_to = getenv("GCN_TELEMETRY");
     int scale = 2;
+    int pads = 1;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--log-all")) for (auto& e : g_log_enabled) e = true;
         else if (!strncmp(argv[i], "--log=", 6)) {
@@ -268,6 +270,10 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--list-controls")) return input_map_probe();
         else if (!strcmp(argv[i], "--test-ffb")) test_ffb = true;
         else if (!strncmp(argv[i], "--controls=", 11)) controls = argv[i] + 11;
+        else if (!strncmp(argv[i], "--pads=", 7)) {
+            pads = atoi(argv[i] + 7);
+            if (pads < 1 || pads > 4) { fprintf(stderr, "--pads: 1 to 4 controllers, not %s\n", argv[i] + 7); return 1; }
+        }
         else if (!strcmp(argv[i], "--telemetry")) telemetry_to = "";
         else if (!strncmp(argv[i], "--telemetry=", 12)) telemetry_to = argv[i] + 12;
         else if (!strcmp(argv[i], "--first-person")) first_person = true;
@@ -308,6 +314,7 @@ int main(int argc, char** argv) {
     mem_init();
     timing_init();
     if (fast) clock_set_scale(0);  // run as fast as the host allows; the game sees 60 Hz regardless
+    pad_set_count(pads);
     input_script_init();
 
     // Every run records what the guest read from the controller, so that a route to

@@ -89,6 +89,11 @@ numbers the dumps carry; `GCN_INPUT_LOG=1` shows the count. It prints each press
 scripted press is recorded in the input log like any other, so a script is one way to make
 a log.
 
+`--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
+power-on (1 to 4; port 1 alone by default), so that the game finds them when it first
+looks. The keyboard, the first gamepad and `controls.txt` drive port 1; the others sit at
+rest.
+
 ## Frame dumps
 
 `--hidden --dump-dir=DIR --dump-every=N` runs with the window hidden and writes every Nth
@@ -268,7 +273,8 @@ its frame rate is the recording's. It still gives each thread's work per frame. 
 app's own capacity, replay unpaced (`GCN_TIMESCALE=0` in `gcn_env.txt`).
 
 `<game>_bench` runs the game with no graphics, audio or input, unpaced, and reports how fast
-the guest advances; `--warmup=N` (default 8) excludes boot from the steady-state figure. Its
+the guest advances; `--warmup=N` (default 8) excludes boot from the steady-state figure,
+and `--pads=N` plugs in more controllers, as on the desktop. Its
 last column is the guest's work per presented frame in loop back-edges, the figure the
 virtual clock's tick-per-edge constant is tuned against.
 

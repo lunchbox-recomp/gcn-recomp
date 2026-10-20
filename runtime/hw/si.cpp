@@ -2,10 +2,14 @@
 #include "../runtime.h"
 #include "../input_log.h"
 #include "pad.h"
+#include <algorithm>
 #include <mutex>
 
 PadState g_pads[4];
 static std::mutex g_pad_mutex;
+static int g_pad_count = 1;
+
+void pad_set_count(int count) { g_pad_count = std::clamp(count, 1, 4); }
 
 void pad_set_state(int chan, const PadState& s) {
     std::lock_guard<std::mutex> lk(g_pad_mutex);
@@ -117,7 +121,7 @@ void si_poll_tick() {
 }
 
 void si_init() {
-    g_pads[0].connected = true;
+    for (int chan = 0; chan < g_pad_count; chan++) g_pads[chan].connected = true;
     struct T { static void tick() { si_poll_tick(); event_schedule_in(TB_FREQ / 120, tick); } };
     event_schedule_in(TB_FREQ / 120, T::tick);
 }
