@@ -53,3 +53,9 @@ void gamepads_merge(int port, PadState& p);
 void gamepads_rumble(int port, bool motor);
 // Stops any rumble and closes the gamepads.
 void gamepads_shutdown();
+// --test-ports: SDL's virtual gamepads through all of the above, with no window and no
+// game: four connecting in turn, input and rumble on the right port, one pulled out and
+// plugged back in, a fifth, the next launch, and a mappings file. SDL must not be
+// initialised yet, and no gamepad connected. Prints a line a check and returns the exit
+// code.
+int gamepads_test();

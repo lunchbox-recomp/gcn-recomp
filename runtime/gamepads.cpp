@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <string>
 #include <vector>
 // After the standard headers: SDL_endian.h trips over clang's intrinsics otherwise.
@@ -265,4 +266,194 @@ void gamepads_shutdown() {
         }
         g = Port();
     }
+}
+
+// ---------------------------------------------------------------------------
+// --test-ports
+
+namespace {
+
+// One of SDL's virtual joysticks. It has no serial number, and no USB IDs: its GUID comes
+// from its name.
+struct Virtual {
+    const char* name;
+    SDL_JoystickID id = 0;
+    int rumbles = 0;  // rumbles started on it
+};
+
+bool SDLCALL count_rumble(void* userdata, Uint16 low, Uint16 high) {
+    if (low || high) static_cast<Virtual*>(userdata)->rumbles++;
+    return true;
+}
+
+// Plugs `v` in: a gamepad with every button and axis SDL has, its button and axis numbers
+// SDL's own, or a plain joystick with two axes and four buttons, which SDL has no mapping for.
+void attach(Virtual& v, bool gamepad = true) {
+    SDL_VirtualJoystickDesc d;
+    SDL_INIT_INTERFACE(&d);
+    d.type = gamepad ? SDL_JOYSTICK_TYPE_GAMEPAD : SDL_JOYSTICK_TYPE_UNKNOWN;
+    d.naxes = gamepad ? SDL_GAMEPAD_AXIS_COUNT : 2;
+    d.nbuttons = gamepad ? SDL_GAMEPAD_BUTTON_COUNT : 4;
+    d.name = v.name;
+    d.userdata = &v;
+    d.Rumble = count_rumble;
+    v.id = SDL_AttachVirtualJoystick(&d);
+    if (!v.id) fprintf(stderr, "SDL_AttachVirtualJoystick: %s\n", SDL_GetError());
+}
+
+void detach(Virtual& v) {
+    SDL_DetachVirtualJoystick(v.id);
+    v.id = 0;
+}
+
+// The events gamepads_event would see, but for controllers of the host's that turn up
+// halfway: the test's own come and go, and a removal is of nothing on a port otherwise.
+void pump() {
+    SDL_Event e;
+    while (SDL_PollEvent(&e))
+        if (e.type != SDL_EVENT_GAMEPAD_ADDED || SDL_IsJoystickVirtual(e.gdevice.which)) gamepads_event(e);
+}
+
+// The port `v` is on, 1 to 4, and 0 for none; -1 if its SDL player index says otherwise.
+int port(const Virtual& v) {
+    const int i = v.id ? port_of(v.id) : -1;
+    if (i < 0) return 0;
+    return SDL_GetGamepadPlayerIndex(g_ports[i].pad) == i ? i + 1 : -1;
+}
+
+PadState merged(int i) {
+    PadState p;
+    gamepads_merge(i, p);
+    return p;
+}
+
+bool at_rest(const PadState& p) {
+    return !p.buttons && p.stick_x == 0x80 && p.stick_y == 0x80 && p.cstick_x == 0x80 && p.cstick_y == 0x80 &&
+           !p.trig_l && !p.trig_r;
+}
+
+int g_checks, g_failed;
+
+void check(bool ok, const char* what) {
+    g_checks++;
+    if (!ok) g_failed++;
+    printf("%s %s\n", ok ? "ok  " : "FAIL", what);
+    fflush(stdout);
+}
+
+}  // namespace
+
+int gamepads_test() {
+    if (!SDL_Init(SDL_INIT_GAMEPAD)) {
+        fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
+        return 1;
+    }
+    int real = 0;
+    SDL_free(SDL_GetGamepads(&real));
+    if (real) {
+        printf("--test-ports needs the ports to itself: disconnect the %d gamepad%s first.\n", real, real == 1 ? "" : "s");
+        SDL_Quit();
+        return 1;
+    }
+    std::error_code ec;
+    const std::filesystem::path tmp = std::filesystem::temp_directory_path(ec);
+    const std::string save = (tmp / "gcn-test-ports.txt").string();
+    const std::string mappings = (tmp / "gcn-test-ports-mappings.txt").string();
+    std::filesystem::remove(save, ec);
+    printf("Virtual gamepads on the four ports, with the ports saved in %s.\n", save.c_str());
+    fflush(stdout);
+    gamepads_init(save.c_str());
+
+    Virtual pads[] = {{"virtual pad 1"}, {"virtual pad 2"}, {"virtual pad 3"}, {"virtual pad 4"},
+                      {"virtual pad 5"}, {"virtual pad 6"}};
+    Virtual &a = pads[0], &b = pads[1], &c = pads[2], &d = pads[3], &e = pads[4], &f = pads[5];
+    for (int i = 0; i < 4; i++) {
+        attach(pads[i]);
+        pump();
+    }
+    check(port(a) == 1 && port(b) == 2 && port(c) == 3 && port(d) == 4,
+          "four gamepads land on ports 1 to 4 in the order they connect, each with that player index");
+
+    SDL_Joystick* jb = SDL_GetJoystickFromID(b.id);
+    SDL_SetJoystickVirtualButton(jb, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    SDL_SetJoystickVirtualAxis(jb, SDL_GAMEPAD_AXIS_LEFTX, 32767);
+    pump();
+    const PadState p2 = merged(1);
+    check(p2.buttons == PAD_A && p2.stick_x == 228 && at_rest(merged(0)) && at_rest(merged(2)) && at_rest(merged(3)),
+          "port 2's gamepad presses A and pushes the stick on port 2 alone");
+    SDL_SetJoystickVirtualButton(jb, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    SDL_SetJoystickVirtualAxis(jb, SDL_GAMEPAD_AXIS_LEFTX, 0);
+    pump();
+
+    gamepads_rumble(2, true);
+    check(c.rumbles == 1 && a.rumbles + b.rumbles + d.rumbles == 0, "port 3's rumble motor runs port 3's gamepad alone");
+    gamepads_rumble(2, false);
+
+    detach(b);
+    pump();
+    const PadState out = merged(1);
+    gamepads_rumble(1, true);  // the game's motor on the empty port: nothing to run
+    gamepads_rumble(1, false);
+    check(out.connected && at_rest(out) && port(a) == 1 && port(c) == 3 && port(d) == 4,
+          "port 2's gamepad pulled out: port 2 stays plugged in, at rest, and the others stay put");
+
+    attach(b);
+    pump();
+    check(port(b) == 2, "plugged back in, it is on port 2 again");
+
+    attach(e);
+    pump();
+    check(port(e) == 0 && port(a) == 1 && port(b) == 2 && port(c) == 3 && port(d) == 4,
+          "a fifth gamepad is left out, and the four keep their ports");
+
+    detach(e);
+    detach(c);
+    pump();
+    attach(e);
+    pump();
+    attach(c);
+    pump();
+    check(port(e) == 3 && port(c) == 0,
+          "with port 3's gamepad gone and the rest taken, another takes port 3, and the first is then left out");
+
+    // The next launch: shut down with every gamepad pulled out, then start again with only
+    // the ones on ports 4 and 2 connected, and a new one, in that order. Their arrivals
+    // are still queued when gamepads_init looks, as at a program's start.
+    for (Virtual& v : pads)
+        if (v.id) detach(v);
+    pump();
+    gamepads_shutdown();
+    attach(d);
+    attach(b);
+    attach(f);
+    gamepads_init(save.c_str());
+    pump();
+    check(port(d) == 4 && port(b) == 2 && port(f) == 1,
+          "next launch: ports 4 and 2 again, from the file, and the new gamepad on port 1, the first free");
+
+    Virtual stick{"virtual stick"};
+    attach(stick, false);
+    pump();
+    const bool plain = !SDL_IsGamepad(stick.id) && port(stick) == 0;
+    char guid[33];
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(stick.id), guid, sizeof(guid));
+    if (FILE* m = fopen(mappings.c_str(), "w")) {
+        fprintf(m, "# For --test-ports, in SDL_GameControllerDB's format\n");
+        fprintf(m, "%s,virtual stick,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,platform:%s,\n", guid, SDL_GetPlatform());
+        fclose(m);
+    }
+    gamepads_load_mappings(mappings.c_str());
+    pump();
+    check(plain && SDL_IsGamepad(stick.id) && port(stick) == 3,
+          "a joystick SDL has no mapping for is a gamepad once a mappings file names it, and takes port 3");
+
+    gamepads_shutdown();
+    for (Virtual& v : pads)
+        if (v.id) detach(v);
+    detach(stick);
+    std::filesystem::remove(save, ec);
+    std::filesystem::remove(mappings, ec);
+    SDL_Quit();
+    printf("--test-ports: %d of %d checks passed\n", g_checks - g_failed, g_checks);
+    return g_failed ? 1 : 0;
 }

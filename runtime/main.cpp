@@ -248,6 +248,7 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--eye")) g_eye_mode = true;
         else if (!strcmp(argv[i], "--vr")) vr = true;
         else if (!strcmp(argv[i], "--list-controls")) return input_map_probe();
+        else if (!strcmp(argv[i], "--test-ports")) return gamepads_test();
         else if (!strcmp(argv[i], "--test-ffb")) test_ffb = true;
         else if (!strncmp(argv[i], "--controls=", 11)) controls = argv[i] + 11;
         else if (!strncmp(argv[i], "--gamepad-mappings=", 19)) gamepad_mappings = argv[i] + 19;

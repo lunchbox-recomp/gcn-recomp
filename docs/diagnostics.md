@@ -110,6 +110,13 @@ unless a script presses it. A port before the frame, `2/900:A:10`, is the contro
 presses; a press without one is port 1's, and a press on a port that is not plugged in
 does nothing.
 
+`--test-ports` checks how gamepads get their ports without a controller or the game,
+using SDL's virtual joysticks. Four gamepads connect in turn and land on ports 1 to 4. Then
+one is pulled out and plugged back in, and a fifth finds no port. Later a mappings file
+turns a plain joystick into a gamepad, after a fresh start that reads the saved ports.
+Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It refuses to
+run while a real gamepad is connected.
+
 ## Frame dumps
 
 `--hidden --dump-dir=DIR --dump-every=N` runs with the window hidden and writes every Nth
