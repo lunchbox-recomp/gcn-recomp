@@ -9,7 +9,7 @@ struct PadState;
 struct XrDesktopHost {
     SDL_Window* window;             // its GL context current; kept up as a mirror
     bool (*pump)();                 // the window's events; false once the user quits
-    void (*merge_input)(PadState&); // the keyboard and a gamepad, beside the headset's controllers
+    void (*merge_input)(PadState&); // port 1's keyboard and gamepad, beside the headset's controllers
 };
 
 // Brings the headset up, boots the game from `iso` and runs it until the window is closed or

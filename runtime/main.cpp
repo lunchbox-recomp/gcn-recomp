@@ -5,6 +5,7 @@
 #include "input_script.h"
 #include "input_log.h"
 #include "input_map.h"
+#include "gamepads.h"
 #include "gx/render_gl.h"
 #include "gx/gl.h"
 #include "hw/pad.h"
@@ -119,6 +120,7 @@ static void on_interrupt() {
     plat_watchdog(2, 2);  // never hang in here (stdio locks may be held by other threads)
     input_log_end();
     input_map_shutdown();  // a wheel left pushing is a wheel pushing at nobody
+    gamepads_shutdown();   // and a gamepad left rumbling, at nobody
     debug_dump_threads();
     plat_exit_now(1);
 }
@@ -135,6 +137,7 @@ static void on_fault(const void* fault_addr, int code) {
     plat_watchdog(2, 2);
     input_log_end();
     input_map_shutdown();
+    gamepads_shutdown();
     plat_backtrace_print();
     debug_dump_threads();
     plat_exit_now(1);
@@ -143,23 +146,14 @@ static void on_fault(const void* fault_addr, int code) {
 bool audio_open();
 
 // ---------------------------------------------------------------------------
-// Input: keyboard + first game controller -> GC pad 1, and controls.txt (input_map.h).
-// --pads=N plugs in ports 2 to N as well, at rest unless a script presses them (the
-// SI layer applies scripts, input_script.h).
+// Input: the keyboard on port 1, each gamepad on the port it is given (gamepads.h), and
+// controls.txt on the ports it names (input_map.h). --pads=N plugs in ports 1 to N
+// whether or not anything drives them, at rest unless a script presses them (the SI layer
+// applies scripts, input_script.h).
 // ---------------------------------------------------------------------------
-static SDL_Gamepad* g_ctrl;
+static int g_port_count = 1;  // plugged in from power-on: --pads, or the ports controls.txt binds
 
-static uint8_t axis_to_u8(int v, bool invert) {
-    float f = v / 32767.0f;
-    if (invert) f = -f;
-    int r = 128 + (int)(f * 100.0f);
-    return (uint8_t)std::clamp(r, 0, 255);
-}
-
-// The keyboard, the first game controller and controls.txt, merged into `p`: buttons are
-// added, and a stick or trigger is taken over only while it is pushed, so that they can
-// share the pad with a headset's controllers (xr_desktop.cpp).
-static void merge_desktop_pad(PadState& p) {
+static void merge_keyboard(PadState& p) {
     const bool* k = SDL_GetKeyboardState(nullptr);
     if (k[SDL_SCANCODE_RETURN]) p.buttons |= PAD_START;
     if (k[SDL_SCANCODE_X]) p.buttons |= PAD_A;
@@ -182,42 +176,29 @@ static void merge_desktop_pad(PadState& p) {
         p.stick_x = (uint8_t)(128 + sx);
         p.stick_y = (uint8_t)(128 + sy);
     }
-    if (g_ctrl) {
-        auto b = [&](SDL_GamepadButton btn) { return SDL_GetGamepadButton(g_ctrl, btn); };
-        if (b(SDL_GAMEPAD_BUTTON_SOUTH)) p.buttons |= PAD_A;
-        if (b(SDL_GAMEPAD_BUTTON_WEST)) p.buttons |= PAD_B;
-        if (b(SDL_GAMEPAD_BUTTON_EAST)) p.buttons |= PAD_X;
-        if (b(SDL_GAMEPAD_BUTTON_NORTH)) p.buttons |= PAD_Y;
-        if (b(SDL_GAMEPAD_BUTTON_START)) p.buttons |= PAD_START;
-        if (b(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) p.buttons |= PAD_Z;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_UP)) p.buttons |= PAD_UP;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) p.buttons |= PAD_DOWN;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) p.buttons |= PAD_LEFT;
-        if (b(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) p.buttons |= PAD_RIGHT;
-        int lx = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_LEFTX);
-        int ly = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_LEFTY);
-        if (abs(lx) > 4000 || abs(ly) > 4000) { p.stick_x = axis_to_u8(lx, false); p.stick_y = axis_to_u8(ly, true); }
-        int rx = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_RIGHTX);
-        int ry = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_RIGHTY);
-        if (abs(rx) > 1000 || abs(ry) > 1000) { p.cstick_x = axis_to_u8(rx, false); p.cstick_y = axis_to_u8(ry, true); }
-        int lt = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
-        int rt = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
-        if (lt > 1000) { p.trig_l = std::max(p.trig_l, (uint8_t)(lt * 255 / 32767)); if (lt > 30000) p.buttons |= PAD_L; }
-        if (rt > 1000) { p.trig_r = std::max(p.trig_r, (uint8_t)(rt * 255 / 32767)); if (rt > 30000) p.buttons |= PAD_R; }
-    }
-    input_map_apply(p);
-    // The pad's rumble motor on the gamepad, renewed while it runs.
-    static bool rumbling = false;
-    const bool motor = pad_motor(0);
-    if (g_ctrl && (motor || rumbling)) SDL_RumbleGamepad(g_ctrl, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0);
-    rumbling = motor;
 }
 
-static void update_pad() {
-    PadState p;
-    p.connected = true;
-    merge_desktop_pad(p);
-    pad_set_state(0, p);
+// What drives `port`, merged into `p`: buttons are added, and a stick or trigger is taken
+// over only while it is pushed, so that port 1 can be shared with a headset's controllers
+// (xr_desktop.cpp). Then the game's rumble motor for the port goes to its gamepad.
+static void merge_port(int port, PadState& p) {
+    if (port == 0) merge_keyboard(p);
+    gamepads_merge(port, p);
+    input_map_apply(p, port);
+    gamepads_rumble(port, pad_motor(port));
+}
+
+static void merge_desktop_pad(PadState& p) { merge_port(0, p); }
+
+// Ports `first` to 4. A port is plugged in while it has a gamepad or is held for one, and
+// from power-on if --pads or controls.txt reaches it.
+static void update_pads(int first) {
+    for (int port = first; port < 4; port++) {
+        PadState p;
+        p.connected = port < g_port_count;
+        merge_port(port, p);
+        pad_set_state(port, p);
+    }
 }
 
 // The window's events. False once the user has asked to quit.
@@ -226,10 +207,8 @@ static bool pump_events() {
     bool running = true;
     while (SDL_PollEvent(&e)) {
         input_map_event(e);
+        gamepads_event(e);
         if (e.type == SDL_EVENT_QUIT) running = false;
-        // A device controls.txt binds is the file's alone.
-        else if (e.type == SDL_EVENT_GAMEPAD_ADDED && !g_ctrl && !input_map_binds(e.gdevice.which))
-            g_ctrl = SDL_OpenGamepad(e.gdevice.which);
         else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
     }
     return running;
@@ -351,6 +330,10 @@ int main(int argc, char** argv) {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
     input_map_load(controls);
+    gamepads_init("saves/gamepads.txt");
+    // Ports 1 to the highest controls.txt binds are plugged in at power-on, as --pads would.
+    g_port_count = std::max(pads, input_map_port_count());
+    pad_set_count(g_port_count);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     const bool gl_debug = getenv("GCN_GL_DEBUG") != nullptr;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG |
@@ -399,10 +382,18 @@ int main(int argc, char** argv) {
 #ifdef GCN_OPENXR
     // --vr: the headset takes over from here, the window staying up as a mirror.
     if (vr) {
-        const int rc = xr_desktop_main({win, pump_events, merge_desktop_pad}, iso);
+        // Port 1 is the headset's controllers and merge_desktop_pad's; the others are
+        // updated with the window's events.
+        auto pump = [] {
+            const bool running = pump_events();
+            update_pads(1);
+            return running;
+        };
+        const int rc = xr_desktop_main({win, pump, merge_desktop_pad}, iso);
         record::finish();
         input_log_end();
         input_map_shutdown();
+        gamepads_shutdown();
         threads_request_quit();
         plat_exit_now(rc);
     }
@@ -423,7 +414,7 @@ int main(int argc, char** argv) {
     auto t0 = std::chrono::steady_clock::now();
     while (running) {
         running = pump_events();
-        update_pad();
+        update_pads(0);
         int dw, dh;
         SDL_GetWindowSizeInPixels(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
@@ -493,6 +484,7 @@ int main(int argc, char** argv) {
     record::finish();
     input_log_end();
     input_map_shutdown();
+    gamepads_shutdown();
     threads_request_quit();
     plat_exit_now(0);
 }

@@ -32,18 +32,20 @@
 //   gain <f>        multiplies the value before it is clamped: 2 is full lock at half
 //                   the wheel's rotation (default 1)
 //   threshold <f>   where a digital control is pressed (default 0.5; L and R 0.85)
+//   port <n>        the pad on port n, 1 to 4, rather than port 1. Ports 1 to the highest
+//                   the file binds are plugged in from power-on, as --pads would.
 //
 // Several bindings may share a pad control: buttons are pressed if any is, one-way values
 // take the largest, and a whole stick axis is the sum of its bindings, so stick_left and
 // stick_right on two buttons cancel. A stick or trigger the file leaves at rest is left to
-// the default keyboard and gamepad mapping, which stays on except for a device the file
-// names.
+// the keyboard's default mapping, on port 1, and to the gamepads (gamepads.h), which stay
+// on except for a device the file names.
 //
 // --list-controls runs input_map_probe() instead of the game: it prints the devices and,
 // for each control pressed or moved, the source to paste into the file.
 //
-// Force feedback (ffb.h) goes to the device stick_x is bound to, unless the file says
-// otherwise:
+// Force feedback (ffb.h) goes to the device stick_x is bound to, with the rumble motor of
+// that binding's port, unless the file says otherwise:
 //   ffb = off                     none
 //   ffb_device = "<device>"       another device
 //   ffb_<setting> = <number>      FfbSettings without its prefix: ffb_gain = 0.5
@@ -67,8 +69,11 @@ void input_map_event(const SDL_Event& e);
 // Whether the file names the joystick with this SDL instance ID (an SDL_JoystickID; the
 // default gamepad mapping leaves such a device alone).
 bool input_map_binds(uint32_t joystick_id);
-// The file's bindings, merged into `p`.
-void input_map_apply(PadState& p);
+// The file's bindings for `port` (0 is port 1), merged into `p`. Each port's once a frame:
+// the wheel's force feedback is updated with its own port's.
+void input_map_apply(PadState& p, int port);
+// How many ports the file reaches: up to the highest it binds, 1 if it names none.
+int input_map_port_count();
 // Stops the wheel's force feedback (ffb.h), before the program exits.
 void input_map_shutdown();
 // The --list-controls loop. SDL must not be initialised yet. Returns the exit code.

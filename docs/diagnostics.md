@@ -104,10 +104,11 @@ missed, and the same route gave different frames from run to run.
 
 `--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
 power-on (1 to 4; port 1 alone by default), so that the game finds them when it first
-looks. The keyboard, the first gamepad and `controls.txt` drive port 1; the others sit at
-rest unless a script presses them. A port before the frame, `2/900:A:10`, is the
-controller that presses; a press without one is port 1's, and a press on a port that is not
-plugged in does nothing.
+looks. The keyboard drives port 1, each gamepad a port of its own (`runtime/gamepads.h`)
+and `controls.txt` the ports it names; a port plugged in with nothing on it sits at rest
+unless a script presses it. A port before the frame, `2/900:A:10`, is the controller that
+presses; a press without one is port 1's, and a press on a port that is not plugged in
+does nothing.
 
 ## Frame dumps
 

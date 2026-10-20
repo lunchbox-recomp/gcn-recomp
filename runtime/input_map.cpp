@@ -55,6 +55,7 @@ struct Binding {
     Half half = Half::Whole;
     bool invert = false;
     float deadzone = -1.0f, gain = 1.0f, threshold = -1.0f;
+    int port = 0;                 // 0 for port 1
     SDL_Joystick* joy = nullptr;  // resolved whenever a device comes or goes
 };
 
@@ -63,6 +64,7 @@ std::vector<Binding> g_bindings;
 FfbSettings g_ffb;
 std::string g_ffb_device;  // ffb_device, "#n" removed; empty for the stick_x binding's
 int g_ffb_nth = 1;
+int g_ffb_port = 0;  // whose rumble motor the wheel plays: the steering binding's port
 std::vector<SDL_Joystick*> g_open;  // every joystick present, in the order it arrived
 
 bool same_name(const char* a, const std::string& b) {
@@ -119,6 +121,7 @@ void attach_wheel() {
     float lock = 1.0f;
     if (steer && steer->gain > 1.0f) lock = steer->deadzone + (1.0f - steer->deadzone) / steer->gain;
     ffb_attach(j, steer ? steer->index : 0, lock);
+    g_ffb_port = steer ? steer->port : 0;
 }
 
 void resolve() {
@@ -262,6 +265,13 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
     while (i < w.size()) {
         const std::string& o = w[i++];
         if (o == "invert") { b.invert = true; continue; }
+        if (o == "port") {
+            int n = 0;
+            if (i >= w.size() || !parse_int(w[i], n) || n < 1 || n > 4) { err = "port is 1 to 4"; return false; }
+            b.port = n - 1;
+            i++;
+            continue;
+        }
         float* dst = o == "deadzone" ? &b.deadzone : o == "gain" ? &b.gain : o == "threshold" ? &b.threshold : nullptr;
         if (!dst) { err = "unknown option \"" + o + "\""; return false; }
         if (i >= w.size() || !parse_float(w[i], *dst)) { err = o + " needs a number"; return false; }
@@ -386,13 +396,20 @@ void input_map_event(const SDL_Event& e) {
     }
 }
 
-void input_map_apply(PadState& p) {
-    ffb_update(pad_motor(0));
+int input_map_port_count() {
+    int n = 1;
+    for (const auto& b : g_bindings) n = std::max(n, b.port + 1);
+    return n;
+}
+
+void input_map_apply(PadState& p, int port) {
+    if (port == g_ffb_port) ffb_update(pad_motor(port));
     if (g_bindings.empty()) return;
     const bool* keys = SDL_GetKeyboardState(nullptr);
     float v[(int)Target::Count] = {};
     bool pressed[(int)Target::Count] = {};
     for (const auto& b : g_bindings) {
+        if (b.port != port) continue;
         const float x = value(b, keys);
         float& acc = v[(int)b.target];
         if (bipolar(b.target)) acc += x;
