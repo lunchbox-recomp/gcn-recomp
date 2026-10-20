@@ -53,7 +53,8 @@ The game project provides:
 - `recomp/hle.txt` — functions whose body the runtime replaces (`OSSaveContext`,
   `OSLoadContext`, `OSReport`, `OSPanic` and `OSResetSystem` at minimum).
 - `recomp/special_calls.txt` — the address of `OSSaveContext`, whose call sites become
-  resume points.
+  resume points. A game whose code uses the C library's `setjmp` and `longjmp` lists them
+  too, by those names, so that a `longjmp` comes back where its `setjmp` was called.
 - `recomp/idle.txt` — the backward branch of the SDK scheduler's idle spin (`SelectThread`
   waiting for a runnable thread), where the runtime skips guest time to the next event.
 - `recomp/names.txt`, `recomp/patches.txt` — hand-named functions and instruction patches,

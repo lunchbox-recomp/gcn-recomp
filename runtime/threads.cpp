@@ -267,6 +267,51 @@ extern "C" void hle_OSLoadContext(CPU* c) {
 }
 
 // ---------------------------------------------------------------------------
+// The C library's setjmp / longjmp (special_calls.txt names them)
+// ---------------------------------------------------------------------------
+// A guest longjmp restores the registers its setjmp saved and returns to the setjmp's
+// caller. Recompiled as it stands, that return comes back to longjmp's own C caller
+// instead, with the guest stack pointer of a frame further out, and the code that carries
+// on there reads its locals from the wrong frame. So each setjmp call site records a host
+// resume point for the guest jmp_buf it fills, and longjmp's returns go there. The guest
+// thread that called setjmp is the one that longjmps, on the same host thread, so the
+// table is per host thread. A resume point is used only while the buffer still holds the
+// LR and r1 its call site saw: a buffer filled some other way stops with a message rather
+// than jumping into a C frame that has returned.
+struct GuestJmp {
+    jmp_buf jb;
+    uint32_t lr = 0, sp = 0;
+#ifdef GCN_CALL_TRACE
+    uint32_t depth = 0;
+#endif
+};
+static thread_local std::unordered_map<uint32_t, GuestJmp> t_guest_jmps;
+
+extern "C" jmp_buf* hle_setjmp_jmpbuf(CPU* c) {
+    // Called at a setjmp call site before the call: r3 = the guest jmp_buf, LR = the
+    // address the call returns to, r1 = the caller's stack pointer.
+    GuestJmp& g = t_guest_jmps[c->r[3]];
+    g.lr = c->lr;
+    g.sp = c->r[1];
+#ifdef GCN_CALL_TRACE
+    g.depth = c->depth;
+#endif
+    return &g.jb;
+}
+
+extern "C" void hle_longjmp_resume(CPU* c, uint32_t buf) {
+    // The recompiled longjmp has restored LR and r1 (among the rest) from the buffer.
+    auto it = t_guest_jmps.find(buf);
+    if (it == t_guest_jmps.end() || it->second.lr != c->lr || it->second.sp != c->r[1])
+        fatal("longjmp through %08X to LR %08X, r1 %08X, which no setjmp call site recorded", buf, c->lr,
+              c->r[1]);
+#ifdef GCN_CALL_TRACE
+    c->depth = it->second.depth;
+#endif
+    GCN_LONGJMP(it->second.jb, 1);
+}
+
+// ---------------------------------------------------------------------------
 // Decrementer
 // ---------------------------------------------------------------------------
 static uint64_t g_dec_base_tick;
