@@ -115,12 +115,14 @@ int main(int argc, char** argv) {
     uint64_t verts_warmed = 0;
 
     for (;;) {
-        // Keep a controller plugged in so the game doesn't sit in a "please connect"
+        // Keep the controllers plugged in so the game doesn't sit in a "please connect"
         // state, and drain batches so the guest never blocks on a renderer.
-        PadState p;
-        p.connected = true;
-        input_script_apply(p);
-        pad_set_state(0, p);
+        for (int chan = 0; chan < pads; chan++) {
+            PadState p;
+            p.connected = true;
+            input_script_apply(p, chan);
+            pad_set_state(chan, p);
+        }
 
         if (auto b = gx::take_batch(5)) {
             verts += b->verts.size();

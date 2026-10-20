@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace {
-struct ScriptedPress { uint32_t at, dur; uint16_t buttons; int sx, sy; };
+struct ScriptedPress { uint32_t at, dur; uint16_t buttons; int sx, sy; int chan; };
 std::vector<ScriptedPress> g_script;
 bool g_log;
 }  // namespace
@@ -25,9 +25,20 @@ void input_script_init(const char* spec) {
         if (end == std::string::npos) end = s.size();
         std::string item = s.substr(pos, end - pos);
         pos = end + 1;
+        // "2/900:A:10": the port, 1 to 4, before the frame; none is port 1.
+        int chan = 0;
+        const size_t slash = item.find('/');
+        if (slash != std::string::npos) {
+            chan = atoi(item.c_str()) - 1;
+            if (chan < 0 || chan > 3) {
+                fprintf(stderr, "[input] %s: no such port (1 to 4); press ignored\n", item.c_str());
+                continue;
+            }
+            item = item.substr(slash + 1);
+        }
         size_t c1 = item.find(':'), c2 = item.rfind(':');
         if (c1 == std::string::npos || c2 == c1) continue;
-        ScriptedPress p{(uint32_t)atoi(item.c_str()), (uint32_t)atoi(item.c_str() + c2 + 1), 0, 0, 0};
+        ScriptedPress p{(uint32_t)atoi(item.c_str()), (uint32_t)atoi(item.c_str() + c2 + 1), 0, 0, 0, chan};
         std::string btns = item.substr(c1 + 1, c2 - c1 - 1);
         size_t bp = 0;
         while (bp <= btns.size()) {
@@ -53,12 +64,12 @@ void input_script_init(const char* spec) {
     if (g_log) fprintf(stderr, "[input] %zu scripted press(es)\n", g_script.size());
 }
 
-void input_script_apply(PadState& p) {
+void input_script_apply(PadState& p, int chan) {
     if (g_script.empty()) return;
     uint32_t frame = gx::g_frames_submitted.load();  // time base: presented game frames
     for (auto& s : g_script) {
-        if (frame >= s.at && frame < s.at + s.dur) {
-            if (g_log) fprintf(stderr, "[input] frame %u press %04X\n", frame, s.buttons);
+        if (s.chan == chan && frame >= s.at && frame < s.at + s.dur) {
+            if (g_log) fprintf(stderr, "[input] frame %u port %d press %04X\n", frame, chan + 1, s.buttons);
             p.buttons |= s.buttons;
             if (s.sx) p.stick_x = (uint8_t)(128 + s.sx);
             if (s.sy) p.stick_y = (uint8_t)(128 + s.sy);
