@@ -52,6 +52,7 @@ bool same(const PadState& a, const PadState& b) {
 std::vector<Entry> g_replay;     // sorted by key, as logged
 size_t g_replay_pos;             // first entry not yet applied
 PadState g_replay_state[4];
+bool g_replay_ends_connected[4];  // the port's last line in the log has it plugged in
 bool g_replay_loaded;
 bool g_replay_by_frame;          // a v1 log
 uint32_t g_replay_last_key;      // the last change, or the end marker when the log has one
@@ -243,6 +244,7 @@ bool input_replay_load(const std::string& dir, std::string& memcard_out) {
     std::stable_sort(g_jumps.begin(), g_jumps.end(), [](const Jump& a, const Jump& b) { return a.at < b.at; });
     g_next_jump_at = g_jumps.empty() ? UINT64_MAX : g_jumps[0].at;
     for (auto& s : g_replay_state) { s = PadState(); s.connected = true; }
+    for (const Entry& e : g_replay) g_replay_ends_connected[e.chan] = e.s.connected;
     g_replay_loaded = true;
     memcard_out.clear();
     const std::string snap = dir + "/memcard_a.raw";
@@ -343,6 +345,13 @@ bool input_pad_poll(int chan, PadState& s) {
             if (!said) {
                 said = true;
                 fprintf(stderr, "[input] replay finished at poll %u (frame %u); live input from here\n", g_poll_seq, gx_frames_submitted());
+            }
+            // A port the log ends with plugged in, and that this run has no controller on
+            // (recorded with more --pads than it was replayed with), stays plugged in at
+            // rest: the game would otherwise see it pulled out as the replay hands over.
+            if (!s.connected && g_replay_ends_connected[chan]) {
+                s = PadState();
+                s.connected = true;
             }
         } else {
             s = g_replay_state[chan];

@@ -1,8 +1,9 @@
 // Input logging and replay.
 //
-// A run leaves behind a record of every controller state the game polled, keyed by the
-// poll's sequence number, so that the same route can be played again without a human at
-// the controls -- "get me to the boss" rather than scripting a handful of presses. With
+// A run leaves behind a record of every controller state the game polled, on each port
+// (each line names its channel), keyed by the poll's sequence number, so that the same
+// route can be played again without a human at the controls -- "get me to the boss"
+// rather than scripting a handful of presses. With
 // the virtual clock (runtime.h) the guest's timeline is a function of its own execution,
 // so the Nth poll of a replay is the same instant in the game as the Nth poll of the
 // recording, and the replay is exact. The log also records the run's start time, which
@@ -40,7 +41,9 @@ void input_log_end();
 // Called by the SI layer each time the guest polls a pad, with the live state in `s`.
 // While a replay is loaded and not yet past its end, overwrites `s` with the logged state
 // for `chan` and returns true; past the end the live controller takes over again and this
-// returns false. Either way the state the guest will see is recorded, when logging.
+// returns false. A port the log ends with plugged in that has no live controller (a run
+// recorded with more --pads than this one) stays plugged in there, at rest. Either way the
+// state the guest will see is recorded, when logging.
 bool input_pad_poll(int chan, PadState& s);
 
 // Whether a replay is in progress (loaded and not yet past its last poll).
