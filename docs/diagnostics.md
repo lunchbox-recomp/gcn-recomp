@@ -92,7 +92,9 @@ a log.
 `--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
 power-on (1 to 4; port 1 alone by default), so that the game finds them when it first
 looks. The keyboard, the first gamepad and `controls.txt` drive port 1; the others sit at
-rest.
+rest unless a script presses them. A port before the frame, `2/900:A:10`, is the
+controller that presses; a press without one is port 1's, and a press on a port that is not
+plugged in does nothing.
 
 ## Frame dumps
 

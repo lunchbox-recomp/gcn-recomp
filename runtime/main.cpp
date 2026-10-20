@@ -144,7 +144,7 @@ bool audio_open();
 
 // ---------------------------------------------------------------------------
 // Input: keyboard + first game controller -> GC pad 1, and controls.txt (input_map.h).
-// --pads=N plugs in ports 2 to N as well, at rest.
+// --pads=N plugs in ports 2 to N as well, at rest unless a script presses them.
 // ---------------------------------------------------------------------------
 static SDL_GameController* g_ctrl;
 
@@ -212,12 +212,14 @@ static void merge_desktop_pad(PadState& p) {
     rumbling = motor;
 }
 
-static void update_pad() {
-    PadState p;
-    p.connected = true;
-    merge_desktop_pad(p);
-    input_script_apply(p);
-    pad_set_state(0, p);
+static void update_pads(int pads) {
+    for (int chan = 0; chan < pads; chan++) {
+        PadState p;
+        p.connected = true;
+        if (chan == 0) merge_desktop_pad(p);
+        input_script_apply(p, chan);
+        pad_set_state(chan, p);
+    }
 }
 
 // The window's events. False once the user has asked to quit.
@@ -341,10 +343,12 @@ int main(int argc, char** argv) {
         uint32_t entry = boot_load(iso);
         threads_start_boot(entry);
         for (;;) {
-            PadState p;
-            p.connected = true;
-            input_script_apply(p);
-            pad_set_state(0, p);
+            for (int chan = 0; chan < pads; chan++) {
+                PadState p;
+                p.connected = true;
+                input_script_apply(p, chan);
+                pad_set_state(chan, p);
+            }
             auto b = gx::take_batch(5);  // discard
             (void)b;
         }
@@ -429,7 +433,7 @@ int main(int argc, char** argv) {
     auto t0 = std::chrono::steady_clock::now();
     while (running) {
         running = pump_events();
-        update_pad();
+        update_pads(pads);
         int dw, dh;
         SDL_GL_GetDrawableSize(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
