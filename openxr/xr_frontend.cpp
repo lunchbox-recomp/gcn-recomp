@@ -8,7 +8,6 @@
 #include "xr_frontend.h"
 #include "runtime.h"
 #include "platform.h"
-#include "input_script.h"
 #include "vr_game.h"
 
 #include "gx/render.h"
@@ -1584,7 +1583,6 @@ void run() {
         read_pad(p);
         if (vr::game_hooks().map_pad) vr::game_hooks().map_pad(p);
         if (g_xr.plat.merge_input) g_xr.plat.merge_input(p);
-        input_script_apply(p);
         pad_set_state(0, p);
 
         // Clicking the right thumbstick switches between the game's camera and its first

@@ -9,7 +9,7 @@
 #include <vector>
 
 namespace {
-struct ScriptedPress { uint32_t at, dur; uint16_t buttons; int sx, sy; int chan; };
+struct ScriptedPress { uint32_t at, dur; uint16_t buttons; int sx, sy; int chan; bool said; };
 std::vector<ScriptedPress> g_script;
 bool g_log;
 }  // namespace
@@ -38,7 +38,7 @@ void input_script_init(const char* spec) {
         }
         size_t c1 = item.find(':'), c2 = item.rfind(':');
         if (c1 == std::string::npos || c2 == c1) continue;
-        ScriptedPress p{(uint32_t)atoi(item.c_str()), (uint32_t)atoi(item.c_str() + c2 + 1), 0, 0, 0, chan};
+        ScriptedPress p{(uint32_t)atoi(item.c_str()), (uint32_t)atoi(item.c_str() + c2 + 1), 0, 0, 0, chan, false};
         std::string btns = item.substr(c1 + 1, c2 - c1 - 1);
         size_t bp = 0;
         while (bp <= btns.size()) {
@@ -69,7 +69,9 @@ void input_script_apply(PadState& p, int chan) {
     uint32_t frame = gx::g_frames_submitted.load();  // time base: presented game frames
     for (auto& s : g_script) {
         if (s.chan == chan && frame >= s.at && frame < s.at + s.dur) {
-            if (g_log) fprintf(stderr, "[input] frame %u port %d press %04X\n", frame, chan + 1, s.buttons);
+            // Once per press: the guest reads a pad several times a frame.
+            if (g_log && !s.said) fprintf(stderr, "[input] frame %u port %d press %04X\n", frame, chan + 1, s.buttons);
+            s.said = true;
             p.buttons |= s.buttons;
             if (s.sx) p.stick_x = (uint8_t)(128 + s.sx);
             if (s.sy) p.stick_y = (uint8_t)(128 + s.sy);

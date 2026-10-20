@@ -90,9 +90,17 @@ number after them says (`SR19`, 19 of 127). Presses are counted in
 submitted frames, not wall-clock: display copies the guest has issued. For most games that
 is one per presented frame, but a game that renders its frame in parts (graphics.md, "Frames
 rendered in parts") issues several, so its count runs several times ahead of the frame
-numbers the dumps carry; `GCN_INPUT_LOG=1` shows the count. It prints each press as it fires. A
-scripted press is recorded in the input log like any other, so a script is one way to make
-a log.
+numbers the dumps carry; `GCN_INPUT_LOG=1` shows the count. It prints each press once, at
+the frame it first reaches the game. A scripted press is recorded in the input log like any
+other, so a script is one way to make a log.
+
+The SI layer applies a script where the guest reads a pad (`pad_get` in `hw/si.cpp`), on
+the guest thread, at the frame count the guest has reached, so a press lands at the same
+instant of the game on every run and a route gives the same frames whatever the host's
+speed, `--fast` included. Until 2026-10-20 each frontend applied it from its own loop, on
+the host's time: under `--fast`, with the game running at thousands of frames a second, a
+press landed wherever the guest was when the loop next looked, a short one could be
+missed, and the same route gave different frames from run to run.
 
 `--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
 power-on (1 to 4; port 1 alone by default), so that the game finds them when it first

@@ -1,6 +1,7 @@
 // Serial Interface: GameCube controllers.
 #include "../runtime.h"
 #include "../input_log.h"
+#include "../input_script.h"
 #include "pad.h"
 #include <algorithm>
 #include <mutex>
@@ -16,13 +17,17 @@ void pad_set_state(int chan, const PadState& s) {
     g_pads[chan] = s;
 }
 static PadState pad_get(int chan) {
-    // Replay substitutes the logged state for the live one; recording sees what the
-    // guest actually read, whichever that was.
+    // A script's presses go on top of the live state here, on the guest thread, at the
+    // frame the guest has reached: a frontend's loop runs on the host's time, and a press
+    // it applied landed wherever the guest happened to be when it looked. Replay then
+    // substitutes the logged state for both; recording sees what the guest actually read,
+    // whichever that was.
     PadState p;
     {
         std::lock_guard<std::mutex> lk(g_pad_mutex);
         p = g_pads[chan];
     }
+    if (p.connected) input_script_apply(p, chan);
     input_pad_poll(chan, p);
     return p;
 }

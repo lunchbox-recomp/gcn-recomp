@@ -115,15 +115,8 @@ int main(int argc, char** argv) {
     uint64_t verts_warmed = 0;
 
     for (;;) {
-        // Keep the controllers plugged in so the game doesn't sit in a "please connect"
-        // state, and drain batches so the guest never blocks on a renderer.
-        for (int chan = 0; chan < pads; chan++) {
-            PadState p;
-            p.connected = true;
-            input_script_apply(p, chan);
-            pad_set_state(chan, p);
-        }
-
+        // Drain batches so the guest never blocks on a renderer. The controllers stay
+        // plugged in from boot (pad_set_count), and the SI layer applies any script.
         if (auto b = gx::take_batch(5)) {
             verts += b->verts.size();
             draws += b->cmds.size();
