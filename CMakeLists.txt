@@ -10,10 +10,14 @@ function(_gcn_set_standards target)
   set_target_properties(${target} PROPERTIES C_STANDARD 11 CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 endfunction()
 
-# GCN_BENCH_ONLY builds just the headless benchmark: no renderer, no SDL2, no GL. That
+# GCN_BENCH_ONLY builds just the headless benchmark: no renderer, no SDL, no GL. That
 # is what a cross-build for a device uses, since it only needs a C++ toolchain and the
 # recompiled code.
-option(GCN_BENCH_ONLY "Build only the headless benchmark (no SDL2, no renderer)" OFF)
+option(GCN_BENCH_ONLY "Build only the headless benchmark (no SDL, no renderer)" OFF)
+# The desktop frontend's SDL3 is its source release, pinned by hash and built static into
+# the build directory (_gcn_fetch_sdl3). GCN_SYSTEM_SDL takes an installed SDL3 instead,
+# through its CMake package or else pkg-config, for a packager whose system provides one.
+option(GCN_SYSTEM_SDL "Use an installed SDL3 instead of building the pinned release" OFF)
 # See ENTER()/RET() in runtime/recomp.h. ON maintains a guest call stack, which answers
 # "which guest function did that?" and gives a crash dump something to print.
 option(GCN_TRACE_CALLS "Maintain a guest call stack (diagnostics)" OFF)
@@ -59,66 +63,46 @@ macro(_gcn_fetch_openxr_headers)
   set(GCN_OPENXR_INCLUDE ${openxr_headers_SOURCE_DIR}/include)
 endmacro()
 
-# SDL2 for Windows, which has no prebuilt ARM64 binaries: built from source once per
-# compiler and configuration into GCN_SDL2_PREFIX (under %LOCALAPPDATA%\gcn-recomp), which
-# every project's desktop builds share. Built inside each build directory, it was half of
-# a desktop build's compile time on a two-core machine. A lock keeps two configures from
-# building it at once; delete the directory to build it again.
-function(_gcn_sdl2_shared out_target)
-  set(_ver 2.30.9)
-  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(_config Debug)  # the debug C runtime, which a library built for release cannot share
-  else()
-    set(_config Release)
-  endif()
-  string(MAKE_C_IDENTIFIER "${CMAKE_C_COMPILER_ID}${CMAKE_C_COMPILER_VERSION}_${CMAKE_SYSTEM_PROCESSOR}_${_config}" _tag)
-  set(_root "$ENV{LOCALAPPDATA}/gcn-recomp")
-  if(NOT DEFINED ENV{LOCALAPPDATA})
-    set(_root ${CMAKE_BINARY_DIR})
-  endif()
-  file(TO_CMAKE_PATH "${_root}" _root)
-  set(GCN_SDL2_PREFIX "${_root}/SDL2-${_ver}-${_tag}" CACHE PATH "SDL2 built once for this compiler, shared by every project")
-  set(_prefix ${GCN_SDL2_PREFIX})
-  if(NOT EXISTS ${_prefix}/built)
-    file(MAKE_DIRECTORY ${_root})
-    file(LOCK ${_prefix}.lock GUARD FUNCTION TIMEOUT 3600)
-    if(NOT EXISTS ${_prefix}/built)
-      message(STATUS "Building SDL2 ${_ver} into ${_prefix} (once for every project)")
-      set(_work ${_prefix}-work)
-      file(REMOVE_RECURSE ${_work} ${_prefix})
-      file(DOWNLOAD https://github.com/libsdl-org/SDL/releases/download/release-${_ver}/SDL2-${_ver}.tar.gz
-           ${_work}/SDL2.tar.gz
-           EXPECTED_HASH SHA256=24b574f71c87a763f50704bbb630cbe38298d544a1f890f099a4696b1d6beba4
-           STATUS _st)
-      list(GET _st 0 _code)
-      if(NOT _code EQUAL 0)
-        message(FATAL_ERROR "downloading SDL2 failed: ${_st}")
-      endif()
-      file(ARCHIVE_EXTRACT INPUT ${_work}/SDL2.tar.gz DESTINATION ${_work})
-      set(_args -S ${_work}/SDL2-${_ver} -B ${_work}/build -G ${CMAKE_GENERATOR}
-                -DCMAKE_BUILD_TYPE=${_config} -DCMAKE_INSTALL_PREFIX=${_prefix}
-                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER} -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-                -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF)
-      foreach(v CMAKE_MAKE_PROGRAM CMAKE_RC_COMPILER CMAKE_MSVC_RUNTIME_LIBRARY)
-        if(${v})
-          list(APPEND _args -D${v}=${${v}})
-        endif()
-      endforeach()
-      execute_process(COMMAND ${CMAKE_COMMAND} ${_args} RESULT_VARIABLE _r OUTPUT_QUIET)
-      if(_r EQUAL 0)
-        execute_process(COMMAND ${CMAKE_COMMAND} --build ${_work}/build --target install RESULT_VARIABLE _r OUTPUT_QUIET)
-      endif()
-      if(NOT _r EQUAL 0)
-        message(FATAL_ERROR "building SDL2 in ${_work} failed")
-      endif()
-      file(REMOVE_RECURSE ${_work})
-      file(WRITE ${_prefix}/built "${_ver}\n")
+# SDL3 from its source release, static, on every desktop platform. Windows has had
+# official ARM64 binaries since SDL3, so a packager there can take those through
+# GCN_SYSTEM_SDL rather than this.
+#
+# HIDAPI over libusb is the only way to some controllers' raw reports. libusb is LGPL, so
+# it is never linked into the executable: SDL loads it at run time by its file name
+# (libusb-1.0.dylib, libusb-1.0.so.0) wherever the dynamic loader finds it, and goes on
+# without it where it does not. SDL builds that support only when libusb's headers and
+# shared library are found at configure time; when the only libusb found is static, SDL
+# would link it, and the configure stops instead.
+macro(_gcn_fetch_sdl3)
+  if(NOT TARGET SDL3::SDL3)
+    include(FetchContent)
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+    set(SDL_HIDAPI_LIBUSB ON CACHE BOOL "")
+    set(SDL_HIDAPI_LIBUSB_SHARED ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(sdl3
+      URL https://github.com/libsdl-org/SDL/releases/download/release-3.4.18/SDL3-3.4.18.tar.gz
+      URL_HASH SHA256=9c75cf16330322c217dedd2e0609f1124f1b54b8633e763467b4684d0f4334a3
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(sdl3)
+    get_directory_property(_gcn_libusb DIRECTORY ${sdl3_SOURCE_DIR} DEFINITION HAVE_LIBUSB)
+    get_directory_property(_gcn_libusb_so DIRECTORY ${sdl3_SOURCE_DIR} DEFINITION SDL_LIBUSB_DYNAMIC)
+    if(_gcn_libusb AND NOT _gcn_libusb_so)
+      message(FATAL_ERROR "SDL3 found libusb only as a static library and would link it into the "
+              "executable, which libusb's licence (LGPL) rules out. Install libusb's shared library, "
+              "or configure with -DSDL_HIDAPI_LIBUSB=OFF to build SDL without it.")
+    elseif(_gcn_libusb)
+      string(REPLACE "\"" "" _gcn_libusb_so "${_gcn_libusb_so}")
+      message(STATUS "SDL3: controllers over libusb, loading ${_gcn_libusb_so} at run time")
+    else()
+      message(STATUS "SDL3: no libusb found, so no controllers over libusb")
     endif()
-    file(LOCK ${_prefix}.lock RELEASE)
   endif()
-  find_package(SDL2 ${_ver} EXACT CONFIG REQUIRED PATHS ${_prefix} NO_DEFAULT_PATH)
-  set(${out_target} SDL2::SDL2-static PARENT_SCOPE)
-endfunction()
+endmacro()
 
 # The OpenXR loader, from Khronos' SDK source at the version the Android build's AAR is.
 # Static, and nothing but the loader.
@@ -450,16 +434,22 @@ function(gcn_add_game)
     target_compile_definitions(shader_keys PRIVATE ${GCN_GL_DEFS})
   endif()
 
-  # SDL2: pkg-config where it exists; on Windows there are no prebuilt ARM64 binaries,
-  # so it is built from source, once for all projects (_gcn_sdl2_shared).
+  # SDL3: the pinned release (_gcn_fetch_sdl3), or with GCN_SYSTEM_SDL an installed one,
+  # 3.2 or later.
   if(GCN_BENCH_ONLY OR GCN_VISIONOS)
     set(GCN_SDL_TARGET "")
-  elseif(WIN32)
-    _gcn_sdl2_shared(GCN_SDL_TARGET)
+  elseif(GCN_SYSTEM_SDL)
+    find_package(SDL3 3.2 CONFIG QUIET)
+    if(SDL3_FOUND)
+      set(GCN_SDL_TARGET SDL3::SDL3)
+    else()
+      find_package(PkgConfig REQUIRED)
+      pkg_check_modules(SDL3 REQUIRED IMPORTED_TARGET sdl3>=3.2)
+      set(GCN_SDL_TARGET PkgConfig::SDL3)
+    endif()
   else()
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
-    set(GCN_SDL_TARGET PkgConfig::SDL2)
+    _gcn_fetch_sdl3()
+    set(GCN_SDL_TARGET SDL3::SDL3)
   endif()
 
   if(MSVC)
@@ -468,7 +458,7 @@ function(gcn_add_game)
     set(GCN_RUNTIME_WARNINGS -Wall -Wno-unused-function)
   endif()
 
-  # Platform libraries the runtime needs beyond SDL2. The benchmark links none of this.
+  # Platform libraries the runtime needs beyond SDL. The benchmark links none of this.
   set(GCN_PLATFORM_LIBS "")
   if(GCN_BENCH_ONLY OR GCN_VISIONOS)
   elseif(APPLE)

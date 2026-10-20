@@ -88,6 +88,9 @@ The game project provides:
 
 ## Requirements
 
-CMake 3.20+, Ninja, Python 3, a C++20 compiler, SDL2 (via pkg-config; on Windows built from
-source by the first configure, into `%LOCALAPPDATA%\gcn-recomp`, and shared by every
-project's builds after that). On macOS: `brew install cmake ninja sdl2 python`.
+CMake 3.20+, Ninja, Python 3 and a C++20 compiler. The first configure downloads SDL
+3.4.18's source release, checks its SHA-256 and builds it static into the build directory.
+`-DGCN_SYSTEM_SDL=ON` uses an installed SDL3 (3.2 or later) instead. If libusb's shared
+library is installed when SDL is configured, SDL also reaches controllers over libusb,
+loading libusb at run time rather than linking it. On macOS that is
+`brew install cmake ninja python`, plus `libusb`.
