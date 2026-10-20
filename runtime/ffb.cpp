@@ -8,7 +8,7 @@
 #include <cstdlib>
 #include <mutex>
 // After the standard headers: SDL_endian.h trips over clang's intrinsics otherwise.
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 namespace {
 
@@ -76,10 +76,10 @@ SDL_HapticEffect spring(Uint16 type) {
 }
 
 int start(SDL_HapticEffect& e, const char* what) {
-    const int id = SDL_HapticNewEffect(g_hap, &e);
-    if (id < 0 || SDL_HapticRunEffect(g_hap, id, 1) < 0) {
+    const int id = SDL_CreateHapticEffect(g_hap, &e);
+    if (id < 0 || !SDL_RunHapticEffect(g_hap, id, 1)) {
         fprintf(stderr, "force feedback: no %s (%s)\n", what, SDL_GetError());
-        if (id >= 0) SDL_HapticDestroyEffect(g_hap, id);
+        if (id >= 0) SDL_DestroyHapticEffect(g_hap, id);
         return -1;
     }
     return id;
@@ -87,22 +87,22 @@ int start(SDL_HapticEffect& e, const char* what) {
 
 void close_haptic() {
     if (!g_hap) return;
-    SDL_HapticStopAll(g_hap);
-    SDL_HapticClose(g_hap);
+    SDL_StopHapticEffects(g_hap);
+    SDL_CloseHaptic(g_hap);
     g_hap = nullptr;
     g_stop = g_centre = g_damper = g_road = g_rumble = -1;
 }
 
 void open_haptic() {
-    g_hap = SDL_HapticOpenFromJoystick(g_joy);
+    g_hap = SDL_OpenHapticFromJoystick(g_joy);
     if (!g_hap) {
-        fprintf(stderr, "force feedback: \"%s\" has none SDL can drive (%s)\n", SDL_JoystickName(g_joy), SDL_GetError());
+        fprintf(stderr, "force feedback: \"%s\" has none SDL can drive (%s)\n", SDL_GetJoystickName(g_joy), SDL_GetError());
         return;
     }
-    g_caps = SDL_HapticQuery(g_hap);
+    g_caps = SDL_GetHapticFeatures(g_hap);
     // The wheel's own centring would fight ours.
-    if (g_caps & SDL_HAPTIC_AUTOCENTER) SDL_HapticSetAutocenter(g_hap, 0);
-    if (g_caps & SDL_HAPTIC_GAIN) SDL_HapticSetGain(g_hap, 100);
+    if (g_caps & SDL_HAPTIC_AUTOCENTER) SDL_SetHapticAutocenter(g_hap, 0);
+    if (g_caps & SDL_HAPTIC_GAIN) SDL_SetHapticGain(g_hap, 100);
     if (g_caps & SDL_HAPTIC_SPRING) {
         g_stop_fx = spring(SDL_HAPTIC_SPRING);
         g_stop = start(g_stop_fx, "stop");
@@ -110,7 +110,7 @@ void open_haptic() {
         g_centre = start(g_centre_fx, "centring");
     } else {
         fprintf(stderr, "force feedback: \"%s\" has no spring effect, so no stop at full lock and no centring\n",
-                SDL_JoystickName(g_joy));
+                SDL_GetJoystickName(g_joy));
     }
     if (g_caps & SDL_HAPTIC_DAMPER) {
         g_damper_fx = spring(SDL_HAPTIC_DAMPER);
@@ -133,10 +133,10 @@ void open_haptic() {
         g_rumble_fx.periodic.period = 30;  // ms
         g_rumble = start(g_rumble_fx, "rumble");
     }
-    g_start_ms = SDL_GetTicks();
+    g_start_ms = (uint32_t)SDL_GetTicks();
     g_centre_now = 0.0f;
     fprintf(stderr, "force feedback on \"%s\": full lock at %.0f%% of its travel, strength %.2f\n",
-            SDL_JoystickName(g_joy), g_lock * 100.0f, g_set.gain);
+            SDL_GetJoystickName(g_joy), g_lock * 100.0f, g_set.gain);
 }
 
 // An update the wheel is sent only when it changes, so that a wheel at rest is not
@@ -149,7 +149,7 @@ bool differs(const SDL_HapticCondition& a, const SDL_HapticCondition& b) {
 void update_condition(int id, SDL_HapticEffect& cur, const SDL_HapticEffect& want) {
     if (id < 0 || !differs(cur.condition, want.condition)) return;
     cur = want;
-    SDL_HapticUpdateEffect(g_hap, id, &cur);
+    SDL_UpdateHapticEffect(g_hap, id, &cur);
 }
 
 }  // namespace
@@ -170,7 +170,7 @@ void ffb_attach(SDL_Joystick* j, int axis, float lock) {
 
 void ffb_update(bool motor) {
     if (!g_hap) return;
-    const uint32_t now = SDL_GetTicks();
+    const uint32_t now = (uint32_t)SDL_GetTicks();
     const float dt = std::min(0.1f, (now - g_last_ms) / 1000.0f);
     g_last_ms = now;
     // Everything comes in over a second and a half: a wheel left turned past the lock is
@@ -193,7 +193,7 @@ void ffb_update(bool motor) {
     // pushes back stop_stiffness times harder than a spring can. Coming back out, the
     // spring alone: the stiff one would keep its push until the next update and throw the
     // wheel back at the centre.
-    const float p = std::clamp(SDL_JoystickGetAxis(g_joy, g_axis) / 32767.0f, -1.0f, 1.0f);
+    const float p = std::clamp(SDL_GetJoystickAxis(g_joy, g_axis) / 32767.0f, -1.0f, 1.0f);
     const float velocity = dt > 0.0f ? (p - g_prev_p) / dt : 0.0f;  // axis units a second
     g_prev_p = p;
     if (g_stop >= 0) {
@@ -258,7 +258,7 @@ void ffb_update(bool motor) {
         const Sint16 level = coeff(std::clamp(g_kick_now, -1.0f, 1.0f) * gain);
         if (level != g_road_fx.constant.level) {
             g_road_fx.constant.level = level;
-            SDL_HapticUpdateEffect(g_hap, g_road, &g_road_fx);
+            SDL_UpdateHapticEffect(g_hap, g_road, &g_road_fx);
         }
     }
 
@@ -266,7 +266,7 @@ void ffb_update(bool motor) {
         const Sint16 mag = motor ? coeff(g_set.rumble * gain) : 0;
         if (mag != g_rumble_fx.periodic.magnitude) {
             g_rumble_fx.periodic.magnitude = mag;
-            SDL_HapticUpdateEffect(g_hap, g_rumble, &g_rumble_fx);
+            SDL_UpdateHapticEffect(g_hap, g_rumble, &g_rumble_fx);
         }
     }
 }

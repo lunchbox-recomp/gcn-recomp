@@ -64,9 +64,9 @@ union SDL_Event;
 bool input_map_load(const char* path);
 // Devices coming and going. Every SDL event may be passed.
 void input_map_event(const SDL_Event& e);
-// Whether the file names the joystick at this SDL device index (the default gamepad
-// mapping leaves such a device alone).
-bool input_map_binds_index(int device_index);
+// Whether the file names the joystick with this SDL instance ID (an SDL_JoystickID; the
+// default gamepad mapping leaves such a device alone).
+bool input_map_binds(uint32_t joystick_id);
 // The file's bindings, merged into `p`.
 void input_map_apply(PadState& p);
 // Stops the wheel's force feedback (ffb.h), before the program exits.

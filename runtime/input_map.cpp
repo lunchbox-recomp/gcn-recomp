@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 // After the standard headers: SDL_endian.h trips over clang's intrinsics otherwise.
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 namespace {
 
@@ -87,11 +87,11 @@ void split_nth(const std::string& s, std::string& name, int& nth) {
 // How a device would be written in the file: its name, and "#n" if it is not the first
 // of that name.
 std::string device_label(SDL_Joystick* j) {
-    const char* name = SDL_JoystickName(j);
+    const char* name = SDL_GetJoystickName(j);
     std::string n = name ? name : "?";
     int nth = 0;
     for (SDL_Joystick* o : g_open) {
-        if (same_name(SDL_JoystickName(o), n)) nth++;
+        if (same_name(SDL_GetJoystickName(o), n)) nth++;
         if (o == j) break;
     }
     if (nth > 1) n += " #" + std::to_string(nth);
@@ -101,7 +101,7 @@ std::string device_label(SDL_Joystick* j) {
 SDL_Joystick* find_device(const std::string& name, int nth) {
     int seen = 0;
     for (SDL_Joystick* j : g_open)
-        if (same_name(SDL_JoystickName(j), name) && ++seen == nth) return j;
+        if (same_name(SDL_GetJoystickName(j), name) && ++seen == nth) return j;
     return nullptr;
 }
 
@@ -277,15 +277,15 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
 }
 
 // A binding's value: -1 to +1 onto a whole stick axis, 0 to 1 onto anything else.
-float value(const Binding& b, const uint8_t* keys) {
+float value(const Binding& b, const bool* keys) {
     float v = 0.0f;
     switch (b.kind) {
     case Kind::Key: v = keys[b.key] ? 1.0f : 0.0f; break;
-    case Kind::Button: v = b.joy && SDL_JoystickGetButton(b.joy, b.index) ? 1.0f : 0.0f; break;
-    case Kind::Hat: v = b.joy && (SDL_JoystickGetHat(b.joy, b.index) & b.hat_dir) ? 1.0f : 0.0f; break;
+    case Kind::Button: v = b.joy && SDL_GetJoystickButton(b.joy, b.index) ? 1.0f : 0.0f; break;
+    case Kind::Hat: v = b.joy && (SDL_GetJoystickHat(b.joy, b.index) & b.hat_dir) ? 1.0f : 0.0f; break;
     case Kind::Axis: {
         if (!b.joy) return 0.0f;
-        float a = std::clamp(SDL_JoystickGetAxis(b.joy, b.index) / 32767.0f, -1.0f, 1.0f);
+        float a = std::clamp(SDL_GetJoystickAxis(b.joy, b.index) / 32767.0f, -1.0f, 1.0f);
         if (b.invert) a = -a;
         if (b.half == Half::Plus) v = std::max(a, 0.0f);
         else if (b.half == Half::Minus) v = std::max(-a, 0.0f);
@@ -358,30 +358,30 @@ bool input_map_load(const char* path) {
     return ok;
 }
 
-bool input_map_binds_index(int device_index) {
-    const char* name = SDL_JoystickNameForIndex(device_index);
+bool input_map_binds(uint32_t joystick_id) {
+    const char* name = SDL_GetJoystickNameForID(joystick_id);
     for (const auto& b : g_bindings)
         if (b.kind != Kind::Key && same_name(name, b.device)) return true;
     return false;
 }
 
 void input_map_event(const SDL_Event& e) {
-    if (e.type == SDL_JOYDEVICEADDED) {
-        SDL_Joystick* j = SDL_JoystickOpen(e.jdevice.which);
+    if (e.type == SDL_EVENT_JOYSTICK_ADDED) {
+        SDL_Joystick* j = SDL_OpenJoystick(e.jdevice.which);
         if (!j || std::find(g_open.begin(), g_open.end(), j) != g_open.end()) return;
         g_open.push_back(j);
         const std::string label = device_label(j);
         resolve();
         for (const auto& b : g_bindings)
             if (b.joy == j) { fprintf(stderr, "%s: \"%s\" connected\n", g_path.c_str(), label.c_str()); break; }
-    } else if (e.type == SDL_JOYDEVICEREMOVED) {
-        SDL_Joystick* j = SDL_JoystickFromInstanceID(e.jdevice.which);
+    } else if (e.type == SDL_EVENT_JOYSTICK_REMOVED) {
+        SDL_Joystick* j = SDL_GetJoystickFromID(e.jdevice.which);
         auto it = std::find(g_open.begin(), g_open.end(), j);
         if (it == g_open.end()) return;
         for (const auto& b : g_bindings)
             if (b.joy == j) { fprintf(stderr, "%s: \"%s\" disconnected\n", g_path.c_str(), device_label(j).c_str()); break; }
         g_open.erase(it);
-        SDL_JoystickClose(j);
+        SDL_CloseJoystick(j);
         resolve();
     }
 }
@@ -389,7 +389,7 @@ void input_map_event(const SDL_Event& e) {
 void input_map_apply(PadState& p) {
     ffb_update(pad_motor(0));
     if (g_bindings.empty()) return;
-    const uint8_t* keys = SDL_GetKeyboardState(nullptr);
+    const bool* keys = SDL_GetKeyboardState(nullptr);
     float v[(int)Target::Count] = {};
     bool pressed[(int)Target::Count] = {};
     for (const auto& b : g_bindings) {
@@ -435,7 +435,7 @@ struct AxisWatch {
     SDL_Joystick* joy;
     int axis;
     int16_t rest;
-    uint32_t settle_until;  // the rest position is taken from the first readings
+    uint64_t settle_until;  // the rest position is taken from the first readings
     bool out = false;  // reported, and not yet back at rest
 };
 
@@ -452,23 +452,22 @@ std::string quoted_key(SDL_Scancode sc) {
 
 int input_map_probe() {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC) != 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
     // A window, for the keyboard: keys reach only a focused window. Joysticks are read
     // whether or not it has focus.
-    SDL_Window* win = SDL_CreateWindow("Press or move a control (Escape quits)", SDL_WINDOWPOS_CENTERED,
-                                       SDL_WINDOWPOS_CENTERED, 560, 120, 0);
+    SDL_Window* win = SDL_CreateWindow("Press or move a control (Escape quits)", 560, 120, 0);
     printf("Press a key or a button, or move an axis well away from where it rests, and the\n"
            "source to bind it with is printed: put it after \"<pad control> =\" in controls.txt.\n"
            "Escape, with this window in front, or closing it quits.\n\n");
     fflush(stdout);
     std::vector<AxisWatch> axes;
-    std::vector<std::pair<SDL_JoystickID, uint32_t>> settling;  // device, until
+    std::vector<std::pair<SDL_JoystickID, uint64_t>> settling;  // device, until
     auto settled = [&](SDL_JoystickID id) {
         for (const auto& [d, until] : settling)
-            if (d == id) return SDL_TICKS_PASSED(SDL_GetTicks(), until) != 0;
+            if (d == id) return SDL_GetTicks() >= until;
         return true;
     };
     bool running = true;
@@ -476,44 +475,44 @@ int input_map_probe() {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             switch (e.type) {
-            case SDL_QUIT: running = false; break;
-            case SDL_KEYDOWN:
+            case SDL_EVENT_QUIT: running = false; break;
+            case SDL_EVENT_KEY_DOWN:
                 if (e.key.repeat) break;
-                if (e.key.keysym.scancode == SDL_SCANCODE_ESCAPE) { running = false; break; }
-                printf("key %s\n", quoted_key(e.key.keysym.scancode).c_str());
+                if (e.key.scancode == SDL_SCANCODE_ESCAPE) { running = false; break; }
+                printf("key %s\n", quoted_key(e.key.scancode).c_str());
                 break;
-            case SDL_JOYDEVICEADDED: {
-                SDL_Joystick* j = SDL_JoystickOpen(e.jdevice.which);
+            case SDL_EVENT_JOYSTICK_ADDED: {
+                SDL_Joystick* j = SDL_OpenJoystick(e.jdevice.which);
                 if (!j || std::find(g_open.begin(), g_open.end(), j) != g_open.end()) break;
                 g_open.push_back(j);
-                settling.push_back({SDL_JoystickInstanceID(j), SDL_GetTicks() + kSettleMs});
+                settling.push_back({SDL_GetJoystickID(j), SDL_GetTicks() + kSettleMs});
                 printf("device \"%s\": %d axes, %d buttons, %d hats%s\n", device_label(j).c_str(),
-                       SDL_JoystickNumAxes(j), SDL_JoystickNumButtons(j), SDL_JoystickNumHats(j),
-                       SDL_JoystickIsHaptic(j) == 1 ? ", force feedback" : "");
-                for (int a = 0; a < SDL_JoystickNumAxes(j); a++) {
+                       SDL_GetNumJoystickAxes(j), SDL_GetNumJoystickButtons(j), SDL_GetNumJoystickHats(j),
+                       SDL_IsJoystickHaptic(j) ? ", force feedback" : "");
+                for (int a = 0; a < SDL_GetNumJoystickAxes(j); a++) {
                     int16_t rest = 0;
-                    if (!SDL_JoystickGetAxisInitialState(j, a, &rest)) rest = SDL_JoystickGetAxis(j, a);
+                    if (!SDL_GetJoystickAxisInitialState(j, a, &rest)) rest = SDL_GetJoystickAxis(j, a);
                     axes.push_back({j, a, rest, SDL_GetTicks() + kSettleMs});
                 }
                 break;
             }
-            case SDL_JOYDEVICEREMOVED: {
-                SDL_Joystick* j = SDL_JoystickFromInstanceID(e.jdevice.which);
+            case SDL_EVENT_JOYSTICK_REMOVED: {
+                SDL_Joystick* j = SDL_GetJoystickFromID(e.jdevice.which);
                 auto it = std::find(g_open.begin(), g_open.end(), j);
                 if (it == g_open.end()) break;
                 printf("device \"%s\" removed\n", device_label(j).c_str());
                 axes.erase(std::remove_if(axes.begin(), axes.end(), [&](const AxisWatch& w) { return w.joy == j; }), axes.end());
                 g_open.erase(it);
-                SDL_JoystickClose(j);
+                SDL_CloseJoystick(j);
                 break;
             }
-            case SDL_JOYBUTTONDOWN: {
-                SDL_Joystick* j = SDL_JoystickFromInstanceID(e.jbutton.which);
+            case SDL_EVENT_JOYSTICK_BUTTON_DOWN: {
+                SDL_Joystick* j = SDL_GetJoystickFromID(e.jbutton.which);
                 if (j && settled(e.jbutton.which)) printf("\"%s\" button %d\n", device_label(j).c_str(), e.jbutton.button);
                 break;
             }
-            case SDL_JOYHATMOTION: {
-                SDL_Joystick* j = SDL_JoystickFromInstanceID(e.jhat.which);
+            case SDL_EVENT_JOYSTICK_HAT_MOTION: {
+                SDL_Joystick* j = SDL_GetJoystickFromID(e.jhat.which);
                 static const struct { uint8_t bit; const char* name; } kDirs[] = {
                     {SDL_HAT_UP, "up"}, {SDL_HAT_DOWN, "down"}, {SDL_HAT_LEFT, "left"}, {SDL_HAT_RIGHT, "right"}};
                 for (const auto& d : kDirs)
@@ -526,8 +525,8 @@ int input_map_probe() {
         // An axis is reported once it has gone a quarter of its range from where it
         // rested, and again only after coming back.
         for (auto& w : axes) {
-            const int cur = SDL_JoystickGetAxis(w.joy, w.axis), d = cur - w.rest;
-            if (!SDL_TICKS_PASSED(SDL_GetTicks(), w.settle_until)) {
+            const int cur = SDL_GetJoystickAxis(w.joy, w.axis), d = cur - w.rest;
+            if (SDL_GetTicks() < w.settle_until) {
                 w.rest = (int16_t)cur;
                 continue;
             }
@@ -556,12 +555,11 @@ int input_map_probe() {
 
 int input_map_test_ffb(const char* path) {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC) != 0) {
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_HAPTIC)) {
         fprintf(stderr, "SDL_Init: %s\n", SDL_GetError());
         return 1;
     }
-    SDL_Window* win = SDL_CreateWindow("Force feedback test (Escape quits)", SDL_WINDOWPOS_CENTERED,
-                                       SDL_WINDOWPOS_CENTERED, 560, 120, 0);
+    SDL_Window* win = SDL_CreateWindow("Force feedback test (Escape quits)", 560, 120, 0);
     input_map_load(path);
     printf("The wheel as in a menu: the stop at full lock, light centring, the damper, and the\n"
            "rumble for half a second in every four. Escape, with this window in front, or\n"
@@ -577,10 +575,10 @@ int input_map_test_ffb(const char* path) {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             input_map_event(e);
-            if (e.type == SDL_QUIT || (e.type == SDL_KEYDOWN && e.key.keysym.scancode == SDL_SCANCODE_ESCAPE))
+            if (e.type == SDL_EVENT_QUIT || (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE))
                 running = false;
         }
-        const uint32_t now = SDL_GetTicks();
+        const uint32_t now = (uint32_t)SDL_GetTicks();
         ffb_update(now % 4000 < 500);
         if (steer && steer->joy && now - shown >= 100) {
             shown = now;

@@ -19,7 +19,7 @@
 // vehicle is struck -- as short kicks of a constant force.
 #pragma once
 
-struct _SDL_Joystick;
+struct SDL_Joystick;
 
 struct FfbSettings {
     bool on = true;
@@ -44,7 +44,7 @@ struct FfbSettings {
 void ffb_configure(const FfbSettings& s);
 // The wheel, null when there is none: its joystick, the axis it steers with, and how far
 // along that axis, 0 to 1 from the centre, the game's steering reaches full lock.
-void ffb_attach(_SDL_Joystick* j, int axis, float lock);
+void ffb_attach(SDL_Joystick* j, int axis, float lock);
 // Once a frame or more often, on the thread that pumps SDL's events. `motor`: the pad's
 // rumble motor is on.
 void ffb_update(bool motor);

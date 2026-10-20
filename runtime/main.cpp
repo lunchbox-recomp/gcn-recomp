@@ -14,11 +14,8 @@
 #ifdef GCN_OPENXR
 #include "xr_desktop.h"
 #endif
-#ifdef _WIN32
-// Console app: keep our own main() rather than SDL2main's WinMain shim.
-#define SDL_MAIN_HANDLED
-#endif
-#include <SDL.h>
+// SDL_main.h is left out: this is a console program with its own main(), on Windows too.
+#include <SDL3/SDL.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -109,6 +106,9 @@ static void eye_dump(uint32_t n) {
 #define GCN_STR_(x) #x
 #define GCN_STR(x) GCN_STR_(x)
 
+// SDL3 hands GL entry points back as function pointers; the loader takes them as void*.
+static void* gl_proc(const char* name) { return reinterpret_cast<void*>(SDL_GL_GetProcAddress(name)); }
+
 static void on_interrupt() {
     // GCN_RAM_DUMP=<path>: the guest RAM at the interrupt, for reading the game's state offline.
     if (const char* path = getenv("GCN_RAM_DUMP")) {
@@ -147,7 +147,7 @@ bool audio_open();
 // --pads=N plugs in ports 2 to N as well, at rest unless a script presses them (the
 // SI layer applies scripts, input_script.h).
 // ---------------------------------------------------------------------------
-static SDL_GameController* g_ctrl;
+static SDL_Gamepad* g_ctrl;
 
 static uint8_t axis_to_u8(int v, bool invert) {
     float f = v / 32767.0f;
@@ -160,7 +160,7 @@ static uint8_t axis_to_u8(int v, bool invert) {
 // added, and a stick or trigger is taken over only while it is pushed, so that they can
 // share the pad with a headset's controllers (xr_desktop.cpp).
 static void merge_desktop_pad(PadState& p) {
-    const uint8_t* k = SDL_GetKeyboardState(nullptr);
+    const bool* k = SDL_GetKeyboardState(nullptr);
     if (k[SDL_SCANCODE_RETURN]) p.buttons |= PAD_START;
     if (k[SDL_SCANCODE_X]) p.buttons |= PAD_A;
     if (k[SDL_SCANCODE_Z]) p.buttons |= PAD_B;
@@ -183,25 +183,25 @@ static void merge_desktop_pad(PadState& p) {
         p.stick_y = (uint8_t)(128 + sy);
     }
     if (g_ctrl) {
-        auto b = [&](SDL_GameControllerButton btn) { return SDL_GameControllerGetButton(g_ctrl, btn); };
-        if (b(SDL_CONTROLLER_BUTTON_A)) p.buttons |= PAD_A;
-        if (b(SDL_CONTROLLER_BUTTON_X)) p.buttons |= PAD_B;
-        if (b(SDL_CONTROLLER_BUTTON_B)) p.buttons |= PAD_X;
-        if (b(SDL_CONTROLLER_BUTTON_Y)) p.buttons |= PAD_Y;
-        if (b(SDL_CONTROLLER_BUTTON_START)) p.buttons |= PAD_START;
-        if (b(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) p.buttons |= PAD_Z;
-        if (b(SDL_CONTROLLER_BUTTON_DPAD_UP)) p.buttons |= PAD_UP;
-        if (b(SDL_CONTROLLER_BUTTON_DPAD_DOWN)) p.buttons |= PAD_DOWN;
-        if (b(SDL_CONTROLLER_BUTTON_DPAD_LEFT)) p.buttons |= PAD_LEFT;
-        if (b(SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) p.buttons |= PAD_RIGHT;
-        int lx = SDL_GameControllerGetAxis(g_ctrl, SDL_CONTROLLER_AXIS_LEFTX);
-        int ly = SDL_GameControllerGetAxis(g_ctrl, SDL_CONTROLLER_AXIS_LEFTY);
+        auto b = [&](SDL_GamepadButton btn) { return SDL_GetGamepadButton(g_ctrl, btn); };
+        if (b(SDL_GAMEPAD_BUTTON_SOUTH)) p.buttons |= PAD_A;
+        if (b(SDL_GAMEPAD_BUTTON_WEST)) p.buttons |= PAD_B;
+        if (b(SDL_GAMEPAD_BUTTON_EAST)) p.buttons |= PAD_X;
+        if (b(SDL_GAMEPAD_BUTTON_NORTH)) p.buttons |= PAD_Y;
+        if (b(SDL_GAMEPAD_BUTTON_START)) p.buttons |= PAD_START;
+        if (b(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) p.buttons |= PAD_Z;
+        if (b(SDL_GAMEPAD_BUTTON_DPAD_UP)) p.buttons |= PAD_UP;
+        if (b(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) p.buttons |= PAD_DOWN;
+        if (b(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) p.buttons |= PAD_LEFT;
+        if (b(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) p.buttons |= PAD_RIGHT;
+        int lx = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_LEFTX);
+        int ly = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_LEFTY);
         if (abs(lx) > 4000 || abs(ly) > 4000) { p.stick_x = axis_to_u8(lx, false); p.stick_y = axis_to_u8(ly, true); }
-        int rx = SDL_GameControllerGetAxis(g_ctrl, SDL_CONTROLLER_AXIS_RIGHTX);
-        int ry = SDL_GameControllerGetAxis(g_ctrl, SDL_CONTROLLER_AXIS_RIGHTY);
+        int rx = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_RIGHTX);
+        int ry = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_RIGHTY);
         if (abs(rx) > 1000 || abs(ry) > 1000) { p.cstick_x = axis_to_u8(rx, false); p.cstick_y = axis_to_u8(ry, true); }
-        int lt = SDL_GameControllerGetAxis(g_ctrl, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
-        int rt = SDL_GameControllerGetAxis(g_ctrl, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+        int lt = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
+        int rt = SDL_GetGamepadAxis(g_ctrl, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
         if (lt > 1000) { p.trig_l = std::max(p.trig_l, (uint8_t)(lt * 255 / 32767)); if (lt > 30000) p.buttons |= PAD_L; }
         if (rt > 1000) { p.trig_r = std::max(p.trig_r, (uint8_t)(rt * 255 / 32767)); if (rt > 30000) p.buttons |= PAD_R; }
     }
@@ -209,7 +209,7 @@ static void merge_desktop_pad(PadState& p) {
     // The pad's rumble motor on the gamepad, renewed while it runs.
     static bool rumbling = false;
     const bool motor = pad_motor(0);
-    if (g_ctrl && (motor || rumbling)) SDL_GameControllerRumble(g_ctrl, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0);
+    if (g_ctrl && (motor || rumbling)) SDL_RumbleGamepad(g_ctrl, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0);
     rumbling = motor;
 }
 
@@ -226,11 +226,11 @@ static bool pump_events() {
     bool running = true;
     while (SDL_PollEvent(&e)) {
         input_map_event(e);
-        if (e.type == SDL_QUIT) running = false;
+        if (e.type == SDL_EVENT_QUIT) running = false;
         // A device controls.txt binds is the file's alone.
-        else if (e.type == SDL_CONTROLLERDEVICEADDED && !g_ctrl && !input_map_binds_index(e.cdevice.which))
-            g_ctrl = SDL_GameControllerOpen(e.cdevice.which);
-        else if (e.type == SDL_KEYDOWN && e.key.keysym.scancode == SDL_SCANCODE_ESCAPE) running = false;
+        else if (e.type == SDL_EVENT_GAMEPAD_ADDED && !g_ctrl && !input_map_binds(e.gdevice.which))
+            g_ctrl = SDL_OpenGamepad(e.gdevice.which);
+        else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
     }
     return running;
 }
@@ -346,21 +346,19 @@ int main(int argc, char** argv) {
         }
     }
 
-#ifdef _WIN32
-    SDL_SetMainReady();
-#endif
     // Joysticks are read without the window's focus: in --vr the headset has it, and a
     // wheel or pedals have no reason to stop when another window is clicked.
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC) != 0) fatal("SDL_Init: %s", SDL_GetError());
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
     input_map_load(controls);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
     const bool gl_debug = getenv("GCN_GL_DEBUG") != nullptr;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG |
                                                   (gl_debug ? SDL_GL_CONTEXT_DEBUG_FLAG : 0));
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_Window* win = SDL_CreateWindow(GCN_APP_LABEL, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-                                       1280, 960, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI |
+    // Centred: where SDL3 puts a window it is not given a position for.
+    SDL_Window* win = SDL_CreateWindow(GCN_APP_LABEL, 1280, 960,
+                                       SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
                                        (hidden ? SDL_WINDOW_HIDDEN : 0));
     if (!win) fatal("SDL_CreateWindow: %s", SDL_GetError());
     // Ask for the newest core profile first: the renderer needs only GCN_GL_MAJOR.MINOR, but an
@@ -387,14 +385,14 @@ int main(int argc, char** argv) {
     SDL_GL_SetSwapInterval(0);
     // A legacy driver still "loads": it resolves the GL 1.1 exports and leaves every
     // 2.0+ entry point null, so check the version before handing off to the renderer.
-    int glver = gl_load_with(SDL_GL_GetProcAddress);
+    int glver = gl_load_with(gl_proc);
     if (glver < GCN_GL_VERSION_MIN) {
         fatal("OpenGL %d.%d is too old (got \"%s\" / \"%s\")\n%s",
               glver / 10, glver % 10, glGetString(GL_VERSION) ? (const char*)glGetString(GL_VERSION) : "?",
               glGetString(GL_RENDERER) ? (const char*)glGetString(GL_RENDERER) : "?", kGLHelp);
     }
     LOG(LOG_GX, "GL: %s / %s", glGetString(GL_RENDERER), glGetString(GL_VERSION));
-    if (gl_debug) gl_debug_enable(SDL_GL_GetProcAddress);
+    if (gl_debug) gl_debug_enable(gl_proc);
     // Beside the memory card: both are state this machine accumulates for this game.
     plat_make_dirs("saves");
     gx::render_set_shader_cache("saves/shaders.bin");
@@ -427,7 +425,7 @@ int main(int argc, char** argv) {
         running = pump_events();
         update_pad();
         int dw, dh;
-        SDL_GL_GetDrawableSize(win, &dw, &dh);
+        SDL_GetWindowSizeInPixels(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
         auto b = gx::take_batch(4);
         if (!b) continue;
@@ -476,7 +474,7 @@ int main(int argc, char** argv) {
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             if (record::active()) {
                 int rw, rh;
-                SDL_GL_GetDrawableSize(win, &rw, &rh);
+                SDL_GetWindowSizeInPixels(win, &rw, &rh);
                 record::frame(0, rw, rh);
             }
             SDL_GL_SwapWindow(win);

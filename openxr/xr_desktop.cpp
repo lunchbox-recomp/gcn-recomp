@@ -13,7 +13,7 @@
 #include "gx/render_gl.h"
 #include "gx/gl.h"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -40,13 +40,13 @@ namespace {
 XrDesktopHost g_host;
 std::string g_audio_device;  // the headset's own output, where the runtime names one
 
-void* gl_proc(const char* name) { return SDL_GL_GetProcAddress(name); }
+void* gl_proc(const char* name) { return reinterpret_cast<void*>(SDL_GL_GetProcAddress(name)); }
 
 #ifdef _WIN32
 // Meta's runtime plays only the headset's audio endpoint into the headset; the Windows
 // default device is somewhere else (speakers, a shaker), and is heard in the headset only
 // while the runtime's own menu mirrors the desktop. XR_OCULUS_audio_device_guid names the
-// endpoint by its WASAPI ID; SDL opens devices by their friendly name, so look that up.
+// endpoint by its WASAPI ID; SDL lists devices by their friendly name, so look that up.
 std::string headset_audio_device(XrInstance instance) {
     PFN_xrGetAudioOutputDeviceGuidOculus get = nullptr;
     if (XR_FAILED(xrGetInstanceProcAddr(instance, "xrGetAudioOutputDeviceGuidOculus", (PFN_xrVoidFunction*)&get)) || !get)
@@ -143,7 +143,7 @@ const void* graphics_binding(XrInstance instance, XrSystemId system) {
 void mirror(GLuint fbo, int w, int h) {
     record::frame(fbo, w, h);
     int dw, dh;
-    SDL_GL_GetDrawableSize(g_host.window, &dw, &dh);
+    SDL_GetWindowSizeInPixels(g_host.window, &dw, &dh);
     if (dw <= 0 || dh <= 0) return;
     int sx0 = 0, sy0 = 0, sx1 = w, sy1 = h;
     if ((int64_t)w * dh > (int64_t)h * dw) {
