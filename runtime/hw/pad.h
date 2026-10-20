@@ -17,6 +17,10 @@ struct PadState {
 };
 
 void pad_set_state(int chan, const PadState& s);
+// How many controllers are plugged in at power-on: ports 1 to `count`, 1 to 4 (1 by
+// default). A frontend that offers more (--pads=N) sets it before boot, so that the game
+// finds them all when it first looks; each then sits at rest until pad_set_state.
+void pad_set_count(int count);
 // Whether the game has the pad's rumble motor running: the low bits of the poll command
 // in the channel's output buffer (PADControlMotor).
 bool pad_motor(int chan);
