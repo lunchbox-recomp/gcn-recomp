@@ -71,7 +71,9 @@ The game project provides:
 - `runtime/`: the GameCube in software. `recomp.h` is the contract with generated code.
   `cpu.cpp`, `threads.cpp` and `hle_os.cpp` are the CPU and OS; `hw/` the hardware
   registers; `gx/` the graphics pipeline; `main.cpp` the SDL frontend and `bench_main.cpp`
-  the benchmark. `gamepads.*` gives each gamepad a port of its own and remembers which.
+  the benchmark. `gamepads.*` gives each gamepad a port of its own and remembers which,
+  and loads controller mappings from a `gamecontrollerdb.txt` beside the executable or
+  `--gamepad-mappings=<file>`.
   `input_map.*` binds any joystick or key to a pad from a `controls.txt` (wheels, pedals,
   button boxes), and its `--list-controls` prints what to write for each;
   `ffb.*` is the wheel's force feedback, from the game's `telemetry::Motion` and the pad's

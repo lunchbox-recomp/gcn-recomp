@@ -170,6 +170,21 @@ uint8_t axis_to_u8(int v, bool invert) {
 
 }  // namespace
 
+void gamepads_load_mappings(const char* path) {
+    std::string file = path ? path : "";
+    if (!path) {
+        const char* base = SDL_GetBasePath();
+        if (!base) return;
+        file = std::string(base) + "gamecontrollerdb.txt";
+        if (!plat_readable(file.c_str())) return;
+    }
+    // SDL takes only the lines for this platform (their `platform:` field), and counts only
+    // the mappings it did not have: one that replaces its own is used but not counted.
+    const int n = SDL_AddGamepadMappingsFromFile(file.c_str());
+    if (n < 0) fprintf(stderr, "gamepads: cannot read mappings from %s: %s\n", file.c_str(), SDL_GetError());
+    else fprintf(stderr, "gamepads: %d new mapping%s from %s\n", n, n == 1 ? "" : "s", file.c_str());
+}
+
 void gamepads_init(const char* save_path) {
     g_save = save_path ? save_path : "";
     load();
