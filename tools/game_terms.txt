@@ -62,3 +62,13 @@ burnout
 point of impact
 \bcriterion\b
 \bGB4E51\b
+
+# Kirby Air Ride (lunchbox-recomp/dragoon)
+kirby
+air ?ride
+\bGKYE01\b
+\bdragoon\b
+city ?trial
+top ?ride
+\bdedede\b
+\bwarp ?star\b
