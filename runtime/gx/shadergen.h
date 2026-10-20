@@ -85,4 +85,18 @@ std::string gen_vertex_shader();
 std::string glsl_header_with_clip();
 std::string gen_pixel_shader(const ShaderKey& k);
 
+// For a backend in another dialect (render_metal's MSL): the shaders from `void main() {`
+// on, which use GLSL's vocabulary but declare nothing and compile under that backend's
+// prelude, and what a key's pixel shader declares beyond what every one does, so that the
+// backend writes its own declarations from the same conditions.
+struct PixelIo {
+    bool palettes;    // u_pal (efb_pal_mask)
+    bool game_depth;  // v_gdepth, u_vr and u_vp_b (fg_depth)
+    bool src1;        // o_src1, dual-source blending's second output (dst_alpha 2)
+    bool depth;       // writes gl_FragDepth: z freeze, a Z texture or a foreground layer's depth
+};
+PixelIo pixel_io(const ShaderKey& k);
+std::string gen_pixel_body(const ShaderKey& k);
+std::string gen_vertex_body();
+
 }  // namespace gx

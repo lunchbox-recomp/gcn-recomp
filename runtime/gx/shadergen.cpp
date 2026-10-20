@@ -859,4 +859,15 @@ std::string gen_pixel_shader(const ShaderKey& k) {
     return s;
 }
 
+PixelIo pixel_io(const ShaderKey& k) {
+    const bool zfreeze = (k.genmode >> 19) & 1;
+    return {k.efb_pal_mask != 0, k.fg_depth != 0, k.dst_alpha == 2, zfreeze || k.ztex || k.fg_depth};
+}
+
+// Everything above main is a declaration (or the #defines and the u_indscalef helper,
+// which a prelude supplies in its own dialect), so the body is the rest.
+static std::string from_main(const std::string& s) { return s.substr(s.find("void main() {")); }
+std::string gen_pixel_body(const ShaderKey& k) { return from_main(gen_pixel_shader(k)); }
+std::string gen_vertex_body() { return from_main(gen_vertex_shader()); }
+
 }  // namespace gx
