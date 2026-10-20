@@ -787,6 +787,15 @@ vertex shader's own placement, in the target's window coordinates, culled draws 
 and a z freeze program writes `gl_FragDepth` from it (`u_zplane`). Before any plane in a
 frame, a z freeze draw keeps its own depth.
 
+A Z texture (`GXSetZTexture`) has a say in the depth only when the depth test comes after
+texturing: PE control's zcomploc (BP 0x43 bit 6) clear, or the test off. With zcomploc set
+and the test on, the triangle's own depth is tested and written before the texture is
+read, and the Z texture changes nothing. The renderer applied it regardless, so a
+background quad at the far end of the frustum that also carried a Z8 replace texture (texel
+0xFF, bias 0) wrote depth 0x0000FF, the very front of the buffer, and every draw after it
+failed its depth test. The shader key now leaves the Z texture out in that case. The
+verbose draw log prints the two registers as `ztex=<bias>,<type and op>` when one is on.
+
 An eye takes the plane the same way, from the triangle as the eye sees it
 (`zfreeze_plane_eye`): the eye's projection and view, the depth mapped into the draw's band
 as the vertex shader maps it, in the eye target's window coordinates. A triangle placed by
