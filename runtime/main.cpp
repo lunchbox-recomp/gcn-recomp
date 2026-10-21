@@ -235,7 +235,6 @@ int main(int argc, char** argv) {
     const char* record_to = nullptr;
     int record_w = 2560, record_h = 1440;
     const char* controls = "controls.txt";
-    const char* gamepad_mappings = nullptr;  // --gamepad-mappings=<file> (gamepads.h)
     bool test_ffb = false;
     // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
     const char* telemetry_to = getenv("GCN_TELEMETRY");
@@ -251,7 +250,6 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--list-controls")) return input_map_probe();
         else if (!strcmp(argv[i], "--test-ffb")) test_ffb = true;
         else if (!strncmp(argv[i], "--controls=", 11)) controls = argv[i] + 11;
-        else if (!strncmp(argv[i], "--gamepad-mappings=", 19)) gamepad_mappings = argv[i] + 19;
         else if (!strncmp(argv[i], "--pads=", 7)) {
             pads = atoi(argv[i] + 7);
             if (pads < 1 || pads > 4) { fprintf(stderr, "--pads: 1 to 4 controllers, not %s\n", argv[i] + 7); return 1; }
@@ -334,7 +332,7 @@ int main(int argc, char** argv) {
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
     input_map_load(controls);
-    gamepads_load_mappings(gamepad_mappings);
+    gamepads_load_mappings();
     gamepads_init();
     // Ports 1 to the highest controls.txt binds are plugged in at power-on, as --pads would.
     g_port_count = std::max(pads, input_map_port_count());

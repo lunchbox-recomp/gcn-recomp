@@ -21,13 +21,13 @@ union SDL_Event;
 
 // Controller mappings in SDL_GameControllerDB's format (one `<guid>,<name>,<mapping>,
 // platform:<platform>,` line a controller, as github.com/mdqinc/SDL_GameControllerDB keeps
-// them; SDL skips a line without a platform or for another one), which make gamepads
-// of controllers SDL has no mapping of its own for, or change the mapping it has. From
-// `path` (--gamepad-mappings=<file>), or else from gamecontrollerdb.txt beside the
-// executable (SDL_GetBasePath: Contents/Resources in a macOS app bundle) if there is
-// one. After SDL_Init and before gamepads_init, so that the controllers mapped are
-// gamepads from the start.
-void gamepads_load_mappings(const char* path);
+// them; SDL skips a line without a platform or for another one) from gamecontrollerdb.txt
+// beside the executable (SDL_GetBasePath: Contents/Resources in a macOS app bundle), if
+// there is one. They make gamepads of controllers SDL has no mapping of its own for, or
+// change the mapping it has. A file elsewhere is read by SDL itself, from the path in the
+// SDL_GAMECONTROLLERCONFIG_FILE environment variable. After SDL_Init and before
+// gamepads_init, so that the controllers mapped are gamepads from the start.
+void gamepads_load_mappings();
 // After SDL_Init with SDL_INIT_GAMEPAD. Takes the gamepads already connected, in SDL's
 // order.
 void gamepads_init();

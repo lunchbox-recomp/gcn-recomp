@@ -228,6 +228,19 @@ bool sdl_up() {
     return true;
 }
 
+std::string guid_of(const Virtual& v) {
+    char guid[33];
+    SDL_GUIDToString(SDL_GetJoystickGUIDForID(v.id), guid, sizeof(guid));
+    return guid;
+}
+
+// How many mappings SDL has.
+int mapping_count() {
+    int n = 0;
+    SDL_free(SDL_GetGamepadMappings(&n));
+    return n;
+}
+
 // ---- The rules, with --pads=1, the default.
 void rules() {
     power_on(1);
@@ -468,6 +481,60 @@ void named(const std::string& dir) {
     input_map_load((dir + "/no-controls.txt").c_str());
 }
 
+// ---- gamecontrollerdb.txt beside the executable, the one mappings file the frontend
+// loads (SDL_GAMECONTROLLERCONFIG_FILE is SDL's own, read at SDL_Init).
+void mappings(const std::string& dir) {
+    power_on(1);
+    const char* base = SDL_GetBasePath();
+    const std::string beside = std::string(base ? base : "./") + "gamecontrollerdb.txt";
+    if (plat_readable(beside.c_str())) {
+        printf("%s exists: not touching it\n", beside.c_str());
+        return;
+    }
+    Virtual stick{"virtual stick", false};
+    attach(stick);
+    frame();
+    const std::string guid = guid_of(stick);
+    const std::string platform = SDL_GetPlatform();
+    const int before = mapping_count();
+
+    const std::string quiet = dir + "/mappings-none.txt";
+    capture(quiet, [] { gamepads_load_mappings(); });
+    check(mapping_count() == before && !SDL_IsGamepad(stick.id) && read_file(quiet).empty(),
+          "no gamecontrollerdb.txt beside the executable: nothing loaded, nothing said");
+
+    write_file(beside, "");
+    gamepads_load_mappings();
+    check(mapping_count() == before && !SDL_IsGamepad(stick.id), "an empty gamecontrollerdb.txt changes nothing");
+
+    write_file(beside, "this is not a mapping\n"
+                       "platform:" + platform + ",\n" +
+                       guid + "platform:" + platform + ",\n" +
+                       guid + ",virtual stick,a:b0,b:b1,leftx:a0,lefty:a1,\n" +
+                       guid + ",virtual stick,a:b0,b:b1,leftx:a0,lefty:a1,platform:Windows,\n" +
+                       guid + ",virtual stick,a:b0,b:b1,leftx:a0,lefty:a1,platform:" + platform);
+    gamepads_load_mappings();
+    check(mapping_count() == before && !SDL_IsGamepad(stick.id),
+          "a malformed gamecontrollerdb.txt (no fields, no platform, another platform, a cut-off line) changes nothing");
+
+    // A line for this platform, then one for Windows with the same GUID, which SDL must skip
+    // (it would replace the first, and its mapping has no b:b1).
+    write_file(beside, "# made up for this test\n" + guid + ",virtual stick,a:b0,b:b1,x:b2,y:b3,leftx:a0,lefty:a1,platform:" +
+                           platform + ",\n" + guid + ",virtual stick,a:b0,platform:Windows,\n");
+    gamepads_load_mappings();
+    char* mapping = SDL_GetGamepadMappingForGUID(SDL_GetJoystickGUIDForID(stick.id));
+    const bool this_platform = mapping && std::string(mapping).find("b:b1") != std::string::npos;
+    SDL_free(mapping);
+    gamepads_init();
+    frame();
+    check(mapping_count() == before + 1 && this_platform && SDL_IsGamepad(stick.id) && port(stick) == 1,
+          "a joystick SDL has no mapping for, mapped by gamecontrollerdb.txt (its line for this platform alone) before the "
+          "gamepads are taken, gets port 1");
+    std::rename(beside.c_str(), (dir + "/gamecontrollerdb.beside.txt").c_str());
+    unplug({&stick});
+    gamepads_shutdown();
+}
+
 int run_ports(const std::string& dir) {
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
@@ -477,6 +544,7 @@ int run_ports(const std::string& dir) {
     launch(dir);
     pads2();
     named(dir);
+    mappings(dir);
     return finish("ports");
 }
 
