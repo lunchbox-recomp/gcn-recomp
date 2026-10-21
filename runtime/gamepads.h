@@ -14,6 +14,9 @@
 // A gamepad pulled out frees its port, and nothing is kept from one launch to the next.
 // A port reads as plugged in only while a gamepad is on it, or the keyboard (port 1),
 // `--pads` or a port controls.txt names keeps it plugged in (main.cpp).
+//
+// A port a controls.txt line names with `port <n>`, `port 1` too, is pinned to the device
+// on that line: no gamepad takes it (input_map.h).
 #pragma once
 #include "hw/pad.h"
 

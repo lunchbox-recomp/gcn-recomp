@@ -162,8 +162,9 @@ void motor(int i) {
 // What main() does with --pads=N, and what the guest's power-on does with it (si_init):
 // a copy of main()'s lines, not main() itself.
 void power_on(int pads) {
-    g_port_count = pads;
     pad_set_count(pads);
+    g_port_count = std::max(pads, input_map_port_count());
+    pad_set_count(g_port_count);
     si_init();
 }
 
@@ -481,6 +482,151 @@ void named(const std::string& dir) {
     input_map_load((dir + "/no-controls.txt").c_str());
 }
 
+// ---- A `port <n>` line pins its device to the port. A device line with port 3, and a
+// key line with port 5, which is refused.
+void pins(const std::string& dir) {
+    const std::string controls = dir + "/controls.txt";
+    Virtual bound{"virtual pad bound"};
+    power_on(1);  // port 3 starts out unplugged, whatever the section before left
+    frame();
+    write_file(controls, "A = \"virtual pad bound\" button 0 port 3\nB = key X port 5\n"
+                         "stick_x = \"virtual pad bound\" axis 0 port 3\n");
+    input_map_load(controls.c_str());
+    const bool port3_was_out = !read(2).connected;
+    power_on(1);
+    const bool before_frame = read(1).connected && read(2).connected && !read(3).connected;
+    gamepads_init();
+    frame();
+    check(port3_was_out && before_frame && input_map_port_count() == 3 && read(1).connected && read(2).connected &&
+              !read(3).connected,
+          "controls.txt pins a device to port 3 (a port 5 line refused): ports 1 to 3 plugged in, before the first frame too");
+    Virtual x{"virtual pad x"}, y{"virtual pad y"};
+    attach(bound);
+    const int bound_sdl = player(bound);
+    frame();
+    press(bound, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    const PadState p3 = read(2);
+    const bool alone = !read(0).buttons && !read(1).buttons && !read(3).buttons;
+    press(bound, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    check(bound_sdl == 0 && p3.buttons == PAD_A && alone && player(bound) == 2 && bound.player == 2,
+          "a gamepad pinned to port 3, given index 0 by SDL, drives port 3 alone, and its player index follows the pin to 2");
+    attach(x);
+    frame();
+    check(port(x) == 1, "the next gamepad (SDL index 0) takes port 1");
+    attach(y, 2);
+    frame();
+    check(port(y) == 2 && player(bound) == 2 && bound.player == 2,
+          "a gamepad with player index 2 does not take pinned port 3: it lands on port 2, and the pinned device keeps index 2");
+    g_outbuf[2] = 0x00400001;
+    frame();
+    const int ffb_on3 = g_ffb_motor;
+    g_outbuf[2] = 0x00400000;
+    g_outbuf[0] = 0x00400001;
+    frame();
+    const int ffb_on1 = g_ffb_motor;
+    g_outbuf[0] = 0x00400000;
+    frame();
+    check(ffb_on3 == 1 && ffb_on1 == 0 && x.rumbles == 1 && y.rumbles == 0,
+          "the wheel's force feedback follows port 3's motor, the steering line's port, and port 1's motor runs port 1's gamepad");
+
+    // Ports 1, 2 and 4 taken and port 3 pinned: a gamepad holding index 2 is left out, and
+    // only the pin's re-set on another device's arrival gives the pinned device index 2 back.
+    Virtual q4{"virtual pad q4"}, q5{"virtual pad q5"};
+    attach(q4);
+    frame();
+    const bool q4_on4 = port(q4) == 4;
+    attach(q5, 2);
+    const bool bound_moved = player(bound) != 2;
+    frame();
+    check(q4_on4 && bound_moved && player(q5) == -1 && player(bound) == 2 && bound.player == 2 && port(x) == 1 &&
+              port(y) == 2 && port(q4) == 4,
+          "ports 1, 2 and 4 taken and port 3 pinned: a gamepad holding index 2 is left out, and the pinned device gets 2 back");
+    unplug({&bound, &x, &y, &q4, &q5});
+    gamepads_shutdown();
+}
+
+// ---- The other pin scenarios, each with its own controls.txt and pads.
+void pins_more(const std::string& dir) {
+    const std::string controls = dir + "/controls.txt";
+    Virtual bound{"virtual pad bound"}, x{"virtual pad x"}, y{"virtual pad y"}, z{"virtual pad z"};
+
+    // At launch, the pinned device first in SDL's list, and a gamepad whose index is the
+    // pinned port's.
+    write_file(controls, "A = \"virtual pad bound\" button 0 port 2\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    attach(bound);
+    attach(z);
+    const bool sdl_order = player(bound) == 0 && player(z) == 1;
+    gamepads_init();
+    frame();
+    press(bound, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    const PadState p2 = read(1);
+    const bool alone2 = !read(0).buttons && !read(2).buttons && !read(3).buttons;
+    press(bound, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    check(sdl_order && port(z) == 1 && p2.buttons == PAD_A && alone2 && player(bound) == 1 && bound.player == 1,
+          "at launch, a gamepad with the pinned port's index 1 takes port 1 instead; the device pinned to port 2 drives it with index 1");
+    unplug({&bound, &z});
+    gamepads_shutdown();
+
+    // `port 1` pins port 1 too: a line that says it keeps gamepads off port 1.
+    write_file(controls, "A = \"virtual pad bound\" button 0 port 1\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    gamepads_init();
+    attach(bound);
+    frame();
+    attach(x);
+    const bool x_sdl = player(x) == 1;
+    frame();
+    press(bound, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    const PadState pin1 = read(0);
+    press(bound, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    attach(y, 0);
+    frame();
+    check(x_sdl && pin1.buttons == PAD_A && port(x) == 2 && port(y) == 3 && player(bound) == 0 && bound.player == 0,
+          "`port 1` pins port 1: the pinned device drives it with index 0, and gamepads, even one holding index 0, take ports 2 and 3");
+    unplug({&bound, &x, &y});
+    gamepads_shutdown();
+
+    // Two plain joysticks pinned to port 2, as a wheel and its pedals would be: the first
+    // shows index 1 and the second none, so no slot is taken that a gamepad needs.
+    write_file(controls, "A = \"virtual stick w\" button 0 port 2\nB = \"virtual stick p\" button 1 port 2\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    gamepads_init();
+    Virtual sw{"virtual stick w", false}, sp{"virtual stick p", false}, gp{"virtual pad gp"};
+    attach(sw);
+    frame();
+    attach(sp);
+    frame();
+    const bool first_shows = player(sw) == 1 && sw.player == 1 && player(sp) == -1;
+    attach(gp);
+    frame();
+    check(first_shows && port(gp) == 1 && player(sw) == 1 && player(sp) == -1,
+          "two plain joysticks pinned to port 2: the first has index 1, the second none, and a gamepad then takes port 1");
+    unplug({&sw, &sp, &gp});
+    gamepads_shutdown();
+
+    // A key line's port plugs the port in but pins nothing: a gamepad holding its index
+    // still takes it.
+    write_file(controls, "B = key X port 3\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    const bool key_plugged = read(1).connected && read(2).connected && !read(3).connected;
+    gamepads_init();
+    Virtual k1{"virtual pad k1"}, k2{"virtual pad k2"}, k3{"virtual pad k3"};
+    attach(k1, 0);
+    attach(k2, 1);
+    attach(k3, 2);
+    frame();
+    check(key_plugged && port(k1) == 1 && port(k2) == 2 && port(k3) == 3,
+          "a key line with port 3 plugs ports 1 to 3 in before the first frame, but pins nothing: a gamepad with index 2 takes port 3");
+    unplug({&k1, &k2, &k3});
+    gamepads_shutdown();
+    input_map_load((dir + "/no-controls.txt").c_str());
+}
+
 // ---- gamecontrollerdb.txt beside the executable, the one mappings file the frontend
 // loads (SDL_GAMECONTROLLERCONFIG_FILE is SDL's own, read at SDL_Init).
 void mappings(const std::string& dir) {
@@ -544,6 +690,8 @@ int run_ports(const std::string& dir) {
     launch(dir);
     pads2();
     named(dir);
+    pins(dir);
+    pins_more(dir);
     mappings(dir);
     return finish("ports");
 }

@@ -25,6 +25,8 @@
 //                                 which is what a pedal resting at one end wants.
 //   "<device>" axis <n>+ / <n>-   one half of an axis, from its centre outwards
 // A device is named as SDL names it; "<name> #2" is the second of two with that name.
+// A gamepad with a name the file uses gets no gamepad port (gamepads.h) whatever its #n,
+// so a line for "<name> #2" keeps the first of them off the gamepad ports too.
 //
 // Options, after the source:
 //   invert          turn the axis round (a pedal that rests at the top of its range)
@@ -33,13 +35,19 @@
 //                   the wheel's rotation (default 1)
 //   threshold <f>   where a digital control is pressed (default 0.5; L and R 0.85)
 //   port <n>        the pad on port n, 1 to 4, rather than port 1. Ports 1 to the highest
-//                   the file binds are plugged in from power-on, as --pads would.
+//                   the file binds are plugged in from power-on, as --pads would. A device
+//                   on such a line is pinned to that port, and no gamepad takes the port
+//                   (gamepads.h), even while the device is unplugged. `port 1` pins port
+//                   1 too, so a line that says it keeps gamepads off port 1 where one
+//                   without it would not. The first device present on a port's lines
+//                   shows it: its SDL player index, which lights its player LED, is set to
+//                   the port (by its first such line), and the others' is cleared.
 //
 // Several bindings may share a pad control: buttons are pressed if any is, one-way values
 // take the largest, and a whole stick axis is the sum of its bindings, so stick_left and
-// stick_right on two buttons cancel. A stick or trigger the file leaves at rest is left to
-// the keyboard's default mapping, on port 1, and to the gamepads (gamepads.h), which stay
-// on except for a device the file names.
+// stick_right on two buttons cancel. A stick or trigger a port's lines leave at rest is
+// left to the keyboard's default mapping on port 1 and to the port's gamepad (gamepads.h),
+// and a device the file names is the file's alone.
 //
 // --list-controls runs input_map_probe() instead of the game: it prints the devices and,
 // for each control pressed or moved, the source to paste into the file.
@@ -66,14 +74,16 @@ union SDL_Event;
 bool input_map_load(const char* path);
 // Devices coming and going. Every SDL event may be passed.
 void input_map_event(const SDL_Event& e);
-// Whether the file names the joystick with this SDL instance ID (an SDL_JoystickID; the
-// default gamepad mapping leaves such a device alone).
+// Whether the file names the joystick with this SDL instance ID (an SDL_JoystickID), by
+// its name alone (gamepads.h gives such a device no port).
 bool input_map_binds(uint32_t joystick_id);
 // The file's bindings for `port` (0 is port 1), merged into `p`. Each port's once a frame:
 // the wheel's force feedback is updated with its own port's.
 void input_map_apply(PadState& p, int port);
 // How many ports the file reaches: up to the highest it binds, 1 if it names none.
 int input_map_port_count();
+// Whether a line of the file pins a device to `port` (0 is port 1).
+bool input_map_pins(int port);
 // Stops the wheel's force feedback (ffb.h), before the program exits.
 void input_map_shutdown();
 // The --list-controls loop. SDL must not be initialised yet. Returns the exit code.

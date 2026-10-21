@@ -34,8 +34,8 @@ int port_of(SDL_JoystickID which) {
     return -1;
 }
 
-// Whether a gamepad may take port `i`: none is on it.
-bool free_port(int i) { return !g_ports[i].pad; }
+// Whether a gamepad may take port `i`: none is on it, and controls.txt pins no device there.
+bool free_port(int i) { return !g_ports[i].pad && !input_map_pins(i); }
 
 // The port for a gamepad whose SDL player index is `index`: that port if it is one of the
 // four and free, else the lowest free one; -1 with none free.

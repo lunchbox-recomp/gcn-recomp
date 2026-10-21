@@ -56,6 +56,7 @@ struct Binding {
     bool invert = false;
     float deadzone = -1.0f, gain = 1.0f, threshold = -1.0f;
     int port = 0;                 // 0 for port 1
+    bool pinned = false;          // the line names its port
     SDL_Joystick* joy = nullptr;  // resolved whenever a device comes or goes
 };
 
@@ -127,6 +128,19 @@ void attach_wheel() {
 void resolve() {
     for (auto& b : g_bindings)
         if (b.kind != Kind::Key) b.joy = find_device(b.device, b.nth);
+    // A device pinned to a port shows it as its player number: the port of its first line
+    // that names one. Only the first present device on a port does; the others get none,
+    // since SDL lets one device hold an index and would move the rest to free ones, which
+    // gamepads arriving later then could not have.
+    bool shown[4] = {};
+    for (SDL_Joystick* j : g_open)
+        for (const auto& b : g_bindings)
+            if (b.joy == j && b.pinned) {
+                const int want = shown[b.port] ? -1 : b.port;
+                if (SDL_GetJoystickPlayerIndex(j) != want) SDL_SetJoystickPlayerIndex(j, want);
+                shown[b.port] = true;
+                break;
+            }
     attach_wheel();
 }
 
@@ -269,6 +283,7 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
             int n = 0;
             if (i >= w.size() || !parse_int(w[i], n) || n < 1 || n > 4) { err = "port is 1 to 4"; return false; }
             b.port = n - 1;
+            b.pinned = true;
             i++;
             continue;
         }
@@ -400,6 +415,12 @@ int input_map_port_count() {
     int n = 1;
     for (const auto& b : g_bindings) n = std::max(n, b.port + 1);
     return n;
+}
+
+bool input_map_pins(int port) {
+    for (const auto& b : g_bindings)
+        if (b.kind != Kind::Key && b.pinned && b.port == port) return true;
+    return false;
 }
 
 void input_map_apply(PadState& p, int port) {

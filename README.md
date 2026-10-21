@@ -80,8 +80,10 @@ The game project provides:
   no port when none is free. Nothing is saved between launches. A controller SDL has no
   mapping for is a gamepad once a `gamecontrollerdb.txt` beside the executable maps it; for
   a file elsewhere, SDL reads the path in `SDL_GAMECONTROLLERCONFIG_FILE`.
-  `input_map.*` binds any joystick or key to a pad from a `controls.txt` (wheels, pedals,
-  button boxes), and its `--list-controls` prints what to write for each;
+  `input_map.*` binds any joystick or key to a port from a `controls.txt` (wheels, pedals,
+  button boxes; port 1 unless a line says `port <n>`), and its `--list-controls` prints
+  what to write for each. A port a device's `port <n>` line names, `port 1` too, is kept
+  from gamepads, and the first such device present shows the port on its player light;
   `ffb.*` is the wheel's force feedback, from the game's `telemetry::Motion` and the pad's
   rumble motor.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
