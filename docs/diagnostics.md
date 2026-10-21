@@ -402,6 +402,49 @@ is what a state application costs on a given game. `GCN_EYE_FULLFLAT=1` and
 `GCN_EYE_KEEPDEPTH=1` undo the two stereo savings described in `graphics.md`, for
 measuring them.
 
+## The AX mixer
+
+`GCN_AXSTATS` (set to anything) prints what the AX ucode's command lists asked for and what
+its mix made, to stderr; nothing is written to disk. The `[ax]` lines read the switch once,
+when the AX ucode boots. Three lines come at their own pace:
+
+- `[ax] frames=N voices(running, last frame)=V peak=P out=A`, every 400 output blocks
+  (command 0E, `hw/ax.cpp`). It gives the blocks so far, the voices running in the last
+  list, the largest main L magnitude before the clamp since the last such line and the
+  block's address.
+- `[aid] block addr=A bytes=N ctrl=C`, for the first block the AI DMA delivers and every
+  400th after (`hw/dsp.cpp`).
+- `[ring] fill=N avg=N trim=T underruns=N`, every 400th fill of the sound device's buffer
+  (`audio.cpp`). It gives the ring's level in frames, its running average, the resampling
+  trim that walks it back to the cushion and the underruns so far. It keeps the device's
+  time, so it differs between runs.
+
+Every 400 command lists four more lines follow, each with `list=N`, the lists processed
+since boot. Their counts cover those 400 lists, and the hash covers everything since boot.
+An unpaced run (`--fast`, or the benchmark) makes no catch-up jumps, so two runs with the
+same input print every line here but `[ring]` alike. Comparing two runs at each `list=N`
+both reached shows whether a change to the mixer changed what it made, and from which list.
+
+- `[ax] cmds`: `skipped` counts the commands parsed but not run (08, 0A to 0C and 12), and
+  `unknown` the IDs past 13, which end their list. Then `ID=count` for each command 00 to 13
+  that appeared, in hex. `0F=` counts the lists that reached the end command, so it's 400
+  when every list did. A list stopped by the 256-command guard, by the end of its buffer or
+  by an unknown command doesn't count.
+- `[ax] bus`: the largest magnitude each of the nine buses had when the ucode wrote it out.
+  The main buses are measured at 06 and 0E, L and R before 0E's clamp. The aux buses are
+  measured where 04, 05, 10 and 13 hand them to the CPU for its effects. `clipped` counts
+  the L and R samples the 0E clamp changed.
+- `[ax] pb`: what the running voices asked for, in voice-milliseconds (one voice for one
+  millisecond of a list). `mixer` gives the eight mixer control values (PB word 6) with the
+  most as `value:count`. `mixer_rest` is the total for every other value. `src0`, `src1`
+  and `src2` count resampler types 0 (polyphase), 1 (linear) and 2 (none) from word 4, and
+  `src_other` counts anything past 2. `delay` counts the initial time delay switched on
+  (word 27), which this runtime doesn't apply. `stream_loops` counts the times a voice with
+  the stream flag (word 8) looped.
+- `[ax] hash`: `fnv` is a 64-bit FNV-1a over every byte 0E has written since boot, each
+  block's 640 bytes of surround and then its 640 bytes of interleaved R and L, as RAM holds
+  them.
+
 ## Textures
 
 `GCN_TEXLOG=1` prints a line per decoded texture: frame, id, guest address, format, size and

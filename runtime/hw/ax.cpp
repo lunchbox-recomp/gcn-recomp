@@ -5,7 +5,9 @@
 #include "ax.h"
 #include <algorithm>
 #include <initializer_list>
+#include <map>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -21,6 +23,7 @@ enum {
     PB_NEXT_HI = 0, PB_NEXT_LO = 1, PB_SRC_TYPE = 4, PB_COEF_SELECT = 5, PB_MIXER_CONTROL = 6,
     PB_RUNNING = 7, PB_IS_STREAM = 8,
     PB_MIXER = 9,           // 18 words: (vol, delta) pairs for L, R, AuxA L/R, AuxB L/R, AuxB S, S, AuxA S
+    PB_ITD_ON = 27,         // initial time delay, 7 words from here; not applied
     PB_UPDATES = 34,        // num_updates[5], data_hi, data_lo
     PB_VOL = 50, PB_VOL_DELTA = 51,
     PB_LOOPING = 55, PB_FORMAT = 56, PB_LOOP_HI = 57, PB_LOOP_LO = 58, PB_END_HI = 59, PB_END_LO = 60,
@@ -42,6 +45,81 @@ void read_pb(uint32_t addr, PB& pb) {
 }
 void write_pb(uint32_t addr, const PB& pb) {
     for (int i = 0; i < PB_WORDS; i++) mem_w16(addr + 2 * i, pb.w[i]);
+}
+
+// ---- GCN_AXSTATS: what the command lists ask for and what the mix makes ----
+// Read once, by ax_init, and printed every 400 lists (docs/diagnostics.md).
+bool g_axstats;
+
+constexpr int NUM_CMDS = 0x14;  // 00 to 13; anything past that is unknown
+
+// Counts since the last print.
+struct StatsWindow {
+    uint32_t cmds[NUM_CMDS], skipped, unknown;
+    uint32_t peak[9], clipped;           // the buses in kBuses' order
+    std::map<uint16_t, uint32_t> mixer;  // mixer control -> voice-milliseconds
+    uint32_t voice_ms, src[4], delay, stream_loops;
+};
+StatsWindow g_sw;
+uint32_t g_stat_lists;
+uint64_t g_stat_hash = 0xCBF29CE484222325ull;  // FNV-1a over every byte 0E has written
+
+int32_t* const kBuses[9] = {g_left, g_right, g_surround, g_auxa_l, g_auxa_r, g_auxa_s, g_auxb_l, g_auxb_r, g_auxb_s};
+
+void stats_peak(const int32_t* buf) {
+    for (int b = 0; b < 9; b++) {
+        if (kBuses[b] != buf) continue;
+        for (int i = 0; i < SPF; i++) {
+            uint32_t m = buf[i] < 0 ? 0u - (uint32_t)buf[i] : (uint32_t)buf[i];
+            g_sw.peak[b] = std::max(g_sw.peak[b], m);
+        }
+    }
+}
+
+// One running voice for one millisecond.
+void stats_voice(const PB& pb) {
+    g_sw.voice_ms++;
+    g_sw.mixer[pb.w[PB_MIXER_CONTROL]]++;
+    g_sw.src[std::min<uint16_t>(pb.w[PB_SRC_TYPE], 3)]++;
+    if (pb.w[PB_ITD_ON]) g_sw.delay++;
+}
+
+// After 0E: the main buses' peaks, the L and R samples its clamp changed, and the bytes it
+// wrote (surround, then interleaved R and L) into the hash.
+void stats_output(uint32_t surround_addr, uint32_t lr_addr) {
+    for (int32_t* b : {g_left, g_right, g_surround}) stats_peak(b);
+    for (int i = 0; i < SPF; i++)
+        g_sw.clipped += (g_left[i] < -32767 || g_left[i] > 32767) + (g_right[i] < -32767 || g_right[i] > 32767);
+    for (uint32_t a : {surround_addr, lr_addr})
+        for (uint32_t i = 0; i < 4 * SPF; i++) { g_stat_hash ^= mem_r8(a + i); g_stat_hash *= 0x100000001B3ull; }
+}
+
+void stats_list_end() {
+    const uint32_t n = ++g_stat_lists;
+    if (n % 400) return;
+    std::string ids;
+    for (int c = 0; c < NUM_CMDS; c++) {
+        if (!g_sw.cmds[c]) continue;
+        char b[24]; snprintf(b, sizeof b, " %02X=%u", c, g_sw.cmds[c]); ids += b;
+    }
+    fprintf(stderr, "[ax] cmds list=%u skipped=%u unknown=%u%s\n", n, g_sw.skipped, g_sw.unknown, ids.c_str());
+    const uint32_t* pk = g_sw.peak;
+    fprintf(stderr, "[ax] bus list=%u main_l=%u main_r=%u main_s=%u auxa_l=%u auxa_r=%u auxa_s=%u auxb_l=%u auxb_r=%u auxb_s=%u clipped=%u\n",
+            n, pk[0], pk[1], pk[2], pk[3], pk[4], pk[5], pk[6], pk[7], pk[8], g_sw.clipped);
+    // The eight mixer control values with the most voice-milliseconds, ties in value order.
+    std::vector<std::pair<uint16_t, uint32_t>> mix(g_sw.mixer.begin(), g_sw.mixer.end());
+    std::stable_sort(mix.begin(), mix.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
+    std::string top;
+    uint32_t rest = 0;
+    for (size_t i = 0; i < mix.size(); i++) {
+        if (i >= 8) { rest += mix[i].second; continue; }
+        char b[24]; snprintf(b, sizeof b, "%s%04X:%u", i ? "," : "", mix[i].first, mix[i].second); top += b;
+    }
+    fprintf(stderr, "[ax] pb list=%u voice_ms=%u mixer=%s mixer_rest=%u src0=%u src1=%u src2=%u src_other=%u delay=%u stream_loops=%u\n",
+            n, g_sw.voice_ms, top.empty() ? "-" : top.c_str(), rest, g_sw.src[0], g_sw.src[1], g_sw.src[2], g_sw.src[3],
+            g_sw.delay, g_sw.stream_loops);
+    fprintf(stderr, "[ax] hash list=%u fnv=%016llX\n", n, (unsigned long long)g_stat_hash);
+    g_sw = StatsWindow{};
 }
 
 inline uint8_t aram_byte(uint32_t a) { return g_aram[a & (ARAM_SIZE - 1)]; }
@@ -104,6 +182,7 @@ struct Accel {
                     pb.w[PB_YN1] = pb.w[PB_LOOP_YN1];
                     pb.w[PB_YN2] = pb.w[PB_LOOP_YN2];
                 }
+                if (pb.w[PB_IS_STREAM] && g_axstats) g_sw.stream_loops++;
             } else {
                 pb.w[PB_RUNNING] = 0;
                 stopped = true;
@@ -130,6 +209,7 @@ extern int g_stat_voices;
 void process_voice(PB& pb, int offset) {
     if (!pb.w[PB_RUNNING]) return;
     if (offset == 0) g_stat_voices++;
+    if (g_axstats) stats_voice(pb);
     int16_t samples[SPMS];
     Accel acc(pb);
     // Sample rate conversion: linear interpolation, for the linear and polyphase modes alike.
@@ -211,8 +291,10 @@ void process_pb_list(uint32_t pb_addr) {
 }
 
 void write_bufs(uint32_t addr, std::initializer_list<int32_t*> bufs) {
-    for (int32_t* b : bufs)
+    for (int32_t* b : bufs) {
+        if (g_axstats) stats_peak(b);
         for (int i = 0; i < SPF; i++, addr += 4) mem_w32(addr, (uint32_t)b[i]);
+    }
 }
 void add_bufs(uint32_t addr, std::initializer_list<int32_t*> bufs) {
     for (int32_t* b : bufs)
@@ -260,7 +342,7 @@ int g_stat_voices, g_stat_frames, g_stat_peak;
 
 void output(uint32_t surround_addr, uint32_t lr_addr) {
     for (int i = 0; i < SPF; i++) g_stat_peak = std::max(g_stat_peak, std::abs(g_left[i]));
-    if (++g_stat_frames % 400 == 0 && getenv("GCN_AXSTATS")) {
+    if (++g_stat_frames % 400 == 0 && g_axstats) {
         fprintf(stderr, "[ax] frames=%d voices(running, last frame)=%d peak=%d out=%08X\n", g_stat_frames, g_stat_voices, g_stat_peak, lr_addr);
         g_stat_peak = 0;
     }
@@ -270,19 +352,21 @@ void output(uint32_t surround_addr, uint32_t lr_addr) {
         mem_w16(lr_addr + 4 * i, (uint16_t)r);       // interleaved R, L
         mem_w16(lr_addr + 4 * i + 2, (uint16_t)l);
     }
+    if (g_axstats) stats_output(surround_addr, lr_addr);
 }
 
 }  // namespace
 
-void ax_init() {}
+void ax_init() { g_axstats = getenv("GCN_AXSTATS") != nullptr; }
 
-void ax_process_cmdlist(uint32_t addr, uint16_t size) {
+static void run_cmdlist(uint32_t addr, uint16_t size) {
     uint32_t pb_addr = 0;
     uint32_t p = addr, end = addr + size + 64;
     auto rd = [&]() { uint16_t v = mem_r16(p); p += 2; return v; };
     auto rd32 = [&]() { uint32_t hi = rd(); return (hi << 16) | rd(); };
     for (int guard = 0; guard < 256 && p < end; guard++) {
         uint16_t cmd = rd();
+        if (g_axstats) (cmd < NUM_CMDS ? g_sw.cmds[cmd] : g_sw.unknown)++;
         switch (cmd) {
         case 0x00: setup(rd32()); break;
         case 0x01: { uint32_t a = rd32(); uint16_t vm = rd(), va = rd(), vb = rd(); download_and_mix(a, vm, va, vb); break; }
@@ -294,9 +378,9 @@ void ax_process_cmdlist(uint32_t addr, uint16_t size) {
                      add_bufs(r, {g_left, g_right, g_surround}); break; }
         case 0x06: write_bufs(rd32(), {g_left, g_right, g_surround}); break;
         case 0x07: set_main_from(rd32(), false); break;
-        case 0x08: p += 20; break;
+        case 0x08: p += 20; if (g_axstats) g_sw.skipped++; break;
         case 0x09: add_bufs(rd32(), {g_left, g_right, g_surround}); break;  // mix AuxB back in, nothing uploaded
-        case 0x0A: case 0x0B: case 0x0C: break;
+        case 0x0A: case 0x0B: case 0x0C: if (g_axstats) g_sw.skipped++; break;
         case 0x0D: {  // continue in another command buffer: address, size
             uint32_t a = rd32();
             uint16_t sz = rd();
@@ -314,7 +398,7 @@ void ax_process_cmdlist(uint32_t addr, uint16_t size) {
             break;
         }
         case 0x11: set_main_from(rd32(), true); break;
-        case 0x12: p += 8; break;  // compressor: not in this ucode version
+        case 0x12: p += 8; if (g_axstats) g_sw.skipped++; break;  // compressor: not in this ucode version
         case 0x13: {  // upload AuxA L/R/S and AuxB S; download and add main L, main R, AuxB L, AuxB R
             uint32_t auxa_up = rd32(), auxb_s_up = rd32(), main_l = rd32(), main_r = rd32(), auxb_l = rd32(), auxb_r = rd32();
             write_bufs(auxa_up, {g_auxa_l, g_auxa_r, g_auxa_s});
@@ -340,4 +424,9 @@ void ax_process_cmdlist(uint32_t addr, uint16_t size) {
         }
         }
     }
+}
+
+void ax_process_cmdlist(uint32_t addr, uint16_t size) {
+    run_cmdlist(addr, size);
+    if (g_axstats) stats_list_end();
 }
