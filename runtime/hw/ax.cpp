@@ -205,6 +205,39 @@ void mix_add(int32_t* out, const int16_t* in, int n, PB& pb, int vol_idx, bool r
     pb.w[vol_idx] = vol;
 }
 
+// The mixer control (PB word 6) decoded per bus, in kBuses' order: main L, R, S, AuxA L, R, S,
+// AuxB L, R, S. A bus mixes when its enable is set, and its volume steps by its delta per
+// sample when its ramp is set.
+struct MixFlags {
+    bool enable[9] = {}, ramp[9] = {};
+};
+
+// Offset of each bus's (volume, delta) pair from PB_MIXER.
+constexpr int kMixerWord[9] = {0, 2, 14, 4, 6, 16, 8, 10, 12};
+
+// Old (2001) ucode: main L/R always; bit0 AuxA, bit1 AuxB, bit2 surround, bit3 volume ramps
+// for every bus. Bit4 selects Dolby Pro Logic II mixing, where the low bits mean something else.
+MixFlags decode_mixer_2001(uint16_t mc) {
+    MixFlags f;
+    bool auxa, auxb, surround;
+    if (mc & 0x10) {
+        auxb = (mc & 6) == 0;
+        auxa = (mc & 7) == 1;
+        surround = false;
+    } else {
+        auxa = mc & 1;
+        auxb = mc & 2;
+        surround = mc & 4;
+    }
+    const bool on[9] = {true, true, surround, auxa, auxa, auxa && ((mc & 0x10) || surround),
+                        auxb, auxb, auxb && surround};
+    for (int b = 0; b < 9; b++) {
+        f.enable[b] = on[b];
+        f.ramp[b] = mc & 8;
+    }
+    return f;
+}
+
 extern int g_stat_voices;
 void process_voice(PB& pb, int offset) {
     if (!pb.w[PB_RUNNING]) return;
@@ -236,37 +269,9 @@ void process_voice(PB& pb, int offset) {
         samples[i] = (int16_t)std::clamp(((int32_t)samples[i] * v) >> 15, -32767, 32767);
         pb.w[PB_VOL] = (uint16_t)(v + (int16_t)pb.w[PB_VOL_DELTA]);
     }
-    // Old (2001) ucode mixer control: main L/R always; bit0 AuxA, bit1 AuxB,
-    // bit2 surround, bit3 volume ramps. Bit4 selects Dolby Pro Logic II mixing, where
-    // the low bits mean something else.
-    uint16_t mc = pb.w[PB_MIXER_CONTROL];
-    bool ramp = mc & 8;
-    bool auxa, auxb, surround;
-    if (mc & 0x10) {
-        auxb = (mc & 6) == 0;
-        auxa = (mc & 7) == 1;
-        surround = false;
-    } else {
-        auxa = mc & 1;
-        auxb = mc & 2;
-        surround = mc & 4;
-    }
-    mix_add(g_left + offset, samples, SPMS, pb, PB_MIXER + 0, ramp);
-    mix_add(g_right + offset, samples, SPMS, pb, PB_MIXER + 2, ramp);
-    if (auxa) {
-        mix_add(g_auxa_l + offset, samples, SPMS, pb, PB_MIXER + 4, ramp);
-        mix_add(g_auxa_r + offset, samples, SPMS, pb, PB_MIXER + 6, ramp);
-        if (mc & 0x10) mix_add(g_auxa_s + offset, samples, SPMS, pb, PB_MIXER + 16, ramp);
-    }
-    if (auxb) {
-        mix_add(g_auxb_l + offset, samples, SPMS, pb, PB_MIXER + 8, ramp);
-        mix_add(g_auxb_r + offset, samples, SPMS, pb, PB_MIXER + 10, ramp);
-    }
-    if (surround) {
-        mix_add(g_surround + offset, samples, SPMS, pb, PB_MIXER + 14, ramp);
-        if (auxa) mix_add(g_auxa_s + offset, samples, SPMS, pb, PB_MIXER + 16, ramp);
-        if (auxb) mix_add(g_auxb_s + offset, samples, SPMS, pb, PB_MIXER + 12, ramp);
-    }
+    MixFlags mf = decode_mixer_2001(pb.w[PB_MIXER_CONTROL]);
+    for (int b = 0; b < 9; b++)
+        if (mf.enable[b]) mix_add(kBuses[b] + offset, samples, SPMS, pb, PB_MIXER + kMixerWord[b], mf.ramp[b]);
 }
 
 void process_pb_list(uint32_t pb_addr) {
