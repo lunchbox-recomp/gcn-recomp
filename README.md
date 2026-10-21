@@ -71,8 +71,14 @@ The game project provides:
 - `runtime/`: the GameCube in software. `recomp.h` is the contract with generated code.
   `cpu.cpp`, `threads.cpp` and `hle_os.cpp` are the CPU and OS; `hw/` the hardware
   registers; `gx/` the graphics pipeline; `main.cpp` the SDL frontend and `bench_main.cpp`
-  the benchmark. `gamepads.*` gives each gamepad a port of its own and remembers which,
-  and loads controller mappings from a `gamecontrollerdb.txt` beside the executable or
+  the benchmark. `gamepads.*` gives each gamepad a port of its own as it connects: the
+  port of its player number if that port is free (Steam Input's order, or the XInput
+  slot on Windows), else the lowest free port. Its player light then shows that port,
+  except an XInput controller's ring, which shows the slot Windows gave it.
+  A gamepad pulled out frees its port, which the game then sees unplugged unless the
+  keyboard (port 1), `--pads` or a `controls.txt` line keeps it plugged in. A gamepad gets
+  no port when none is free. Nothing is saved between launches. It also loads controller
+  mappings from a `gamecontrollerdb.txt` beside the executable or
   `--gamepad-mappings=<file>`.
   `input_map.*` binds any joystick or key to a pad from a `controls.txt` (wheels, pedals,
   button boxes), and its `--list-controls` prints what to write for each;

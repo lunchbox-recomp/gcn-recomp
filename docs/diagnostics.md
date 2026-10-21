@@ -104,18 +104,21 @@ missed, and the same route gave different frames from run to run.
 
 `--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
 power-on (1 to 4; port 1 alone by default), so that the game finds them when it first
-looks. The keyboard drives port 1, each gamepad a port of its own (`runtime/gamepads.h`)
-and `controls.txt` the ports it names; a port plugged in with nothing on it sits at rest
-unless a script presses it. A port before the frame, `2/900:A:10`, is the controller that
-presses; a press without one is port 1's, and a press on a port that is not plugged in
-does nothing.
+looks. The keyboard drives port 1, `controls.txt` the ports it names, and each gamepad the
+port it takes as it connects (`runtime/gamepads.h`), which plugs that port in while it is
+there. A port plugged in at power-on with nothing on it sits at rest unless a script
+presses it, and stays plugged in when its gamepad is pulled out; past those ports, the
+game sees a port whose gamepad is pulled out as unplugged. A port before the frame
+(`2/900:A:10`) names the controller that presses; a press without one is port 1's, and a
+press on a port that is not plugged in does nothing.
 
-`--test-ports` checks how gamepads get their ports without a controller or the game,
-using SDL's virtual joysticks. Four gamepads connect in turn and land on ports 1 to 4. Then
-one is pulled out and plugged back in, and a fifth finds no port. Later a mappings file
-turns a plain joystick into a gamepad, after a fresh start that reads the saved ports.
-Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It refuses to
-run while a real gamepad is connected.
+On macOS and Linux, `ninja test_ports` in a build directory builds `tools/test_ports.cpp`, which checks how
+gamepads get their ports without a controller or the game, using SDL's virtual joysticks.
+It compiles the frontend's own input loop and the SI layer in, so each port is read back as
+the guest reads it. `tools/test_ports.sh <test_ports> <work dir>` runs its three modes: the
+port checks, and a recording of two gamepads and its replay with none. Each check prints
+`ok` or `FAIL`, and the exit code is 0 only if all pass. It refuses to run while any
+joystick is connected.
 
 ## Frame dumps
 

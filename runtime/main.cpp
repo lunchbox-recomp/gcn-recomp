@@ -190,8 +190,8 @@ static void merge_port(int port, PadState& p) {
 
 static void merge_desktop_pad(PadState& p) { merge_port(0, p); }
 
-// Ports `first` to 4. A port is plugged in while it has a gamepad or is held for one, and
-// from power-on if --pads or controls.txt reaches it.
+// Ports `first` to 4. A port is plugged in while it has a gamepad, and from power-on if
+// --pads or controls.txt reaches it; port 1, the keyboard's, always is.
 static void update_pads(int first) {
     for (int port = first; port < 4; port++) {
         PadState p;
@@ -249,7 +249,6 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--eye")) g_eye_mode = true;
         else if (!strcmp(argv[i], "--vr")) vr = true;
         else if (!strcmp(argv[i], "--list-controls")) return input_map_probe();
-        else if (!strcmp(argv[i], "--test-ports")) return gamepads_test();
         else if (!strcmp(argv[i], "--test-ffb")) test_ffb = true;
         else if (!strncmp(argv[i], "--controls=", 11)) controls = argv[i] + 11;
         else if (!strncmp(argv[i], "--gamepad-mappings=", 19)) gamepad_mappings = argv[i] + 19;
@@ -336,7 +335,7 @@ int main(int argc, char** argv) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
     input_map_load(controls);
     gamepads_load_mappings(gamepad_mappings);
-    gamepads_init("saves/gamepads.txt");
+    gamepads_init();
     // Ports 1 to the highest controls.txt binds are plugged in at power-on, as --pads would.
     g_port_count = std::max(pads, input_map_port_count());
     pad_set_count(g_port_count);

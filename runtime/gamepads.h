@@ -2,29 +2,18 @@
 //
 // A gamepad is a controller SDL has a mapping for (SDL_IsGamepad); any other joystick, and
 // any device controls.txt names, is controls.txt's (input_map.h). Each gamepad is given a
-// port as it connects: the port it had before if that is free, or else the first free
-// one, so that gamepads fill ports 1 to 4 in the order they arrive. Its SDL player index is
-// set to the port (0 for port 1), which lights the matching player LED on a controller that
-// has them.
+// port as it connects: the port of its SDL player index if that index is 0 to 3 and the
+// port is free (Steam Input's order, or the XInput slot on Windows), else the lowest free
+// port. A gamepad connected while no port is free gets none. Its player index is then set
+// to the port (0 for port 1), which lights the matching player LED on a controller whose
+// lights SDL drives; an XInput controller's ring shows the slot Windows gave it. Setting
+// one gamepad's index makes SDL move any other that holds it to a free index, so every
+// placed gamepad's is set back to its port after each connection, whatever becomes of
+// that connection.
 //
-// The ports are saved with each gamepad's SDL GUID and serial number, one line a port
-// (`<port> <guid> <serial or ->`), in the file gamepads_init is given: saves/gamepads.txt
-// on the desktop. At the next launch the same controller goes back to the same port, and
-// those already connected at startup are placed by the file before the rest take what is
-// left. A GUID that changed with the same serial, vendor and product (a controller moved
-// from USB to Bluetooth) still counts as the same controller. Two controllers of one model
-// that report no serial number share a GUID, so only the order they arrive in tells them
-// apart.
-//
-// A gamepad pulled out mid-game leaves its port plugged in, at rest, and the port is held
-// for it until it is plugged back in, when it goes back there. A game sees a controller
-// that vanishes as one pulled out, and one that comes back on another port as another
-// player. Another gamepad takes a held port only when the other ports all have one: a
-// player who has picked up a different controller. One more than that is left out.
-//
-// The design, a port per SDL player index saved by GUID and serial, is that of aurora's
-// lib/gamepad.cpp (github.com/encounter/aurora, MIT); this is written afresh for the
-// runtime.
+// A gamepad pulled out frees its port, and nothing is kept from one launch to the next.
+// A port reads as plugged in only while a gamepad is on it, or the keyboard (port 1),
+// `--pads` or a port controls.txt names keeps it plugged in (main.cpp).
 #pragma once
 #include "hw/pad.h"
 
@@ -39,23 +28,16 @@ union SDL_Event;
 // one. After SDL_Init and before gamepads_init, so that the controllers mapped are
 // gamepads from the start.
 void gamepads_load_mappings(const char* path);
-// After SDL_Init with SDL_INIT_GAMEPAD. Reads the saved ports from `save_path` and writes
-// them back there as they change (null: none are kept), and takes the gamepads already
-// connected.
-void gamepads_init(const char* save_path);
+// After SDL_Init with SDL_INIT_GAMEPAD. Takes the gamepads already connected, in SDL's
+// order.
+void gamepads_init();
 // Gamepads coming and going. Every SDL event may be passed.
 void gamepads_event(const SDL_Event& e);
 // The gamepad on `port` (0 is port 1) merged into `p`: buttons are added, and a stick or
 // trigger is taken over only while it is pushed. `p.connected` is set while a gamepad is
-// on the port or the port is held for one.
+// on the port.
 void gamepads_merge(int port, PadState& p);
 // The pad's rumble motor on the gamepad on `port`, renewed while it runs.
 void gamepads_rumble(int port, bool motor);
 // Stops any rumble and closes the gamepads.
 void gamepads_shutdown();
-// --test-ports: SDL's virtual gamepads through all of the above, with no window and no
-// game: four connecting in turn, input and rumble on the right port, one pulled out and
-// plugged back in, a fifth, the next launch, and a mappings file. SDL must not be
-// initialised yet, and no gamepad connected. Prints a line a check and returns the exit
-// code.
-int gamepads_test();
