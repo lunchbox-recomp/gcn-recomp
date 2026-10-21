@@ -1,6 +1,6 @@
 // High-level emulation of the AX audio ucode (the 2001 GameCube build, and the mixer control
-// layout of later builds): processes the command lists the AX library sends, mixes voices from
-// ARAM and writes the final 5ms stereo block that the AI DMA plays.
+// layout and compressor of later builds): processes the command lists the AX library sends,
+// mixes voices from ARAM and writes the final 5ms stereo block that the AI DMA plays.
 #include "../runtime.h"
 #include "ax.h"
 #include <algorithm>
@@ -364,6 +364,32 @@ void setup(uint32_t addr) {
     }
 }
 
+// 0x12 on the later layout: duck the main L and R when they are over the threshold, then
+// ease back over `release` lists. The table holds 160-entry ramps, 11 attack ramps and then
+// the release ramps, as unsigned 16-bit gains with 0x8000 as 1.0.
+uint16_t g_comp_counter;  // lists of release left; survives from list to list
+
+void compress(uint16_t threshold, uint16_t release, uint32_t table) {
+    bool over = false;
+    for (int i = 0; i < SPF && !over; i++)
+        over = std::abs((int64_t)g_left[i]) > threshold || std::abs((int64_t)g_right[i]) > threshold;
+    uint32_t ramp;
+    if (over) {
+        ramp = g_comp_counter;
+        g_comp_counter = release;
+    } else if (g_comp_counter) {
+        ramp = 11 + --g_comp_counter;
+    } else {
+        return;
+    }
+    const uint32_t base = table + 2 * SPF * ramp;
+    for (int i = 0; i < SPF; i++) {
+        const int64_t c = mem_r16(base + 2 * i);
+        g_left[i] = (int32_t)((g_left[i] * c) >> 15);
+        g_right[i] = (int32_t)((g_right[i] * c) >> 15);
+    }
+}
+
 int g_stat_voices, g_stat_frames, g_stat_peak;
 
 void output(uint32_t surround_addr, uint32_t lr_addr) {
@@ -390,6 +416,7 @@ constexpr uint32_t kUcode2001Hash = 0x4E8A8B21;
 void ax_init(uint32_t ucode_hash) {
     g_axstats = getenv("GCN_AXSTATS") != nullptr;
     g_layout_later = ucode_hash != kUcode2001Hash;
+    g_comp_counter = 0;
     const char* over = getenv("GCN_AX_LAYOUT");
     const bool forced = over && (!strcmp(over, "2001") || !strcmp(over, "later"));
     if (forced) g_layout_later = !strcmp(over, "later");
@@ -437,7 +464,13 @@ static void run_cmdlist(uint32_t addr, uint16_t size) {
             break;
         }
         case 0x11: set_main_from(rd32(), true); break;
-        case 0x12: p += 8; if (g_axstats) g_sw.skipped++; break;  // compressor: not run
+        case 0x12: {  // compressor: threshold, release lists, table address. The 2001 build has no such command
+            uint16_t threshold = rd(), release = rd();
+            uint32_t table = rd32();
+            if (g_layout_later) compress(threshold, release, table);
+            else if (g_axstats) g_sw.skipped++;
+            break;
+        }
         case 0x13: {  // upload AuxA L/R/S and AuxB S; download and add main L, main R, AuxB L, AuxB R
             uint32_t auxa_up = rd32(), auxb_s_up = rd32(), main_l = rd32(), main_r = rd32(), auxb_l = rd32(), auxb_r = rd32();
             write_bufs(auxa_up, {g_auxa_l, g_auxa_r, g_auxa_s});
