@@ -445,6 +445,20 @@ both reached shows whether a change to the mixer changed what it made, and from 
   block's 640 bytes of surround and then its 640 bytes of interleaved R and L, as RAM holds
   them.
 
+The AX ucode comes in builds that lay out the mixer control word (PB word 6) differently.
+When the AX ucode boots, `--log=dsp` prints which layout it chose and the ucode's hash:
+`AX: later mixer layout, ucode hash=07F88145`. The 2001 layout (hash `4E8A8B21`) has main L
+and R always on, bit 0 for the AuxA sends, bit 1 for AuxB, bit 2 for surround and bit 3
+ramping every bus. Bit 4 switches to a Dolby Pro Logic II reading, where AuxA mixes only
+when bits 0 to 2 are 001 and AuxB only when bits 1 and 2 are clear. The later layout gives
+each of the nine buses its own enable bit and ramps them in groups. Every other hash,
+including one not seen before, gets the later layout.
+
+`GCN_AX_LAYOUT=2001` or `GCN_AX_LAYOUT=later` forces the layout whatever the hash, and the
+log line then ends `(set by GCN_AX_LAYOUT)`. It is for comparing the two on one game: the
+`[ax] hash` lines from a run with each show where the mix first differs. Any other value is
+ignored, with a line on stderr saying so whatever `--log` is set to.
+
 ## Textures
 
 `GCN_TEXLOG=1` prints a line per decoded texture: frame, id, guest address, format, size and

@@ -1,9 +1,10 @@
-// High-level emulation of the AX audio ucode (the "old" 2001 GameCube variant):
-// processes the command lists the AX library sends, mixes voices from ARAM and
-// writes the final 5ms stereo block that the AI DMA plays.
+// High-level emulation of the AX audio ucode (the 2001 GameCube build, and the mixer control
+// layout of later builds): processes the command lists the AX library sends, mixes voices from
+// ARAM and writes the final 5ms stereo block that the AI DMA plays.
 #include "../runtime.h"
 #include "ax.h"
 #include <algorithm>
+#include <cstring>
 #include <initializer_list>
 #include <map>
 #include <string>
@@ -238,6 +239,25 @@ MixFlags decode_mixer_2001(uint16_t mc) {
     return f;
 }
 
+// Later ucodes: every bus has its own enable bit and the ramps come in groups.
+//   enables: 0x0001 main L, 0x0002 main R, 0x0004 main S, 0x0010 AuxA L, 0x0020 AuxA R,
+//            0x0080 AuxA S, 0x0200 AuxB L, 0x0400 AuxB R, 0x1000 AuxB S
+//   ramps:   0x0008 main L, R and S, 0x0040 AuxA L and R, 0x0100 AuxA S,
+//            0x0800 AuxB L and R, 0x2000 AuxB S
+constexpr uint16_t kEnable[9] = {0x0001, 0x0002, 0x0004, 0x0010, 0x0020, 0x0080, 0x0200, 0x0400, 0x1000};
+constexpr uint16_t kRamp[9] = {0x0008, 0x0008, 0x0008, 0x0040, 0x0040, 0x0100, 0x0800, 0x0800, 0x2000};
+MixFlags decode_mixer_later(uint16_t mc) {
+    MixFlags f;
+    for (int b = 0; b < 9; b++) {
+        f.enable[b] = mc & kEnable[b];
+        f.ramp[b] = mc & kRamp[b];
+    }
+    return f;
+}
+
+// Which decoder the mixer control word goes through; chosen once, by ax_init.
+bool g_layout_later;
+
 extern int g_stat_voices;
 void process_voice(PB& pb, int offset) {
     if (!pb.w[PB_RUNNING]) return;
@@ -269,7 +289,8 @@ void process_voice(PB& pb, int offset) {
         samples[i] = (int16_t)std::clamp(((int32_t)samples[i] * v) >> 15, -32767, 32767);
         pb.w[PB_VOL] = (uint16_t)(v + (int16_t)pb.w[PB_VOL_DELTA]);
     }
-    MixFlags mf = decode_mixer_2001(pb.w[PB_MIXER_CONTROL]);
+    const uint16_t mc = pb.w[PB_MIXER_CONTROL];
+    MixFlags mf = g_layout_later ? decode_mixer_later(mc) : decode_mixer_2001(mc);
     for (int b = 0; b < 9; b++)
         if (mf.enable[b]) mix_add(kBuses[b] + offset, samples, SPMS, pb, PB_MIXER + kMixerWord[b], mf.ramp[b]);
 }
@@ -362,7 +383,20 @@ void output(uint32_t surround_addr, uint32_t lr_addr) {
 
 }  // namespace
 
-void ax_init() { g_axstats = getenv("GCN_AXSTATS") != nullptr; }
+// The 2001 ucode is the one build with the old mixer control layout; every other AX build
+// uses the later one, so a hash nobody has seen gets the later layout.
+constexpr uint32_t kUcode2001Hash = 0x4E8A8B21;
+
+void ax_init(uint32_t ucode_hash) {
+    g_axstats = getenv("GCN_AXSTATS") != nullptr;
+    g_layout_later = ucode_hash != kUcode2001Hash;
+    const char* over = getenv("GCN_AX_LAYOUT");
+    const bool forced = over && (!strcmp(over, "2001") || !strcmp(over, "later"));
+    if (forced) g_layout_later = !strcmp(over, "later");
+    else if (over) fprintf(stderr, "GCN_AX_LAYOUT=%s is not 2001 or later, ignored\n", over);
+    LOG(LOG_DSP, "AX: %s mixer layout, ucode hash=%08X%s", g_layout_later ? "later" : "2001", ucode_hash,
+        forced ? " (set by GCN_AX_LAYOUT)" : "");
+}
 
 static void run_cmdlist(uint32_t addr, uint16_t size) {
     uint32_t pb_addr = 0;
@@ -403,7 +437,7 @@ static void run_cmdlist(uint32_t addr, uint16_t size) {
             break;
         }
         case 0x11: set_main_from(rd32(), true); break;
-        case 0x12: p += 8; if (g_axstats) g_sw.skipped++; break;  // compressor: not in this ucode version
+        case 0x12: p += 8; if (g_axstats) g_sw.skipped++; break;  // compressor: not run
         case 0x13: {  // upload AuxA L/R/S and AuxB S; download and add main L, main R, AuxB L, AuxB R
             uint32_t auxa_up = rd32(), auxb_s_up = rd32(), main_l = rd32(), main_r = rd32(), auxb_l = rd32(), auxb_r = rd32();
             write_bufs(auxa_up, {g_auxa_l, g_auxa_r, g_auxa_s});

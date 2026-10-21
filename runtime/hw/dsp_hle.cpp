@@ -62,7 +62,7 @@ static void boot_ucode() {
     if (g_ax_iram_len && g_boot_iram_len == g_ax_iram_len) {
         bool resume = g_boot_start != g_ax_init_vector;
         g_ucode = UCode::AX;
-        if (!resume) ax_init();
+        if (!resume) ax_init(hash);
         dsp_send_mail(resume ? DSP_RESUME : DSP_INIT, true);
     } else {
         g_ucode = UCode::Card;
