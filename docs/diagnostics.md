@@ -112,9 +112,9 @@ game sees a port whose gamepad is pulled out as unplugged. A port before the fra
 (`2/900:A:10`) names the controller that presses; a press without one is port 1's, and a
 press on a port that is not plugged in does nothing.
 
-`ninja test_ports` in a build directory (the build allows Linux, but it has only been run on macOS) builds `tools/test_ports.cpp`, which checks how
-gamepads get their ports without a controller or the game, using SDL's virtual joysticks.
-It compiles the frontend's own input loop and the SI layer in, so each port is read back as
+`ninja test_ports` in a build directory (the build allows Linux, but it has only been run
+on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without
+a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own input loop and the SI layer in, so each port is read back as
 the guest reads it. `tools/test_ports.sh <test_ports> <work dir>` runs its three modes: the
 port checks, and a recording of two gamepads and its replay with none. Each check prints
 `ok` or `FAIL`, and the exit code is 0 only if all pass. It refuses to run while any
@@ -462,12 +462,12 @@ both reached shows whether a change to the mixer changed what it made, and from 
   millisecond of a list). `mixer` gives the eight mixer control values (PB word 6) with the
   most as `value:count`. `mixer_rest` is the total for every other value. `src0`, `src1`
   and `src2` count resampler types 0 (polyphase), 1 (linear) and 2 (none) from word 4, and
-  `src_other` counts anything past 2. `delay` counts the initial time delay switched on
+  `src_other` counts anything past 2, which mixes as 2 does. `delay` counts the initial time delay switched on
   (word 27), which this runtime doesn't apply. `stream_loops` counts the times a voice with
   the stream flag (word 8) looped.
-- `[ax] hash`: `fnv` is a 64-bit FNV-1a over every byte 0E has written since the process started, each
-  block's 640 bytes of surround and then its 640 bytes of interleaved R and L, as RAM holds
-  them.
+- `[ax] hash`: `fnv` is a 64-bit FNV-1a over every byte 0E has written since the process
+  started, each block's 640 bytes of surround and then its 640 bytes of interleaved R and
+  L, as RAM holds them.
 
 The AX ucode comes in builds that lay out the mixer control word (PB word 6) differently.
 When the AX ucode boots, `--log=dsp` prints which layout it chose and the ucode's hash:
@@ -485,12 +485,13 @@ decoded, nothing else, so it is for comparing the two decodings on one game: the
 ignored, with a line on stderr saying so whatever `--log` is set to.
 
 Command 12, the compressor, runs on every ucode build but the 2001 one, which has no such
-command and skips it. The ucode hash alone decides this, so `GCN_AX_LAYOUT` does not affect it. It reads a threshold, a release length in lists and the address of a
-table of 160-entry ramps. If the magnitude of any main L or R sample is over the threshold
-when the command runs, it scales both by the attack ramp numbered by the release counter,
-then sets the counter to the release length. Otherwise, while the counter is above zero, it
-counts the counter down and then applies the table's ramp 11 + counter, the release ramps
-following the 11 attack ramps. The counter carries from list to list and resets when the AX ucode boots.
+command and skips it. The ucode hash alone decides this, so `GCN_AX_LAYOUT` does not
+affect it. It reads a threshold, a release length in lists and the address of a table of
+160-entry ramps. If the magnitude of any main L or R sample is over the threshold when the
+command runs, it scales both by the attack ramp numbered by the release counter, then sets
+the counter to the release length. Otherwise, while the counter is above zero, it counts
+down and then applies the table's ramp 11 + counter, the release ramps following the 11
+attack ramps. The counter carries from list to list and resets when the AX ucode boots.
 Without it a list whose main L or R passes full scale hard-clips at 0E, so `clipped` falls
 where it runs.
 

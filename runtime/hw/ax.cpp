@@ -372,9 +372,9 @@ void setup(uint32_t addr) {
     }
 }
 
-// 0x12 on the later layout: duck the main L and R when they are over the threshold, then
-// ease back over `release` lists. The table holds 160-entry ramps, 11 attack ramps and then
-// the release ramps, as unsigned 16-bit gains with 0x8000 as 1.0.
+// 0x12 on every build but the 2001 one: duck the main L and R when they are over the
+// threshold, then ease back over `release` lists. The table holds 160-entry ramps, 11 attack
+// ramps and then the release ramps, as unsigned 16-bit gains with 0x8000 as 1.0.
 uint16_t g_comp_counter;  // lists of release left; survives from list to list
 
 void compress(uint16_t threshold, uint16_t release, uint32_t table) {
