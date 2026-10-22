@@ -371,16 +371,18 @@ steps. As the ring nears empty its last 5 ms fade to silence, and the sound fade
 over 8 ms. Holding 100 ms more than the cushion, the ring cuts back to it with a 10 ms
 crossfade from where it was reading to where it jumped to. A cut does not crossfade when
 the ring was refilling, which is silent anyway, or when the ring was more than half full,
-where the guest could overwrite what the fade reads, and that cut splices. A cut that
-comes while a crossfade is still running waits for the next pull. Each of the three was
-once a step in the output, heard as a click. A cut on a tone made a second difference 300
-times the tone's own. `ninja test_audio_ring` builds `tools/test_audio_ring.cpp`, which
-runs `audio.cpp` with a tone for the guest and a device that keeps exact time, both on one
-virtual clock, and checks that a burst and a stall leave the output within 3 times the
-tone's own second difference. It also checks that a splice or a hard stop at those points
-would have stepped the output by over 10 times that, so each scenario can fail. Each check
-prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc image,
-device or SDL.
+where the guest could overwrite what the fade reads, and that cut splices. With a cushion
+of 400 ms or more every cut splices, since the cut then always comes with the ring over
+half full. A cut that comes while a crossfade is still running waits for the next pull.
+Each of the three was once a step in the output, heard as a click. A cut on a tone made a
+second difference 300 times the tone's own. `ninja test_audio_ring` builds
+`tools/test_audio_ring.cpp`, which runs `audio.cpp` with a tone for the guest and a device
+that keeps exact time, both on one virtual clock, and checks that a burst and a stall
+leave the output within 3 times the tone's own second difference. It also checks that a
+splice or a hard stop at those points would have stepped the output by over 10 times that,
+so each scenario can fail, and that a cut with the ring over half full arms no crossfade
+and a cut during a running one waits. Each check prints `ok` or `FAIL`, and the exit code
+is 0 only if all pass. It needs no disc image, device or SDL.
 
 SDL's dummy driver (`SDL_AUDIO_DRIVER=dummy`, for runs that make no sound) waits a relative
 10 ms after each pull, so the oversleep and the mix's own time add to every period. It took

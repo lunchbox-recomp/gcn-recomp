@@ -12,7 +12,8 @@
 // or drop to silence in one step. A check that passes proves nothing if the scenario would
 // have passed anyway, so the signal it generated sets the step a plain splice at the cut
 // would have made, and the step a hard stop and a hard start at the stall's edges would
-// have made, and each must be over 10 times that threshold.
+// have made, each as a second difference of the generated signal, and each must be over 10
+// times that threshold. Last, short pulls check the cut rules in the fade's own counter.
 //
 // usage: test_audio_ring
 // Exits 0 only if every check passes.
@@ -44,8 +45,8 @@ void check(bool ok, const char* what) {
 }
 
 // The guest's signal at ring frame n.
-double tone(long long n) {
-    const double t = (double)n / DMA_RATE;
+double tone(double n) {
+    const double t = n / DMA_RATE;
     return kAmp * (std::sin(2 * std::numbers::pi * kHzLow * t) + std::sin(2 * std::numbers::pi * kHzHigh * t));
 }
 
@@ -128,14 +129,18 @@ int main() {
     run.push_due(true);
     // What a plain splice would have done. The read position is the oldest frame in the ring,
     // and the cut moves it on by everything over the cushion.
+    // Each is a second difference of the generated signal, at the output's spacing of u ring
+    // frames, across the point, so it is the same kind of number as `bar`.
+    const double u = (double)DMA_RATE / OUT_RATE;
     const size_t before = g_ring_count;
     const long long read_at = run.tone_frames - (long long)before;
     const long long drop = (long long)before - (long long)ring_cushion();
-    const double splice = std::fabs(tone(read_at + drop) - tone(read_at - 1));
+    const double a = tone(read_at - 1 - u), b = tone(read_at - 1), c = tone(read_at + drop), d = tone(read_at + drop + u);
+    const double splice = std::max(std::fabs(a - 2 * b + c), std::fabs(b - 2 * c + d));
     run.pull();
     check(g_stat_cuts == 1, "the burst overfills the ring once");
     const long long pull_frames = (long long)kPull * DMA_RATE / OUT_RATE;
-    printf("  the cut dropped %lld frames, and a plain splice would step %.0f\n", drop, splice);
+    printf("  the cut dropped %lld frames, and a plain splice would make a second difference of %.0f\n", drop, splice);
     check(splice > far, "a plain splice at the cut would be far over the bar");
     check(std::llabs((long long)g_ring_count - (long long)ring_cushion()) <= pull_frames + 2,
           "the cut leaves the ring at its cushion");
@@ -145,18 +150,46 @@ int main() {
 
     // A stall: nothing for 300 ms, so the ring runs dry and refills. Stopping dead would step
     // from the last frame pushed to zero, and starting dead from zero to the first one after.
-    const double stop = std::fabs(tone(run.tone_frames - 1));
+    // Nothing is pushed in the stall, so the last frame pushed is also the one left in the
+    // ring, and the one the refill plays first.
+    const long long last = run.tone_frames - 1;
+    const double f = tone(last);
+    const double stop = std::max(std::fabs(tone(last - u) - 2 * f), std::fabs(f));
+    const double start = std::max(std::fabs(tone(last + u) - 2 * f), std::fabs(f));
     run.play(2.4, false);
-    const double start = std::fabs(tone(run.tone_frames));
     run.play(3.2, true);
     check(g_stat_underruns == 1, "the stall runs the ring dry once");
-    printf("  a hard stop would step %.0f, a hard start %.0f\n", stop, start);
+    printf("  a hard stop would make a second difference of %.0f, a hard start %.0f\n", stop, start);
     check(stop > far, "a hard stop at the stall would be far over the bar");
     check(start > far, "a hard start after the stall would be far over the bar");
     printf("  running dry: %d, coming back: %d\n", run.worst(2.1, 2.4), run.worst(2.4, 2.7));
     check(run.worst(2.1, 2.4) <= bar, "running dry fades out instead of stopping dead");
     check(run.worst(2.4, 2.7) <= bar, "the sound fades back in after the refill");
     check(run.rms(2.8, 3.2) > level / 2, "the tone comes back");
+
+    // Cuts, seen in the fade's own counter. Pulls of 100 frames are shorter than the 480 of a
+    // crossfade, so one still running is there to see after the pull that armed it.
+    auto short_pull = [] {
+        int16_t out[100 * 2];
+        audio_render(out, 100);
+    };
+    const int cuts = g_stat_cuts;
+    // More than half full: the cut splices and arms no fade.
+    for (int i = 0; i < 100; i++) run.push_block();
+    check(g_ring_count > g_ring.size() / 4, "the ring is over half full");
+    short_pull();
+    check(g_stat_cuts == cuts + 1 && g_cut_left == 0, "a cut over half full splices with no crossfade");
+    // Under half full: the cut arms a fade, and a second burst during it waits its turn.
+    for (int i = 0; i < 30; i++) run.push_block();
+    short_pull();
+    check(g_stat_cuts == cuts + 2 && g_cut_left == kCutFade - 100, "a cut under half full runs a crossfade");
+    for (int i = 0; i < 30; i++) run.push_block();
+    check(g_ring_count > ring_limit(), "the ring is over the limit again during the fade");
+    short_pull();
+    check(g_stat_cuts == cuts + 2 && g_cut_left == kCutFade - 200, "a cut during a running crossfade waits");
+    while (g_cut_left) short_pull();
+    short_pull();
+    check(g_stat_cuts == cuts + 3, "the cut comes on the pull after the crossfade ends");
 
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;
