@@ -329,7 +329,9 @@ void make_polyphase() {
             for (int k = 0; k < 4; k++) total += c[k] = (int)std::lround(tap[k] / sum * 0x7FFF);
             // What rounding lost goes on the nearer middle tap. Next to phases 0 and 128 the
             // full-band set's outer taps are negative enough to push that tap past 0x7FFF, and
-            // what 16 bits can't hold goes on the other middle tap.
+            // what 16 bits can't hold goes on the other middle tap. Phase 64 is its own mirror
+            // image, but taps that mirror each other sum to an even number and 0x7FFF is odd,
+            // so its middle taps differ by 1.
             const int near = p < kPolyPhases / 2 ? 1 : 2;
             c[near] += 0x7FFF - total;
             c[3 - near] += std::max(c[near] - 0x7FFF, 0);

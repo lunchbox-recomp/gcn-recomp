@@ -208,6 +208,13 @@ void polyphase_checks() {
     }
     check(sums, "every phase of every set sums to 0x7FFF");
     check(mirrored, "phase p and phase 128 - p are each other's taps reversed");
+    // Phase 64 is its own mirror image, as near as an odd sum lets it be.
+    bool middle = true;
+    for (int s = 0; s < kPolySets; s++) {
+        const int16_t* c = g_poly[s][kPolyPhases / 2];
+        middle &= c[0] == c[3] && std::abs(c[1] - c[2]) == 1;
+    }
+    check(middle, "phase 64's outer taps match and its middle taps differ by 1");
     const int16_t* full = g_poly[2][0];
     check(full[0] == 0 && full[1] == 0x7FFF && full[2] == 0 && full[3] == 0,
           "the full-band set's phase 0 takes the second oldest sample alone");
