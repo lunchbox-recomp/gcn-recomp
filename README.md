@@ -77,9 +77,12 @@ The game project provides:
   except an XInput controller's ring, which shows the slot Windows gave it.
   A gamepad pulled out frees its port, which the game then sees unplugged unless the
   keyboard (port 1), `--pads` or a `controls.txt` line keeps it plugged in. A gamepad gets
-  no port when none is free. Nothing is saved between launches. A controller SDL has no
-  mapping for is a gamepad once a `gamecontrollerdb.txt` beside the executable maps it; for
-  a file elsewhere, SDL reads the path in `SDL_GAMECONTROLLERCONFIG_FILE`.
+  no port when none is free, and gets one only after it is unplugged and plugged in again.
+  A gamepad plugged back in takes the port of the index SDL gives it, so two gamepads
+  pulled out and plugged back in the other order swap ports. Nothing is saved between
+  launches. A controller SDL has no mapping for is a gamepad once a `gamecontrollerdb.txt`
+  beside the executable maps it; for a file elsewhere, SDL reads the path in
+  `SDL_GAMECONTROLLERCONFIG_FILE`.
   `input_map.*` binds any joystick or key to a port from a `controls.txt` (wheels, pedals,
   button boxes; port 1 unless a line says `port <n>`), and its `--list-controls` prints
   what to write for each. A port a device's `port <n>` line names, `port 1` too, is kept

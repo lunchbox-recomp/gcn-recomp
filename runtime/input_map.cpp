@@ -230,7 +230,7 @@ bool parse_float(const std::string& s, float& v) {
 }
 
 bool parse_int(const std::string& s, int& v) {
-    if (s.empty()) return false;
+    if (s.empty() || s.size() > 9) return false;
     for (char c : s)
         if (!isdigit((unsigned char)c)) return false;
     v = atoi(s.c_str());

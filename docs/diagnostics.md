@@ -112,7 +112,7 @@ game sees a port whose gamepad is pulled out as unplugged. A port before the fra
 (`2/900:A:10`) names the controller that presses; a press without one is port 1's, and a
 press on a port that is not plugged in does nothing.
 
-On macOS and Linux, `ninja test_ports` in a build directory builds `tools/test_ports.cpp`, which checks how
+`ninja test_ports` in a build directory (the build allows Linux, but it has only been run on macOS) builds `tools/test_ports.cpp`, which checks how
 gamepads get their ports without a controller or the game, using SDL's virtual joysticks.
 It compiles the frontend's own input loop and the SI layer in, so each port is read back as
 the guest reads it. `tools/test_ports.sh <test_ports> <work dir>` runs its three modes: the

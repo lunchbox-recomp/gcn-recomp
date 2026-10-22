@@ -608,6 +608,32 @@ void pins_more(const std::string& dir) {
     unplug({&sw, &sp, &gp});
     gamepads_shutdown();
 
+    // An unpinned plain joystick first, then a gamepad: the joystick is no gamepad, so it
+    // does not push the lone gamepad off port 1.
+    input_map_load((dir + "/no-controls.txt").c_str());
+    power_on(1);
+    gamepads_init();
+    Virtual loose{"virtual stick loose", false}, lone{"virtual pad lone"};
+    attach(loose);
+    frame();
+    attach(lone);
+    frame();
+    check(port(lone) == 1, "an unpinned plain joystick attached first does not push a lone gamepad off port 1");
+    unplug({&loose, &lone});
+    gamepads_shutdown();
+
+    // A port number past int range must not wrap into 1 to 4: the whole line is refused.
+    write_file(controls, "A = \"virtual pad bound\" button 0 port 4294967297\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    gamepads_init();
+    attach(bound);
+    frame();
+    check(input_map_port_count() == 1 && port(bound) == 1 && player(bound) == 0,
+          "a controls.txt line with port 4294967297 is refused: it pins nothing");
+    unplug({&bound});
+    gamepads_shutdown();
+
     // A key line's port plugs the port in but pins nothing: a gamepad holding its index
     // still takes it.
     write_file(controls, "B = key X port 3\n");
@@ -635,6 +661,7 @@ void mappings(const std::string& dir) {
     const std::string beside = std::string(base ? base : "./") + "gamecontrollerdb.txt";
     if (plat_readable(beside.c_str())) {
         printf("%s exists: not touching it\n", beside.c_str());
+        check(false, (beside + " is there already: the mappings checks did not run; move it away and run again").c_str());
         return;
     }
     Virtual stick{"virtual stick", false};
@@ -676,7 +703,8 @@ void mappings(const std::string& dir) {
     check(mapping_count() == before + 1 && this_platform && SDL_IsGamepad(stick.id) && port(stick) == 1,
           "a joystick SDL has no mapping for, mapped by gamecontrollerdb.txt (its line for this platform alone) before the "
           "gamepads are taken, gets port 1");
-    std::rename(beside.c_str(), (dir + "/gamecontrollerdb.beside.txt").c_str());
+    check(std::rename(beside.c_str(), (dir + "/gamecontrollerdb.beside.txt").c_str()) == 0,
+          "the test's gamecontrollerdb.txt is moved away from beside the executable");
     unplug({&stick});
     gamepads_shutdown();
 }
