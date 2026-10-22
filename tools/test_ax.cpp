@@ -42,7 +42,8 @@ void reset(uint32_t hash) {
 }
 
 // A running PCM16 voice with no rate conversion that loops `n` samples of `value` forever,
-// with the volume envelope at `env` and main L at `vol_l`. Nothing else is set.
+// with the volume envelope at `env` and main L at `vol_l`. Nothing else is set. The
+// samples go into ARAM, so call it after reset().
 PB pcm_voice(int16_t value, int n, uint16_t env, uint16_t vol_l) {
     for (int i = 0; i < n; i++) {
         g_aram[2 * (kSampleAt + i)] = (uint8_t)((uint16_t)value >> 8);
@@ -133,6 +134,65 @@ void stats_checks() {
     }
 }
 
+// Each enabled bus leaves the last sample it took from a voice in the voice's depop word,
+// which is where the AX library reads it from when it stops the voice.
+void depop_checks() {
+    // 1000 at an envelope of 0.5 is 500 into the mixer: main L at 1.0, main R at 0.5 and
+    // AuxA L at 0.25. Every depop word starts at a marker the mixer must leave on the six
+    // buses it doesn't mix.
+    reset(kHashLater);
+    PB pb = pcm_voice(1000, 32, 0x4000, 0x8000);
+    pb.w[PB_MIXER_CONTROL] = 0x0013;
+    pb.w[PB_MIXER + kMixerWord[1]] = 0x4000;
+    pb.w[PB_MIXER + kMixerWord[3]] = 0x2000;
+    for (int k = 0; k < 9; k++) pb.w[PB_DPOP + k] = 0x1234;
+    store_pb(pb);
+    run_list();
+    check(out_l(0) == 500 && out_l(159) == 500, "a voice of 1000 at an envelope of 0.5 mixes 500 into main L");
+    check(pb_word(PB_DPOP + 0) == 500 && pb_word(PB_DPOP + 3) == 250 && pb_word(PB_DPOP + 1) == 125,
+          "main L, main R and AuxA L leave 500, 250 and 125 in depop words 0, 3 and 1");
+    bool kept = true;
+    for (int k : {2, 4, 5, 6, 7, 8}) kept &= pb_word(PB_DPOP + k) == 0x1234;
+    check(kept, "the six buses the voice isn't mixed into leave their depop words alone");
+
+    // Ramping main L from 0.5 by 16 a sample, the last sample of the list goes out at
+    // 0x4000 + 159 * 16 = 18928, and 500 * 18928 >> 15 is 288.
+    reset(kHashLater);
+    pb = pcm_voice(1000, 32, 0x4000, 0x4000);
+    pb.w[PB_MIXER_CONTROL] = 0x0009;
+    pb.w[PB_MIXER + kMixerWord[0] + 1] = 16;
+    store_pb(pb);
+    run_list();
+    check(out_l(0) == 250 && out_l(159) == 288 && pb_word(PB_DPOP + 0) == 288,
+          "a ramped bus leaves the list's last sample, 288, not its first");
+
+    // A negative voice that runs out of samples 8 into its second millisecond: the last
+    // millisecond it plays ends in zeros, and the mixer skips it after that.
+    reset(kHashLater);
+    pb = pcm_voice(-1000, 40, 0x4000, 0x8000);
+    pb.w[PB_LOOPING] = 0;
+    pb.w[PB_DPOP + 0] = 0x1234;
+    store_pb(pb);
+    run_list();
+    check(out_l(39) == -500 && out_l(40) == 0 && pb_word(PB_RUNNING) == 0,
+          "a one-shot voice of 40 samples plays 40 and stops");
+    check(pb_word(PB_DPOP + 0) == 0, "a voice that ran out leaves 0, the last sample it played");
+    reset(kHashLater);
+    pb = pcm_voice(-1000, 32, 0x4000, 0x8000);
+    store_pb(pb);
+    run_list();
+    check(pb_word(PB_DPOP + 0) == (uint16_t)-500, "a looping voice of -1000 leaves -500");
+
+    // The library fades a stopped voice out through the setup command: main L starting at
+    // 500 and falling 3 a sample, with no voice running, is the whole of main L.
+    reset(kHashLater);
+    mem_w16(kSetup + 2, 500);
+    mem_w16(kSetup + 4, (uint16_t)-3);
+    store_pb(PB{});
+    run_list();
+    check(out_l(0) == 500 && out_l(1) == 497 && out_l(159) == 23, "setup's start and slope reach the output");
+}
+
 }  // namespace
 
 int main() {
@@ -140,6 +200,7 @@ int main() {
     g_aram = (uint8_t*)calloc(ARAM_SIZE, 1);
     if (!g_mem || !g_aram) return 2;
     stats_checks();
+    depop_checks();
     printf("%s: %d failed\n", g_failed ? "FAIL" : "ok", g_failed);
     return g_failed ? 1 : 0;
 }
