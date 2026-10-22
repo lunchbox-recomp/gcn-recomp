@@ -1,4 +1,4 @@
-// Step 1: the union of the keys in any number of caches and key lists, as a key list, and
+// The union of the keys in any number of caches and key lists, as a key list, and
 // each key's GLSL from gcn-recomp's shadergen.
 //
 //   dump_glsl KEYS_OUT.bin GLSL_DIR|- FEATURES.tsv|- IN.bin...
