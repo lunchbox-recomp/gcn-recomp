@@ -48,8 +48,9 @@ static size_t g_ring_r, g_ring_w, g_ring_count;  // in frames
 static double g_dma_pos;  // fractional read position for resampling
 static bool g_ring_filling = true;  // silent until the cushion is (back) in hand
 static double g_ring_avg;  // smoothed fill level, which the resampling rate steers by
-static int g_stat_underruns;
+static int g_stat_underruns, g_stat_cuts;
 static size_t g_stat_min_fill = SIZE_MAX;   // the lowest level a callback found, since asked
+static uint64_t g_out_frames;  // frames handed to the device so far
 
 void audio_push_dma(const int16_t* samples_be, uint32_t frames) {
     std::lock_guard<std::mutex> lk(g_ring_mutex);
@@ -132,12 +133,15 @@ void audio_render(int16_t* out, int frames) {
     {
         std::lock_guard<std::mutex> lk(g_ring_mutex);
         size_t cap = g_ring.size() / 2;
+        static const bool stats = getenv("GCN_AXSTATS") != nullptr;
         // Far too much buffered means this side stalled. Cut back to the cushion once,
         // rather than shaving the excess off a little at every callback.
         if (g_ring_count > ring_limit()) {
             size_t drop = g_ring_count - ring_cushion();
             g_ring_r = (g_ring_r + drop) % cap;
             g_ring_count -= drop;
+            g_stat_cuts++;
+            if (stats) fprintf(stderr, "[ring] cut %zu frames at output frame %llu\n", drop, (unsigned long long)g_out_frames);
         }
         if (g_ring_filling && g_ring_count >= ring_cushion()) {
             g_ring_filling = false;
@@ -151,10 +155,9 @@ void audio_render(int16_t* out, int frames) {
         g_ring_avg += ((double)g_ring_count - g_ring_avg) * 0.02;
         double trim = std::clamp((g_ring_avg - ring_cushion()) / ring_cushion() * 0.01, -0.005, 0.005);
         const double step = (double)DMA_RATE / OUT_RATE * (1.0 + trim);
-        static const bool stats = getenv("GCN_AXSTATS") != nullptr;
         static int calls;
         if (stats && ++calls % 400 == 0)
-            fprintf(stderr, "[ring] fill=%zu avg=%.0f trim=%+.3f%% underruns=%d\n", g_ring_count, g_ring_avg, trim * 100, g_stat_underruns);
+            fprintf(stderr, "[ring] fill=%zu avg=%.0f trim=%+.3f%% underruns=%d cuts=%d\n", g_ring_count, g_ring_avg, trim * 100, g_stat_underruns, g_stat_cuts);
         for (int i = 0; i < frames; i++) {
             int32_t l = 0, r = 0;
             // Out of samples: stay silent until the cushion is back. Playing each block as
@@ -175,6 +178,7 @@ void audio_render(int16_t* out, int frames) {
             out[2 * i] = (int16_t)l;
             out[2 * i + 1] = (int16_t)r;
         }
+        g_out_frames += frames;
     }
     // DTK streaming music
     if (ai_stream_playing()) {
