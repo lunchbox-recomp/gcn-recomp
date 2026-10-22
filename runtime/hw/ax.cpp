@@ -4,6 +4,7 @@
 #include "../runtime.h"
 #include "ax.h"
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <initializer_list>
 #include <map>
@@ -283,6 +284,59 @@ void stats_voice(const PB& pb, const MixFlags& mf) {
     g_sw.ramp += ramp;
 }
 
+// ---- polyphase resampling (source type 0) ----
+// Four taps for each of 128 phases of the input position's fraction, in three sets that PB
+// word 5 picks. The ucode takes its sets from the DSP's ROM, which the runtime doesn't have,
+// so these are computed: a sinc cut off at a half, three quarters and all of the input's
+// Nyquist frequency, the three the SDK names for 8, 12 and 16 kHz. Tap k weighs the kth
+// oldest of the last four samples in, which lies k - 1 - phase/128 samples from the point the
+// output is taken at, so the output moves from the second oldest toward the third as the
+// fraction grows. A Hann window four samples wide tapers the taps, and each phase's taps are
+// scaled to sum to 0x7FFF, so a constant comes out at 32767/32768 of itself.
+constexpr int kPolyPhases = 128, kPolySets = 3;
+int16_t g_poly[kPolySets][kPolyPhases][4];
+
+void make_polyphase() {
+    constexpr double kPi = 3.14159265358979323846;
+    const double cutoff[kPolySets] = {0.5, 0.75, 1.0};
+    for (int s = 0; s < kPolySets; s++) {
+        for (int p = 0; p < kPolyPhases; p++) {
+            double tap[4], sum = 0;
+            for (int k = 0; k < 4; k++) {
+                const double d = k - 1 - (double)p / kPolyPhases;
+                const double x = kPi * cutoff[s] * d;
+                tap[k] = (x == 0 ? 1 : std::sin(x) / x) * (0.5 + 0.5 * std::cos(kPi * d / 2));
+                sum += tap[k];
+            }
+            int total = 0;
+            for (int k = 0; k < 4; k++) total += g_poly[s][p][k] = (int16_t)std::lround(tap[k] / sum * 0x7FFF);
+            g_poly[s][p][p < kPolyPhases / 2 ? 1 : 2] += 0x7FFF - total;  // what rounding lost, on the nearer middle tap
+        }
+    }
+}
+
+// For each sample out, the position steps by the ratio, a sample comes in for each whole
+// step, and the last four in are filtered with the phase the fraction left over picks.
+void resample_polyphase(PB& pb, Accel& acc, int16_t* out) {
+    const int16_t(*set)[4] = g_poly[pb.w[PB_COEF_SELECT]];
+    int16_t* last = (int16_t*)&pb.w[PB_LAST];
+    const uint32_t ratio = pb.get32(PB_RATIO_HI);
+    uint32_t pos = pb.w[PB_FRAC];
+    for (int i = 0; i < SPMS; i++) {
+        pos += ratio;
+        while (pos >= 0x10000) {
+            last[0] = last[1]; last[1] = last[2]; last[2] = last[3];
+            last[3] = acc.sample();
+            pos -= 0x10000;
+        }
+        const int16_t* c = set[pos >> 9];
+        int64_t sum = 0;
+        for (int k = 0; k < 4; k++) sum += (int64_t)last[k] * c[k];
+        out[i] = (int16_t)std::clamp<int64_t>(sum >> 15, -32768, 32767);
+    }
+    pb.w[PB_FRAC] = (uint16_t)pos;
+}
+
 extern int g_stat_voices;
 void process_voice(PB& pb, int offset) {
     if (!pb.w[PB_RUNNING]) return;
@@ -299,8 +353,10 @@ void process_voice(PB& pb, int offset) {
         // interpolating types would have it.
         for (int i = 0; i < SPMS; i++) samples[i] = acc.sample();
         for (int k = 0; k < 4; k++) last[k] = samples[SPMS - 4 + k];
+    } else if (pb.w[PB_SRC_TYPE] == 0 && pb.w[PB_COEF_SELECT] < kPolySets) {
+        resample_polyphase(pb, acc, samples);
     } else {
-        // Types 0 and 1: linear interpolation, for the polyphase and linear modes alike.
+        // Type 1, and type 0 with a coefficient set past the three: linear interpolation.
         uint32_t ratio = pb.get32(PB_RATIO_HI);
         uint32_t pos = pb.w[PB_FRAC];
         for (int i = 0; i < SPMS; i++) {
@@ -455,6 +511,7 @@ void ax_init(uint32_t ucode_hash) {
     g_has_compressor = ucode_hash != kUcode2001Hash;
     g_has_lpf = ucode_hash != kUcode2001Hash;
     g_comp_counter = 0;
+    make_polyphase();
     const char* over = getenv("GCN_AX_LAYOUT");
     const bool forced = over && (!strcmp(over, "2001") || !strcmp(over, "later"));
     if (forced) g_layout_later = !strcmp(over, "later");
