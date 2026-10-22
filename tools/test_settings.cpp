@@ -145,6 +145,43 @@ void save_keeps_lines() {
     check(!exists(p + ".tmp"), "a save leaves no temp file behind");
 }
 
+void save_refuses_bad_values() {
+    const std::string p = path_of("refused.txt");
+    const std::string before = "aspect 4:3\nvsync on\n";
+    write_file(p, before);
+    static const char* kAspects[] = {"", "16x9", "16:9\nvsync off"};
+    static const int kScales[] = {0, -1, 1000000000};
+    int saved = 0;
+    for (const char* aspect : kAspects) {
+        Settings s;
+        s.aspect = aspect;
+        if (settings_save(p, s)) {
+            saved++;
+            printf("     aspect \"%s\" was saved\n", aspect);
+        }
+    }
+    for (int scale : kScales) {
+        Settings s;
+        s.scale = scale;
+        if (settings_save(p, s)) {
+            saved++;
+            printf("     scale %d was saved\n", scale);
+        }
+    }
+    check(saved == 0, "a save refuses an empty aspect, 16x9, an aspect with a newline, and a scale of 0, -1 or 10 digits");
+    check(read_file(p) == before, "and leaves the old file whole");
+    Settings bad;
+    bad.scale = 0;
+    const std::string q = path_of("refused_new.txt");
+    check(!settings_save(q, bad) && !exists(q), "and makes no file where there was none");
+    Settings edge;
+    edge.aspect = "window";
+    edge.scale = 999999999;
+    const bool took = settings_save(p, edge);
+    const Settings back = settings_load(p);
+    check(took && back.aspect == "window" && back.scale == 999999999, "a save takes window and a scale of 9 digits");
+}
+
 void save_after_unterminated_line() {
     const std::string p = path_of("unterminated.txt");
     write_file(p, "vsync on");
@@ -249,6 +286,7 @@ int main(int argc, char** argv) {
     aspects();
     bad_values();
     save_keeps_lines();
+    save_refuses_bad_values();
     save_after_unterminated_line();
     save_creates();
     failed_save_no_temp();

@@ -37,8 +37,10 @@ Settings settings_load(const std::string& path);
 // rewritten with the new value, and an owned key the file lacks is added at the end. Every
 // other line is kept as it was, comments, blank lines and unknown keys included. The new
 // file goes to `path`.tmp and is renamed over `path`, so a save that fails leaves the old
-// file whole. False, with the reason on stderr, if it failed, and if the old file can't be
-// read, so that its lines aren't lost.
+// file whole. False, with the reason on stderr, if it failed, if the old file can't be read,
+// so that its lines aren't lost, and if `s` holds a value a load would skip, such as an
+// aspect settings_parse_aspect refuses (one with a newline included) or a scale under 1.
+// Nothing is written then.
 bool settings_save(const std::string& path, const Settings& s);
 
 // An aspect as the file writes it: "W:H", two positive integers such as 16:9, or "window".

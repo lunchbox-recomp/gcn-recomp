@@ -108,6 +108,18 @@ Settings settings_load(const std::string& path) {
 }
 
 bool settings_save(const std::string& path, const Settings& s) {
+    // Only what a load takes, which also keeps a newline out of the file.
+    float ratio;
+    int scale;
+    if (!settings_parse_aspect(s.aspect, ratio)) {
+        fprintf(stderr, "%s: aspect \"%s\" isn't one a load takes, so nothing is saved\n", path.c_str(),
+                s.aspect.c_str());
+        return false;
+    }
+    if (!parse_positive(std::to_string(s.scale), scale)) {
+        fprintf(stderr, "%s: scale %d isn't one a load takes, so nothing is saved\n", path.c_str(), s.scale);
+        return false;
+    }
     std::vector<std::string> lines;
     bool found;
     if (!read_lines(path, lines, found)) {
