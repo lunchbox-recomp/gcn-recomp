@@ -377,6 +377,12 @@ virtual clock, and checks that a burst and a stall leave the output as smooth as
 Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
 image, device or SDL.
 
+SDL's dummy driver (`SDL_AUDIO_DRIVER=dummy`, for runs that make no sound) sleeps a whole
+number of milliseconds per pull and then pulls, so it took 81.7 s of sound in a 90 s run,
+and the ring cut back about once a second. Under that driver `audio_sdl.cpp` pulls the
+sound itself instead, on deadlines counted from the start, so a run with no sound keeps a
+sound card's pace.
+
 `GCN_CPU_SCALE=N` (or `clock_set_cpu_scale` from a game's sources) makes the emulated CPU
 N times as fast as the console's: the ticks per edge are divided by N, so the same frame of
 work takes 1/N of the virtual time. A game that paces itself on the retrace and is patched

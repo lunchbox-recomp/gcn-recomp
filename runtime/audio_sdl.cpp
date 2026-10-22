@@ -3,8 +3,11 @@
 #include "runtime.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <string>
+#include <thread>
 
 void audio_render(int16_t* out, int frames);
 void audio_open_wav();
@@ -43,8 +46,30 @@ static SDL_AudioDeviceID find_device(const std::string& name) {
     return found;
 }
 
+// SDL's dummy driver sleeps a whole number of milliseconds for each pull and then does the
+// pull, so it takes sound slower than a sound card does (91.5% of the rate in one run) and
+// the mix's ring overfills and cuts about once a second. In its place, a thread pulls the
+// same 512 frames on deadlines counted from the start, so a late wake-up doesn't carry over
+// to the next and the pace is a sound card's, without a sound.
+static void silent_clock() {
+    using clock = std::chrono::steady_clock;
+    static constexpr int kFrames = 512;
+    int16_t buf[kFrames * 2];
+    const clock::time_point start = clock::now();
+    for (long long frames = kFrames;; frames += kFrames) {
+        audio_render(buf, kFrames);
+        const long long ns = frames / OUT_RATE * 1'000'000'000LL + frames % OUT_RATE * 1'000'000'000LL / OUT_RATE;
+        std::this_thread::sleep_until(start + std::chrono::nanoseconds(ns));
+    }
+}
+
 bool audio_open() {
     audio_open_wav();
+    if (const char* driver = SDL_GetCurrentAudioDriver(); driver && !strcmp(driver, "dummy")) {
+        LOG(LOG_AI, "audio: SDL's dummy driver, so a silent clock takes the sound instead");
+        std::thread(silent_clock).detach();
+        return true;
+    }
     const SDL_AudioSpec spec = {SDL_AUDIO_S16, 2, OUT_RATE};
     // 512 frames a pull, as SDL2's device was asked for; SDL3's own choice at 48 kHz is
     // 1024, twice the latency the mix's cushion (audio.cpp) was tuned against.
