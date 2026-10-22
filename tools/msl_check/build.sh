@@ -14,7 +14,11 @@ mkdir -p "$OUT"
 
 CXXFLAGS="-std=c++20 -O1 -fobjc-arc -isysroot $SDK -I$ROOT/runtime/gx -I$ROOT/runtime -I$HERE/src"
 
-clang++ $CXXFLAGS "$HERE/src/msl_spike.mm" "$ROOT/runtime/gx/shadergen.cpp" \
+SRC="$HERE/src"
+clang++ $CXXFLAGS \
+    "$SRC/main.mm" "$SRC/cmd_compile.mm" "$SRC/cmd_compare.mm" "$SRC/cmd_glcompile.cpp" "$SRC/cmd_synth.cpp" \
+    "$SRC/msl_translate.cpp" "$SRC/metal_util.mm" "$SRC/mtl_draw.mm" "$SRC/gl_ref.cpp" \
+    "$SRC/test_inputs.cpp" "$SRC/synth_keys.cpp" "$SRC/spike_util.cpp" "$ROOT/runtime/gx/shadergen.cpp" \
     -framework Foundation -framework Metal -framework OpenGL -o "$OUT/msl_spike"
 clang++ $CXXFLAGS "$HERE/src/dump_glsl.cpp" "$ROOT/runtime/gx/shadergen.cpp" -o "$OUT/dump_glsl"
 echo "built $OUT/msl_spike and $OUT/dump_glsl"
