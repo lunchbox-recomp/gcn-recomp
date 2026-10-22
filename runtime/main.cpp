@@ -12,6 +12,7 @@
 #include "vr_game.h"
 #include "telemetry.h"
 #include "record.h"
+#include "settings.h"
 #ifdef GCN_OPENXR
 #include "xr_desktop.h"
 #endif
@@ -238,7 +239,10 @@ int main(int argc, char** argv) {
     bool test_ffb = false;
     // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
     const char* telemetry_to = getenv("GCN_TELEMETRY");
-    int scale = 2;
+    // settings.txt in the working directory (settings.h). A flag beats it for this run and
+    // isn't written back.
+    const Settings settings = settings_load("settings.txt");
+    int scale = settings.scale;
     int pads = 1;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--log-all")) for (auto& e : g_log_enabled) e = true;
