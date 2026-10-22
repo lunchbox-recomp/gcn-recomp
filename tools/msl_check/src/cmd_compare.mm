@@ -16,6 +16,11 @@
 
 using namespace gx;
 
+// The most a key's depth may differ between GL and Metal. On the made-up keys the largest
+// difference is 1.19e-07 with fast math off and 5.96e-08 with it on, a step or two of a
+// float near 1. The --flipfc negative control moves z freeze keys by 0.587.
+static const double kDepthTolerance = 1e-6;
+
 int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
     std::vector<ShaderKey> keys = load_keys(keys_path);
     if (!gl_init()) {
@@ -26,7 +31,7 @@ int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
     id<MTLCommandQueue> q = [dev newCommandQueue];
     static Inputs in;
     make_inputs(in);
-    // Options, then key indices or "all".
+    // Options and key indices (or "all"), in any order.
     std::vector<int> which;
     bool quiet = false;
     for (int a = 0; a < argc; a++) {
@@ -78,17 +83,30 @@ int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
             quiet = true;
         } else if (!strcmp(argv[a], "all")) {
             for (size_t n = 0; n < keys.size(); n++) which.push_back((int)n);
+        } else if (!strncmp(argv[a], "--", 2)) {
+            fprintf(stderr, "unknown option %s\n", argv[a]);
+            return 2;
         } else {
-            which.push_back(atoi(argv[a]));
+            char* end = nullptr;
+            const long n = strtol(argv[a], &end, 10);
+            if (end == argv[a] || *end) {
+                fprintf(stderr, "not a key index: %s\n", argv[a]);
+                return 2;
+            }
+            if (n < 0 || n >= (long)keys.size()) {
+                fprintf(stderr, "no key %ld; the list has %zu\n", n, keys.size());
+                return 2;
+            }
+            which.push_back((int)n);
         }
     }
-    int worst_all = 0, keys_over1 = 0;
+    if (which.empty()) {
+        fprintf(stderr, "usage: msl_spike %s [options] N...|all\n", logic_op < 0 ? "compare KEYS.bin" : "logic KEYS.bin OP");
+        return 2;
+    }
+    int worst_all = 0, keys_over1 = 0, keys_depth = 0;
     printf("key  stages  max|dR dG dB dA|  px>1  px!=  sentinel(GL/MTL)  depth max diff\n");
     for (int n : which) {
-        if (n < 0 || n >= (int)keys.size()) {
-            fprintf(stderr, "no key %d\n", n);
-            return 1;
-        }
         const ShaderKey& k = keys[n];
         Image g = gl_draw(k, in, logic_op);
         Image m = mtl_draw(dev, q, k, in, logic_op);
@@ -109,12 +127,18 @@ int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
             sg += sentinel(g.rgba);
             sm += sentinel(m.rgba);
         }
+        // A NaN difference sticks, so it fails the key rather than vanishing in std::max.
         double dmax = 0;
-        for (int p = 0; p < W * H; p++) dmax = std::max(dmax, (double)fabsf(g.depth[p] - m.depth[p]));
+        for (int p = 0; p < W * H; p++) {
+            const double d = fabsf(g.depth[p] - m.depth[p]);
+            if (std::isnan(d) || d > dmax) dmax = d;
+        }
         const int worst = std::max(std::max(mx[0], mx[1]), std::max(mx[2], mx[3]));
         worst_all = std::max(worst_all, worst);
         keys_over1 += worst > 1;
-        if (quiet && worst <= 1 && dmax < 1e-6) continue;
+        const bool depth_off = !(dmax < kDepthTolerance);
+        keys_depth += depth_off;
+        if (quiet && worst <= 1 && !depth_off) continue;
         printf("%3d  %6u  %3d %3d %3d %3d  %5d %5d  %6d/%-6d  %.3g\n", n, ((k.genmode >> 10) & 15) + 1, mx[0], mx[1], mx[2], mx[3], over1,
                differ, sg, sm, dmax);
         if (worst > 1 || differ) {
@@ -128,5 +152,6 @@ int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
         }
     }
     printf("%zu keys compared; worst channel difference %d; keys over 1 level: %d\n", which.size(), worst_all, keys_over1);
-    return worst_all <= 1 ? 0 : 1;
+    if (keys_depth) printf("keys with depth off by %g or more: %d\n", kDepthTolerance, keys_depth);
+    return worst_all <= 1 && !keys_depth ? 0 : 1;
 }

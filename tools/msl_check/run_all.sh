@@ -65,14 +65,22 @@ SYNTH="$WORK/synth.bin"
   "$SPIKE" logic "$ROUTE" 3 --quiet --fastmath all || true
   echo "### negative control: gl_FragCoord flipped (z plane and screen keys must differ)"
   # The indices are places in the list msl_spike synth writes. 97 and 99 are z freeze keys
-  # (99 also reads a Z texture), and 60, 63, 66 and 70 are EFB copy keys.
-  "$SPIKE" compare "$SYNTH" --zplane --screen --fastmath --flipfc 97 99 60 63 66 70 || true
+  # (99 also reads a Z texture), and 60, 63, 66 and 70 are EFB copy keys. Each is compared on
+  # its own and must fail with status 1, or the run stops.
+  for n in 97 99 60 63 66 70; do
+    st=0
+    "$SPIKE" compare "$SYNTH" --zplane --screen --fastmath --flipfc "$n" || st=$?
+    if [ "$st" -ne 1 ]; then
+      echo "negative control: key $n exited $st with gl_FragCoord flipped, not 1" >&2
+      exit 1
+    fi
+  done
   echo "### winding: GL CCW front, cull back; Metal CW then CCW, both vertex orders"
   "$SPIKE" compare "$ROUTE" --fastmath --cullback 0 | sed -n 3p
   "$SPIKE" compare "$ROUTE" --fastmath --cullback --ccw 0 | sed -n 3p
   "$SPIKE" compare "$ROUTE" --fastmath --cullback --reverse 0 | sed -n 3p
   "$SPIKE" compare "$ROUTE" --fastmath --cullback --reverse --ccw 0 | sed -n 3p
-  echo "### fog curves 3 to 7, infinite and NaN fog inputs, fast math on"
+  echo "### fog curves 3 to 7 (3 draws as 2), infinite and NaN fog inputs, fast math on"
   for mode in 3 4 5 6 7; do
     "$SPIKE" compare "$ROUTE" --quiet --fastmath --fogmode=$mode all || true
   done

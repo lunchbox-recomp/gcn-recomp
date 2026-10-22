@@ -85,10 +85,10 @@ std::string gen_vertex_shader();
 std::string glsl_header_with_clip();
 std::string gen_pixel_shader(const ShaderKey& k);
 
-// For a backend in another dialect (render_metal's MSL): the shaders from `void main() {`
-// on, which use GLSL's vocabulary but declare nothing and compile under that backend's
-// prelude, and what a key's pixel shader declares beyond what every one does, so that the
-// backend writes its own declarations from the same conditions.
+// For a backend in another dialect (Metal's MSL, as tools/msl_check builds it): the shaders
+// from `void main() {` on, which use GLSL's vocabulary but declare nothing and compile under
+// that backend's prelude, and what a key's pixel shader declares beyond what every one does,
+// so that the backend writes its own declarations from the same conditions.
 struct PixelIo {
     bool palettes;    // u_pal (efb_pal_mask)
     bool game_depth;  // v_gdepth, u_vr and u_vp_b (fg_depth)
