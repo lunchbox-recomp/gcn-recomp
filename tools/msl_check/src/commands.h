@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string>
 
-// Metal compile and pipeline timings (cmd_compile.mm).
+// emit, plus the modes that compile on Metal and time it (cmd_compile.mm).
 int cmd_emit(const char* keys_path, const std::string& dir);
 int cmd_compile(const char* keys_path, bool cold, const char* err_path);
 int cmd_blendvar(const char* keys_path);

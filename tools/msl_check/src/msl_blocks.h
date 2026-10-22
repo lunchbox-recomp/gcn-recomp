@@ -1,5 +1,6 @@
-// The uniform blocks of both stages: one C++ struct each (blk::FsBlock, blk::VsBlock), and the
-// MSL text of the same structs, so the translation and the two renderers share one layout.
+// The uniform blocks of both stages: one C++ struct each (blk::FsBlock, blk::VsBlock), from
+// macros that msl_translate.cpp also stringifies into MSL, so the translation and the two
+// renderers share one layout.
 #pragma once
 #include <simd/simd.h>
 
@@ -43,17 +44,8 @@
         float4 u_zproj;                \
         int gx_clip_mask;              \
     };
-#define STR2(...) #__VA_ARGS__
-#define STR(...) STR2(__VA_ARGS__)
 namespace blk {
 using namespace simd;
 FS_BLOCK
 VS_BLOCK
 }  // namespace blk
-static const char* kFsBlockSrc = STR(FS_BLOCK);
-static const char* kVsBlockSrc = STR(VS_BLOCK);
-static const char* kFsUniforms[] = {"u_reg", "u_kstage", "u_texsize", "u_indmtx", "u_indscale", "u_alpharef", "u_fog",
-                                    "u_fogmode", "u_fogcolor", "u_zbias", "u_zplane", "u_dstalpha", "u_indcoordscale",
-                                    "u_points", "u_point_off", "u_texsnap", "u_screen_uv", "u_screen_px",
-                                    "u_screen_ripple", "u_vr", "u_vp_b"};
-static const char* kVsUniforms[] = {"u_proj", "u_vp_a", "u_vp_b", "u_point_size", "u_vr", "u_uvgrad", "u_view", "u_crop", "u_zproj"};

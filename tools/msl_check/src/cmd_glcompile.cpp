@@ -4,6 +4,7 @@
 #include "spike_util.h"
 #define GL_SILENCE_DEPRECATION
 #include <OpenGL/gl3.h>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -27,6 +28,7 @@ int cmd_glcompile(const char* keys_path) {
     glBindVertexArray(vao);
     glViewport(0, 0, 4, 4);
     std::vector<double> ms;
+    int failed = 0;
     for (size_t n = 0; n < keys.size(); n++) {
         // A nonce in the code, as the Metal side has, so that no compile comes from a cache
         // (Apple's GL runs on Metal and may share its shader cache).
@@ -50,11 +52,18 @@ int cmd_glcompile(const char* keys_path) {
         glUseProgram(p);
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glFinish();
-        ms.push_back(now_ms() - t0);
+        // A program that failed to link isn't timed, so the baseline holds only real compiles.
+        if (ok) {
+            ms.push_back(now_ms() - t0);
+        } else {
+            fprintf(stderr, "key %zu: link failed\n", n);
+            failed++;
+        }
         glDeleteShader(v);
         glDeleteShader(f);
         glDeleteProgram(p);
     }
+    printf("%d of %zu GL programs failed to link\n", failed, keys.size());
     stats("GL compile + link + first draw", ms);
-    return 0;
+    return failed ? 1 : 0;
 }

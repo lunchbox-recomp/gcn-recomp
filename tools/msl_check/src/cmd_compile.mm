@@ -1,4 +1,5 @@
-// The modes that compile on Metal and time it: emit, compile, blendvar, parallel and floor.
+// emit, plus the modes that compile on Metal and time it: compile, blendvar, parallel and
+// floor.
 #include "commands.h"
 #include "metal_util.h"
 #include "msl_translate.h"
@@ -31,7 +32,9 @@ int cmd_compile(const char* keys_path, bool cold, const char* err_path) {
     }
     printf("vertex: compiled in %.1f ms\n", vms);
     id<MTLFunction> vs = [vlib newFunctionWithName:@"gx_vertex"];
+    // Errors go to ERRORS.txt when it's given and can be opened, else to stderr.
     FILE* ef = err_path ? fopen(err_path, "wb") : nullptr;
+    if (!ef) ef = stderr;
     std::vector<double> lib_ms, pso_ms;
     int ok = 0, pso_ok = 0;
     size_t bytes = 0;
@@ -41,7 +44,7 @@ int cmd_compile(const char* keys_path, bool cold, const char* err_path) {
         double ms = 0;
         id<MTLLibrary> lib = compile_msl(dev, src, &err, &ms);
         if (!lib) {
-            if (ef) fprintf(ef, "=== key %zu\n%s\n", n, err.c_str());
+            fprintf(ef, "=== key %zu\n%s\n", n, err.c_str());
             continue;
         }
         ok++;
@@ -50,13 +53,13 @@ int cmd_compile(const char* keys_path, bool cold, const char* err_path) {
         double pms = 0;
         id<MTLRenderPipelineState> p = make_pipeline(dev, vs, fs, &err, &pms);
         if (!p) {
-            if (ef) fprintf(ef, "=== key %zu pipeline\n%s\n", n, err.c_str());
+            fprintf(ef, "=== key %zu pipeline\n%s\n", n, err.c_str());
             continue;
         }
         pso_ok++;
         pso_ms.push_back(pms);
     }
-    if (ef) fclose(ef);
+    if (ef != stderr) fclose(ef);
     printf("compiled %d of %zu keys (%s), pipelines %d; mean source %.1f KB\n", ok, keys.size(), cold ? "cold, a nonce per key" : "as is",
            pso_ok, bytes / 1024.0 / std::max<size_t>(1, keys.size()));
     stats("newLibraryWithSource", lib_ms);
@@ -64,10 +67,10 @@ int cmd_compile(const char* keys_path, bool cold, const char* err_path) {
     std::vector<double> both;
     for (size_t i = 0; i < std::min(lib_ms.size(), pso_ms.size()); i++) both.push_back(lib_ms[i] + pso_ms[i]);
     stats("library + pipeline", both);
-    return ok == (int)keys.size() ? 0 : 1;
+    return ok == (int)keys.size() && pso_ok == (int)keys.size() ? 0 : 1;
 }
 
-// What a second and third pipeline for the same fragment function cost when only
+// What a second, third and fourth pipeline for the same fragment function cost when only
 // blend state or write mask differ (state GL keeps dynamic and ShaderKey does not carry).
 int cmd_blendvar(const char* keys_path) {
     std::vector<ShaderKey> keys = load_keys(keys_path);
@@ -154,7 +157,7 @@ int cmd_compile_parallel(const char* keys_path) {
     dispatch_group_wait(g, DISPATCH_TIME_FOREVER);
     printf("parallel, cold: %d of %zu pipelines in %.0f ms wall (%.1f ms a key)\n", ok, keys.size(), now_ms() - t0,
            (now_ms() - t0) / keys.size());
-    return 0;
+    return ok == (int)keys.size() ? 0 : 1;
 }
 
 // The floor: a fragment function that does nothing, under metal_stdlib alone and under

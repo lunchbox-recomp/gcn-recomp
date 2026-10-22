@@ -8,7 +8,7 @@ MTLCompileOptions* compile_options() {
     o.languageVersion = MTLLanguageVersion3_0;
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-    o.fastMathEnabled = g_fast_math;  // NO: TEV math must not reassociate
+    o.fastMathEnabled = g_fast_math;  // off unless `fast` or `--fastmath`
 #pragma clang diagnostic pop
     if (const char* mm = getenv("MATHMODE")) {
         o.mathMode = (MTLMathMode)atoi(mm);
