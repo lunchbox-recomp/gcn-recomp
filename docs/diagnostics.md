@@ -438,15 +438,17 @@ when the AX ucode boots. Three lines come at their own pace:
   recording.
 
 Every 400 command lists four more lines follow, each with `list=N`, the lists processed
-since boot. Their counts cover those 400 lists, and the hash covers everything since boot.
+since the process started. Their counts cover those 400 lists, and the hash covers everything
+since the process started.
 An unpaced run (`--fast`, or the benchmark) makes no catch-up jumps, so two runs with the
 same input print every line here but `[ring]` alike. Comparing two runs at each `list=N`
 both reached shows whether a change to the mixer changed what it made, and from which list.
 
-- `[ax] cmds`: `skipped` counts the commands parsed but not run (08, 0A to 0C, and 12 on the 2001 layout), and `unknown` the IDs past 13, which end their
-  list. Then `ID=count` for each command 00 to 13 that appeared, in hex. `0F=` counts the
-  lists that reached the end command, so it's 400 when every list did. A list stopped by the
-  256-command guard, by the end of its buffer or by an unknown command doesn't count.
+- `[ax] cmds`: `skipped` counts the commands parsed but not run (08, 0A to 0C, and 12 on the
+  2001 ucode build), and `unknown` the IDs past 13, which end their list. Then `ID=count` for
+  each command 00 to 13 that appeared, in hex. `0F=` counts the lists that reached the end
+  command, so it's 400 when every list did. A list stopped by the 256-command guard, by the
+  end of its buffer or by an unknown command doesn't count.
 - `[ax] bus`: the largest magnitude each of the nine buses had when the ucode wrote it out.
   The main buses are measured at 06 and 0E, L and R before 0E's clamp. The aux buses are
   measured where 04, 05, 10 and 13 hand them to the CPU for its effects. `clipped` counts
@@ -458,7 +460,7 @@ both reached shows whether a change to the mixer changed what it made, and from 
   `src_other` counts anything past 2. `delay` counts the initial time delay switched on
   (word 27), which this runtime doesn't apply. `stream_loops` counts the times a voice with
   the stream flag (word 8) looped.
-- `[ax] hash`: `fnv` is a 64-bit FNV-1a over every byte 0E has written since boot, each
+- `[ax] hash`: `fnv` is a 64-bit FNV-1a over every byte 0E has written since the process started, each
   block's 640 bytes of surround and then its 640 bytes of interleaved R and L, as RAM holds
   them.
 
@@ -472,17 +474,18 @@ each of the nine buses its own enable bit and ramps them in groups. Every other 
 including one not seen before, gets the later layout.
 
 `GCN_AX_LAYOUT=2001` or `GCN_AX_LAYOUT=later` forces the layout whatever the hash, and the
-log line then ends `(set by GCN_AX_LAYOUT)`. It is for comparing the two on one game: the
+log line then ends `(set by GCN_AX_LAYOUT)`. It changes only how the mixer control word is
+decoded, nothing else, so it is for comparing the two decodings on one game: the
 `[ax] hash` lines from a run with each show where the mix first differs. Any other value is
 ignored, with a line on stderr saying so whatever `--log` is set to.
 
-Command 12, the compressor, runs on the later layout and is skipped on the 2001 one, which
-has no such command. It reads a threshold, a release length in lists and the address of a
+Command 12, the compressor, runs on every ucode build but the 2001 one, which has no such
+command and skips it. The ucode hash alone decides this, so `GCN_AX_LAYOUT` does not affect it. It reads a threshold, a release length in lists and the address of a
 table of 160-entry ramps. If the magnitude of any main L or R sample is over the threshold
 when the command runs, it scales both by the attack ramp numbered by the release counter,
 then sets the counter to the release length. Otherwise, while the counter is above zero, it
-counts down and applies release ramp 11 + counter, the release ramps following the 11
-attack ramps. The counter carries from list to list and resets when the AX ucode boots.
+counts the counter down and then applies the table's ramp 11 + counter, the release ramps
+following the 11 attack ramps. The counter carries from list to list and resets when the AX ucode boots.
 Without it a list whose main L or R passes full scale hard-clips at 0E, so `clipped` falls
 where it runs.
 

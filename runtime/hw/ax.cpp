@@ -19,6 +19,9 @@ int32_t g_left[SPF], g_right[SPF], g_surround[SPF];
 int32_t g_auxa_l[SPF], g_auxa_r[SPF], g_auxa_s[SPF];
 int32_t g_auxb_l[SPF], g_auxb_r[SPF], g_auxb_s[SPF];
 
+// The nine buses in the order the setup command and the mixer control words use.
+int32_t* const kBuses[9] = {g_left, g_right, g_surround, g_auxa_l, g_auxa_r, g_auxa_s, g_auxb_l, g_auxb_r, g_auxb_s};
+
 // ---- parameter block (word indices into the big-endian u16 array) ----
 enum {
     PB_NEXT_HI = 0, PB_NEXT_LO = 1, PB_SRC_TYPE = 4, PB_COEF_SELECT = 5, PB_MIXER_CONTROL = 6,
@@ -64,8 +67,6 @@ struct StatsWindow {
 StatsWindow g_sw;
 uint32_t g_stat_lists;
 uint64_t g_stat_hash = 0xCBF29CE484222325ull;  // FNV-1a over every byte 0E has written
-
-int32_t* const kBuses[9] = {g_left, g_right, g_surround, g_auxa_l, g_auxa_r, g_auxa_s, g_auxb_l, g_auxb_r, g_auxb_s};
 
 void stats_peak(const int32_t* buf) {
     for (int b = 0; b < 9; b++) {
@@ -257,6 +258,8 @@ MixFlags decode_mixer_later(uint16_t mc) {
 
 // Which decoder the mixer control word goes through; chosen once, by ax_init.
 bool g_layout_later;
+// Whether this ucode build has command 12; set from the hash alone, so GCN_AX_LAYOUT leaves it be.
+bool g_has_compressor;
 
 extern int g_stat_voices;
 void process_voice(PB& pb, int offset) {
@@ -266,13 +269,14 @@ void process_voice(PB& pb, int offset) {
     int16_t samples[SPMS];
     Accel acc(pb);
     int16_t* last = (int16_t*)&pb.w[PB_LAST];
-    if (pb.w[PB_SRC_TYPE] == 2) {
-        // No rate conversion: a sample in for every sample out, whatever the ratio says. The
-        // history keeps the last four out, as the interpolating types would have it.
+    if (pb.w[PB_SRC_TYPE] >= 2) {
+        // Types 0 and 1 resample; every other type has no rate conversion: a sample in for every
+        // sample out, whatever the ratio says. The history keeps the last four out, as the
+        // interpolating types would have it.
         for (int i = 0; i < SPMS; i++) samples[i] = acc.sample();
         for (int k = 0; k < 4; k++) last[k] = samples[SPMS - 4 + k];
     } else {
-        // Sample rate conversion: linear interpolation, for the linear and polyphase modes alike.
+        // Types 0 and 1: linear interpolation, for the polyphase and linear modes alike.
         uint32_t ratio = pb.get32(PB_RATIO_HI);
         uint32_t pos = pb.w[PB_FRAC];
         for (int i = 0; i < SPMS; i++) {
@@ -360,12 +364,11 @@ void download_and_mix(uint32_t addr, uint16_t vol_main, uint16_t vol_auxa, uint1
 }
 
 void setup(uint32_t addr) {
-    int32_t* bufs[9] = {g_left, g_right, g_surround, g_auxa_l, g_auxa_r, g_auxa_s, g_auxb_l, g_auxb_r, g_auxb_s};
     for (int b = 0; b < 9; b++) {
         int32_t init = (int32_t)(((uint32_t)mem_r16(addr) << 16) | mem_r16(addr + 2));
         int16_t delta = (int16_t)mem_r16(addr + 4);
         addr += 6;
-        for (int i = 0; i < SPF; i++) { bufs[b][i] = init; init += delta; }
+        for (int i = 0; i < SPF; i++) { kBuses[b][i] = init; init += delta; }
     }
 }
 
@@ -421,6 +424,7 @@ constexpr uint32_t kUcode2001Hash = 0x4E8A8B21;
 void ax_init(uint32_t ucode_hash) {
     g_axstats = getenv("GCN_AXSTATS") != nullptr;
     g_layout_later = ucode_hash != kUcode2001Hash;
+    g_has_compressor = ucode_hash != kUcode2001Hash;
     g_comp_counter = 0;
     const char* over = getenv("GCN_AX_LAYOUT");
     const bool forced = over && (!strcmp(over, "2001") || !strcmp(over, "later"));
@@ -472,7 +476,7 @@ static void run_cmdlist(uint32_t addr, uint16_t size) {
         case 0x12: {  // compressor: threshold, release lists, table address. The 2001 build has no such command
             uint16_t threshold = rd(), release = rd();
             uint32_t table = rd32();
-            if (g_layout_later) compress(threshold, release, table);
+            if (g_has_compressor) compress(threshold, release, table);
             else if (g_axstats) g_sw.skipped++;
             break;
         }
