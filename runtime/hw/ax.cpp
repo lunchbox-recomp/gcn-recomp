@@ -291,26 +291,50 @@ void stats_voice(const PB& pb, const MixFlags& mf) {
 // Nyquist frequency, the three the SDK names for 8, 12 and 16 kHz. Tap k weighs the kth
 // oldest of the last four samples in, which lies k - 1 - phase/128 samples from the point the
 // output is taken at, so the output moves from the second oldest toward the third as the
-// fraction grows. A Hann window four samples wide tapers the taps, and each phase's taps are
-// scaled to sum to 0x7FFF, so a constant comes out at 32767/32768 of itself.
+// fraction grows. A window four samples wide tapers the taps: a Hamming window for the half
+// and full sets, and a Kaiser window with beta 9 pi / 4 for the three-quarter set. Those fit
+// the few ROM words that are publicly known better than the other standard windows tried.
+// Each phase's taps are scaled to sum to 0x7FFF, so a constant comes out at 32767/32768 of
+// itself.
 constexpr int kPolyPhases = 128, kPolySets = 3;
 int16_t g_poly[kPolySets][kPolyPhases][4];
+
+// The modified Bessel function I0, which the Kaiser window is made of, from its power series.
+double bessel_i0(double x) {
+    double sum = 1, term = 1;
+    for (int k = 1; term > 1e-17 * sum; k++) {
+        term *= (x / (2 * k)) * (x / (2 * k));
+        sum += term;
+    }
+    return sum;
+}
 
 void make_polyphase() {
     constexpr double kPi = 3.14159265358979323846;
     const double cutoff[kPolySets] = {0.5, 0.75, 1.0};
+    // Each window at d samples from its center. It spans 2 samples either side.
+    const double beta = 9 * kPi / 4;
+    auto hamming = [&](double d) { return 0.54 + 0.46 * std::cos(kPi * d / 2); };
+    auto kaiser = [&](double d) { return bessel_i0(beta * std::sqrt(std::max(0.0, 1 - d * d / 4))) / bessel_i0(beta); };
     for (int s = 0; s < kPolySets; s++) {
         for (int p = 0; p < kPolyPhases; p++) {
             double tap[4], sum = 0;
             for (int k = 0; k < 4; k++) {
                 const double d = k - 1 - (double)p / kPolyPhases;
                 const double x = kPi * cutoff[s] * d;
-                tap[k] = (x == 0 ? 1 : std::sin(x) / x) * (0.5 + 0.5 * std::cos(kPi * d / 2));
+                tap[k] = (x == 0 ? 1 : std::sin(x) / x) * (s == 1 ? kaiser(d) : hamming(d));
                 sum += tap[k];
             }
-            int total = 0;
-            for (int k = 0; k < 4; k++) total += g_poly[s][p][k] = (int16_t)std::lround(tap[k] / sum * 0x7FFF);
-            g_poly[s][p][p < kPolyPhases / 2 ? 1 : 2] += 0x7FFF - total;  // what rounding lost, on the nearer middle tap
+            int c[4], total = 0;
+            for (int k = 0; k < 4; k++) total += c[k] = (int)std::lround(tap[k] / sum * 0x7FFF);
+            // What rounding lost goes on the nearer middle tap. Next to phases 0 and 128 the
+            // full-band set's outer taps are negative enough to push that tap past 0x7FFF, and
+            // what 16 bits can't hold goes on the other middle tap.
+            const int near = p < kPolyPhases / 2 ? 1 : 2;
+            c[near] += 0x7FFF - total;
+            c[3 - near] += std::max(c[near] - 0x7FFF, 0);
+            c[near] = std::min(c[near], 0x7FFF);
+            for (int k = 0; k < 4; k++) g_poly[s][p][k] = (int16_t)c[k];
         }
     }
 }
