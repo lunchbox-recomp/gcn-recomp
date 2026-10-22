@@ -15,8 +15,9 @@
 // Exit status 1 means compile, parallel or glcompile had a key that failed, compare or logic
 // found a difference past its tolerance, there was no GL context, a file couldn't be read,
 // or a key list or MSL file couldn't be written. 2 means the mode is unknown or short of
-// arguments, a compile or blendvar word isn't one shown above, synth's SEED or COUNT isn't a
-// whole number in range, or compare or logic got an unknown option, an option value that
+// arguments, a compile or blendvar word isn't one shown above (fast in ERRORS.txt's place
+// included), MATHMODE isn't 0, 1 or 2, synth's SEED or COUNT isn't a whole number in range,
+// or compare or logic got an unknown option, an option value that
 // isn't a number in range, an index that isn't a number or isn't in the list, an OP outside
 // 0 to 15 or no index. Arguments past the ones a mode takes are ignored. Otherwise it's 0.
 // README.md has the options and the details.
@@ -29,6 +30,7 @@
 #include <climits>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 static const char* const kUsage =
@@ -51,9 +53,15 @@ static int bad_arg(const char* mode, const char* takes, const char* arg) {
 
 int main(int argc, char** argv) {
     @autoreleasepool {
+        // metal_util.mm reads MATHMODE when it compiles, so check it once here.
+        if (const char* mm = getenv("MATHMODE")) {
+            long mode = 0;
+            if (!parse_long(mm, 0, 2, &mode)) return bad_arg("MATHMODE", "0, 1 or 2", mm);
+        }
         if (argc >= 4 && !strcmp(argv[1], "emit")) return cmd_emit(argv[2], argv[3]);
         if (argc >= 3 && !strcmp(argv[1], "compile")) {
             if (argc >= 4 && strcmp(argv[3], "cold") && strcmp(argv[3], "warm")) return bad_arg("compile", "cold or warm", argv[3]);
+            if (argc == 5 && !strcmp(argv[4], "fast")) return bad_arg("compile", "ERRORS.txt before fast", argv[4]);
             if (argc >= 6 && strcmp(argv[5], "fast")) return bad_arg("compile", "fast after ERRORS.txt", argv[5]);
             g_fast_math = argc >= 6;
             return cmd_compile(argv[2], argc >= 4 && !strcmp(argv[3], "cold"), argc >= 5 ? argv[4] : nullptr);

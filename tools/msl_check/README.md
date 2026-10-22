@@ -140,7 +140,8 @@ and prints the largest difference per channel, the pixels that differ and the de
 difference. It exits 0 if every key is within 1 level and its depth within 1e-6. A NaN depth
 difference counts as past it. `logic` does the same over a filled target with GX logic op
 `OP` (0 clear ... 7 or ... 15 set), through framebuffer fetch. On the made-up keys OR and XOR
-pass only with `--fastmath`, for the reason under "What it proves". COPY passes either way.
+fail with fast math off and fog on, for the reason under "What it proves". They pass with
+`--fastmath` or `--nofog`, and COPY passes either way.
 
 The depth tolerance comes from the made-up keys. With the default inputs and with
 `--indirect --zplane --screen`, the largest depth difference is 1.19e-07 with fast math off
@@ -174,7 +175,8 @@ More options:
 
 Environment variables:
 
-- `MATHMODE=N` sets `MTLMathMode` (0 safe, 1 relaxed, 2 fast) and overrides `--fastmath`. With
+- `MATHMODE=N` sets `MTLMathMode` (0 safe, 1 relaxed, 2 fast) and overrides `--fastmath`. Any
+  other value exits 2 before the mode runs. With
   `PRECISEFN=1` the floating-point functions are precise rather than fast.
 - `NONONCE=1` leaves the nonce out of `glcompile`.
 
@@ -182,8 +184,8 @@ Environment variables:
 
 `msl_spike` exits 2 when the mode is unknown or has too few arguments. It also exits 2 when
 a word of `compile` or `blendvar` isn't what the usage shows in its place (`cold` or `warm`
-for `compile`, then `fast`), or when `synth`'s `SEED` or `COUNT` isn't a whole number in its
-range. `compare` and `logic` exit 2 on an unknown option or an option value that isn't a
+for `compile`, then `fast`, which can't stand in for `ERRORS.txt`), when `MATHMODE` isn't 0, 1
+or 2, or when `synth`'s `SEED` or `COUNT` isn't a whole number in its range. `compare` and `logic` exit 2 on an unknown option or an option value that isn't a
 number in range, where `--fogmode` takes 0 to 15 and the four fog values take a float. They
 do the same for an index that isn't a number or isn't in the list, an `OP` outside 0 to 15
 and a run with no index at all. Each of these prints the usage or a one-line error naming
