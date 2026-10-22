@@ -14,7 +14,7 @@ static uint32_t hash32(uint32_t x) {
 }
 
 // Every varying is linear in window position with slopes of a half or a quarter level per
-// pixel, so at pixel centres it never lands on a .5 tie, and every texture coordinate lands
+// pixel, so at pixel centers it never lands on a .5 tie, and every texture coordinate lands
 // a quarter texel or more from a texel's edge: the comparison measures the shader's math,
 // not where two rasterizers round an interpolant.
 void make_inputs(Inputs& in) {

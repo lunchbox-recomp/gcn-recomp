@@ -57,7 +57,7 @@ SYNTH="$WORK/synth.bin"
   "$SPIKE" compare "$SYNTH" --quiet --indirect --zplane --screen all || true
   echo "### synthetic keys, indirect + z plane + screen coords, fast math on"
   "$SPIKE" compare "$SYNTH" --quiet --indirect --zplane --screen --fastmath all || true
-  echo "### logic op OR, route keys, fast math off"
+  echo "### logic op OR, route keys, fast math off (fog's 1-level differences grow through OR)"
   "$SPIKE" logic "$ROUTE" 7 --quiet all || true
   echo "### logic op OR, route keys, fast math on"
   "$SPIKE" logic "$ROUTE" 7 --quiet --fastmath all || true

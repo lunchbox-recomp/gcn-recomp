@@ -12,16 +12,21 @@ For any key list, with `gen_pixel_body`, `gen_vertex_body` and `pixel_io` from
 
 - every key's fragment program compiles in Metal and builds a render pipeline (`compile`)
 - the same inputs drawn in Apple's GL (the real GLSL) and in Metal (the MSL translation) give
-  the same pixels, within 1 level with fast math off and exactly with it on (`compare`)
-- the GX logic op through framebuffer fetch matches `glLogicOp` (`logic`)
+  the same pixels, within 1 level with fast math off and exactly with it on, and the same
+  depth within 1e-6 (`compare`)
+- the GX logic op through framebuffer fetch matches `glLogicOp` exactly with fast math on
+  (`logic`). With it off, the fog's 1-level differences go through the bitwise op, which can
+  turn one level into many (up to 32 for OR and 63 for XOR on the made-up keys), so `logic`
+  with those ops exits 1 there
 - what a cold compile costs, serially, in parallel and against GL (`compile`, `parallel`,
   `glcompile`, `floor`, `blendvar`)
 
 It doesn't check blending, MSAA, points, mipmaps or the VR paths.
 
 Measured on an M4 Max with macOS 26.6 and MSL 3.0, a game's 247 keys and 446 made-up ones
-compile. The made-up ones reach every branch of `gen_pixel_shader`. Fast math on is bit-exact
-against GL. A cold compile is 32 ms a key serially against GL's 11, and 3 ms a key in parallel.
+compile. The made-up ones reach every branch of `gen_pixel_shader`. Fast math on gives
+bit-exact colors against GL, and on the made-up keys depth within a step of 2^-24 (two with
+`--clipz`). A cold compile is 32 ms a key serially against GL's 11, and 3 ms a key in parallel.
 Once the OS shader cache holds a program it costs about nothing.
 
 ## Files
@@ -43,7 +48,7 @@ Everything is in `src/`. The program is `msl_spike`, and `dump_glsl` is a second
 | `mtl_draw.h`, `mtl_draw.mm` | the Metal renderer of the comparison |
 | `gl_ref.h`, `gl_ref.cpp` | the GL reference renderer of the comparison |
 | `test_inputs.h`, `test_inputs.cpp` | the comparison's inputs and the image both renderers return |
-| `spike_util.h`, `spike_util.cpp` | the clock, text file writing, key list loading and the timing summary |
+| `spike_util.h`, `spike_util.cpp` | the clock, text file writing, key list loading, the timing summary and the parsing of numeric arguments |
 | `keys_io.h` | reads caches and key lists, and writes key lists |
 | `dump_glsl.cpp` | the `dump_glsl` program |
 
@@ -70,11 +75,13 @@ tree's, headers included. `msl_spike` needs `gen_pixel_body`, `gen_vertex_body` 
 Key lists are game data and aren't committed. Make one from the `saves/shaders.bin` that
 runs leave behind, with this repository's own `shader_keys` (`tools/shader_keys.cpp`). It
 makes every key canonical, keeps each once in the order first seen and takes caches and key
-lists alike:
+lists alike. From the repository root, this writes the list under `build/`, which git
+ignores:
 
 ```
 cmake --build <desktop build dir> --target shader_keys
-<desktop build dir>/shader_keys keys.bin run1/saves/shaders.bin run2/saves/shaders.bin
+mkdir -p build
+<desktop build dir>/shader_keys build/keys.bin run1/saves/shaders.bin run2/saves/shaders.bin
 ```
 
 `dump_glsl KEYS_OUT.bin GLSL_DIR|- FEATURES.tsv|- IN.bin...` does the same union, and can also
@@ -93,6 +100,7 @@ after `OP`). Run `msl_spike` with no arguments for the usage of every mode.
 msl_spike synth OUT.bin SEED COUNT
 ```
 Writes the made-up key list, the directed keys and then `COUNT` random ones from `SEED`.
+`SEED` is a whole number from 0 to 4294967295 and `COUNT` one from 0 to 2147483647.
 
 ```
 msl_spike emit KEYS.bin MSL_DIR
@@ -104,8 +112,8 @@ msl_spike compile KEYS.bin [cold|warm [ERRORS.txt [fast]]]
 ```
 Compiles every key (library, then pipeline) and times it. `cold` adds a nonce to each program
 so the OS cache can't serve it. Without it, the sources are compiled as they are, so a second
-run is warm. Errors go to `ERRORS.txt`, or to stderr when it isn't given. `fast` turns fast
-math on.
+run is warm. Errors go to `ERRORS.txt`, or to stderr when it isn't given or can't be opened.
+`fast` turns fast math on.
 
 ```
 msl_spike parallel KEYS.bin
@@ -131,11 +139,15 @@ Draws a full-screen triangle with each key in GL and in Metal into 256x256 RGBA8
 and prints the largest difference per channel, the pixels that differ and the depth
 difference. It exits 0 if every key is within 1 level and its depth within 1e-6. A NaN depth
 difference counts as past it. `logic` does the same over a filled target with GX logic op
-`OP` (0 clear ... 7 or ... 15 set), through framebuffer fetch.
+`OP` (0 clear ... 7 or ... 15 set), through framebuffer fetch. On the made-up keys OR and XOR
+pass only with `--fastmath`, for the reason under "What it proves". COPY passes either way.
 
-The depth tolerance comes from the made-up keys. Their largest depth difference is 1.19e-07
-with fast math off and 5.96e-08 with it on, a step or two of a float near 1. The `--flipfc`
-control moves a z freeze key's depth by 0.587.
+The depth tolerance comes from the made-up keys. With the default inputs and with
+`--indirect --zplane --screen`, the largest depth difference is 1.19e-07 with fast math off
+and 5.96e-08 with it on. `--clipz` reaches 1.79e-07 and 1.19e-07, up to three steps of 2^-24.
+1e-6 is about 17 steps of a 24-bit depth buffer (16777215 x 1e-6 is 16.8), so it passes a Z
+texture or z bias error smaller than that. The `--flipfc` control moves a z freeze key's depth
+by 0.587.
 
 Options of `compare` and `logic`:
 
@@ -154,11 +166,11 @@ More options:
 
 | Option | Does |
 |---|---|
-| `--fogmode=N` | the fog curve, GXSetFog's type (`u_fogmode`). The default is 2 (linear), 4 to 7 are the exponential curves and +8 is orthographic. 3 draws as 2 |
-| `--fogA=F`, `--fogB=F`, `--fogC=F`, `--fogw=F` | set `u_fog`'s x, y, z and w (shadergen's A, C, bmag and bshift); `inf` and `nan` work |
+| `--fogmode=N` | the fog curve, GXSetFog's type (`u_fogmode`), from 0 to 15. The default is 2 (linear), 4 to 7 are the exponential curves and +8 is orthographic. 3 draws as 2 |
+| `--fogA=F`, `--fogB=F`, `--fogC=F`, `--fogw=F` | set `u_fog`'s x, y, z and w (shadergen's A, C, bmag and bshift) to the float `F`; `inf` and `nan` work |
 | `--linear` | bilinear sampling instead of nearest |
 | `--clipz` | two vertices' z moved out of the near and far range (0.6 and -1.6), so the triangle is clipped |
-| `--zprojw0`, `--zprojnan` | the depth projection's w set to 0, or all of it to 0 |
+| `--zprojw0`, `--zprojnan` | the fog's depth projection (`u_zproj`) with its w set to 0, or all of it 0. Depth reads it only on the VR paths |
 
 Environment variables:
 
@@ -168,10 +180,17 @@ Environment variables:
 
 ## Exit status
 
-Every mode exits 2 when its arguments are wrong. In `compare` and `logic` that covers an
-unknown option, an index that isn't a number or isn't in the list, an `OP` outside 0 to 15
-and a run with no index at all. Any mode exits 1 when a key list or other file can't be read
-or written, and the GL modes exit 1 when there's no GL context. Beyond that, these exit 1:
+`msl_spike` exits 2 when the mode is unknown or has too few arguments. It also exits 2 when
+a word of `compile` or `blendvar` isn't what the usage shows in its place (`cold` or `warm`
+for `compile`, then `fast`), or when `synth`'s `SEED` or `COUNT` isn't a whole number in its
+range. `compare` and `logic` exit 2 on an unknown option or an option value that isn't a
+number in range, where `--fogmode` takes 0 to 15 and the four fog values take a float. They
+do the same for an index that isn't a number or isn't in the list, an `OP` outside 0 to 15
+and a run with no index at all. Each of these prints the usage or a one-line error naming
+the argument. Arguments past the ones a mode takes are ignored.
+
+Any mode exits 1 when a key list or other file can't be read, or a key list or MSL file can't
+be written. The GL modes exit 1 when there's no GL context. Beyond that, these exit 1:
 
 - `compile` when any key's library or pipeline fails
 - `parallel` when any pipeline fails
@@ -199,14 +218,16 @@ A shadergen refactor should leave `gen_pixel_shader`'s and `gen_vertex_shader`'s
 unchanged byte for byte. Build `dump_glsl` against the old tree and this one, dump the same
 key lists with each and `diff -r` the two directories. Each holds every key's `<n>.frag` and
 `vertex.vert`, so a change meant to alter the output shows up as exactly the files it reached.
+The steps run from the repository root and write their builds, key lists and dumps under
+`build/`, which git ignores.
 
 ```
 git worktree add --detach ../old OLD_REVISION
 env SHADERGEN_ROOT=../old tools/msl_check/build.sh build/msl_old dump_glsl
 tools/msl_check/build.sh build/msl_new dump_glsl
-mkdir old new
-build/msl_old/dump_glsl old.bin old - keys.bin
-build/msl_new/dump_glsl new.bin new - keys.bin
-diff -r old new
+mkdir -p build/sg/old build/sg/new
+build/msl_old/dump_glsl build/sg/old.bin build/sg/old - build/keys.bin
+build/msl_new/dump_glsl build/sg/new.bin build/sg/new - build/keys.bin
+diff -r build/sg/old build/sg/new
 git worktree remove ../old
 ```

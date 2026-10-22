@@ -8,6 +8,7 @@
 #include "test_inputs.h"
 #include "msl_translate.h"
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -16,10 +17,20 @@
 
 using namespace gx;
 
-// The most a key's depth may differ between GL and Metal. On the made-up keys the largest
-// difference is 1.19e-07 with fast math off and 5.96e-08 with it on, a step or two of a
-// float near 1. The --flipfc negative control moves z freeze keys by 0.587.
+// The most a key's depth may differ between GL and Metal. On the made-up keys, with the
+// default inputs and with --indirect --zplane --screen, the largest difference is 1.19e-07
+// with fast math off and 5.96e-08 with it on. --clipz reaches 1.79e-07 and 1.19e-07, up to
+// three steps of 2^-24. 1e-6 is about 17 steps of a 24-bit depth buffer (16777215 x 1e-6 is
+// 16.8), so a Z texture or z bias error smaller than that passes. The --flipfc negative
+// control moves z freeze keys by 0.587.
 static const double kDepthTolerance = 1e-6;
+
+// An option whose value after "=" isn't one it takes: a one-line error naming both.
+static int bad_value(const char* arg) {
+    const char* eq = strchr(arg, '=');
+    fprintf(stderr, "bad value for %.*s: %s\n", (int)(eq - arg), arg, eq + 1);
+    return 2;
+}
 
 int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
     std::vector<ShaderKey> keys = load_keys(keys_path);
@@ -61,15 +72,25 @@ int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
         } else if (!strcmp(argv[a], "--nofog")) {
             in.fs.u_fogmode = 0;
         } else if (!strncmp(argv[a], "--fogmode=", 10)) {
-            in.fs.u_fogmode = atoi(argv[a] + 10);
+            long mode = 0;
+            if (!parse_long(argv[a] + 10, 0, 15, &mode)) return bad_value(argv[a]);
+            in.fs.u_fogmode = (int)mode;
         } else if (!strncmp(argv[a], "--fogA=", 7)) {
-            in.fs.u_fog.x = (float)atof(argv[a] + 7);
+            float v = 0;
+            if (!parse_float(argv[a] + 7, &v)) return bad_value(argv[a]);
+            in.fs.u_fog.x = v;
         } else if (!strncmp(argv[a], "--fogB=", 7)) {
-            in.fs.u_fog.y = (float)atof(argv[a] + 7);
+            float v = 0;
+            if (!parse_float(argv[a] + 7, &v)) return bad_value(argv[a]);
+            in.fs.u_fog.y = v;
         } else if (!strncmp(argv[a], "--fogC=", 7)) {
-            in.fs.u_fog.z = (float)atof(argv[a] + 7);
+            float v = 0;
+            if (!parse_float(argv[a] + 7, &v)) return bad_value(argv[a]);
+            in.fs.u_fog.z = v;
         } else if (!strncmp(argv[a], "--fogw=", 7)) {
-            in.fs.u_fog.w = (float)atof(argv[a] + 7);
+            float v = 0;
+            if (!parse_float(argv[a] + 7, &v)) return bad_value(argv[a]);
+            in.fs.u_fog.w = v;
         } else if (!strcmp(argv[a], "--zprojw0")) {
             in.vs.u_zproj.w = 0.0f;
         } else if (!strcmp(argv[a], "--clipz")) {
@@ -87,9 +108,8 @@ int cmd_compare(const char* keys_path, int logic_op, int argc, char** argv) {
             fprintf(stderr, "unknown option %s\n", argv[a]);
             return 2;
         } else {
-            char* end = nullptr;
-            const long n = strtol(argv[a], &end, 10);
-            if (end == argv[a] || *end) {
+            long n = 0;
+            if (!parse_long(argv[a], LONG_MIN, LONG_MAX, &n)) {
                 fprintf(stderr, "not a key index: %s\n", argv[a]);
                 return 2;
             }

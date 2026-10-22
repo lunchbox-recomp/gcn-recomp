@@ -132,7 +132,7 @@ Image gl_draw(const ShaderKey& k, const Inputs& in, int logic_op) {
         glClearColor(1.0f, 0.0f, 1.0f, 128.0f / 255.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     } else {
-        glClear(GL_DEPTH_BUFFER_BIT);  // the colour keeps in.dst
+        glClear(GL_DEPTH_BUFFER_BIT);  // the color keeps in.dst
     }
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_ALWAYS);

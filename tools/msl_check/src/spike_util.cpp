@@ -1,6 +1,9 @@
 #include "spike_util.h"
 #include <algorithm>
+#include <cctype>
+#include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 
@@ -33,4 +36,25 @@ void stats(const char* what, std::vector<double> v) {
     for (double x : v) sum += x;
     printf("%s: n=%zu mean %.1f ms, median %.1f ms, p95 %.1f ms, worst %.1f ms, total %.0f ms\n", what, v.size(), sum / v.size(),
            v[v.size() / 2], v[std::min(v.size() - 1, (size_t)(v.size() * 0.95))], v.back(), sum);
+}
+
+bool parse_long(const char* s, long lo, long hi, long* out) {
+    if (isspace((unsigned char)*s)) return false;
+    char* end = nullptr;
+    errno = 0;
+    const long v = strtol(s, &end, 10);
+    if (end == s || *end || errno == ERANGE || v < lo || v > hi) return false;
+    *out = v;
+    return true;
+}
+
+bool parse_float(const char* s, float* out) {
+    if (isspace((unsigned char)*s)) return false;
+    char* end = nullptr;
+    errno = 0;
+    const float v = strtof(s, &end);
+    // strtof reports underflow with ERANGE too, and a value that small is still a float.
+    if (end == s || *end || (errno == ERANGE && std::isinf(v))) return false;
+    *out = v;
+    return true;
 }

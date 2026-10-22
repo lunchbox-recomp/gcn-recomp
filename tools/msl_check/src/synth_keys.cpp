@@ -15,12 +15,12 @@ std::vector<ShaderKey> synth_keys(uint32_t seed, int count, size_t* directed) {
         k.genmode = (nst - 1) << 10;
         k.num_texgens = 2;
         k.alpha_func = 0x3F;
-        // stage s: map s & 1, coord s & 1, texture on, colour channel 0
+        // stage s: map s & 1, coord s & 1, texture on, color channel 0
         for (uint32_t s = 0; s < nst; s++) k.order[s / 2] |= ((s & 1) | (s & 1) << 3 | 1 << 6) << (12 * (s & 1));
         for (int i = 0; i < 8; i++) k.ksel[i] = (i * 5 + 3) & 15;
         return k;
     };
-    // the eight comparison modes, in colour and alpha: a = tex, b = ras, c = konst, d = prev
+    // the eight comparison modes, in color and alpha: a = tex, b = ras, c = konst, d = prev
     for (uint32_t mode = 0; mode < 8; mode++) {
         ShaderKey k = base(2);
         for (int s = 0; s < 2; s++) {
