@@ -35,20 +35,26 @@ enum {
     PB_COEFS = 63, PB_GAIN = 79, PB_PRED_SCALE = 80, PB_YN1 = 81, PB_YN2 = 82,
     PB_RATIO_HI = 83, PB_RATIO_LO = 84, PB_FRAC = 85, PB_LAST = 86,
     PB_LOOP_PRED_SCALE = 90, PB_LOOP_YN1 = 91, PB_LOOP_YN2 = 92,
-    PB_WORDS = 93,
+    // Every build but the 2001 one goes on with a one-pole low-pass filter: on, yn1, a0, b0.
+    PB_LPF_ON = 93, PB_LPF_YN1 = 94, PB_LPF_A0 = 95, PB_LPF_B0 = 96,
+    PB_WORDS_2001 = 93, PB_WORDS_LATER = 97,
 };
 
 struct PB {
-    uint16_t w[PB_WORDS];
+    uint16_t w[PB_WORDS_LATER] = {};  // the 2001 build's words, then zeros
     uint32_t get32(int i) const { return ((uint32_t)w[i] << 16) | w[i + 1]; }
     void set32(int i, uint32_t v) { w[i] = (uint16_t)(v >> 16); w[i + 1] = (uint16_t)v; }
 };
 
+// Whether this ucode build's PB has the low-pass filter words; set from the hash by ax_init.
+bool g_has_lpf;
+int pb_words() { return g_has_lpf ? PB_WORDS_LATER : PB_WORDS_2001; }
+
 void read_pb(uint32_t addr, PB& pb) {
-    for (int i = 0; i < PB_WORDS; i++) pb.w[i] = mem_r16(addr + 2 * i);
+    for (int i = 0; i < pb_words(); i++) pb.w[i] = mem_r16(addr + 2 * i);
 }
 void write_pb(uint32_t addr, const PB& pb) {
-    for (int i = 0; i < PB_WORDS; i++) mem_w16(addr + 2 * i, pb.w[i]);
+    for (int i = 0; i < pb_words(); i++) mem_w16(addr + 2 * i, pb.w[i]);
 }
 
 // ---- GCN_AXSTATS: what the command lists ask for and what the mix makes ----
@@ -61,8 +67,10 @@ constexpr int NUM_CMDS = 0x14;  // 00 to 13; anything past that is unknown
 struct StatsWindow {
     uint32_t cmds[NUM_CMDS], skipped, unknown;
     uint32_t peak[9], clipped;           // the buses in kBuses' order
+    uint32_t depop;                      // setup commands that start a bus off zero
     std::map<uint16_t, uint32_t> mixer;  // mixer control -> voice-milliseconds
-    uint32_t voice_ms, src[4], delay, stream_loops;
+    uint32_t voice_ms, src[4], coef[4], delay, stream_loops;
+    uint32_t lpf, ramp, env_ramp;
 };
 StatsWindow g_sw;
 uint32_t g_stat_lists;
@@ -76,14 +84,6 @@ void stats_peak(const int32_t* buf) {
             g_sw.peak[b] = std::max(g_sw.peak[b], m);
         }
     }
-}
-
-// One running voice for one millisecond.
-void stats_voice(const PB& pb) {
-    g_sw.voice_ms++;
-    g_sw.mixer[pb.w[PB_MIXER_CONTROL]]++;
-    g_sw.src[std::min<uint16_t>(pb.w[PB_SRC_TYPE], 3)]++;
-    if (pb.w[PB_ITD_ON]) g_sw.delay++;
 }
 
 // After 0E: the main buses' peaks, the L and R samples its clamp changed, and the bytes it
@@ -106,8 +106,8 @@ void stats_list_end() {
     }
     fprintf(stderr, "[ax] cmds list=%u skipped=%u unknown=%u%s\n", n, g_sw.skipped, g_sw.unknown, ids.c_str());
     const uint32_t* pk = g_sw.peak;
-    fprintf(stderr, "[ax] bus list=%u main_l=%u main_r=%u main_s=%u auxa_l=%u auxa_r=%u auxa_s=%u auxb_l=%u auxb_r=%u auxb_s=%u clipped=%u\n",
-            n, pk[0], pk[1], pk[2], pk[3], pk[4], pk[5], pk[6], pk[7], pk[8], g_sw.clipped);
+    fprintf(stderr, "[ax] bus list=%u main_l=%u main_r=%u main_s=%u auxa_l=%u auxa_r=%u auxa_s=%u auxb_l=%u auxb_r=%u auxb_s=%u clipped=%u depop=%u\n",
+            n, pk[0], pk[1], pk[2], pk[3], pk[4], pk[5], pk[6], pk[7], pk[8], g_sw.clipped, g_sw.depop);
     // The eight mixer control values with the most voice-milliseconds, ties in value order.
     std::vector<std::pair<uint16_t, uint32_t>> mix(g_sw.mixer.begin(), g_sw.mixer.end());
     std::stable_sort(mix.begin(), mix.end(), [](const auto& a, const auto& b) { return a.second > b.second; });
@@ -117,9 +117,11 @@ void stats_list_end() {
         if (i >= 8) { rest += mix[i].second; continue; }
         char b[24]; snprintf(b, sizeof b, "%s%04X:%u", i ? "," : "", mix[i].first, mix[i].second); top += b;
     }
-    fprintf(stderr, "[ax] pb list=%u voice_ms=%u mixer=%s mixer_rest=%u src0=%u src1=%u src2=%u src_other=%u delay=%u stream_loops=%u\n",
+    const uint32_t* cf = g_sw.coef;
+    fprintf(stderr, "[ax] pb list=%u voice_ms=%u mixer=%s mixer_rest=%u src0=%u src1=%u src2=%u src_other=%u src0_coef=%u/%u/%u/%u "
+            "delay=%u stream_loops=%u lpf=%u ramp=%u env_ramp=%u\n",
             n, g_sw.voice_ms, top.empty() ? "-" : top.c_str(), rest, g_sw.src[0], g_sw.src[1], g_sw.src[2], g_sw.src[3],
-            g_sw.delay, g_sw.stream_loops);
+            cf[0], cf[1], cf[2], cf[3], g_sw.delay, g_sw.stream_loops, g_sw.lpf, g_sw.ramp, g_sw.env_ramp);
     fprintf(stderr, "[ax] hash list=%u fnv=%016llX\n", n, (unsigned long long)g_stat_hash);
     g_sw = StatsWindow{};
 }
@@ -261,11 +263,27 @@ bool g_layout_later;
 // Whether this ucode build has command 12; set from the hash alone, so GCN_AX_LAYOUT leaves it be.
 bool g_has_compressor;
 
+// One running voice for one millisecond, as it stands before it is mixed.
+void stats_voice(const PB& pb, const MixFlags& mf) {
+    g_sw.voice_ms++;
+    g_sw.mixer[pb.w[PB_MIXER_CONTROL]]++;
+    g_sw.src[std::min<uint16_t>(pb.w[PB_SRC_TYPE], 3)]++;
+    if (pb.w[PB_SRC_TYPE] == 0) g_sw.coef[std::min<uint16_t>(pb.w[PB_COEF_SELECT], 3)]++;
+    if (pb.w[PB_ITD_ON]) g_sw.delay++;
+    if (g_has_lpf && pb.w[PB_LPF_ON]) g_sw.lpf++;
+    if (pb.w[PB_VOL_DELTA]) g_sw.env_ramp++;
+    bool ramp = false;
+    for (int b = 0; b < 9; b++) ramp |= mf.enable[b] && mf.ramp[b] && pb.w[PB_MIXER + kMixerWord[b] + 1];
+    g_sw.ramp += ramp;
+}
+
 extern int g_stat_voices;
 void process_voice(PB& pb, int offset) {
     if (!pb.w[PB_RUNNING]) return;
     if (offset == 0) g_stat_voices++;
-    if (g_axstats) stats_voice(pb);
+    const uint16_t mc = pb.w[PB_MIXER_CONTROL];
+    const MixFlags mf = g_layout_later ? decode_mixer_later(mc) : decode_mixer_2001(mc);
+    if (g_axstats) stats_voice(pb, mf);
     int16_t samples[SPMS];
     Accel acc(pb);
     int16_t* last = (int16_t*)&pb.w[PB_LAST];
@@ -298,8 +316,6 @@ void process_voice(PB& pb, int offset) {
         samples[i] = (int16_t)std::clamp(((int32_t)samples[i] * v) >> 15, -32767, 32767);
         pb.w[PB_VOL] = (uint16_t)(v + (int16_t)pb.w[PB_VOL_DELTA]);
     }
-    const uint16_t mc = pb.w[PB_MIXER_CONTROL];
-    MixFlags mf = g_layout_later ? decode_mixer_later(mc) : decode_mixer_2001(mc);
     for (int b = 0; b < 9; b++)
         if (mf.enable[b]) mix_add(kBuses[b] + offset, samples, SPMS, pb, PB_MIXER + kMixerWord[b], mf.ramp[b]);
 }
@@ -316,7 +332,7 @@ void process_pb_list(uint32_t pb_addr) {
             for (int k = 0; k < n; k++) {
                 uint16_t idx = mem_r16(upd), val = mem_r16(upd + 2);
                 upd += 4;
-                if (idx < PB_WORDS) pb.w[idx] = val;
+                if (idx < pb_words()) pb.w[idx] = val;
             }
             process_voice(pb, ms * SPMS);
         }
@@ -363,13 +379,18 @@ void download_and_mix(uint32_t addr, uint16_t vol_main, uint16_t vol_auxa, uint1
     }
 }
 
+// 0x00: start each bus at a value and step it by a delta per sample, in kBuses' order. The
+// AX library fills these from its depop sums, the last samples of voices it stopped.
 void setup(uint32_t addr) {
+    bool off_zero = false;
     for (int b = 0; b < 9; b++) {
         int32_t init = (int32_t)(((uint32_t)mem_r16(addr) << 16) | mem_r16(addr + 2));
         int16_t delta = (int16_t)mem_r16(addr + 4);
         addr += 6;
+        off_zero |= init || delta;
         for (int i = 0; i < SPF; i++) { kBuses[b][i] = init; init += delta; }
     }
+    if (g_axstats) g_sw.depop += off_zero;
 }
 
 // 0x12 on every build but the 2001 one: duck the main L and R when they are over the
@@ -425,6 +446,7 @@ void ax_init(uint32_t ucode_hash) {
     g_axstats = getenv("GCN_AXSTATS") != nullptr;
     g_layout_later = ucode_hash != kUcode2001Hash;
     g_has_compressor = ucode_hash != kUcode2001Hash;
+    g_has_lpf = ucode_hash != kUcode2001Hash;
     g_comp_counter = 0;
     const char* over = getenv("GCN_AX_LAYOUT");
     const bool forced = over && (!strcmp(over, "2001") || !strcmp(over, "later"));

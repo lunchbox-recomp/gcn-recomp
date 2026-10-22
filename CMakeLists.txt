@@ -570,6 +570,12 @@ function(gcn_add_game)
     _gcn_set_standards(test_audio_ring)
     target_include_directories(test_audio_ring PRIVATE ${RT})
     target_compile_options(test_audio_ring PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The AX mixer checks (tools/test_ax.cpp): hw/ax.cpp over a fake main memory and ARAM.
+    add_executable(test_ax EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ax.cpp)
+    _gcn_set_standards(test_ax)
+    target_include_directories(test_ax PRIVATE ${RT})
+    target_compile_options(test_ax PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)

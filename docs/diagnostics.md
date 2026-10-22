@@ -459,14 +459,21 @@ both reached shows whether a change to the mixer changed what it made, and from 
 - `[ax] bus`: the largest magnitude each of the nine buses had when the ucode wrote it out.
   The main buses are measured at 06 and 0E, L and R before 0E's clamp. The aux buses are
   measured where 04, 05, 10 and 13 hand them to the CPU for its effects. `clipped` counts
-  the L and R samples the 0E clamp changed.
+  the L and R samples the 0E clamp changed. `depop` counts the setup commands (00) that
+  started a bus at a value other than zero or gave it a slope, which is how the AX library
+  fades out the last samples of the voices it stopped.
 - `[ax] pb`: what the running voices asked for, in voice-milliseconds (one voice for one
   millisecond of a list). `mixer` gives the eight mixer control values (PB word 6) with the
   most as `value:count`. `mixer_rest` is the total for every other value. `src0`, `src1`
   and `src2` count resampler types 0 (polyphase), 1 (linear) and 2 (none) from word 4, and
-  `src_other` counts anything past 2, which mixes as 2 does. `delay` counts the initial
-  time delay switched on (word 27), which this runtime doesn't apply. `stream_loops` counts
-  the times a voice with the stream flag (word 8) looped.
+  `src_other` counts anything past 2, which mixes as 2 does. `src0_coef=a/b/c/d` splits
+  `src0` by the coefficient set in word 5: 0, 1, 2 and anything past 2. `delay` counts the
+  initial time delay switched on (word 27), which this runtime doesn't apply.
+  `stream_loops` counts the times a voice with the stream flag (word 8) looped. `lpf`
+  counts the low-pass filter switched on (word 93), on every ucode build but the 2001 one,
+  whose PB ends at word 92. `ramp` counts a voice with a bus its mixer control enables and
+  ramps whose volume delta isn't zero. `env_ramp` counts a nonzero volume envelope delta
+  (word 51).
 - `[ax] hash`: `fnv` is a 64-bit FNV-1a over every byte 0E has written since the process
   started, each block's 640 bytes of surround and then its 640 bytes of interleaved R and
   L, as RAM holds them.
@@ -496,6 +503,17 @@ down and then applies the table's ramp 11 + counter, the release ramps following
 attack ramps. The counter carries from list to list and resets when the AX ucode boots.
 Without it a list whose main L or R passes full scale hard-clips at 0E, so `clipped` falls
 where it runs.
+
+The PB is 93 words on the 2001 build. Every other build adds a one-pole low-pass filter in
+words 93 to 96 (on, last output, a0, b0), so there the runtime reads and writes back 97
+words and takes per-millisecond updates up to word 96. The ucode hash alone decides this.
+The filter itself isn't applied.
+
+`ninja test_ax` builds `tools/test_ax.cpp`, which runs `hw/ax.cpp` over a fake main memory
+and ARAM. Each check writes parameter blocks, samples and a command list by hand, runs the
+list and compares what the mixer wrote or counted with numbers worked out by hand. Each
+check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
+image, device or SDL.
 
 ## Textures
 
