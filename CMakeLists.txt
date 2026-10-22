@@ -578,6 +578,16 @@ function(gcn_add_game)
     target_compile_options(test_ax PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
+  # The settings.txt checks (tools/test_settings.cpp): loading and saving the file in a
+  # work dir. Needs no disc image, device or SDL. macOS and Linux.
+  if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID AND NOT WIN32)
+    add_executable(test_settings EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_settings.cpp
+      ${RT}/settings.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_settings)
+    target_include_directories(test_settings PRIVATE ${RT})
+    target_compile_options(test_settings PRIVATE ${GCN_RUNTIME_WARNINGS})
+  endif()
+
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)
     set(_desktop_sources ${RUNTIME_SOURCES})
     list(REMOVE_ITEM _desktop_sources ${GCN_CORE_OBJ_SOURCES})
