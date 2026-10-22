@@ -51,6 +51,15 @@ static double g_ring_avg;  // smoothed fill level, which the resampling rate ste
 static int g_stat_underruns, g_stat_cuts;
 static size_t g_stat_min_fill = SIZE_MAX;   // the lowest level a callback found, since asked
 static uint64_t g_out_frames;  // frames handed to the device so far
+// Fades, so the ring never steps the output, which is heard as a click. A cut crossfades from
+// where it was reading to where it jumped to over 10 ms. Near empty, the last 5 ms in hand
+// fade to silence, so the sound is gone by the time the ring runs dry, and it comes back
+// from silence over 8 ms.
+static constexpr int kCutFade = OUT_RATE / 100, kDryFade = OUT_RATE / 200, kRiseFade = OUT_RATE * 8 / 1000;
+static constexpr size_t kLowWater = (size_t)kDryFade * DMA_RATE / OUT_RATE + 2;
+static size_t g_cut_behind;  // how far behind the read position the stream it cut from is
+static int g_cut_left;  // output frames left of a cut's crossfade
+static double g_gain;  // what the ring's sound is scaled by, eased toward 0 near empty, else 1
 
 void audio_push_dma(const int16_t* samples_be, uint32_t frames) {
     std::lock_guard<std::mutex> lk(g_ring_mutex);
@@ -134,12 +143,23 @@ void audio_render(int16_t* out, int frames) {
         std::lock_guard<std::mutex> lk(g_ring_mutex);
         size_t cap = g_ring.size() / 2;
         static const bool stats = getenv("GCN_AXSTATS") != nullptr;
+        // A frame `behind` frames before the read position, at the fractional position.
+        auto frame_at = [&](size_t behind, int32_t& l, int32_t& r) {
+            const size_t a = (g_ring_r + cap - behind) % cap, b = (a + 1) % cap;
+            const double f = g_dma_pos;
+            l = (int32_t)(g_ring[2 * a] * (1 - f) + g_ring[2 * b] * f);
+            r = (int32_t)(g_ring[2 * a + 1] * (1 - f) + g_ring[2 * b + 1] * f);
+        };
         // Far too much buffered means this side stalled. Cut back to the cushion once,
-        // rather than shaving the excess off a little at every callback.
+        // rather than shaving the excess off a little at every callback. What it cut from
+        // is still in the ring behind the read position, and plays on under the new position
+        // for the crossfade. Unless the ring was more than half full, the guest can't write
+        // over it in 10 ms.
         if (g_ring_count > ring_limit()) {
             size_t drop = g_ring_count - ring_cushion();
             g_ring_r = (g_ring_r + drop) % cap;
             g_ring_count -= drop;
+            if (!g_ring_filling && drop <= cap / 2) { g_cut_behind = drop; g_cut_left = kCutFade; }
             g_stat_cuts++;
             if (stats) fprintf(stderr, "[ring] cut %zu frames at output frame %llu\n", drop, (unsigned long long)g_out_frames);
         }
@@ -162,12 +182,25 @@ void audio_render(int16_t* out, int frames) {
             int32_t l = 0, r = 0;
             // Out of samples: stay silent until the cushion is back. Playing each block as
             // it lands would run dry again at once, and a stream of short gaps is a buzz.
-            if (!g_ring_filling && g_ring_count < 2) { g_ring_filling = true; g_stat_underruns++; }
+            if (!g_ring_filling && g_ring_count < 2) {
+                g_ring_filling = true;
+                g_stat_underruns++;
+                g_cut_left = 0;
+                g_gain = 0;
+            }
             if (!g_ring_filling) {
-                size_t a = g_ring_r, b = (g_ring_r + 1) % cap;
-                double f = g_dma_pos;
-                l = (int32_t)(g_ring[2 * a] * (1 - f) + g_ring[2 * b] * f);
-                r = (int32_t)(g_ring[2 * a + 1] * (1 - f) + g_ring[2 * b + 1] * f);
+                frame_at(0, l, r);
+                if (g_cut_left) {
+                    int32_t old_l, old_r;
+                    frame_at(g_cut_behind, old_l, old_r);
+                    const double w = (double)g_cut_left-- / kCutFade;  // the old stream's share
+                    l = (int32_t)(l + (old_l - l) * w);
+                    r = (int32_t)(r + (old_r - r) * w);
+                }
+                g_gain = g_ring_count < kLowWater ? std::max(0.0, g_gain - 1.0 / kDryFade)
+                                                  : std::min(1.0, g_gain + 1.0 / kRiseFade);
+                l = (int32_t)(l * g_gain);
+                r = (int32_t)(r * g_gain);
                 g_dma_pos += step;
                 while (g_dma_pos >= 1.0 && g_ring_count > 1) {
                     g_dma_pos -= 1.0;

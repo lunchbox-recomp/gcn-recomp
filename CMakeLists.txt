@@ -563,6 +563,16 @@ function(gcn_add_game)
     endif()
   endif()
 
+  # The audio ring checks (tools/test_audio_ring.cpp): audio.cpp's mix against a device
+  # that keeps exact time. Needs no disc image, no device and no SDL.
+  if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID)
+    add_executable(test_audio_ring EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_audio_ring.cpp)
+    _gcn_set_standards(test_audio_ring)
+    target_include_directories(test_audio_ring PRIVATE ${RT} ${RECOMP_GEN_DIR})
+    target_compile_options(test_audio_ring PRIVATE ${GCN_RUNTIME_WARNINGS})
+    target_compile_definitions(test_audio_ring PRIVATE ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS})
+  endif()
+
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)
     set(_desktop_sources ${RUNTIME_SOURCES})
     list(REMOVE_ITEM _desktop_sources ${GCN_CORE_OBJ_SOURCES})

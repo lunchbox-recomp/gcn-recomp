@@ -366,7 +366,16 @@ so a replay's sound can be checked block by block for repeats and broken joins.
 The sound ring between the DMA and the device keeps a cushion (`audio.cpp`), 100 ms by
 default and `GCN_AUDIO_CUSHION_MS` to change it. Running dry, it stays silent until the
 whole cushion is back, so every underrun is a gap at least that long; 60 ms, as it was, did
-not ride through the 40-60 ms a guest waits on a slow render stage.
+not ride through the 40-60 ms a guest waits on a slow render stage. Neither edge of the gap
+steps. As the ring nears empty its last 5 ms fade to silence, and the sound fades back in
+over 8 ms. Holding 100 ms more than the cushion, the ring cuts back to it with a 10 ms
+crossfade from where it was reading to where it jumped to. Each of the three was once a
+step in the output, heard as a click. A cut on a tone made a second difference 300 times
+the tone's own. `ninja test_audio_ring` builds `tools/test_audio_ring.cpp`, which runs
+`audio.cpp` with a tone for the guest and a device that keeps exact time, both on one
+virtual clock, and checks that a burst and a stall leave the output as smooth as the tone.
+Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
+image, device or SDL.
 
 `GCN_CPU_SCALE=N` (or `clock_set_cpu_scale` from a game's sources) makes the emulated CPU
 N times as fast as the console's: the ticks per edge are divided by N, so the same frame of
@@ -414,10 +423,13 @@ when the AX ucode boots. Three lines come at their own pace:
   block's address.
 - `[aid] block addr=A bytes=N ctrl=C`, for the first block the AI DMA delivers and every
   400th after (`hw/dsp.cpp`).
-- `[ring] fill=N avg=N trim=T underruns=N`, every 400th fill of the sound device's buffer
-  (`audio.cpp`). It gives the ring's level in frames, its running average, the resampling
-  trim that walks it back to the cushion and the underruns so far. It keeps the device's
-  time, so it differs between runs.
+- `[ring] fill=N avg=N trim=T underruns=N cuts=N`, every 400th fill of the sound device's
+  buffer (`audio.cpp`). It gives the ring's level in frames, its running average, the
+  resampling trim that walks it back to the cushion and the underruns and cuts so far. It
+  keeps the device's time, so it differs between runs. Each cut also prints
+  `[ring] cut N frames at output frame F` as it happens. N is the frames thrown away, and F
+  the frames the device had taken by then, which is where the cut lands in a `GCN_WAV`
+  recording.
 
 Every 400 command lists four more lines follow, each with `list=N`, the lists processed
 since boot. Their counts cover those 400 lists, and the hash covers everything since boot.
