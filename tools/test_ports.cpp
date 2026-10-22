@@ -609,7 +609,8 @@ void pins_more(const std::string& dir) {
     gamepads_shutdown();
 
     // An unpinned plain joystick first, then a gamepad: the joystick is no gamepad, so it
-    // does not push the lone gamepad off port 1.
+    // does not push the lone gamepad off port 1. SDL gives a plain joystick no player index
+    // (-1) and the gamepad index 0, which is why: the joystick holds no index to take.
     input_map_load((dir + "/no-controls.txt").c_str());
     power_on(1);
     gamepads_init();
@@ -617,20 +618,36 @@ void pins_more(const std::string& dir) {
     attach(loose);
     frame();
     attach(lone);
+    const int loose_index = player(loose);
+    const int lone_index = player(lone);
     frame();
-    check(port(lone) == 1, "an unpinned plain joystick attached first does not push a lone gamepad off port 1");
+    check(loose_index == -1 && lone_index == 0 && port(lone) == 1,
+          "an unpinned plain joystick attached first does not push a lone gamepad off port 1");
     unplug({&loose, &lone});
     gamepads_shutdown();
 
     // A port number past int range must not wrap into 1 to 4: the whole line is refused.
-    write_file(controls, "A = \"virtual pad bound\" button 0 port 4294967297\n");
+    write_file(controls, "A = \"virtual pad bound\" button 0 port 4294967299\n");
     input_map_load(controls.c_str());
     power_on(1);
     gamepads_init();
     attach(bound);
     frame();
-    check(input_map_port_count() == 1 && port(bound) == 1 && player(bound) == 0,
-          "a controls.txt line with port 4294967297 is refused: it pins nothing");
+    check(input_map_port_count() == 1 && !input_map_pins(0) && !input_map_pins(1) && !input_map_pins(2) &&
+              !input_map_pins(3) && port(bound) == 1 && player(bound) == 0,
+          "a controls.txt line with port 4294967299 is refused: no port is pinned and none is plugged in");
+    unplug({&bound});
+    gamepads_shutdown();
+
+    // A device number past int range must not wrap into a real one: the name matches no device.
+    write_file(controls, "A = \"virtual pad bound #4294967297\" button 0\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    gamepads_init();
+    attach(bound);
+    frame();
+    check(!input_map_binds(bound.id) && port(bound) == 1,
+          "a controls.txt device named \"#4294967297\" names no device, so the first one is not bound");
     unplug({&bound});
     gamepads_shutdown();
 
@@ -703,9 +720,33 @@ void mappings(const std::string& dir) {
     check(mapping_count() == before + 1 && this_platform && SDL_IsGamepad(stick.id) && port(stick) == 1,
           "a joystick SDL has no mapping for, mapped by gamecontrollerdb.txt (its line for this platform alone) before the "
           "gamepads are taken, gets port 1");
-    check(std::rename(beside.c_str(), (dir + "/gamecontrollerdb.beside.txt").c_str()) == 0,
-          "the test's gamecontrollerdb.txt is moved away from beside the executable");
+    // Copied, then removed: a rename fails when the work dir is on another filesystem.
+    const bool kept = write_file(dir + "/gamecontrollerdb.beside.txt", read_file(beside));
+    check(kept && std::remove(beside.c_str()) == 0,
+          "the test's gamecontrollerdb.txt is copied to the work dir and removed from beside the executable");
     unplug({&stick});
+    gamepads_shutdown();
+}
+
+// Two gamepads pulled out and plugged back in the other order swap ports: each takes the
+// port of the index SDL gives it.
+void swap_order() {
+    power_on(1);
+    gamepads_init();
+    Virtual sa{"virtual pad swap a"}, sb{"virtual pad swap b"};
+    attach(sa);
+    frame();
+    attach(sb);
+    frame();
+    const bool before = port(sa) == 1 && port(sb) == 2;
+    unplug({&sa, &sb});
+    attach(sb);
+    frame();
+    attach(sa);
+    frame();
+    check(before && port(sb) == 1 && port(sa) == 2,
+          "two gamepads pulled out and plugged back in the other order swap ports");
+    unplug({&sa, &sb});
     gamepads_shutdown();
 }
 
@@ -715,6 +756,7 @@ int run_ports(const std::string& dir) {
     // Port 2 and port 3 pressed B by script from frame 1000 to 1099.
     input_script_init("2/1000:B:100,3/1000:B:100");
     rules();
+    swap_order();
     launch(dir);
     pads2();
     named(dir);

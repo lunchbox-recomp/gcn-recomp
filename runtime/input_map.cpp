@@ -80,7 +80,7 @@ void split_nth(const std::string& s, std::string& name, int& nth) {
     name = s;
     nth = 1;
     const size_t h = s.rfind(" #");
-    if (h == std::string::npos || h + 2 >= s.size()) return;
+    if (h == std::string::npos || h + 2 >= s.size() || s.size() - (h + 2) > 9) return;
     for (size_t i = h + 2; i < s.size(); i++)
         if (!isdigit((unsigned char)s[i])) return;
     name = s.substr(0, h);
