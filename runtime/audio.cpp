@@ -139,6 +139,7 @@ void audio_ring_stats(int* underruns, int* min_fill_ms) {
 // amortised growth.
 void audio_render(int16_t* out, int frames) {
     // DMA part: resample 32k -> 48k
+    char cut_line[96] = "";  // a cut's log line, written under the lock and printed after it
     {
         std::lock_guard<std::mutex> lk(g_ring_mutex);
         size_t cap = g_ring.size() / 2;
@@ -155,13 +156,14 @@ void audio_render(int16_t* out, int frames) {
         // is still in the ring behind the read position, and plays on under the new position
         // for the crossfade. Unless the ring was more than half full, the guest can't write
         // over it in 10 ms.
-        if (g_ring_count > ring_limit()) {
-            size_t drop = g_ring_count - ring_cushion();
+        // A cut waits for a crossfade still running, and the next pull catches it.
+        if (g_cut_left == 0 && g_ring_count > ring_limit()) {
+            const size_t before = g_ring_count, drop = before - ring_cushion();
             g_ring_r = (g_ring_r + drop) % cap;
             g_ring_count -= drop;
-            if (!g_ring_filling && drop <= cap / 2) { g_cut_behind = drop; g_cut_left = kCutFade; }
+            if (!g_ring_filling && before <= cap / 2) { g_cut_behind = drop; g_cut_left = kCutFade; }
             g_stat_cuts++;
-            if (stats) fprintf(stderr, "[ring] cut %zu frames at output frame %llu\n", drop, (unsigned long long)g_out_frames);
+            if (stats) snprintf(cut_line, sizeof cut_line, "[ring] cut %zu frames at output frame %llu\n", drop, (unsigned long long)g_out_frames);
         }
         if (g_ring_filling && g_ring_count >= ring_cushion()) {
             g_ring_filling = false;
@@ -213,6 +215,7 @@ void audio_render(int16_t* out, int frames) {
         }
         g_out_frames += frames;
     }
+    if (cut_line[0]) fputs(cut_line, stderr);
     // DTK streaming music
     if (ai_stream_playing()) {
         std::lock_guard<std::mutex> lk(g_dtk_mutex);

@@ -46,20 +46,26 @@ static SDL_AudioDeviceID find_device(const std::string& name) {
     return found;
 }
 
-// SDL's dummy driver sleeps a whole number of milliseconds for each pull and then does the
-// pull, so it takes sound slower than a sound card does (91.5% of the rate in one run) and
-// the mix's ring overfills and cuts about once a second. In its place, a thread pulls the
-// same 512 frames on deadlines counted from the start, so a late wake-up doesn't carry over
-// to the next and the pace is a sound card's, without a sound.
+// SDL's dummy driver waits a relative 10 ms after each pull, so the oversleep and the mix's
+// own time add to every period. It takes sound slower than a sound card does (90.8% of the
+// rate in one run, 81.7 s of sound in 90 s) and the mix's ring overfills and cuts about once
+// a second. In its place, a thread pulls the same 512 frames on deadlines counted from the
+// start, so a late wake-up doesn't carry over to the next and the pace is a sound card's,
+// without a sound. A stop of the process (a debugger, a signal) doesn't make the thread pull
+// all the missed time back to back: more than 100 ms behind, it counts from now instead.
 static void silent_clock() {
     using clock = std::chrono::steady_clock;
     static constexpr int kFrames = 512;
+    static constexpr auto kMaxLate = std::chrono::milliseconds(100);
     int16_t buf[kFrames * 2];
-    const clock::time_point start = clock::now();
+    auto ns_of = [](long long frames) {
+        return std::chrono::nanoseconds(frames / OUT_RATE * 1'000'000'000LL + frames % OUT_RATE * 1'000'000'000LL / OUT_RATE);
+    };
+    clock::time_point start = clock::now();
     for (long long frames = kFrames;; frames += kFrames) {
         audio_render(buf, kFrames);
-        const long long ns = frames / OUT_RATE * 1'000'000'000LL + frames % OUT_RATE * 1'000'000'000LL / OUT_RATE;
-        std::this_thread::sleep_until(start + std::chrono::nanoseconds(ns));
+        if (clock::now() - (start + ns_of(frames)) > kMaxLate) start = clock::now() + ns_of(kFrames) - ns_of(frames);
+        std::this_thread::sleep_until(start + ns_of(frames));
     }
 }
 

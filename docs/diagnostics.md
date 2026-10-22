@@ -369,19 +369,24 @@ whole cushion is back, so every underrun is a gap at least that long; 60 ms, as 
 not ride through the 40-60 ms a guest waits on a slow render stage. Neither edge of the gap
 steps. As the ring nears empty its last 5 ms fade to silence, and the sound fades back in
 over 8 ms. Holding 100 ms more than the cushion, the ring cuts back to it with a 10 ms
-crossfade from where it was reading to where it jumped to. Each of the three was once a
-step in the output, heard as a click. A cut on a tone made a second difference 300 times
-the tone's own. `ninja test_audio_ring` builds `tools/test_audio_ring.cpp`, which runs
-`audio.cpp` with a tone for the guest and a device that keeps exact time, both on one
-virtual clock, and checks that a burst and a stall leave the output as smooth as the tone.
-Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
-image, device or SDL.
+crossfade from where it was reading to where it jumped to. A cut does not crossfade when
+the ring was refilling, which is silent anyway, or when the ring was more than half full,
+where the guest could overwrite what the fade reads, and that cut splices. A cut that
+comes while a crossfade is still running waits for the next pull. Each of the three was
+once a step in the output, heard as a click. A cut on a tone made a second difference 300
+times the tone's own. `ninja test_audio_ring` builds `tools/test_audio_ring.cpp`, which
+runs `audio.cpp` with a tone for the guest and a device that keeps exact time, both on one
+virtual clock, and checks that a burst and a stall leave the output within 3 times the
+tone's own second difference. It also checks that a splice or a hard stop at those points
+would have stepped the output by over 10 times that, so each scenario can fail. Each check
+prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc image,
+device or SDL.
 
-SDL's dummy driver (`SDL_AUDIO_DRIVER=dummy`, for runs that make no sound) sleeps a whole
-number of milliseconds per pull and then pulls, so it took 81.7 s of sound in a 90 s run,
-and the ring cut back about once a second. Under that driver `audio_sdl.cpp` pulls the
-sound itself instead, on deadlines counted from the start, so a run with no sound keeps a
-sound card's pace.
+SDL's dummy driver (`SDL_AUDIO_DRIVER=dummy`, for runs that make no sound) waits a relative
+10 ms after each pull, so the oversleep and the mix's own time add to every period. It took
+81.7 s of sound in a 90 s run (90.8%), and the ring cut back about once a second. Under
+that driver `audio_sdl.cpp` pulls the sound itself instead, on deadlines counted from the
+start, so a run with no sound keeps a sound card's pace.
 
 `GCN_CPU_SCALE=N` (or `clock_set_cpu_scale` from a game's sources) makes the emulated CPU
 N times as fast as the console's: the ticks per edge are divided by N, so the same frame of
@@ -433,9 +438,9 @@ when the AX ucode boots. Three lines come at their own pace:
   buffer (`audio.cpp`). It gives the ring's level in frames, its running average, the
   resampling trim that walks it back to the cushion and the underruns and cuts so far. It
   keeps the device's time, so it differs between runs. Each cut also prints
-  `[ring] cut N frames at output frame F` as it happens. N is the frames thrown away, and F
-  the frames the device had taken by then, which is where the cut lands in a `GCN_WAV`
-  recording.
+  `[ring] cut N frames at output frame F` as it happens. N is the frames thrown away, in
+  the ring's 32 kHz frames, and F the frames the device had taken by then, in 48 kHz output
+  frames, which is where the cut lands in a `GCN_WAV` recording.
 
 Every 400 command lists four more lines follow, each with `list=N`, the lists processed
 since the process started. Their counts cover those 400 lists, and the hash covers everything
