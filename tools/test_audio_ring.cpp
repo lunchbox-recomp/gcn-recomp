@@ -149,9 +149,9 @@ int main() {
     check(run.worst(1, 1.2) <= bar, "the cut blends instead of splicing");
 
     // A stall: nothing for 300 ms, so the ring runs dry and refills. Stopping dead would step
-    // from the last frame pushed to zero, and starting dead from zero to the first one after.
-    // Nothing is pushed in the stall, so the last frame pushed is also the one left in the
-    // ring, and the one the refill plays first.
+    // from the last frame pushed to zero, and starting dead would step from zero to the frame
+    // the refill plays first, the one left in the ring. Nothing is pushed in the stall, so
+    // that is the last frame pushed too.
     const long long last = run.tone_frames - 1;
     const double f = tone(last);
     const double stop = std::max(std::fabs(tone(last - u) - 2 * f), std::fabs(f));
@@ -188,8 +188,9 @@ int main() {
     short_pull();
     check(g_stat_cuts == cuts + 2 && g_cut_left == kCutFade - 200, "a cut during a running crossfade waits");
     while (g_cut_left) short_pull();
+    const bool waited = g_stat_cuts == cuts + 2;
     short_pull();
-    check(g_stat_cuts == cuts + 3, "the cut comes on the pull after the crossfade ends");
+    check(waited && g_stat_cuts == cuts + 3, "the cut comes on the pull after the crossfade ends");
 
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;

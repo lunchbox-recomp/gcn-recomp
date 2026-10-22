@@ -114,11 +114,11 @@ press on a port that is not plugged in does nothing.
 
 `ninja test_ports` in a build directory (the build allows Linux, but it has only been run
 on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without
-a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own input loop and the SI layer in, so each port is read back as
-the guest reads it. `tools/test_ports.sh <test_ports> <work dir>` runs its three modes: the
-port checks, and a recording of two gamepads and its replay with none. Each check prints
-`ok` or `FAIL`, and the exit code is 0 only if all pass. It refuses to run while any
-joystick is connected.
+a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own
+input loop and the SI layer in, so each port is read back as the guest reads it.
+`tools/test_ports.sh <test_ports> <work dir>` runs its three modes: the port checks, and a
+recording of two gamepads and its replay with none. Each check prints `ok` or `FAIL`, and
+the exit code is 0 only if all pass. It refuses to run while any joystick is connected.
 
 ## Frame dumps
 
@@ -464,9 +464,9 @@ both reached shows whether a change to the mixer changed what it made, and from 
   millisecond of a list). `mixer` gives the eight mixer control values (PB word 6) with the
   most as `value:count`. `mixer_rest` is the total for every other value. `src0`, `src1`
   and `src2` count resampler types 0 (polyphase), 1 (linear) and 2 (none) from word 4, and
-  `src_other` counts anything past 2, which mixes as 2 does. `delay` counts the initial time delay switched on
-  (word 27), which this runtime doesn't apply. `stream_loops` counts the times a voice with
-  the stream flag (word 8) looped.
+  `src_other` counts anything past 2, which mixes as 2 does. `delay` counts the initial
+  time delay switched on (word 27), which this runtime doesn't apply. `stream_loops` counts
+  the times a voice with the stream flag (word 8) looped.
 - `[ax] hash`: `fnv` is a 64-bit FNV-1a over every byte 0E has written since the process
   started, each block's 640 bytes of surround and then its 640 bytes of interleaved R and
   L, as RAM holds them.
