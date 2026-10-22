@@ -2,11 +2,13 @@
 // game. runtime/settings.cpp is linked as it is, and platform.cpp for its file replace.
 //
 // Each case writes a file into the work dir, loads or saves it, and checks the struct or
-// the file's bytes. A save that fails must leave the old file whole, so three failures are
-// made to happen: a directory where the save writes its new file, a file size limit
-// (RLIMIT_FSIZE) that stops that write partway as a full disk would, and an old file the
-// save can't read. A save that wrote the file in place fails the first two: it succeeds
-// past the directory, and it leaves a cut-off file at the limit.
+// the file's bytes. A save that fails must leave the old file whole, so four failures are
+// made to happen. One is a directory where the save writes its new file. Two are a file size
+// limit (RLIMIT_FSIZE) that stops that write partway as a full disk would: on a file that
+// fits in stdio's buffer, where fclose's flush hits the limit, and on one that doesn't,
+// where fwrite does. The last is an old file the save can't read. A save that wrote the
+// file in place fails the directory case, which it gets past, and the limit cases, which
+// leave it a cut-off file.
 //
 // usage: test_settings <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
@@ -181,10 +183,17 @@ void failed_save_no_temp() {
     check(read_file(p) == before, "and leaves the old file whole");
 }
 
-void failed_save_cut_short() {
-    const std::string p = path_of("full.txt");
+struct LimitedSave {
+    bool saved, whole, no_temp;
+};
+
+// A save over a file of `comment_lines` comment lines and an aspect line, with the size limit
+// at 256 bytes. A comment line is 50 bytes, so 40 of them fit in stdio's buffer and 400
+// don't.
+LimitedSave save_under_size_limit(const char* name, int comment_lines) {
+    const std::string p = path_of(name);
     std::string before;
-    for (int i = 0; i < 40; i++) before += "# a comment, long enough that forty need some room\n";
+    for (int i = 0; i < comment_lines; i++) before += "# a comment line, filler for the size of the file\n";
     before += "aspect 4:3\n";
     write_file(p, before);
     // Past the limit a write fails with EFBIG, once SIGXFSZ no longer ends the process.
@@ -200,9 +209,24 @@ void failed_save_cut_short() {
     setrlimit(RLIMIT_FSIZE, &old);
     // A stderr sent to a file failed under the limit too, and stays failed until cleared.
     clearerr(stderr);
-    check(!saved, "a save fails when only 256 bytes of its file can be written");
-    check(read_file(p) == before, "and leaves the old file whole");
-    check(!exists(p + ".tmp"), "and removes the part it wrote");
+    return {saved, read_file(p) == before, !exists(p + ".tmp")};
+}
+
+// The file fits in stdio's buffer, so fwrite takes all of it and the limit bites when fclose
+// flushes.
+void failed_save_cut_short_at_close() {
+    const LimitedSave r = save_under_size_limit("full.txt", 40);
+    check(!r.saved, "a save fails when only 256 bytes of its 2 KB file can be written");
+    check(r.whole, "and leaves the old file whole");
+    check(r.no_temp, "and removes the part it wrote");
+}
+
+// The file is bigger than stdio's buffer, so fwrite itself comes back short.
+void failed_save_cut_short_at_write() {
+    const LimitedSave r = save_under_size_limit("full_big.txt", 400);
+    check(!r.saved, "a save fails when only 256 bytes of its 20 KB file can be written");
+    check(r.whole, "and leaves the old file whole");
+    check(r.no_temp, "and removes the part it wrote");
 }
 
 void failed_save_unreadable() {
@@ -240,7 +264,8 @@ int main(int argc, char** argv) {
     save_after_unterminated_line();
     save_creates();
     failed_save_no_temp();
-    failed_save_cut_short();
+    failed_save_cut_short_at_close();
+    failed_save_cut_short_at_write();
     failed_save_unreadable();
     printf("test_settings: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
