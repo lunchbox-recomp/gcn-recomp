@@ -265,23 +265,28 @@ void process_voice(PB& pb, int offset) {
     if (g_axstats) stats_voice(pb);
     int16_t samples[SPMS];
     Accel acc(pb);
-    // Sample rate conversion: linear interpolation, for the linear and polyphase modes alike.
-    uint32_t ratio = pb.get32(PB_RATIO_HI);
-    uint32_t pos = pb.w[PB_FRAC];
     int16_t* last = (int16_t*)&pb.w[PB_LAST];
-    uint16_t src_type = pb.w[PB_SRC_TYPE];
-    for (int i = 0; i < SPMS; i++) {
-        int32_t frac = pos & 0xFFFF;
-        if (src_type == 2) samples[i] = last[3];
-        else samples[i] = (int16_t)(last[2] + (((last[3] - last[2]) * frac) >> 16));
-        pos += ratio;
-        while (pos >= 0x10000) {
-            last[0] = last[1]; last[1] = last[2]; last[2] = last[3];
-            last[3] = acc.sample();
-            pos -= 0x10000;
+    if (pb.w[PB_SRC_TYPE] == 2) {
+        // No rate conversion: a sample in for every sample out, whatever the ratio says. The
+        // history keeps the last four out, as the interpolating types would have it.
+        for (int i = 0; i < SPMS; i++) samples[i] = acc.sample();
+        for (int k = 0; k < 4; k++) last[k] = samples[SPMS - 4 + k];
+    } else {
+        // Sample rate conversion: linear interpolation, for the linear and polyphase modes alike.
+        uint32_t ratio = pb.get32(PB_RATIO_HI);
+        uint32_t pos = pb.w[PB_FRAC];
+        for (int i = 0; i < SPMS; i++) {
+            int32_t frac = pos & 0xFFFF;
+            samples[i] = (int16_t)(last[2] + (((last[3] - last[2]) * frac) >> 16));
+            pos += ratio;
+            while (pos >= 0x10000) {
+                last[0] = last[1]; last[1] = last[2]; last[2] = last[3];
+                last[3] = acc.sample();
+                pos -= 0x10000;
+            }
         }
+        pb.w[PB_FRAC] = (uint16_t)pos;
     }
-    pb.w[PB_FRAC] = (uint16_t)pos;
     acc.finish();
     // Volume envelope
     for (int i = 0; i < SPMS; i++) {
