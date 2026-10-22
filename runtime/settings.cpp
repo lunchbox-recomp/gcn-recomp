@@ -96,18 +96,14 @@ Settings settings_load(const std::string& path) {
             else takes = "0 or 1";
         } else if (key == "scale") {
             if (!parse_positive(value, s.scale)) takes = "a whole number from 1 up";
-        } else {
-            s.extra[key] = value;
         }
         if (takes)
             fprintf(stderr, "%s:%d: %s takes %s, not \"%s\", so the line is skipped\n", path.c_str(), n,
                     key.c_str(), takes, value.c_str());
     }
-    if (found) {
+    if (found)
         fprintf(stderr, "%s: aspect %s, fullscreen %d, scale %d\n", path.c_str(), s.aspect.c_str(),
                 (int)s.fullscreen, s.scale);
-        for (const auto& [k, v] : s.extra) fprintf(stderr, "%s: %s %s (for the game)\n", path.c_str(), k.c_str(), v.c_str());
-    }
     return s;
 }
 

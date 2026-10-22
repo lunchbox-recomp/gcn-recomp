@@ -60,15 +60,10 @@ bool exists(const std::string& path) {
     return stat(path.c_str(), &st) == 0;
 }
 
-std::string extra(const Settings& s, const char* key) {
-    auto it = s.extra.find(key);
-    return it == s.extra.end() ? "<none>" : it->second;
-}
-
 void missing_file() {
     const Settings s = settings_load(path_of("none.txt"));
-    check(s.aspect == "4:3" && !s.fullscreen && s.scale == 2 && s.extra.empty(),
-          "a missing file gives aspect 4:3, fullscreen 0, scale 2 and no other keys");
+    check(s.aspect == "4:3" && !s.fullscreen && s.scale == 2,
+          "a missing file gives aspect 4:3, fullscreen 0 and scale 2");
 }
 
 void parsing() {
@@ -87,9 +82,6 @@ void parsing() {
     check(s.aspect == "16:9", "aspect 16:9 is read");
     check(s.fullscreen, "fullscreen 1 is read past leading spaces and a tab");
     check(s.scale == 3, "scale 3 is read with trailing spaces");
-    check(s.extra.size() == 2, "the two unknown keys are kept, and no comment or blank line");
-    check(extra(s, "vsync") == "off", "an unknown key's last line wins, with no newline at the end");
-    check(extra(s, "greeting") == "hello there", "an unknown key keeps its whole value, less the CR");
 }
 
 void aspects() {
@@ -119,7 +111,6 @@ void bad_values() {
     check(s.aspect == "21:9", "a bad aspect leaves the one before it");
     check(s.fullscreen, "a bad fullscreen leaves the one before it");
     check(s.scale == 3, "a bad scale leaves the one before it");
-    check(s.extra.empty(), "a bad value for an owned key isn't kept for the game");
 }
 
 void save_keeps_lines() {
@@ -137,7 +128,6 @@ void save_keeps_lines() {
     s.aspect = "16:9";
     s.fullscreen = true;
     s.scale = 3;
-    s.extra["unsaved"] = "1";
     check(settings_save(p, s), "a save over a file succeeds");
     check(read_file(p) ==
               "# Display\n"
@@ -152,8 +142,6 @@ void save_keeps_lines() {
           "it rewrites each owned line in place, keeps every other line and adds the missing key");
     const Settings back = settings_load(p);
     check(back.aspect == "16:9" && back.fullscreen && back.scale == 3, "a load gives back what was saved");
-    check(back.extra.size() == 2 && extra(back, "vsync") == "on" && extra(back, "greeting") == "hello there",
-          "and the file's own unknown keys, but not one only in the struct");
     check(!exists(p + ".tmp"), "a save leaves no temp file behind");
 }
 
