@@ -2616,7 +2616,8 @@ static GLuint g_output_fbo = 0;
 // and the rect of it that was shown, in EFB pixels. The EFB can't be read again later, as
 // the display copy that presented it clears it. Every presented frame is kept, so the copy
 // is always the newest one, but only for a frontend that asks (render_keep_last): it costs
-// a blit of the frame at each present.
+// a texture of the frame's size at the internal scale, 5.4 MB for the whole EFB at scale 2
+// and 86 MB at scale 8, and a blit into it at each present.
 static GLuint g_last_tex, g_last_fbo;
 static uint32_t g_last_tex_w, g_last_tex_h, g_last_rect[4];
 static int g_last_scale;
@@ -2812,7 +2813,14 @@ static void present(const EfbCopyCmd& c) {
 
 void render_keep_last(bool on) {
     g_keep_last = on;
-    if (!on) g_have_last = false;
+    if (on) return;
+    g_have_last = false;
+    if (g_last_fbo) {
+        glDeleteFramebuffers(1, &g_last_fbo);
+        glDeleteTextures(1, &g_last_tex);
+        g_last_fbo = g_last_tex = 0;
+        g_last_tex_w = g_last_tex_h = 0;  // so that keeping again sizes a new texture
+    }
 }
 
 // Through the same aspect fit as present(), at the window's size now, and never dumped.

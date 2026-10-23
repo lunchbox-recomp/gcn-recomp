@@ -506,13 +506,15 @@ the window's size then, as a running frame is. With `--eye` it draws the eye's l
 again. Each one drawn is a host frame, and 300 of them took 5.6 s in a hidden run. Before
 any frame has been presented there's nothing to draw, and no host frame. The display copy
 that presented the frame cleared the EFB, so the renderer keeps a copy of every frame it
-presents for a frontend that asks (`render_keep_last`), as the desktop one does, at the cost
-of a blit of each frame. What's drawn again is always the newest frame presented, which is
-the one the guest is held after once the frames queued before the hold have been shown. The
-presented count doesn't move and nothing is dumped, so a paused run writes the same frame
-dumps as one that never paused. The pad's rumble motor stops while the guest is held, on a
-gamepad and on a wheel's force feedback, and runs again after the resume if the game still
-has it on.
+presents for a frontend that asks (`render_keep_last`), as the desktop one does. That costs
+a texture of the frame's size at the internal scale, 5.4 MB for the whole EFB at scale 2 and
+86 MB at scale 8, from the first frame of every desktop run, and a blit into it at each
+present. `render_keep_last(false)` frees it. What's drawn again is always the newest frame
+presented, which is the one the guest is held after once the frames queued before the hold
+have been shown. The presented count doesn't move and nothing is dumped, so a paused run
+writes the same frame dumps as one that never paused. The pad's rumble motor stops while the
+guest is held, on a gamepad and on a wheel's force feedback, and runs again after the resume
+if the game still has it on.
 
 `GCN_PAUSE_AT=<frame>:<host frames>` pauses once, at the first frame boundary where the
 frames submitted have reached `<frame>` (`0` is the first boundary), and resumes after the

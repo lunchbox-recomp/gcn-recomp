@@ -57,8 +57,9 @@ void render_set_output_fbo(unsigned fbo);
 bool render_execute(Batch& b);
 
 // Keeps a copy of every frame presented from now on, for render_present_last, or stops and
-// forgets the one kept. It costs a blit of the frame at each present, so only a frontend
-// that draws frames again asks for it.
+// frees the one kept. The copy costs a texture of the frame's size at the internal scale
+// (5.4 MB for the whole EFB at scale 2, 86 MB at scale 8) and a blit into it at each
+// present, so only a frontend that draws frames again asks for it.
 void render_keep_last(bool on);
 // Draws the newest presented frame to the output again, fitted to the output aspect at the
 // window's size now, for a frontend whose guest is paused (pause.h): nothing new comes, but

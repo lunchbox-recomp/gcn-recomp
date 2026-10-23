@@ -13,6 +13,7 @@
 #include "gx/render_gl.cpp"
 #include <cstdio>
 #include <map>
+#include <set>
 
 bool write_png(const char*, const uint8_t*, int, int) { return true; }
 namespace gx {
@@ -26,6 +27,7 @@ std::map<GLuint, GLuint> g_attach;  // each framebuffer's texture
 int g_window;                       // what the window holds
 GLuint g_next = 1, g_read, g_draw, g_bound_tex, g_program;
 GLuint g_kept_from;                 // the framebuffer the last blit into the kept copy read
+std::set<GLuint> g_deleted;         // textures and framebuffers deleted (gen numbers both)
 float g_rect[4];
 GLint g_view[4];
 int g_failed;
@@ -34,6 +36,9 @@ int& holds(GLuint fbo) { return fbo ? g_tex[g_attach[fbo]] : g_window; }
 
 void GLAD_API_PTR gen(GLsizei n, GLuint* ids) {
     for (GLsizei i = 0; i < n; i++) ids[i] = g_next++;
+}
+void GLAD_API_PTR delete_ids(GLsizei n, const GLuint* ids) {
+    for (GLsizei i = 0; i < n; i++) g_deleted.insert(ids[i]);
 }
 void GLAD_API_PTR bind_framebuffer(GLenum target, GLuint fbo) {
     if (target != GL_DRAW_FRAMEBUFFER) g_read = fbo;
@@ -73,6 +78,8 @@ void GLAD_API_PTR nothing_bbbb(GLboolean, GLboolean, GLboolean, GLboolean) {}
 void install() {
     glad_glGenTextures = gen;
     glad_glGenFramebuffers = gen;
+    glad_glDeleteTextures = delete_ids;
+    glad_glDeleteFramebuffers = delete_ids;
     glad_glBindFramebuffer = bind_framebuffer;
     glad_glBindTexture = bind_texture;
     glad_glTexImage2D = tex_image;
@@ -165,8 +172,18 @@ int present_last_checks() {
     check(gx::g_xfbs.size() == 1 && kept_from == gx::g_xfbs[0].fbo,
           "it was kept from the assembled XFB, not from the EFB that held only its last half");
 
+    const GLuint kept_tex = gx::g_last_tex, kept_fbo = gx::g_last_fbo;
     gx::render_keep_last(false);
     g_window = -1;
     check(!gx::render_present_last() && g_window == -1, "once keeping stops, render_present_last draws nothing");
+    check(kept_tex && kept_fbo && g_deleted.count(kept_tex) && g_deleted.count(kept_fbo),
+          "and the kept copy's texture and framebuffer are freed");
+
+    // The XFB has frame 41's top half, so this presents a frame the size of the one freed.
+    gx::render_keep_last(true);
+    present_frame(52, bottom);
+    g_window = -1;
+    check(gx::render_present_last() && g_window == 52,
+          "keeping again keeps the next frame presented, in a new texture though it's the same size");
     return g_failed;
 }
