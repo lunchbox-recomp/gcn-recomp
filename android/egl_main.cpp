@@ -451,9 +451,11 @@ int main(int argc, char** argv) {
     // GCN_INPUT_LOG=<dir> records this run's input log there, as the app does for every
     // run; a replay's recorded clock jumps are then written into it too, so a route can
     // be re-recorded or extended on the device as it can on the desktop.
+    // A live run's card and SRAM are the files exi_init loads (g_save_dir is unset here), so
+    // the log snapshots those, as main.cpp does.
     if (const char* d = getenv("GCN_INPUT_LOG"))
-        input_log_start(d, replay_card.empty() ? std::string(g_memcard_path ? g_memcard_path : "") : replay_card,
-                        replay_sram);
+        input_log_start(d, replay_card.empty() ? "saves/memcard_a.raw" : replay_card,
+                        replay_sram.empty() ? "saves/sram.raw" : replay_sram);
 
     if (!egl_init()) return 1;
     int glver = gl_load_with(gl_proc);
