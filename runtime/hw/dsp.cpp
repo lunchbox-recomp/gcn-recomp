@@ -144,7 +144,11 @@ static uint64_t g_aid_due;
 // on a headset most of virtual time is jumps (60-87% of each second, the guest waiting on
 // the render stages in real time), the backlog outgrew that, passed the 100 ms limit below
 // and was thrown away -- the sound cutting out for a fifth to two fifths of every second.
-// A guest that has not queued a buffer yet still gets the quarter block to do it in.
+// A guest that has not queued a buffer yet still gets the quarter block to do it in, and
+// the block ends at the first look after it has: a held block is looked at again every
+// 32nd of a block.
+// Holding each one for the whole quarter block left the DMA short of its rate when jumps
+// took most of virtual time.
 //
 // That quarter block is the guest's own running. A jump that lands inside a block before
 // the guest has taken the interrupt leaves the block's end already behind the clock at the
@@ -160,7 +164,10 @@ static uint64_t g_aid_due;
 // cutscene that was one block in ten, heard as crackle. Holding a block back until the
 // guest had queued the next one, by what the guest executed rather than by guest time,
 // was tried and was worse: such a guest queues only once the DMA has moved on, so every
-// block waited and then repeated anyway, and the sound came up short.
+// block waited and then repeated anyway, and the sound came up short. Leaving the jumps out
+// of the quarter block costs that guest too: a hold it doesn't queue in lasts longer than
+// it did when they counted, so with jumps taking four fifths of virtual time or more its
+// blocks come further apart and the DMA falls further short of its rate.
 static uint64_t g_aid_started;   // when the block in flight started
 static uint64_t g_aid_jumped;    // clock_jumped_ticks() then
 static bool g_aid_queued;        // the guest has written the address since then
@@ -214,7 +221,7 @@ static void aid_block_done() {
         const uint64_t dur = (uint64_t)g_aid_blocks_left * 32 / 4 * TB_FREQ / ai_dma_sample_rate();
         const uint64_t until = g_aid_started + (clock_jumped_ticks() - g_aid_jumped) + dur / 4;
         if (now_ticks() < until) {
-            event_schedule(until, aid_block_done);
+            event_schedule(std::min(until, now_ticks() + dur / 32), aid_block_done);
             return;
         }
     }

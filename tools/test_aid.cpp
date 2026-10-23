@@ -7,9 +7,9 @@
 //
 // A guest busy through a whole block gets its buffer played again, as the hardware plays it.
 // A catch-up jump that lands inside a block while the guest is busy must not do the same: the
-// block waits for a quarter block of the guest running, the guest takes the interrupt in it,
-// and its next buffer plays. A guest that stays busy through that quarter block gets the
-// repeat after it, so the wait is bounded.
+// block is held for up to a quarter block of the guest running, with the jumps left out, and
+// ends soon after the guest takes the interrupt and queues its next buffer. A guest that
+// stays busy through that quarter block gets the repeat after it, so the wait is bounded.
 //
 // usage: test_aid
 // Exits 0 only if every check passes.
@@ -159,8 +159,10 @@ int main() {
     run_to(g_now + 10 * kDur);
     printf("  a jump of 6 ms 1 ms into a block: %d repeat(s) after it\n", repeats(from));
     check(repeats(from) == 0, "a jump inside a block leaves the guest time to queue the next buffer");
-    check(g_played[from + 1].at == start + 6 * kDur / 5 + kDur / 4,
-          "the block waits for a quarter block of the guest running after the jump's start");
+    // The jump lands 7/5 of a block after the block started, the block is held there and the
+    // guest queues at once; the hold is looked at again a 32nd of a block later.
+    check(g_played[from + 1].at == start + 7 * kDur / 5 + kDur / 32,
+          "the held block ends at the first look after the guest queues, not a quarter block on");
 
     // The same, with the guest still busy for a quarter block after the jump.
     from = g_played.size();

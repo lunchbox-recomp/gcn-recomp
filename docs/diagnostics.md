@@ -394,7 +394,13 @@ clock has made since the block started left out (`aid_block_done`). While the ju
 counted, one that landed inside a block ended it at the guest's next poll, before the guest
 had taken the block's interrupt, and the DMA played the same buffer again. An unpaced run
 of a script never jumps, so there the quarter block is plain virtual time; a replay makes
-only its recording's jumps.
+only its recording's jumps. The hold is looked at again every 32nd of a block, and the
+block ends at the first look after the guest queues. Waiting out the whole quarter block
+each time, as the hold once did, left the DMA short of its rate when jumps took most of
+virtual time. A guest that doesn't queue within the hold, one that fills its buffers from
+its main loop, gets the whole quarter block, which with the jumps left out lasts longer
+than when they counted: once jumps take four fifths of virtual time or more, its blocks
+come further apart and the DMA falls further short of its rate.
 
 The sound ring between the DMA and the device keeps a cushion (`audio.cpp`), 100 ms by
 default and `GCN_AUDIO_CUSHION_MS` to change it. Running dry, it stays silent until the
