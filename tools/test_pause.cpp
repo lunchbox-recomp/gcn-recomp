@@ -137,16 +137,27 @@ Guest* issue(std::vector<uint8_t> s, bool inline_fe) {
     });
 }
 
-// A pause asked for before each copy: a whole frame, then a frame in two halves.
+// A pause asked for before each copy: a whole frame, then a frame in two halves. The redraw
+// can show a held frame only if its copy went on before the guest stopped: inline to the
+// renderer, which ends the batch there, and threaded to the front end through the skim's
+// sync. Either counts the frame, so the count when held says whether it had gone.
 void check_frame_ends(bool inline_fe) {
     const char* how = inline_fe ? "inline" : "threaded";
     char what[160];
     gx::g_fe_threaded = !inline_fe;
     g_ends.clear();
+    const uint32_t before = gx::g_frames_submitted;
+    // Whether the guest is held with `copies` copies gone on, the last of them ending a frame.
+    auto held_after = [&](uint32_t copies) {
+        return held_soon() && gx::g_frames_submitted == before + copies &&
+               (!inline_fe || (g_ends.size() == copies && g_ends.back()));
+    };
     pause_request(true);
     Guest* g = issue(display_copy(kXfb, 480), inline_fe);
     snprintf(what, sizeof(what), "%s, a pause holds the guest at a display copy of the whole frame", how);
     check(held_soon(), what);
+    snprintf(what, sizeof(what), "%s, it holds after the copy has gone on", how);
+    check(held_after(1), what);
     pause_request(false);
     snprintf(what, sizeof(what), "%s, lifting it lets the guest go on", how);
     check(g->finish(), what);
@@ -158,6 +169,8 @@ void check_frame_ends(bool inline_fe) {
     g = issue(display_copy(kXfb + 240 * kStride, 240), inline_fe);
     snprintf(what, sizeof(what), "%s, it holds the guest at the second half", how);
     check(held_soon(), what);
+    snprintf(what, sizeof(what), "%s, after the second half has gone on", how);
+    check(held_after(3), what);
     pause_request(false);
     snprintf(what, sizeof(what), "%s, lifting it lets the guest go on", how);
     check(g->finish(), what);
