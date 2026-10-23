@@ -4,6 +4,7 @@
 #include <ctime>
 #include <memory>
 #include "memcard.h"
+#include "sram.h"
 
 static std::unique_ptr<MemCard> g_card_a;
 
@@ -13,27 +14,26 @@ struct ExiChannel {
 static ExiChannel g_exi[3];
 
 // ---- IPL device (channel 0, CS1) ----
-static uint8_t g_sram[64];
+// The SRAM lives in a file (sram.h), read at boot and written each time the guest changes
+// it. g_sram_saved is what the file holds, or the defaults when there is none, so a write
+// that changes nothing writes no file: a run that never changes the SRAM leaves none behind.
+static uint8_t g_sram[SRAM_SIZE];
+static uint8_t g_sram_saved[SRAM_SIZE];
+static std::string g_sram_file;
+static bool g_sram_written;
 static uint32_t g_ipl_addr;
 static bool g_ipl_have_cmd;
 static uint32_t g_ipl_pos;
 static std::string g_uart_line;
 
-static void sram_init() {
-    memset(g_sram, 0, sizeof(g_sram));
-    // counter_bias = 0, display_offset_h = 0, ntd = 0, lang = 0 (English), flags = stereo|...
-    g_sram[0x13] = 0x2C;
-    // OSSramEx: flashID[2][12] at 0x14 (zero), flashIDCheckSum[2] at 0x3A must equal ~sum(flashID).
-    g_sram[0x3A] = 0xFF;
-    g_sram[0x3B] = 0xFF;
-    uint16_t sum = 0, inv = 0;
-    for (int i = 0x0C; i < 0x14; i += 2) {
-        uint16_t w = (uint16_t)((g_sram[i] << 8) | g_sram[i + 1]);
-        sum += w;
-        inv += (uint16_t)~w;
-    }
-    g_sram[0] = sum >> 8; g_sram[1] = (uint8_t)sum;
-    g_sram[2] = inv >> 8; g_sram[3] = (uint8_t)inv;
+// The guest writes the SRAM a span at a time, each in one selection of the device, with
+// its checksums already worked out, so it's saved when the device is deselected.
+static void sram_commit() {
+    g_sram_written = false;
+    if (!memcmp(g_sram, g_sram_saved, SRAM_SIZE)) return;
+    if (!sram_save(g_sram_file, g_sram)) return;
+    memcpy(g_sram_saved, g_sram, SRAM_SIZE);
+    LOG(LOG_EXI, "sram: saved %s", g_sram_file.c_str());
 }
 
 // The RTC runs on guest time from a base the frontend sets (the input log's start time
@@ -64,7 +64,12 @@ static uint8_t ipl_transfer_byte(uint8_t in) {
     } else if ((addr & 0x7FFFFF00u) == 0x20000100u) {  // SRAM
         uint32_t o = ((addr - 0x20000100u) >> 6) + g_ipl_pos;
         if (o < 64) {
-            if (write) g_sram[o] = in; else out = g_sram[o];
+            if (write) {
+                g_sram[o] = in;
+                g_sram_written = true;
+            } else {
+                out = g_sram[o];
+            }
         }
     } else if ((addr & 0x7FFFFF00u) == 0x20010000u) {  // UART
         if (write && g_ipl_pos > 0) {  // first byte after cmd is a length/pad byte on some SDKs
@@ -81,7 +86,12 @@ static uint8_t ipl_transfer_byte(uint8_t in) {
     return out;
 }
 
-static void ipl_deselect() { g_ipl_have_cmd = false; g_ipl_pos = 0; g_ipl_addr = 0; }
+static void ipl_deselect() {
+    g_ipl_have_cmd = false;
+    g_ipl_pos = 0;
+    g_ipl_addr = 0;
+    if (g_sram_written) sram_commit();
+}
 
 // ---- generic ----
 static int selected_device(int ch) {
@@ -139,9 +149,17 @@ const char* g_save_dir;
 // Set before boot to use a specific card file instead of <save dir>/memcard_a.raw. A replay
 // points this at its scratch copy of the logged run's card.
 const char* g_memcard_path;
+// Set before boot to use a specific SRAM file instead of <save dir>/sram.raw. A replay
+// points this at its scratch copy of the logged run's.
+const char* g_sram_path;
 
 void exi_init() {
-    sram_init();
+    g_sram_file = g_sram_path ? std::string(g_sram_path)
+                : g_save_dir  ? std::string(g_save_dir) + "/sram.raw"
+                              : std::string("saves/sram.raw");
+    if (sram_load(g_sram_file, g_sram)) LOG(LOG_EXI, "sram: loaded %s", g_sram_file.c_str());
+    memcpy(g_sram_saved, g_sram, SRAM_SIZE);
+    g_sram_written = false;
     const std::string path = g_memcard_path ? std::string(g_memcard_path)
                            : g_save_dir ? std::string(g_save_dir) + "/memcard_a.raw"
                                         : std::string("saves/memcard_a.raw");

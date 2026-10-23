@@ -332,19 +332,24 @@ void android_main(android_app* app) {
     // wherever something went wrong can be played back: on a desktop with
     // --replay=<dir> after an adb pull, or here with GCN_REPLAY=<dir> in gcn_env.txt
     // (relative to the files directory). GCN_NO_INPUT_LOG=1 turns the recording off.
-    // See gcn-recomp/docs/diagnostics.md; the replay runs on a scratch copy of the
-    // logged card, never the real one.
-    static std::string replay_card;
+    // See gcn-recomp/docs/diagnostics.md; the replay runs on scratch copies of the
+    // logged card and SRAM, never the real ones.
+    static std::string replay_card, replay_sram;
     if (const char* r = getenv("GCN_REPLAY")) {
         const std::string replay_dir = r[0] == '/' ? std::string(r) : dir + "/" + r;
-        if (!input_replay_load(replay_dir, replay_card)) LOGE("no replay at %s", replay_dir.c_str());
-        else if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
+        if (!input_replay_load(replay_dir, replay_card, replay_sram)) {
+            LOGE("no replay at %s", replay_dir.c_str());
+        } else {
+            if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
+            g_sram_path = replay_sram.c_str();
+        }
     }
     if (!getenv("GCN_NO_INPUT_LOG")) {
         char stamp[64];
         time_t now = time(nullptr);
         strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", localtime(&now));
-        input_log_start(dir + "/inputs/" + stamp, replay_card.empty() ? dir + "/memcard_a.raw" : replay_card);
+        input_log_start(dir + "/inputs/" + stamp, replay_card.empty() ? dir + "/memcard_a.raw" : replay_card,
+                        replay_sram.empty() ? dir + "/sram.raw" : replay_sram);
     }
 
     // Before the guest runs, so the AI DMA has somewhere to go from its first block.

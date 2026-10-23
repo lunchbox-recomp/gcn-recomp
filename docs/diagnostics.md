@@ -7,15 +7,23 @@ are `GCN_*`; none of this is needed to play.
 ## Input logging and replay
 
 Every run of the desktop frontend records the controller state the guest polled, keyed by
-the poll's sequence number, into `saves/inputs/<timestamp>/inputs.txt`, with a snapshot of
-the memory card beside it. The path is printed at startup. `--no-input-log` turns it off;
-`--input-log=<dir>` chooses the directory.
+the poll's sequence number, into `saves/inputs/<timestamp>/inputs.txt`, with snapshots of
+the memory card and the SRAM beside it. The path is printed at startup. `--no-input-log`
+turns it off; `--input-log=<dir>` chooses the directory.
 
-`--replay=<dir>` plays a log back: the guest reads the logged controller instead of the live
-one until the log runs out, then the live controller takes over. The run uses a scratch copy
-of the logged card (`memcard_replay.raw` in the log directory), so the real card is never
-touched and the replay sees the same saves the original did. A replay is still recorded as a
-new log, so a route can be extended by replaying it and then playing on.
+The SRAM holds what a console keeps on its battery, such as the sound mode. It lives in
+`saves/sram.raw` beside the card. It's read at boot, and a file that's missing, isn't 64
+bytes or fails its checksums gives the defaults every run started from before 2026-10-22.
+It's written through a temp file each time the guest changes it. `ninja test_sram` builds
+`tools/test_sram.cpp`, which checks the load and the save in a work dir.
+
+`--replay=<dir>` plays a log back. The guest reads the logged controller instead of the live
+one until the log runs out, then the live controller takes over. The run uses scratch copies
+of the logged card and SRAM (`memcard_replay.raw` and `sram_replay.raw` in the log
+directory), so the real ones are never touched and the replay sees the same saves and
+settings the original did. A log with no SRAM snapshot replays from the default SRAM. A
+replay is still recorded as a new log, so a route can be extended by replaying it and then
+playing on.
 
 The log holds every port the guest polls, so a run with more controllers (`--pads`, under
 "Scripted input") replays all of them, whatever `--pads` the replay is given. When the log

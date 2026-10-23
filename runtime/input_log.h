@@ -15,22 +15,27 @@
 // A log is a directory:
 //   inputs.txt       one line per change of pad state (see the file's own header)
 //   memcard_a.raw    the memory card as it was when the run started, if there was one
-// A replay restores that card to a scratch copy so that the run sees the same saves and
-// the real card is untouched.
+//   sram.raw         the SRAM as it was when the run started, if it had been saved
+// A replay restores both to scratch copies so that the run sees the same saves and
+// settings, and the real card and SRAM are untouched. A log with no sram.raw replays from
+// the default SRAM, which every run started from before the SRAM was saved.
 #pragma once
 #include "hw/pad.h"
 #include <cstdint>
 #include <string>
 
-// Start recording into `dir` (created). `memcard_path` is copied in as the snapshot when
-// it exists. Returns false, and records nothing, if the directory cannot be made.
-bool input_log_start(const std::string& dir, const std::string& memcard_path);
+// Start recording into `dir` (created). `memcard_path` and `sram_path` are copied in as the
+// snapshots when they exist. Returns false, and records nothing, if the directory cannot
+// be made.
+bool input_log_start(const std::string& dir, const std::string& memcard_path, const std::string& sram_path);
 
 
 // Load `dir` for replay. The card snapshot, if any, is copied to `dir`/memcard_replay.raw
 // and `memcard_out` receives that path; the frontend points the EXI card at it before
-// boot. Returns false if there is no inputs.txt.
-bool input_replay_load(const std::string& dir, std::string& memcard_out);
+// boot. `sram_out` receives `dir`/sram_replay.raw, which starts as a copy of the SRAM
+// snapshot, or as no file when the log has none; the frontend points the SRAM at it.
+// Returns false if there is no inputs.txt.
+bool input_replay_load(const std::string& dir, std::string& memcard_out, std::string& sram_out);
 
 // Marks where the run ended: the log's last line is otherwise the last *change*, and a
 // replay would hand control back to the live pad there, which can be well before the end.

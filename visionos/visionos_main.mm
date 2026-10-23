@@ -216,17 +216,22 @@ void gcn_vos_run(void* layer_renderer) {
 
     // Every run records its input into <Documents>/inputs/<stamp>/, as on the Quest; see
     // gcn-recomp/docs/diagnostics.md. GCN_REPLAY in gcn_env.txt plays one back.
-    static std::string replay_card;
+    static std::string replay_card, replay_sram;
     if (const char* r = getenv("GCN_REPLAY")) {
         const std::string replay_dir = r[0] == '/' ? std::string(r) : dir + "/" + r;
-        if (!input_replay_load(replay_dir, replay_card)) LOGE("no replay at %s", replay_dir.c_str());
-        else if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
+        if (!input_replay_load(replay_dir, replay_card, replay_sram)) {
+            LOGE("no replay at %s", replay_dir.c_str());
+        } else {
+            if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
+            g_sram_path = replay_sram.c_str();
+        }
     }
     if (!getenv("GCN_NO_INPUT_LOG")) {
         char stamp[64];
         time_t now = time(nullptr);
         strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", localtime(&now));
-        input_log_start(dir + "/inputs/" + stamp, replay_card.empty() ? dir + "/memcard_a.raw" : replay_card);
+        input_log_start(dir + "/inputs/" + stamp, replay_card.empty() ? dir + "/memcard_a.raw" : replay_card,
+                        replay_sram.empty() ? dir + "/sram.raw" : replay_sram);
     }
 
     if (!audio_open()) LOGE("audio unavailable; continuing without sound");

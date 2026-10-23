@@ -356,12 +356,13 @@ int main(int argc, char** argv) {
     // wherever something went wrong can be played back with --replay=<dir>. See
     // input_log.h. --no-input-log turns it off; --input-log=<dir> names the directory, and
     // without it a session (GCN_SESSION) puts the log in its own.
-    // The memory card is snapshotted into the log, and a replay runs on a scratch copy
-    // of that snapshot rather than the real card.
-    std::string replay_card;
+    // The memory card and the SRAM are snapshotted into the log, and a replay runs on
+    // scratch copies of those snapshots rather than the real ones.
+    std::string replay_card, replay_sram;
     if (!replay_dir.empty()) {
-        if (!input_replay_load(replay_dir, replay_card)) return 1;
+        if (!input_replay_load(replay_dir, replay_card, replay_sram)) return 1;
         if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
+        g_sram_path = replay_sram.c_str();
     }
     if (input_log) {
         if (input_log_dir.empty()) input_log_dir = session_inputs;
@@ -371,7 +372,8 @@ int main(int argc, char** argv) {
             strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", localtime(&now));
             input_log_dir = std::string("saves/inputs/") + stamp;
         }
-        input_log_start(input_log_dir, replay_card.empty() ? "saves/memcard_a.raw" : replay_card);
+        input_log_start(input_log_dir, replay_card.empty() ? "saves/memcard_a.raw" : replay_card,
+                        replay_sram.empty() ? "saves/sram.raw" : replay_sram);
     }
 
     if (headless) {

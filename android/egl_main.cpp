@@ -439,19 +439,21 @@ int main(int argc, char** argv) {
     input_script_init();
     // GCN_REPLAY=<dir> plays an input log back, as --replay does on the desktop: the way to
     // drive a run on a device through a recorded route, exactly, under the virtual clock.
-    static std::string replay_card;
+    static std::string replay_card, replay_sram;
     if (const char* r = getenv("GCN_REPLAY")) {
-        if (!input_replay_load(r, replay_card)) {
+        if (!input_replay_load(r, replay_card, replay_sram)) {
             fprintf(stderr, "GCN_REPLAY: no input log at %s\n", r);
             return 1;
         }
         if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
+        g_sram_path = replay_sram.c_str();
     }
     // GCN_INPUT_LOG=<dir> records this run's input log there, as the app does for every
     // run; a replay's recorded clock jumps are then written into it too, so a route can
     // be re-recorded or extended on the device as it can on the desktop.
     if (const char* d = getenv("GCN_INPUT_LOG"))
-        input_log_start(d, replay_card.empty() ? std::string(g_memcard_path ? g_memcard_path : "") : replay_card);
+        input_log_start(d, replay_card.empty() ? std::string(g_memcard_path ? g_memcard_path : "") : replay_card,
+                        replay_sram);
 
     if (!egl_init()) return 1;
     int glver = gl_load_with(gl_proc);

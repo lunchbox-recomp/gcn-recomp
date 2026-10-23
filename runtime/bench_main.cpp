@@ -84,13 +84,14 @@ int main(int argc, char** argv) {
     input_script_init();
     // GCN_REPLAY=<dir> plays an input log back, as --replay does on the desktop: the way to
     // drive a run on a device through a recorded route, exactly, under the virtual clock.
-    static std::string replay_card;
+    static std::string replay_card, replay_sram;
     if (const char* r = getenv("GCN_REPLAY")) {
-        if (!input_replay_load(r, replay_card)) {
+        if (!input_replay_load(r, replay_card, replay_sram)) {
             fprintf(stderr, "GCN_REPLAY: no input log at %s\n", r);
             return 1;
         }
         if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
+        g_sram_path = replay_sram.c_str();
     }
     uint32_t entry = boot_load(iso.c_str());
     threads_start_boot(entry);

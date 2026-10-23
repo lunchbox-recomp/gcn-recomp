@@ -117,7 +117,7 @@ void record(int chan, const PadState& s) {
 
 }  // namespace
 
-bool input_log_start(const std::string& dir, const std::string& memcard_path) {
+bool input_log_start(const std::string& dir, const std::string& memcard_path, const std::string& sram_path) {
     plat_make_dirs(dir);
     const std::string path = dir + "/inputs.txt";
     g_out = fopen(path.c_str(), "wb");
@@ -139,6 +139,8 @@ bool input_log_start(const std::string& dir, const std::string& memcard_path) {
         if (!copy_file(memcard_path, dir + "/memcard_a.raw"))
             fprintf(stderr, "[input] could not snapshot %s into the log\n", memcard_path.c_str());
     }
+    if (plat_readable(sram_path.c_str()) && !copy_file(sram_path, dir + "/sram.raw"))
+        fprintf(stderr, "[input] could not snapshot %s into the log\n", sram_path.c_str());
     fprintf(stderr, "[input] logging to %s\n", path.c_str());
     return true;
 }
@@ -151,7 +153,7 @@ void input_log_end() {
     fflush(g_out);
 }
 
-bool input_replay_load(const std::string& dir, std::string& memcard_out) {
+bool input_replay_load(const std::string& dir, std::string& memcard_out, std::string& sram_out) {
     const std::string path = dir + "/inputs.txt";
     FILE* f = fopen(path.c_str(), "rb");
     if (!f) {
@@ -255,6 +257,13 @@ bool input_replay_load(const std::string& dir, std::string& memcard_out) {
             memcard_out.clear();
         }
     }
+    // An older replay's scratch SRAM is cleared first, so a log with no snapshot starts from
+    // the defaults. A copy that fails partway leaves a short file, which loads as them too.
+    sram_out = dir + "/sram_replay.raw";
+    remove(sram_out.c_str());
+    const std::string sram_snap = dir + "/sram.raw";
+    if (plat_readable(sram_snap.c_str()) && !copy_file(sram_snap, sram_out))
+        fprintf(stderr, "[input] could not copy the SRAM snapshot; replaying from the default SRAM\n");
     size_t poses = 0;
     for (const auto& c : g_poses) poses += c.replay.size();
     fprintf(stderr, "[input] replaying %zu changes over %u %s, %zu clock jumps and %zu pose changes from %s%s%s\n", g_replay.size(),

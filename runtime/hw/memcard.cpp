@@ -54,9 +54,10 @@ static void card_checksum(const uint8_t* p, size_t len, uint16_t& cs, uint16_t& 
 static void put64(uint8_t* p, uint64_t v) { for (int i = 0; i < 8; i++) p[i] = (uint8_t)(v >> (56 - 8 * i)); }
 
 // The header's 32-byte serial, as CARDFormat writes it: the SRAM flash ID (all zero here,
-// see sram_init in exi.cpp) scrambled byte by byte with a linear congruential sequence
+// see sram_defaults in sram.cpp) scrambled byte by byte with a linear congruential sequence
 // seeded by the format time, which VerifyID in the CARD library recomputes on every mount,
-// then the format time itself, the SRAM counter bias and language (both zero in our SRAM).
+// then the format time itself, the SRAM counter bias and language (both zero in the
+// default SRAM).
 // CARDGetSerialNo is the XOR of these 32 bytes as four 64-bit words, so the format time
 // must not be zero: it used to be, the serial came out zero, and a game's save points
 // took that as "no card" and never offered to save. Rewrites the header checksum.

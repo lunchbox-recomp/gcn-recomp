@@ -38,6 +38,8 @@ extern uint8_t* g_aram;
 extern const char* g_save_dir;
 // Overrides the memory card's file when set (see exi.cpp).
 extern const char* g_memcard_path;
+// Overrides the SRAM's file, <save dir>/sram.raw, when set (see exi.cpp).
+extern const char* g_sram_path;
 inline uint8_t* mem_ptr(uint32_t a) { return HOST_W(a); }
 inline uint32_t mem_r32(uint32_t a) { uint32_t v; memcpy(&v, HOST(a), 4); return GCN_BSWAP32(v); }
 inline uint16_t mem_r16(uint32_t a) { uint16_t v; memcpy(&v, HOST(a), 2); return GCN_BSWAP16(v); }

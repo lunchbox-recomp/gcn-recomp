@@ -804,7 +804,10 @@ int run_record(const std::string& dir) {
     attach(a);
     attach(b);
     frame();
-    if (!input_log_start(dir + "/log", dir + "/no-card.raw")) return 1;
+    const std::string sram = "the SRAM the run started with\n";
+    write_file(dir + "/sram.raw", sram);
+    if (!input_log_start(dir + "/log", dir + "/no-card.raw", dir + "/sram.raw")) return 1;
+    check(read_file(dir + "/log/sram.raw") == sram, "the log keeps a snapshot of the SRAM");
     std::vector<PadState> seen;
     const std::string text = steps(&a, &b, seen);
     input_log_end();
@@ -826,8 +829,10 @@ int run_replay(const std::string& dir) {
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
     input_script_init("");
-    std::string card;
-    if (!input_replay_load(dir + "/log", card)) return 1;
+    std::string card, sram;
+    if (!input_replay_load(dir + "/log", card, sram)) return 1;
+    check(sram == dir + "/log/sram_replay.raw" && read_file(sram) == "the SRAM the run started with\n",
+          "a replay gets a scratch copy of the logged SRAM");
     power_on(1);
     gamepads_init();
     frame();
