@@ -341,6 +341,16 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--dump-output")) gx::g_dump_output = true;
         else if (argv[i][0] != '-') iso = argv[i];
     }
+    // --eye and GCN_THEATER_STEREO (below) show a headset's views on the desktop. A headset's
+    // panel keeps the console's 4:3 whatever the output aspect is, so these ignore it: the
+    // window opens at 4:3 and the game's hooks see 4:3, not a shape the view isn't drawn at.
+    const float theater_stereo_m = getenv("GCN_THEATER_STEREO") ? (float)atof(getenv("GCN_THEATER_STEREO")) : 0.0f;
+    if ((g_eye_mode || theater_stereo_m > 0.0f) && (aspect_window || aspect_w * 3 != aspect_h * 4)) {
+        fprintf(stderr, "--aspect is ignored with --eye and GCN_THEATER_STEREO, whose views stay 4:3\n");
+        aspect_w = 4;
+        aspect_h = 3;
+        aspect_window = false;
+    }
     if (test_ffb) return input_map_test_ffb(controls);
     plat_install_crash_handlers(on_interrupt, on_fault);
     if (record_to && !record::start(record_to, record_w, record_h, 60)) return 1;
@@ -484,8 +494,8 @@ int main(int argc, char** argv) {
     // A paused guest's frame is drawn again in the loop below (render_present_last).
     gx::render_keep_last(true);
     // Before the guest starts, whose hooks may read it from the first frame. --vr has gone
-    // its own way by here, so a headset's panel keeps 4:3. --aspect=window takes the
-    // window's shape in the loop below.
+    // its own way by here, so a headset's panel keeps 4:3, and --eye and GCN_THEATER_STEREO
+    // are held to 4:3 above. --aspect=window takes the window's shape in the loop below.
     if (!aspect_window) gx::render_set_output_aspect((float)aspect_w / (float)aspect_h);
     if (g_eye_mode) eye_init();
     if (first_person) gx::render_set_first_person(true);
@@ -500,7 +510,6 @@ int main(int argc, char** argv) {
     bool running = true;
     uint32_t frames = 0;
     uint32_t presented_total = 0;
-    const float theater_stereo_m = getenv("GCN_THEATER_STEREO") ? (float)atof(getenv("GCN_THEATER_STEREO")) : 0.0f;
     auto t0 = std::chrono::steady_clock::now();
     while (running) {
         running = pump_events();

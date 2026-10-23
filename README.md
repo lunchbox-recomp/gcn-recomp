@@ -70,8 +70,9 @@ aspect is 4:3, the console's own. `--aspect=W:H` stretches the picture to anothe
 16:9 or 21:9, with W and H whole numbers from 1 to 9999. `--aspect=window` follows the
 window's own shape as it's resized. A window of another shape shows the picture centred
 between black bars. A game's hooks read the aspect with `gx::output_aspect()`, so it can
-draw its world wider to match. `--fullscreen` opens it fullscreen, and F11 switches. On
-macOS Control-Command-F switches too, from the Window menu SDL adds.
+draw its world wider to match. A headset's view stays 4:3, so `--eye` and
+`GCN_THEATER_STEREO` ignore `--aspect`. `--fullscreen` opens it fullscreen, and F11
+switches. On macOS Control-Command-F switches too, from the Window menu SDL adds.
 
 ## Layout
 

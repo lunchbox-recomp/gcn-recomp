@@ -206,7 +206,9 @@ ahead with a 90 degree field, so a change to the VR renderer can be looked at on
 before it goes near a headset. `--first-person` puts the eye wherever the game project's eye
 hook says (`render_set_eye_hook` in `runtime/gx/render_gl.h`: the renderer asks the game, per
 frame, for a view transform and the draws to leave out, and a game without a hook keeps the
-chase camera). With `--dump-dir`/`--dump-every` the eye's frames are written as `eye_NNNNN.png`.
+chase camera). A headset's view stays 4:3 whatever the output aspect is, so `--eye` ignores
+`--aspect`: the window opens at 4:3 and the game's hooks see 4:3. With
+`--dump-dir`/`--dump-every` the eye's frames are written as `eye_NNNNN.png`.
 An eye frame presents nothing through the EFB, so the renderer steps its presented count
 once per eye frame instead, and `GCN_DRAWLOG=<n>` names the frame `eye_<n>.png` shows (it
 logged nothing in the eye preview before 2026-10-12, the count never moving).
@@ -240,9 +242,10 @@ of guest RAM beside the frames, for finding the state such a hook reads.
 `GCN_THEATER_STEREO=<metres>` draws the flat frame as the stereo pair the headset hangs on
 its panel with `theater_stereo` (see "The theater panel as a stereo pair" in `graphics.md`),
 the eyes that far apart; the dumps come as `frame_NNNNN_l.png` and `_r.png`, and the
-desktop window shows the right eye's. `GCN_RESCALE=<frame>:<scale>` (the harness) changes
-the internal scale before that presented frame, as the app does when it moves between
-stereo and theater, so the first frame after the change can be dumped.
+desktop window shows the right eye's. A headset's panel stays 4:3, so this ignores
+`--aspect`, as `--eye` does ("The eye preview"). `GCN_RESCALE=<frame>:<scale>` (the
+harness) changes the internal scale before that presented frame, as the app does when it
+moves between stereo and theater, so the first frame after the change can be dumped.
 
 The app has no environment of its own, so `gcn_env.txt` in its files directory
 (`/sdcard/Android/data/<package>/files/`), one `KEY=VALUE` per line, is put into it before
