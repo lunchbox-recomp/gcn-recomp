@@ -7,6 +7,12 @@
 #include <cstring>
 #include <utility>
 #include <vector>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -158,7 +164,12 @@ bool settings_save(const std::string& path, const Settings& s) {
     const bool wrote = fwrite(text.data(), 1, text.size(), f) == text.size();
     const bool closed = fclose(f) == 0;
     if (!wrote || !closed || !plat_replace_file(tmp.c_str(), path.c_str())) {
-        fprintf(stderr, "%s: the save failed (%s), and the old file is as it was\n", path.c_str(), strerror(errno));
+        std::string why = strerror(errno);
+#ifdef _WIN32
+        // MoveFileExA reports through GetLastError and leaves errno as it was.
+        if (wrote && closed) why = "Windows error " + std::to_string(GetLastError());
+#endif
+        fprintf(stderr, "%s: the save failed (%s), and the old file is as it was\n", path.c_str(), why.c_str());
         remove(tmp.c_str());
         return false;
     }
