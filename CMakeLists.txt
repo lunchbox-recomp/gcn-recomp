@@ -611,6 +611,15 @@ function(gcn_add_game)
     _gcn_set_standards(test_sram)
     target_include_directories(test_sram PRIVATE ${RT})
     target_compile_options(test_sram PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The pause checks (tools/test_pause.cpp): runtime/pause.cpp on a fake host clock, with a
+    # thread for the guest's. Needs no disc image, window or GL.
+    find_package(Threads REQUIRED)
+    add_executable(test_pause EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_pause.cpp)
+    _gcn_set_standards(test_pause)
+    target_include_directories(test_pause PRIVATE ${RT})
+    target_link_libraries(test_pause PRIVATE Threads::Threads)
+    target_compile_options(test_pause PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)

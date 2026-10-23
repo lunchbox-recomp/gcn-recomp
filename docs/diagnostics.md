@@ -466,8 +466,10 @@ renderer keeps a copy of each frame it presents while a pause is asked for, and 
 otherwise. The presented count doesn't move and nothing is dumped, so a paused run writes the
 same frame dumps as one that never paused.
 
-`GCN_PAUSE_AT=<frame>:<host frames>` pauses once, when the frames submitted reach `<frame>`,
-and resumes after the frontend has shown `<host frames>` frames held. It's for tests and
+`GCN_PAUSE_AT=<frame>:<host frames>` pauses once, at the first frame boundary where the
+frames submitted have reached `<frame>` (`0` is the first boundary), and resumes after the
+frontend has shown `<host frames>` frames held. A value that isn't two whole numbers in
+range, with `<host frames>` over 0, is refused with a `[pause]` line. It's for tests and
 needs the desktop window, since the benchmark shows no frames and would never resume. Each
 pause prints `[pause] held at frame N, output frame F` and `[pause] resumed at frame N after
 T ms, output frame F`, where F is how far a `GCN_WAV` recording had got. With

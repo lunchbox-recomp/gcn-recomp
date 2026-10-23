@@ -2,6 +2,7 @@
 #include "pause.h"
 #include "runtime.h"
 #include <atomic>
+#include <cerrno>
 #include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
@@ -30,22 +31,21 @@ std::chrono::steady_clock::time_point pause_resumed_at() {
     return std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(g_resumed_at.load()));
 }
 
-// GCN_PAUSE_AT=<frame>:<host frames>, both whole numbers and the second over 0. Anything
-// else asks for no pause and says so.
+// GCN_PAUSE_AT=<frame>:<host frames>, both whole numbers that fit, the first at most
+// UINT32_MAX and the second over 0. Anything else asks for no pause and says so.
 struct TestPause {
     uint32_t frame = 0;
     long host_frames = 0;
 };
-static TestPause test_pause() {
+static TestPause parse_pause_at(const char* e) {
     TestPause t;
-    const char* e = getenv("GCN_PAUSE_AT");
-    if (!e) return t;
     auto digit = [](const char* p) { return *p >= '0' && *p <= '9'; };
     char* end = nullptr;
-    const unsigned long frame = digit(e) ? strtoul(e, &end, 10) : 0;
-    if (end && *end == ':' && digit(end + 1) && frame <= UINT32_MAX) {
+    errno = 0;
+    const unsigned long long frame = digit(e) ? strtoull(e, &end, 10) : 0;
+    if (end && *end == ':' && digit(end + 1) && errno != ERANGE && frame <= UINT32_MAX) {
         const long host = strtol(end + 1, &end, 10);
-        if (!*end && host > 0) {
+        if (!*end && errno != ERANGE && host > 0) {
             t.frame = (uint32_t)frame;
             t.host_frames = host;
             return t;
@@ -56,9 +56,14 @@ static TestPause test_pause() {
 }
 
 void pause_gate(uint32_t frame) {
-    static const TestPause test = test_pause();
-    if (test.host_frames && frame == test.frame) {
+    // Read at the first frame end, and spent by the pause it asks for. The guest thread's.
+    static TestPause test = [] {
+        const char* e = getenv("GCN_PAUSE_AT");
+        return e ? parse_pause_at(e) : TestPause{};
+    }();
+    if (test.host_frames && frame >= test.frame) {
         g_test_left = test.host_frames;
+        test.host_frames = 0;
         pause_request(true);
     }
     if (!g_asked.load()) return;

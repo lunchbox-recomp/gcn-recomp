@@ -24,8 +24,9 @@ bool paused();
 
 // The guest thread, at each frame boundary, with the frames submitted so far. Holds the
 // thread there while a pause is asked for. GCN_PAUSE_AT=<frame>:<host frames> asks for one
-// here, once, when the count reaches <frame>, and lifts it after the frontend has shown
-// <host frames> frames while held (pause_host_frame), for tests.
+// here, once, at the first boundary where the count has reached <frame> (so 0 is the first
+// boundary), and lifts it after the frontend has shown <host frames> frames while held
+// (pause_host_frame), for tests.
 void pause_gate(uint32_t frame);
 // The frontend, once for each frame it shows while the guest is held.
 void pause_host_frame();
