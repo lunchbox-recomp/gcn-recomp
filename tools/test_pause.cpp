@@ -5,13 +5,44 @@
 // check can see that a hold's host time went to the clock. GCN_PAUSE_AT is set before the
 // first boundary, which is when pause.cpp reads it.
 //
+// runtime/gx/cmd.cpp is compiled in too, so the guest thread can reach its boundaries the way
+// a game's command stream takes it there: through process() with the front end inline, and
+// through skim() with it on its own thread. The renderer's side of a copy is a stub that
+// counts the frames as xf.cpp does inline and records whether the batch would end there;
+// the skim's sync counts them as fifo.cpp does. The VI shows 480 rows.
+//
 // usage: test_pause
 // Exits 0 only if every check passes. A guest thread still held after 2 s is a failure, and
 // the run then ends without waiting for it.
 #include "pause.cpp"
+#include "gx/cmd.cpp"
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <thread>
+
+uint8_t* g_mem;
+bool g_log_enabled[LOG_COUNT];
+void log_msg(LogCat, const char*, ...) {}
+void pe_signal_token(uint16_t, bool) {}
+void pe_signal_finish() {}
+uint32_t vi_display_height() { return 480; }
+
+namespace {
+std::vector<bool> g_ends;  // what each display copy told the renderer, in order
+}
+
+namespace gx {
+uint32_t g_frame_counter;
+std::atomic<uint32_t> g_frames_submitted{0};
+void renderer_draw(const DrawCall&) {}
+void renderer_bp_write(uint32_t, uint32_t) {}
+void renderer_efb_copy(uint32_t, bool ends_frame) {
+    if (!((g_state.bp[0x52] >> 14) & 1)) return;
+    g_ends.push_back(ends_frame);
+    if (!g_fe_threaded) g_frames_submitted++;
+}
+}  // namespace gx
 
 namespace {
 
@@ -30,13 +61,16 @@ template <class F> bool soon(F cond) {
     for (int i = 0; i < 2000 && !cond(); i++) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     return cond();
 }
+bool held_soon() {
+    return soon([] { return paused(); });
+}
 
-// The guest thread reaching the boundary at `frame` and going on past it. Made with new: one
-// that never gets past is left running, and must not outlive what it writes to.
+// The guest thread running `run`, which takes it to a boundary and on past it. Made with new:
+// one that never gets past is left running, and must not outlive what it writes to.
 struct Guest {
     std::atomic<bool> past{false};
     std::thread t;
-    explicit Guest(uint32_t frame) : t([this, frame] { pause_gate(frame); past = true; }) {}
+    explicit Guest(std::function<void()> run) : t([this, run] { run(); past = true; }) {}
     // Whether it got past within 2 s. Joined and freed if it did.
     bool finish() {
         if (!soon([this] { return past.load(); })) {
@@ -49,6 +83,10 @@ struct Guest {
         return true;
     }
 };
+
+Guest* at_boundary(uint32_t frame) {
+    return new Guest([frame] { pause_gate(frame); });
+}
 
 // Whether the guest stays held for a while, as it should while a pause is asked for.
 bool stays_held(const Guest& g) {
@@ -64,6 +102,70 @@ void check_parse(const char* s, uint32_t frame, long host_frames) {
     check(t.frame == frame && t.host_frames == host_frames, what);
 }
 
+// A BP register write as the command stream carries it.
+void bp(std::vector<uint8_t>& s, uint32_t reg, uint32_t v) {
+    const uint32_t w = reg << 24 | (v & 0xFFFFFF);
+    s.insert(s.end(), {0x61, (uint8_t)(w >> 24), (uint8_t)(w >> 16), (uint8_t)(w >> 8), (uint8_t)w});
+}
+
+// A display copy of `rows` rows of a 640-pixel frame to `dest`, as the XFB's rows go there.
+constexpr uint32_t kXfb = 0x00400000, kStride = 640 * 2;
+std::vector<uint8_t> display_copy(uint32_t dest, uint32_t rows) {
+    std::vector<uint8_t> s;
+    bp(s, 0x49, 0);
+    bp(s, 0x4A, 639 | (rows - 1) << 10);
+    bp(s, 0x4B, dest >> 5);
+    bp(s, 0x52, 1 << 14);
+    return s;
+}
+
+void skim_sync(gx::SkimSync kind, uint32_t, std::vector<uint8_t>&) {
+    if (kind == gx::SkimSync::Frame) gx::g_frames_submitted++;
+}
+
+// The guest thread issuing `s`: inline through process(), or through the skim.
+Guest* issue(std::vector<uint8_t> s, bool inline_fe) {
+    return new Guest([s, inline_fe] {
+        if (inline_fe) {
+            gx::process(s.data(), (uint32_t)s.size(), true);
+        } else {
+            std::vector<uint8_t> out;
+            gx::skim(s.data(), (uint32_t)s.size(), true, out, skim_sync);
+        }
+    });
+}
+
+// A pause asked for before each copy: a whole frame, then a frame in two halves.
+void check_frame_ends(bool inline_fe) {
+    const char* how = inline_fe ? "inline" : "threaded";
+    char what[160];
+    gx::g_fe_threaded = !inline_fe;
+    g_ends.clear();
+    pause_request(true);
+    Guest* g = issue(display_copy(kXfb, 480), inline_fe);
+    snprintf(what, sizeof(what), "%s, a pause holds the guest at a display copy of the whole frame", how);
+    check(held_soon(), what);
+    pause_request(false);
+    snprintf(what, sizeof(what), "%s, lifting it lets the guest go on", how);
+    check(g->finish(), what);
+
+    pause_request(true);
+    g = issue(display_copy(kXfb, 240), inline_fe);
+    snprintf(what, sizeof(what), "%s, a pause doesn't hold the guest at the first half of a frame", how);
+    check(g->finish() && !paused(), what);
+    g = issue(display_copy(kXfb + 240 * kStride, 240), inline_fe);
+    snprintf(what, sizeof(what), "%s, it holds the guest at the second half", how);
+    check(held_soon(), what);
+    pause_request(false);
+    snprintf(what, sizeof(what), "%s, lifting it lets the guest go on", how);
+    check(g->finish(), what);
+
+    if (inline_fe) {
+        check(g_ends == std::vector<bool>({true, false, true}),
+              "inline, the batch ends at the whole frame and at the second half, not the first");
+    }
+}
+
 }  // namespace
 
 uint64_t host_ns() { return g_host.load(); }
@@ -74,8 +176,8 @@ int main() {
     setenv("GCN_PAUSE_AT", "50:3", 1);
 
     pause_request(true);
-    Guest* g = new Guest(1);
-    check(soon([] { return paused(); }), "a pause asked for holds the guest at its next frame boundary");
+    Guest* g = at_boundary(1);
+    check(held_soon(), "a pause asked for holds the guest at its next frame boundary");
     check(stays_held(*g), "the guest stays held while the pause is asked for");
     g_host += 40000000;
     pause_request(false);
@@ -85,27 +187,27 @@ int main() {
 
     pause_request(true);
     pause_request(false);
-    g = new Guest(2);
+    g = at_boundary(2);
     check(g->finish() && g_handed == 40000000, "a pause lifted before the boundary doesn't hold the guest");
 
     pause_request(true);
-    g = new Guest(3);
-    check(soon([] { return paused(); }), "a pause asked for from the frontend holds the guest");
+    g = at_boundary(3);
+    check(held_soon(), "a pause asked for from the frontend holds the guest");
     for (int i = 0; i < 5; i++) pause_host_frame();
     check(stays_held(*g), "the frontend's host frames don't lift a pause GCN_PAUSE_AT didn't ask for");
     pause_request(false);
     check(g->finish(), "lifting it lets the guest go on");
 
-    g = new Guest(49);
+    g = at_boundary(49);
     check(g->finish() && !pause_requested(), "GCN_PAUSE_AT=50:3 doesn't pause at frame 49");
-    g = new Guest(51);
-    check(soon([] { return paused(); }), "GCN_PAUSE_AT=50:3 pauses at the first boundary from frame 50 on");
+    g = at_boundary(51);
+    check(held_soon(), "GCN_PAUSE_AT=50:3 pauses at the first boundary from frame 50 on");
     pause_host_frame();
     pause_host_frame();
     check(stays_held(*g), "it holds the guest through 2 of its 3 host frames");
     pause_host_frame();
     check(g->finish(), "it lets the guest go on after the third");
-    g = new Guest(52);
+    g = at_boundary(52);
     check(g->finish() && !pause_requested(), "GCN_PAUSE_AT pauses only once");
 
     check_parse("1000:300", 1000, 300);
@@ -121,6 +223,9 @@ int main() {
     check_parse("4294967296:5", 0, 0);
     check_parse("99999999999999999999:5", 0, 0);
     check_parse("5:99999999999999999999", 0, 0);
+
+    check_frame_ends(true);
+    check_frame_ends(false);
 
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     fflush(stdout);

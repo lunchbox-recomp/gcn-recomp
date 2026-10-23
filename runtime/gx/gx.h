@@ -136,7 +136,8 @@ struct DrawCall {
     uint32_t stride;
 };
 void renderer_draw(const DrawCall& dc);
-void renderer_efb_copy(uint32_t dest_addr, bool to_xfb);
+// `ends_frame`: a display copy that finishes a frame (xfb_rows.h), where the batch ends.
+void renderer_efb_copy(uint32_t dest_addr, bool ends_frame);
 void renderer_bp_write(uint32_t reg, uint32_t value);
 
 }  // namespace gx

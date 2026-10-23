@@ -451,12 +451,16 @@ measuring them.
 
 ## Pausing
 
-`pause_request(true)` (`pause.h`) holds the guest at its next frame boundary, where the
-guest frame hook runs, and `pause_request(false)` lets it go on. The other guest threads wait
-on the held one, so none of the guest runs. Guest time stands still while it's held. The
-virtual clock counts only what the guest runs, and the hold's host time goes to
-`clock_hold`, so the pacer doesn't take it for time to catch up and makes no jump after the
-resume. Under `GCN_CLOCK=host` the guest's clock leaves it out too.
+`pause_request(true)` (`pause.h`) holds the guest at its next frame boundary, and
+`pause_request(false)` lets it go on. The boundary is a display copy that finishes a frame,
+so a game that copies a frame to the XFB in parts is held only after the last part. The guest
+frame hook has run there, where one runs, though not with the front end inline
+(`GCN_GX_SYNC=1`). A pause asked for while the guest finishes no frames, in a scene load say,
+holds at the next one it finishes. The other guest threads wait on the held one, so none of
+the guest runs. Guest time stands still while it's held. The virtual clock counts only what
+the guest runs, and the hold's host time goes to `clock_hold`, so the pacer doesn't take it
+for time to catch up and makes no jump after the resume. Under `GCN_CLOCK=host` the guest's
+clock leaves it out too.
 
 While the guest is held, the desktop frontend waits 16 ms at a time for a frame and, when
 none comes, draws the last one again (`render_present_last`), fitted to the output aspect at

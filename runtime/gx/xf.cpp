@@ -1678,45 +1678,6 @@ void renderer_bp_write(uint32_t reg, uint32_t v) {
     }
 }
 
-// Whether a display copy finishes a frame, which is where a batch ends. A game whose EFB
-// cannot hold a whole frame renders it in parts and copies each to its place in the XFB
-// (render_gl.cpp assembles them, see Xfb there); ending a batch at every part handed a
-// frontend several batches per game frame, and one that takes a batch per display frame
-// ran the game at a fraction of its speed, while an eye drew each part as a frame of its
-// own. So the rows each XFB has had written are tracked here as the renderer tracks them,
-// and only the copy that completes one, or a copy of the whole frame, ends the batch.
-// Copies to an address that never fills up (strips to a scratch buffer) then simply ride
-// along in the next batch.
-namespace {
-struct XfbRows {
-    uint32_t base, stride, h, n;
-    std::vector<uint8_t> written;
-};
-std::vector<XfbRows> g_xfb_rows;
-}  // namespace
-
-static bool display_copy_ends_frame(const EfbCopyCmd& cc) {
-    const uint32_t h = vi_display_height();
-    if (!h || cc.dst_h >= h) return true;
-    const uint32_t stride = cc.dst_w * 2;
-    XfbRows* x = nullptr;
-    for (auto& r : g_xfb_rows)
-        if (r.stride == stride && r.h == h && cc.dest >= r.base && cc.dest < r.base + stride * h) x = &r;
-    if (!x) {
-        g_xfb_rows.push_back({cc.dest, stride, h, 0, std::vector<uint8_t>(h, 0)});
-        if (g_xfb_rows.size() > 8) g_xfb_rows.erase(g_xfb_rows.begin());
-        x = &g_xfb_rows.back();
-    }
-    const uint32_t row0 = (cc.dest - x->base) / stride;
-    const uint32_t rows = std::min(cc.dst_h, h - row0);
-    for (uint32_t r = row0; r < row0 + rows; r++)
-        if (!x->written[r]) { x->written[r] = 1; x->n++; }
-    if (x->n < h) return false;
-    std::fill(x->written.begin(), x->written.end(), 0);
-    x->n = 0;
-    return true;
-}
-
 // Copies a game's CPU reads (set_copy_writeback in gx.h). The front end lists each as it
 // meets it, with the display copies made before it; the renderer hands over its bytes as it
 // makes it (copy_writeback_done); and the guest thread lands them in RAM at the display
@@ -1794,7 +1755,7 @@ void copy_writebacks_land(uint32_t frames) {
     }
 }
 
-void renderer_efb_copy(uint32_t dest_addr, bool /*unused*/) {
+void renderer_efb_copy(uint32_t dest_addr, bool ends_frame) {
     const uint32_t* bp = g_state.bp;
     uint32_t v = bp[0x52];
     EfbCopyCmd cc{};
@@ -1949,12 +1910,10 @@ void renderer_efb_copy(uint32_t dest_addr, bool /*unused*/) {
             debug_guest_check("frame");
             heap_trace_frame(g_frames_submitted.load());
         }
-        if (display_copy_ends_frame(cc)) {
+        if (ends_frame) {
             g_have_last_state = false;
             flush_batch();
         }
-        // Inline, this is the guest's frame boundary (SkimSync::Frame in fifo.cpp otherwise).
-        if (!g_fe_threaded) pause_gate(g_frames_submitted.load());
     }
 }
 

@@ -1,7 +1,10 @@
 // GX FIFO command stream parser.
 #include "../runtime.h"
+#include "../pause.h"
 #include "gx.h"
+#include "render.h"
 #include "texture.h"
+#include "xfb_rows.h"
 #include <cmath>
 
 const char* func_name(uint32_t addr);
@@ -161,6 +164,9 @@ static void load_indexed(int array, uint32_t w) {
     }
 }
 
+// The display copies process() has seen, for which of them end a frame.
+static XfbRows g_xfb_rows;
+
 static void load_bp(uint32_t w) {
     uint32_t reg = w >> 24;
     uint32_t v = w & 0xFFFFFF;
@@ -179,9 +185,13 @@ static void load_bp(uint32_t w) {
     case 0x48: if (!g_fe_threaded) pe_signal_token((uint16_t)v, true); break;
     case 0x52: {  // copy execute
         uint32_t dest = (g_state.bp[0x4B] & 0x1FFFFF) << 5;
-        renderer_efb_copy(dest, (v >> 14) & 1);
+        const bool ends = ((v >> 14) & 1) && g_xfb_rows.copy_ends_frame(g_state.bp, vi_display_height());
+        renderer_efb_copy(dest, ends);
         // The copy may have minted a texture id for an address a draw samples.
         g_state.pixel_dirty = true;
+        // Inline, this is the guest's frame boundary, and a pause holds it here once the
+        // frame is whole. With the front end on its own thread, skim_bp does that.
+        if (ends && !g_fe_threaded) pause_gate(g_frames_submitted.load());
         break;
     }
     case 0x65: g_state.pixel_dirty = true; break;  // TLUT load: palette contents changed
@@ -207,6 +217,7 @@ static uint32_t s_cp[256];
 static uint32_t s_cp_gen = 1;
 static uint32_t s_bp[256];
 static uint32_t s_bp_mask = 0xFFFFFF;
+static XfbRows s_xfb_rows;
 
 static uint32_t skim_vertex_size(int vat) {
     static uint32_t cached[8];
@@ -234,7 +245,13 @@ static void skim_bp(uint32_t w, std::vector<uint8_t>& out, SkimSyncFn sync) {
     case 0x45: if (v & 2) sync(SkimSync::Finish, v, out); break;
     case 0x47: sync(SkimSync::Token, v, out); break;
     case 0x48: sync(SkimSync::TokenInt, v, out); break;
-    case 0x52: if ((v >> 14) & 1) sync(SkimSync::Frame, v, out); break;  // display copy
+    case 0x52:  // display copy: the guest's frame boundary, and a pause's once the frame is whole
+        if ((v >> 14) & 1) {
+            const bool ends = s_xfb_rows.copy_ends_frame(s_bp, vi_display_height());
+            sync(SkimSync::Frame, v, out);
+            if (ends) pause_gate(g_frames_submitted.load());
+        }
+        break;
     }
 }
 
