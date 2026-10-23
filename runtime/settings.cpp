@@ -48,9 +48,13 @@ bool parse_positive(const std::string& text, int max, int& out) {
     return true;
 }
 
-// The file's lines, without their newlines. `found` says whether it exists; false if it
-// does and can't be read.
-bool read_lines(const std::string& path, std::vector<std::string>& lines, bool& found) {
+constexpr const char* kByteOrderMark = "\xEF\xBB\xBF";
+
+// The file's lines, without their newlines. `found` says whether it exists, and `bom` whether it
+// starts with a UTF-8 byte order mark, which isn't part of the first line. False if the file
+// does exist and can't be read.
+bool read_lines(const std::string& path, std::vector<std::string>& lines, bool& found, bool& bom) {
+    bom = false;
     FILE* f = fopen(path.c_str(), "rb");
     found = f != nullptr;
     if (!f) return errno == ENOENT;
@@ -61,7 +65,8 @@ bool read_lines(const std::string& path, std::vector<std::string>& lines, bool& 
     const bool ok = !ferror(f);
     fclose(f);
     // An editor may put a UTF-8 byte order mark first, which isn't part of the first key.
-    if (text.compare(0, 3, "\xEF\xBB\xBF") == 0) text.erase(0, 3);
+    bom = text.compare(0, 3, kByteOrderMark) == 0;
+    if (bom) text.erase(0, 3);
     for (size_t start = 0; start < text.size();) {
         size_t end = text.find('\n', start);
         if (end == std::string::npos) end = text.size();
@@ -90,8 +95,8 @@ bool settings_parse_aspect(const std::string& text, float& ratio) {
 Settings settings_load(const std::string& path) {
     Settings s;
     std::vector<std::string> lines;
-    bool found;
-    if (!read_lines(path, lines, found)) {
+    bool found, bom;
+    if (!read_lines(path, lines, found, bom)) {
         fprintf(stderr, "%s: can't read it, so the defaults are used\n", path.c_str());
         return s;
     }
@@ -135,15 +140,15 @@ bool settings_save(const std::string& path, const Settings& s) {
         return false;
     }
     std::vector<std::string> lines;
-    bool found;
-    if (!read_lines(path, lines, found)) {
+    bool found, bom;
+    if (!read_lines(path, lines, found, bom)) {
         fprintf(stderr, "%s: can't read it, so it isn't saved over\n", path.c_str());
         return false;
     }
     const std::pair<const char*, std::string> owned[] = {
         {"aspect", s.aspect}, {"fullscreen", s.fullscreen ? "1" : "0"}, {"scale", std::to_string(s.scale)}};
     bool written[3] = {};
-    std::string text;
+    std::string text = bom ? kByteOrderMark : "";
     for (const std::string& line : lines) {
         std::string key, value, out = line;
         if (split(line, key, value)) {

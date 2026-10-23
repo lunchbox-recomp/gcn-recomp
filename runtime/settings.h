@@ -2,7 +2,7 @@
 //
 // One `key value` a line, the value being the rest of the line; blank lines and lines
 // whose first character past any spaces is # are ignored. A UTF-8 byte order mark at the
-// start of the file is skipped, and a save doesn't write it back:
+// start of the file is skipped, and a save writes it back:
 //
 //   # Picture
 //   aspect 16:9
@@ -36,12 +36,12 @@ Settings settings_load(const std::string& path);
 
 // Writes the runtime's keys from `s` to the file at `path`. Each line of a key it owns is
 // rewritten with the new value, and an owned key the file lacks is added at the end. Every
-// other line is kept as it was, comments, blank lines and unknown keys included. The new
-// file goes to `path`.tmp and is renamed over `path`, so a save that fails leaves the old
-// file whole. False, with the reason on stderr, if it failed, if the old file can't be read,
-// so that its lines aren't lost, and if `s` holds a value a load would skip, such as an
-// aspect settings_parse_aspect refuses (one with a newline included) or a scale under 1.
-// Nothing is written then.
+// other line is kept as it was, comments, blank lines and unknown keys included, and so is a
+// byte order mark at the start of the file. The new file goes to `path`.tmp and is renamed
+// over `path`, so a save that fails leaves the old file whole. False, with the reason on
+// stderr, if it failed, if the old file can't be read, so that its lines aren't lost, and if
+// `s` holds a value a load would skip, such as an aspect settings_parse_aspect refuses (one
+// with a newline included) or a scale under 1. Nothing is written then.
 bool settings_save(const std::string& path, const Settings& s);
 
 // An aspect as the file writes it: "W:H", two whole numbers from 1 to 9999 such as 16:9, or

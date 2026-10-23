@@ -86,16 +86,36 @@ void parsing() {
 }
 
 void byte_order_mark() {
+    // Written as a string, since \xBF in a literal with aspect after it would take the a as
+    // another hex digit.
+    const std::string mark = "\xEF\xBB\xBF";
     const std::string p = path_of("bom.txt");
-    // Two literals, since \xBF would otherwise take the a of aspect as another hex digit.
-    write_file(p, "\xEF\xBB\xBF" "aspect 16:9\nscale 3\n");
+    write_file(p, mark + "aspect 16:9\nscale 3\n");
     const Settings s = settings_load(p);
     check(s.aspect == "16:9" && s.scale == 3, "a UTF-8 byte order mark before the first key doesn't hide it");
     Settings w;
     w.aspect = "21:9";
     w.scale = 3;
-    check(settings_save(p, w) && read_file(p) == "aspect 21:9\nscale 3\nfullscreen 0\n",
-          "and a save rewrites that line, without the mark, rather than adding a second");
+    check(settings_save(p, w) && read_file(p) == mark + "aspect 21:9\nscale 3\nfullscreen 0\n",
+          "and a save rewrites that line and writes the mark back, rather than adding a second line");
+
+    // Without the mark an editor shows a UTF-8 comment as mojibake.
+    const std::string q = path_of("bom_comment.txt");
+    write_file(q, mark + "# caf\xC3\xA9\naspect 16:9\n");
+    check(settings_save(q, w) && read_file(q) == mark + "# caf\xC3\xA9\naspect 21:9\nfullscreen 0\nscale 3\n",
+          "a save keeps the mark and the UTF-8 comment under it byte for byte");
+
+    // A file of the mark alone has no lines, and a save still writes the mark first.
+    const std::string r = path_of("bom_only.txt");
+    write_file(r, mark);
+    check(settings_save(r, w) && read_file(r) == mark + "aspect 21:9\nfullscreen 0\nscale 3\n",
+          "a save over a file of the mark alone writes the mark and then the three keys");
+
+    // A file without the mark doesn't get one.
+    const std::string t = path_of("no_bom.txt");
+    write_file(t, "aspect 16:9\n");
+    check(settings_save(t, w) && read_file(t) == "aspect 21:9\nfullscreen 0\nscale 3\n",
+          "and a file without the mark doesn't get one");
 }
 
 void aspects() {
