@@ -2295,7 +2295,7 @@ static void apply_state(const PixelState& st, int prim) {
             glDisable(GL_BLEND);
             set_logic_op_off();
         }
-        bool has_alpha = (bp[0x43] & 7) == 1;
+        bool has_alpha = efb_has_alpha(bp[0x43]);
         GLboolean cw = (bm >> 3) & 1, aw = ((bm >> 4) & 1) && has_alpha;
         glColorMask(cw, cw, cw, aw);
     }

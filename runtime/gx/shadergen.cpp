@@ -1,5 +1,6 @@
 // Generates GLSL for the GX pixel pipeline (TEV) from BP state.
 #include "shadergen.h"
+#include "blend.h"
 #include "gl.h"   // GCN_GLSL_VERSION
 #include <cstdio>
 #include <cstring>
@@ -12,7 +13,7 @@ bool g_dual_source = false;
 
 uint32_t dst_alpha_mode(const uint32_t* bp) {
     const uint32_t bm = bp[0x41];
-    if (!((bp[0x42] >> 8) & 1) || !((bm >> 4) & 1) || (bp[0x43] & 7) != 1) return 0;
+    if (!((bp[0x42] >> 8) & 1) || !((bm >> 4) & 1) || !efb_has_alpha(bp[0x43])) return 0;
     const bool blend = (bm & 1) && !((bm >> 11) & 1);  // subtract is ONE, ONE
     const uint32_t sf = (bm >> 8) & 7, df = (bm >> 5) & 7;
     if (!blend || (sf != 4 && sf != 5 && df != 4 && df != 5)) return 1;
@@ -36,7 +37,7 @@ ShaderKey make_shader_key(const PixelState& st) {
     k.alpha_func = (bp[0xF3] >> 16) & 0xFF;
     k.iref = nind ? bp[0x27] & ((1u << (6 * nind)) - 1) : 0;
     k.num_texgens = st.num_texgens;
-    k.efb_has_alpha = (bp[0x43] & 7) == 1;
+    k.efb_has_alpha = efb_has_alpha(bp[0x43]);
     // A Z texture changes the depth written only when the depth test comes after texturing:
     // PE control's zcomploc clear, or the test off. With the test before texturing, the
     // triangle's own depth is tested and written, and the Z texture has no say in it.
