@@ -94,7 +94,9 @@ uint32_t receive(int n) {
     return exi_read32(kData);
 }
 
-// The SRAM's 64 bytes from offset 0, which is where the OS starts every write it makes.
+// The SRAM's 64 bytes from offset 0, where the OS starts its sync of the first 0x14 bytes.
+// It writes the rest, the flash IDs, from offset 0x14. exi.cpp's window takes only spans
+// that start at offsets 0 to 3, so it drops that write, and nothing here covers it.
 void send_sram(const uint8_t* s) {
     send(kWriteSram, 4);
     for (int i = 0; i < SRAM_SIZE; i += 4)
