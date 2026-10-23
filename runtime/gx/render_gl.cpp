@@ -3,6 +3,7 @@
 // One source serves desktop OpenGL 3.3 core and OpenGL ES 3.2; where the two profiles
 // differ, the difference is confined to the small block of helpers below.
 #include "../runtime.h"
+#include "../pause.h"
 #include "render.h"
 #include "render_gl.h"
 #include "aspect.h"
@@ -2601,9 +2602,45 @@ static void dump_efb(const EfbCopyCmd& c) {
 // Where the finished frame is blitted. 0 is the window's framebuffer; a VR frontend
 // points this at one of its swapchain images instead.
 static GLuint g_output_fbo = 0;
-// The most recent presented rect, so the output can be refreshed without the game
-// having produced a new frame (a VR compositor wants one every display frame, which is
-// far more often than this game renders).
+// The most recent presented frame, so the output can be drawn again without the game
+// having produced a new one (render_present_last): a copy of the texture it was shown from,
+// and the rect of it that was shown, in EFB pixels. The EFB can't be read again later, as
+// the display copy that presented it clears it. Kept only while a pause is asked for, so
+// play pays nothing for it.
+static GLuint g_last_tex, g_last_fbo;
+static uint32_t g_last_tex_w, g_last_tex_h, g_last_rect[4];
+static int g_last_scale;
+static bool g_have_last;
+static void keep_last(GLuint src_fbo, uint32_t tex_w, uint32_t tex_h, uint32_t rx, uint32_t ry, uint32_t rw, uint32_t rh) {
+    const GLint w = (GLint)(tex_w * g_scale), h = (GLint)(tex_h * g_scale);
+    if (!g_last_fbo) {
+        glGenTextures(1, &g_last_tex);
+        glGenFramebuffers(1, &g_last_fbo);
+    }
+    if (tex_w != g_last_tex_w || tex_h != g_last_tex_h || g_scale != g_last_scale) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g_last_tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_last_fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_last_tex, 0);
+        g_last_tex_w = tex_w;
+        g_last_tex_h = tex_h;
+        g_last_scale = g_scale;
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, src_fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_last_fbo);
+    glDisable(GL_SCISSOR_TEST);
+    glBlitFramebuffer(0, 0, w, h, 0, 0, w, h, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    g_last_rect[0] = rx;
+    g_last_rect[1] = ry;
+    g_last_rect[2] = rw;
+    g_last_rect[3] = rh;
+    g_have_last = true;
+}
 // Blit a rect of a texture laid out like the EFB (guest row r at GL row h - 1 - r) to a
 // w by h target, stretched to the output aspect and fitted with bars where the target's
 // shape differs (fit_aspect).
@@ -2754,11 +2791,22 @@ static void present(const EfbCopyCmd& c) {
     const bool dump = g_dump_dir && g_dump_every && in_range && g_present_count % g_dump_every == 0;
     if (xfb) {
         if (dump) dump_xfb(*xfb, c.dst_w);
+        if (pause_requested()) keep_last(xfb->fbo, c.dst_w, xfb->h, 0, 0, c.dst_w, xfb->h);
         blit_rect_to_output(xfb->tex, c.dst_w, xfb->h, 0, 0, c.dst_w, xfb->h, dump);
         return;
     }
     if (dump) dump_efb(c);
+    if (pause_requested()) keep_last(g_efb_fbo, EFB_W, EFB_H, c.src_x, c.src_y, c.src_w, c.src_h);
     blit_rect_to_output(g_efb_color, EFB_W, EFB_H, c.src_x, c.src_y, c.src_w, c.src_h, dump);
+}
+
+// Through the same aspect fit as present(), at the window's size now, and never dumped.
+bool render_present_last() {
+    if (!g_have_last) return false;
+    blit_rect_to_output(g_last_tex, g_last_tex_w, g_last_tex_h, g_last_rect[0], g_last_rect[1], g_last_rect[2],
+                        g_last_rect[3], false);
+    gl_state_invalidate();
+    return true;
 }
 
 void render_set_output_fbo(unsigned fbo) { g_output_fbo = (GLuint)fbo; }

@@ -15,6 +15,7 @@
 #include "record.h"
 #include "settings.h"
 #include "session.h"
+#include "pause.h"
 #ifdef GCN_OPENXR
 #include "xr_desktop.h"
 #endif
@@ -233,6 +234,18 @@ static bool pump_events() {
         }
     }
     return running;
+}
+
+// What has been drawn to the window goes to it, and to the movie if one is being made.
+static void show_frame(SDL_Window* win) {
+    // macOS (GL on Metal) only presents correctly with the window framebuffer bound.
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    if (record::active()) {
+        int rw, rh;
+        SDL_GetWindowSizeInPixels(win, &rw, &rh);
+        record::frame(0, rw, rh);
+    }
+    SDL_GL_SwapWindow(win);
 }
 
 // ---------------------------------------------------------------------------
@@ -474,8 +487,16 @@ int main(int argc, char** argv) {
         SDL_GetWindowSizeInPixels(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
         if (aspect_window && dh > 0) gx::render_set_output_aspect((float)dw / (float)dh);
-        auto b = gx::take_batch(4);
-        if (!b) continue;
+        // While the guest is held (pause.h) no batch comes, so each 16 ms wait that ends with
+        // nothing shows the last frame again, and each of those is a host frame to the pause.
+        auto b = gx::take_batch(paused() ? 16 : 4);
+        if (!b) {
+            if (paused()) {
+                if (gx::render_present_last()) show_frame(win);
+                pause_host_frame();
+            }
+            continue;
+        }
         // GCN_STEREOLOG=1: what the game's stereo hook (vr_game.h) would have a headset
         // show, whenever the answer changes, numbered as the frame dumps are.
         static const bool stereolog = getenv("GCN_STEREOLOG") != nullptr;
@@ -517,14 +538,7 @@ int main(int argc, char** argv) {
             presented = gx::render_execute(*b);
         }
         if (presented) {
-            // macOS (GL on Metal) only presents correctly with the window framebuffer bound.
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            if (record::active()) {
-                int rw, rh;
-                SDL_GetWindowSizeInPixels(win, &rw, &rh);
-                record::frame(0, rw, rh);
-            }
-            SDL_GL_SwapWindow(win);
+            show_frame(win);
             frames++;
             // The window-close path: the loop ends and the shutdown below runs as usual.
             if (exit_after && ++presented_total >= exit_after) running = false;

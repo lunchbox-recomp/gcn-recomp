@@ -86,6 +86,9 @@ void step_override(double s);
 double clock_cpu_scale();
 void clock_update_limit();   // recompute g_vlimit from the next event / decrementer deadline
 void clock_pace();           // sleep if virtual time is ahead of real time (virtual clock only)
+// Host time the guest spent held by a pause (pause.h), which guest time leaves out: the
+// pacer doesn't make it up, and the host clock doesn't count it.
+void clock_hold(uint64_t ns);
 void irq_request();          // make the running guest thread poll at its next back-edge
 uint64_t host_ns();          // wall clock since start, for diagnostics
 void rtc_set_base(time_t utc);  // what the RTC reads at guest time zero (hw/exi.cpp)

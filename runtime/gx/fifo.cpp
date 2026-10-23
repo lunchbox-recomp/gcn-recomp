@@ -2,6 +2,7 @@
 #include <algorithm>
 #include "../runtime.h"
 #include "../platform.h"
+#include "../pause.h"
 #include "gx.h"
 #include "render.h"
 #include "render_gl.h"
@@ -397,6 +398,7 @@ static void skim_sync(gx::SkimSync kind, uint32_t value, std::vector<uint8_t>&) 
         heap_trace_frame(gx::g_frames_submitted.load());
         ram_dump_frame(gx::g_frames_submitted.load());
         if (g_guest_frame_hook) g_guest_frame_hook(gx::g_frames_submitted.load());
+        pause_gate(gx::g_frames_submitted.load());
         break;
     }
 }

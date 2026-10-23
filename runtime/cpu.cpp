@@ -407,8 +407,12 @@ static int64_t g_pace_offset_ns;  // virtual time the host gave up on catching u
 // same again (the Quest, 2026-10-10). An unpaced harness run never showed it, since its
 // idle jumps cross any gap for free.
 static uint64_t g_vbase_ticks, g_vbase_count;
+// Host time the guest spent held by pauses, all told (clock_hold). Read by the ticker
+// thread too, under the host clock.
+static std::atomic<uint64_t> g_held_ns{0};
 
 bool clock_is_virtual() { return g_virtual_clock; }
+void clock_hold(uint64_t ns) { g_held_ns += ns; }
 void clock_set_scale(double s) { g_time_scale = s; }
 double clock_scale() { return g_time_scale; }
 static inline uint64_t virtual_ticks() { return g_vbase_ticks + (g_vcount - g_vbase_count) * g_ticks_per_edge; }
@@ -439,7 +443,7 @@ uint64_t host_ns() {
 
 uint64_t now_ticks() {
     if (g_virtual_clock) return virtual_ticks();
-    return (uint64_t)((double)host_ns() * (TB_FREQ / 1e9) * (g_time_scale > 0 ? g_time_scale : 1.0));
+    return (uint64_t)((double)(host_ns() - g_held_ns.load()) * (TB_FREQ / 1e9) * (g_time_scale > 0 ? g_time_scale : 1.0));
 }
 
 void irq_request() { g_vlimit = 0; }
@@ -533,7 +537,7 @@ void clock_pace() {
     if (const uint64_t edges = input_replay_take_jump(g_vcount)) clock_jump(edges);
     if (g_time_scale <= 0) return;
     int64_t virt_ns = (int64_t)((double)now_ticks() * (1e9 / TB_FREQ) / g_time_scale);
-    int64_t ahead = virt_ns - (int64_t)host_ns() - g_pace_offset_ns;
+    int64_t ahead = virt_ns - (int64_t)(host_ns() - g_held_ns.load()) - g_pace_offset_ns;
     if (ahead > 300000) {
         if (ahead > 50000000) ahead = 50000000;
         std::this_thread::sleep_for(std::chrono::nanoseconds(ahead));

@@ -56,6 +56,12 @@ void render_set_output_fbo(unsigned fbo);
 
 bool render_execute(Batch& b);
 
+// Draws the last presented frame to the output again, fitted to the output aspect at the
+// window's size now, for a frontend whose guest is paused (pause.h): nothing new comes, but
+// the window may be resized or drawn over. The renderer keeps that frame only while a pause is asked for, from the
+// first present after the asking. False, with nothing drawn, if it has none.
+bool render_present_last();
+
 // Frames presented so far, for tracing what a display frame is actually showing.
 uint32_t present_count();
 

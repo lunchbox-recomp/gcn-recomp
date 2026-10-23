@@ -2,6 +2,7 @@
 // texgen) on the CPU, primitive assembly, pixel-state snapshots and EFB copies.
 #include "../runtime.h"
 #include "../platform.h"
+#include "../pause.h"
 #include "gx.h"
 #include "render.h"
 #include "texture.h"
@@ -1927,7 +1928,10 @@ void renderer_efb_copy(uint32_t dest_addr, bool /*unused*/) {
             for (auto& t : bb.new_textures)
                 for (auto& l : t->levels) decoded += l.size() * 4;
             const auto now = std::chrono::steady_clock::now();
-            const double interval = g_last_present.time_since_epoch().count() ? ms_since(g_last_present) : 0.0;
+            // A pause ends the interval it falls in, and the frame after it is timed from the
+            // resume.
+            const auto since = std::max(g_last_present, pause_resumed_at());
+            const double interval = g_last_present.time_since_epoch().count() ? ms_since(since) : 0.0;
             fprintf(stderr, "[ft] f%u guest %6.2fms  fe %6.2fms (tex %5.2f)  draws %4u/%4zu  verts %6zu  idx %6zu  states %4zu  newtex %3zu (%zuKB)  queue %zu\n",
                     g_frame_counter, interval, g_fe_ms, g_tex_ms, g_fe_draws, bb.cmds.size(), bb.verts.size(), bb.indices.size(),
                     bb.states.size(), bb.new_textures.size(), decoded / 1024, queue_depth());
@@ -1949,6 +1953,8 @@ void renderer_efb_copy(uint32_t dest_addr, bool /*unused*/) {
             g_have_last_state = false;
             flush_batch();
         }
+        // Inline, this is the guest's frame boundary (SkimSync::Frame in fifo.cpp otherwise).
+        if (!g_fe_threaded) pause_gate(g_frames_submitted.load());
     }
 }
 

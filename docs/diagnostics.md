@@ -441,6 +441,37 @@ is what a state application costs on a given game. `GCN_EYE_FULLFLAT=1` and
 `GCN_EYE_KEEPDEPTH=1` undo the two stereo savings described in `graphics.md`, for
 measuring them.
 
+## Pausing
+
+`pause_request(true)` (`pause.h`) holds the guest at its next frame boundary, where the
+guest frame hook runs, and `pause_request(false)` lets it go on. The other guest threads wait
+on the held one, so none of the guest runs. Guest time stands still while it's held. The
+virtual clock counts only what the guest runs, and the hold's host time goes to
+`clock_hold`, so the pacer doesn't take it for time to catch up and makes no jump after the
+resume. Under `GCN_CLOCK=host` the guest's clock leaves it out too.
+
+While the guest is held, the desktop frontend waits 16 ms at a time for a frame and, when
+none comes, draws the last one again (`render_present_last`), fitted to the output aspect at
+the window's size then, as a running frame is. Each of those is a host frame, and 300 of them
+took 5.6 s in a hidden run. The display copy that presented the frame cleared the EFB, so the
+renderer keeps a copy of each frame it presents while a pause is asked for, and none
+otherwise. The presented count doesn't move and nothing is dumped, so a paused run writes the
+same frame dumps as one that never paused.
+
+`GCN_PAUSE_AT=<frame>:<host frames>` pauses once, when the frames submitted reach `<frame>`,
+and resumes after the frontend has shown `<host frames>` frames held. It's for tests and
+needs the desktop window, since the benchmark shows no frames and would never resume. Each
+pause prints `[pause] held at frame N, output frame F` and `[pause] resumed at frame N after
+T ms, output frame F`, where F is how far a `GCN_WAV` recording had got. With
+`GCN_FRAMETIME=1` the `[ft]` line of the first frame after a resume is timed from the resume.
+
+The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
+then fades back in once the cushion has refilled after the resume, as after any stall. Under
+`GCN_AUDIOSTATS` a pause shows as a run of `[audio] underrun` lines from where the ring ran
+dry, and an `[audio] output frame F plays DMA frame D` line where it plays again ("The sound
+device", below). DVD streamed music is mixed on the audio thread and isn't held, so a game
+that streams its music plays on through a pause.
+
 ## The AX mixer
 
 `GCN_AXSTATS` (set to anything) prints what the AX ucode's command lists asked for and what
