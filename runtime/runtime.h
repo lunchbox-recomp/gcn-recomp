@@ -86,6 +86,7 @@ void step_override(double s);
 double clock_cpu_scale();
 void clock_update_limit();   // recompute g_vlimit from the next event / decrementer deadline
 void clock_pace();           // sleep if virtual time is ahead of real time (virtual clock only)
+uint64_t clock_jumped_ticks();  // virtual time clock_pace's catch-up jumps have skipped so far
 // Host time the guest spent held by a pause (pause.h), which guest time leaves out: the
 // pacer doesn't make it up, and the host clock doesn't count it.
 void clock_hold(uint64_t ns);
