@@ -120,7 +120,8 @@ void guest_read(uint8_t* s) {
 }
 
 // A boot: the paths the frontend sets, then exi_init. The save dir is always one in the work
-// dir, so a path that's ignored lands there and not in the working directory.
+// dir, and the checks run from the work dir, so a file saved to a path that's ignored, the
+// save dir's or exi_init's fallback relative to the working directory, lands in the work dir.
 void boot(const std::string& sram_path, const char* save_dir) {
     static const std::string card = path_of("card.raw");
     static const std::string spare = path_of("spare");
@@ -219,6 +220,11 @@ int main(int argc, char** argv) {
         fprintf(stderr, "%s exists or can't be made: give a new directory\n", g_dir.c_str());
         return 2;
     }
+    if (chdir(g_dir.c_str()) != 0) {
+        perror(g_dir.c_str());
+        return 2;
+    }
+    g_dir = ".";
     read_only();
     changed_span();
     unchanged_span();
