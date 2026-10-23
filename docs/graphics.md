@@ -765,10 +765,10 @@ Only one of PE control's pixel formats, RGBA6_Z24, keeps alpha in the EFB. On th
 blend factor of DSTALPHA is one and INVDSTALPHA zero. The GL framebuffer has an alpha
 channel whatever the format, and the renderer masks writes to it on those formats, so it
 holds whatever an earlier pass left there. Until 2026-10-22 the renderer still handed GL
-`GL_DST_ALPHA` and `GL_ONE_MINUS_DST_ALPHA`, and a draw blended by that stale alpha. One
-game draws a full-screen pass of ZERO, DSTALPHA on RGB8_Z24 (blend `0050D9`, PE control
-`000040`) before it dims a stats screen. On a console that pass leaves the frame as it is.
-Here it multiplied the frame by the stale alpha, and the whole picture went black.
+`GL_DST_ALPHA` and `GL_ONE_MINUS_DST_ALPHA`, and a draw blended by that stale alpha. A
+full-screen pass of ZERO, DSTALPHA on RGB8_Z24, which a game on the later build draws, leaves
+the frame as it is on a console. Here it multiplied the frame by the stale alpha, and the
+whole picture went black.
 `blend_factors` (`runtime/gx/blend.h`) now makes the two factors one and zero on a format
 without alpha, as source factors and as destination ones. `ninja test_blend` builds
 `tools/test_blend.cpp`, which checks all 64 pairs on each of the eight formats with no GL.

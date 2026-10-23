@@ -65,9 +65,11 @@ int main() {
           "on the seven formats without alpha DSTALPHA is ONE and INVDSTALPHA ZERO, as source or destination, "
           "and every other factor is kept");
 
-    const gx::BlendFactors pass = gx::blend_factors(0x0050D9, 0x000040);
+    // A full-screen pass of ZERO, DSTALPHA with colour and alpha updates (0x18), on RGB8_Z24
+    // with z compare before texture (PE control 0x40).
+    const gx::BlendFactors pass = gx::blend_factors(mode(0, 6) | 0x18, 0x40);
     check(pass.src == 0 && pass.dst == 1,
-          "blend 0050D9 on RGB8_Z24 (PE control 000040) is ZERO, ONE, which leaves the frame as it was");
+          "ZERO, DSTALPHA on RGB8_Z24 is ZERO, ONE, which leaves the frame as it was");
     const gx::BlendFactors inv = gx::blend_factors(1u | 7u << 8 | 7u << 5, 0x000042);
     check(inv.src == 0 && inv.dst == 0, "INVDSTALPHA, INVDSTALPHA on RGB565_Z16 is ZERO, ZERO");
 
