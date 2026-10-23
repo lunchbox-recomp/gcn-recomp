@@ -111,13 +111,14 @@ void bp(std::vector<uint8_t>& s, uint32_t reg, uint32_t v) {
 }
 
 // A display copy of `rows` rows of a 640-pixel frame to `dest`, as the XFB's rows go there.
+// A halved one (0x52's bit 9) writes half the rows, each half as wide.
 constexpr uint32_t kXfb = 0x00400000, kStride = 640 * 2;
-std::vector<uint8_t> display_copy(uint32_t dest, uint32_t rows) {
+std::vector<uint8_t> display_copy(uint32_t dest, uint32_t rows, bool halved = false) {
     std::vector<uint8_t> s;
     bp(s, 0x49, 0);
     bp(s, 0x4A, 639 | (rows - 1) << 10);
     bp(s, 0x4B, dest >> 5);
-    bp(s, 0x52, 1 << 14);
+    bp(s, 0x52, 1 << 14 | (halved ? 1 << 9 : 0));
     return s;
 }
 
@@ -175,9 +176,22 @@ void check_frame_ends(bool inline_fe) {
     snprintf(what, sizeof(what), "%s, lifting it lets the guest go on", how);
     check(g->finish(), what);
 
+    // Halved, a copy of all 480 rows writes 240 rows of a 320-pixel XFB, so it takes two.
+    constexpr uint32_t kHalvedXfb = 0x00600000, kHalvedStride = 320 * 2;
+    pause_request(true);
+    g = issue(display_copy(kHalvedXfb, 480, true), inline_fe);
+    snprintf(what, sizeof(what), "%s, a pause doesn't hold the guest at a halved copy of all 480 rows", how);
+    check(g->finish() && !paused(), what);
+    g = issue(display_copy(kHalvedXfb + 240 * kHalvedStride, 480, true), inline_fe);
+    snprintf(what, sizeof(what), "%s, it holds the guest at the second halved copy, which fills the XFB", how);
+    check(held_after(5), what);
+    pause_request(false);
+    snprintf(what, sizeof(what), "%s, lifting it lets the guest go on", how);
+    check(g->finish(), what);
+
     if (inline_fe) {
-        check(g_ends == std::vector<bool>({true, false, true}),
-              "inline, the batch ends at the whole frame and at the second half, not the first");
+        check(g_ends == std::vector<bool>({true, false, true, false, true}),
+              "inline, the batch ends at the whole frame and at each copy that fills the XFB, not before");
     }
 }
 
