@@ -630,6 +630,20 @@ function(gcn_add_game)
       target_compile_options(test_pause PRIVATE -ffunction-sections -fdata-sections)
       target_link_options(test_pause PRIVATE -Wl,--gc-sections)
     endif()
+
+    # The virtual clock's checks (tools/test_clock.cpp): cpu.cpp's clock run as a replay runs
+    # it, its jumps against the total the AI DMA leaves out of the guest's time. The linker
+    # drops the rest of cpu.cpp, which would otherwise want the whole runtime.
+    add_executable(test_clock EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_clock.cpp)
+    _gcn_set_standards(test_clock)
+    target_include_directories(test_clock PRIVATE ${RT})
+    target_compile_options(test_clock PRIVATE ${GCN_RUNTIME_WARNINGS})
+    if(APPLE)
+      target_link_options(test_clock PRIVATE -Wl,-dead_strip)
+    else()
+      target_compile_options(test_clock PRIVATE -ffunction-sections -fdata-sections)
+      target_link_options(test_clock PRIVATE -Wl,--gc-sections)
+    endif()
   endif()
 
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)

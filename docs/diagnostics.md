@@ -451,6 +451,13 @@ the host and the pacer slept at every poll, and either way the game stood still 
 long as it had run. An unpaced run never shows this, since its idle jumps cross any gap at
 no cost, which is why switching mid-run looked safe in the harness.
 
+`ninja test_clock` builds `tools/test_clock.cpp`, which runs `cpu.cpp`'s clock as a replay
+runs it, with the guest's running and its recorded jumps, at CPU scales 1, 2 and 0.5. It
+checks that a jump adds to `clock_jumped_ticks()` just what it adds to the clock, so that
+the clock less that total is the guest's own running, which the AI DMA's hold counts. Each
+check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
+image, device or SDL; the linker drops the rest of `cpu.cpp`.
+
 `GCN_CLOCK=host` restores wall-clock time (the ticker thread polls for due events every
 200 µs). `GCN_TIMESCALE=N` paces virtual time at N× real time (0: unpaced; `--fast` on
 the game, and the benchmark's default). `GCN_CLOCKLOG=1` prints once per virtual second how
