@@ -772,8 +772,8 @@ it multiplied the frame by the stale alpha, and the whole picture went black.
 without alpha, as source factors and as destination ones. `ninja test_blend` builds
 `tools/test_blend.cpp`, which checks all 64 pairs on each of the eight formats with no GL.
 
-A copy of the EFB into a texture reads alpha as full on those formats too. Until 2026-10-23 the
-A8, RGBA8, IA4 and IA8 copies took the GL channel's stale alpha, so a render target a game
+A copy of the EFB into a texture reads alpha as full on those formats too. Until 2026-10-23
+the copy formats that keep alpha took the GL channel's stale alpha, so a render target a game
 copied and drew with alpha could come out empty. `EfbCopyCmd::efb_alpha` carries the format's
 answer to the copy shader (`u_alpha` in `kCopyFS`), and the clear that goes with a copy leaves
 alpha alone on a format that has none.
