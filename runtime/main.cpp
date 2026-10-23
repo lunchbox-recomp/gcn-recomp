@@ -427,9 +427,14 @@ int main(int argc, char** argv) {
                                                   (gl_debug ? SDL_GL_CONTEXT_DEBUG_FLAG : 0));
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     // Centred: where SDL3 puts a window it is not given a position for. 960 high and as wide
-    // as the output aspect makes that, 1280 for 4:3 and for --aspect=window.
-    const int win_w = aspect_window ? 1280 : gx::aspect_window_width(960, aspect_w, aspect_h);
-    SDL_Window* win = SDL_CreateWindow(GCN_APP_LABEL, win_w, 960,
+    // as the output aspect makes that, 1280 for 4:3 and for --aspect=window, but never larger
+    // than the primary display's usable area: a wide aspect is scaled down to fit, in its own
+    // shape. The rect stays 0 by 0 where SDL can't say, which is no limit.
+    SDL_Rect usable = {};
+    SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable);
+    const gx::WindowSize size = aspect_window ? gx::aspect_window_size(960, 4, 3, usable.w, usable.h)
+                                              : gx::aspect_window_size(960, aspect_w, aspect_h, usable.w, usable.h);
+    SDL_Window* win = SDL_CreateWindow(GCN_APP_LABEL, size.w, size.h,
                                        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
                                        (hidden ? SDL_WINDOW_HIDDEN : 0) | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
     if (!win) fatal("SDL_CreateWindow: %s", SDL_GetError());

@@ -65,8 +65,9 @@ The game project provides:
 
 ## The window
 
-The window opens 960 pixels high and as wide as the output aspect makes it. The default
-aspect is 4:3, the console's own. `--aspect=W:H` stretches the picture to another, such as
+The window opens 960 pixels high and as wide as the output aspect makes it, or smaller in
+the same shape where the display's usable area is smaller, as it is for 21:9 on many
+displays. The default aspect is 4:3, the console's own. `--aspect=W:H` stretches the picture to another, such as
 16:9 or 21:9, with W and H whole numbers from 1 to 9999. `--aspect=window` follows the
 window's own shape as it's resized. A window of another shape shows the picture centred
 between black bars. A game's hooks read the aspect with `gx::output_aspect()`, so it can
