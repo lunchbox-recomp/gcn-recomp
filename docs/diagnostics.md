@@ -402,6 +402,14 @@ its main loop, gets the whole quarter block, which with the jumps left out lasts
 than when they counted: once jumps take four fifths of virtual time or more, its blocks
 come further apart and the DMA falls further short of its rate.
 
+`ninja test_aid` builds `tools/test_aid.cpp`, which runs the AI DMA (`hw/dsp.cpp`) on a
+fake clock and event queue. The guest has two buffers and queues the other one whenever
+it's free to take the interrupt. The checks hold blocks with one jump or two landing in
+them while the guest is busy, and check where each held block ends and which buffers play
+twice. One runs the DMA ten blocks behind its clock, where the blocks it owes must come a
+32nd of a block apart. Each check prints `ok` or `FAIL`, and the exit code is 0 only if all
+pass. It needs no disc image, device or SDL.
+
 The sound ring between the DMA and the device keeps a cushion (`audio.cpp`), 100 ms by
 default and `GCN_AUDIO_CUSHION_MS` to change it. Running dry, it stays silent until the
 whole cushion is back, so every underrun is a gap at least that long; 60 ms, as it was, did

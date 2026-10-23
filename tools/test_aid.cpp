@@ -10,6 +10,8 @@
 // block is held for up to a quarter block of the guest running, with the jumps left out, and
 // ends soon after the guest takes the interrupt and queues its next buffer. A guest that
 // stays busy through that quarter block gets the repeat after it, so the wait is bounded.
+// Behind its clock after a long jump, the DMA hands a guest that queues at once the blocks it
+// owes at speed.
 //
 // usage: test_aid
 // Exits 0 only if every check passes.
@@ -176,6 +178,32 @@ int main() {
     run_to(g_now + 10 * kDur);
     check(g_played[from + 1].at == start2 + 6 * kDur / 5 + kDur / 4 && repeats(from) == 1,
           "a guest still busy after its quarter block hears the buffer again then");
+
+    // Busy as before, and a second jump comes once the hold has had 0.1 ms of the guest
+    // running. Neither jump counts toward the quarter block.
+    from = g_played.size();
+    run_to(block_start() + kDur / 2);
+    g_busy = true;
+    run_to(block_start() + kDur + kDur / 5);
+    const uint64_t start3 = block_start();
+    jump(6 * kDur / 5);
+    run_to(g_now + kDur / 50);
+    jump(2 * kDur / 5);
+    run_to(g_now + kDur / 4);
+    g_busy = false;
+    run_to(g_now + 10 * kDur);
+    check(g_played[from + 1].at == start3 + 6 * kDur / 5 + 2 * kDur / 5 + kDur / 4 && repeats(from) == 1,
+          "a second jump during the hold doesn't count toward the quarter block either");
+
+    // A jump of ten blocks, with the guest answering at once. The block in flight ends where
+    // the jump lands, and the next nine come a 32nd of a block apart: the DMA catching up.
+    run_to(block_start() + kDur / 2);
+    jump(10 * kDur);
+    from = g_played.size() - 1;
+    run_to(g_now + 20 * kDur);
+    bool apart = true;
+    for (size_t i = from + 1; i <= from + 9; i++) apart = apart && g_played[i].at - g_played[i - 1].at == kDur / 32;
+    check(apart && repeats(from) == 0, "behind its clock the DMA plays the blocks it owes at speed, none twice");
 
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;
