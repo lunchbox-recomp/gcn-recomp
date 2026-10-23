@@ -151,9 +151,9 @@ read. A frame dump reads the EFB or the XFB before presentation, so it keeps the
 640 logical pixels across at any aspect.
 
 `ninja test_aspect` builds `tools/test_aspect.cpp`, which checks the aspect's arithmetic
-(`runtime/gx/aspect.h`) with no window or GL. At 4:3 the picture gets the same rect that
-integer division by 4 and 3 gives in each of the 9,000,000 windows up to 3000 by 3000, and
-a window opened at 4:3, 16:9, 16:10 or 21:9 is filled with no bar.
+(`runtime/gx/aspect.h`) with no window or GL. At 4:3, 16:9, 16:10, 21:9 and 32:9 the
+picture gets the same rect that integer division gives in each of the 9,000,000 windows up
+to 3000 by 3000, and a window opened at one of 14 named shapes is filled with no bar.
 
 `--exit-after=N` quits after the Nth presented frame, the way closing the window does: the
 frame loop ends, the input log and the movie are finished, and the exit status is 0. With

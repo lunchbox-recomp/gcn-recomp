@@ -1,11 +1,12 @@
 // Output aspect checks: the `test_aspect` target. Runs with no window, GL, disc or game.
 //
 // runtime/gx/aspect.h is the arithmetic behind --aspect: reading W:H, the width a window
-// opens at, and where the picture goes in a target of any shape. At 4:3 the fit must be the
-// integer letterbox (w * 3 / 4, else h * 4 / 3) in every window up to 3000 pixels a side, so
-// the default picture never moves. A window opened at a landscape aspect must be filled
-// with no bar at every height, and the shapes a player picks must be filled at two pixels
-// to a point too, or a pixel of black would show down one side of every frame.
+// opens at, and where the picture goes in a target of any shape. At 4:3, 16:9, 16:10, 21:9
+// and 32:9 the fit must be the integer letterbox (w * H / W, else h * W / H) in every window
+// up to 3000 pixels a side, so the default picture never moves and no other shape's is a
+// pixel short. A window opened at a landscape aspect must be filled with no bar at every
+// height, and the shapes a player picks must be filled at two pixels to a point too, or a
+// pixel of black would show down one side of every frame.
 //
 // usage: test_aspect
 // Exits 0 only if every check passes.
@@ -30,13 +31,15 @@ bool same(const gx::OutputRect& a, const gx::OutputRect& b) {
     return a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h;
 }
 
-gx::OutputRect letterbox_4x3(int w, int h) {
-    int vw = w, vh = w * 3 / 4;
+// The exact fit of a picture aw:ah in a w by h target, by integer division: as large as fits,
+// centred, rounded down.
+gx::OutputRect letterbox(int w, int h, int aw, int ah) {
+    long long vw = w, vh = (long long)w * ah / aw;
     if (vh > h) {
         vh = h;
-        vw = h * 4 / 3;
+        vw = (long long)h * aw / ah;
     }
-    return {(w - vw) / 2, (h - vh) / 2, vw, vh};
+    return {(int)((w - vw) / 2), (int)((h - vh) / 2), (int)vw, (int)vh};
 }
 
 }  // namespace
@@ -61,12 +64,18 @@ int main() {
               gx::aspect_window_width(960, 16, 10) == 1536 && gx::aspect_window_width(960, 21, 9) == 2240,
           "a window 960 high opens 1280, 1707, 1536 and 2240 wide at 4:3, 16:9, 16:10 and 21:9");
 
+    const int exact[][2] = {{4, 3}, {16, 9}, {16, 10}, {21, 9}, {32, 9}};
     long moved = 0;
-    for (int w = 1; w <= 3000; w++)
-        for (int h = 1; h <= 3000; h++)
-            if (!same(gx::fit_aspect(w, h, 4.0f / 3.0f), letterbox_4x3(w, h))) moved++;
-    if (moved) printf("  %ld windows differ\n", moved);
-    check(moved == 0, "at 4:3 the fit is the integer letterbox in every window up to 3000 by 3000");
+    for (const auto& s : exact) {
+        long off = 0;
+        const float a = (float)s[0] / (float)s[1];
+        for (int w = 1; w <= 3000; w++)
+            for (int h = 1; h <= 3000; h++)
+                if (!same(gx::fit_aspect(w, h, a), letterbox(w, h, s[0], s[1]))) off++;
+        if (off) printf("  at %d:%d %ld windows differ\n", s[0], s[1], off);
+        moved += off;
+    }
+    check(moved == 0, "at 4:3, 16:9, 16:10, 21:9 and 32:9 the fit is the integer letterbox in every window up to 3000 by 3000");
 
     const int landscape[][2] = {{4, 3}, {16, 9}, {16, 10}, {21, 9}, {32, 9}, {5, 4}, {15, 11}, {1, 1}};
     long barred = 0;
@@ -77,14 +86,18 @@ int main() {
         }
     check(barred == 0, "a window opened at a landscape aspect is filled, at every height to 2160");
 
-    const int picked[][2] = {{4, 3}, {16, 9}, {16, 10}, {21, 9}};
+    const int picked[][2] = {{4, 3}, {16, 9}, {16, 10}, {21, 9}, {32, 9}, {5, 4}, {3, 2}, {2, 1},
+                             {64, 27}, {43, 18}, {12, 5}, {1, 1}, {9, 16}, {3, 4}};
     barred = 0;
     for (const auto& s : picked)
         for (int px = 1; px <= 2; px++) {
             const int w = gx::aspect_window_width(960, s[0], s[1]) * px, h = 960 * px;
-            if (!same(gx::fit_aspect(w, h, (float)s[0] / (float)s[1]), {0, 0, w, h})) barred++;
+            if (!same(gx::fit_aspect(w, h, (float)s[0] / (float)s[1]), {0, 0, w, h})) {
+                printf("  %d:%d at %dx leaves a bar\n", s[0], s[1], px);
+                barred++;
+            }
         }
-    check(barred == 0, "4:3, 16:9, 16:10 and 21:9 fill the window they open, at one and two pixels to a point");
+    check(barred == 0, "14 named shapes, two of them portrait, fill the window they open at one and two pixels to a point");
 
     barred = 0;
     for (int w = 1; w <= 1000; w++)
