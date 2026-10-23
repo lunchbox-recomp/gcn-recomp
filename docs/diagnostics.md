@@ -388,6 +388,14 @@ and `<file>.txt` each block's start, length, virtual time, whether it was delive
 up, its address and whether the guest had queued the next one; it works in the benchmark,
 so a replay's sound can be checked block by block for repeats and broken joins.
 
+**A block held for the guest.** A block that ends before the guest has queued the next
+buffer is held for up to a quarter block of the guest's own running, with the jumps the
+clock has made since the block started left out (`aid_block_done`). While the jumps
+counted, one that landed inside a block ended it at the guest's next poll, before the guest
+had taken the block's interrupt, and the DMA played the same buffer again. An unpaced run
+of a script never jumps, so there the quarter block is plain virtual time; a replay makes
+only its recording's jumps.
+
 The sound ring between the DMA and the device keeps a cushion (`audio.cpp`), 100 ms by
 default and `GCN_AUDIO_CUSHION_MS` to change it. Running dry, it stays silent until the
 whole cushion is back, so every underrun is a gap at least that long; 60 ms, as it was, did
@@ -514,9 +522,10 @@ when the AX ucode boots. Three lines come at their own pace:
 Every 400 command lists four more lines follow, each with `list=N`, the lists processed
 since the process started. Their counts cover those 400 lists, and the hash covers everything
 since the process started.
-An unpaced run (`--fast`, or the benchmark) makes no catch-up jumps, so two runs with the
-same input print every line here but `[ring]` alike. Comparing two runs at each `list=N`
-both reached shows whether a change to the mixer changed what it made, and from which list.
+An unpaced run (`--fast`, or the benchmark) makes no catch-up jumps of its own (a replay
+makes only its recording's), so two runs with the same input print every line here but
+`[ring]` alike. Comparing two runs at each `list=N` both reached shows whether a change to
+the mixer changed what it made, and from which list.
 
 - `[ax] cmds`: `skipped` counts the commands parsed but not run (08, 0A to 0C, and 12 on the
   2001 ucode build), and `unknown` the IDs past 13, which end their list. Then `ID=count` for

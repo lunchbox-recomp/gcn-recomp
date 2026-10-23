@@ -150,10 +150,9 @@ static uint64_t g_aid_due;
 // the guest has taken the interrupt leaves the block's end already behind the clock at the
 // guest's next poll. The block used to end right there, before the guest had queued
 // anything, and the DMA played the same buffer again; the guest then often queued one of
-// its own buffers twice in the blocks after. In six real-time runs of a game on the later
-// build, 21 clicks sat on blocks played twice like this, and none did once the jumps the
-// clock made since the block started stopped counting toward the quarter block. The clock
-// never jumps unpaced, where this changes nothing.
+// its own buffers twice in the blocks after. So the jumps the clock has made since the
+// block started don't count toward the quarter block. An unpaced run of a script never
+// jumps, so this changes nothing there; a replay makes only its recording's jumps.
 //
 // Not solved here: a guest that fills its buffers from its main loop rather than in the
 // interrupt (a streamed-music player, say) has not refilled when blocks come this close
