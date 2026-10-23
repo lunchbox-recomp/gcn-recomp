@@ -32,6 +32,9 @@ set(ENV{GIT_AUTHOR_NAME} test)
 set(ENV{GIT_AUTHOR_EMAIL} test@example.com)
 set(ENV{GIT_COMMITTER_NAME} test)
 set(ENV{GIT_COMMITTER_EMAIL} test@example.com)
+# The work dir may sit inside a repository, as a build directory in a game's checkout does,
+# so git isn't let look above it for one. The repositories made here are all below it.
+set(ENV{GIT_CEILING_DIRECTORIES} "${WORK}")
 
 set(checks 0)
 set(failed 0)
@@ -119,6 +122,13 @@ expect("${sha}" "" "a copy inside another repository doesn't give that repositor
 
 # A directory in no repository of its own.
 file(MAKE_DIRECTORY "${WORK}/plain")
+execute_process(COMMAND git -C "${WORK}/plain" rev-parse --git-dir RESULT_VARIABLE rc OUTPUT_QUIET ERROR_QUIET)
+if(rc)
+  set(where "in no repository")
+else()
+  set(where "in a repository")
+endif()
+expect("${where}" "in no repository" "git finds no repository for the plain directory")
 sha_for("${WORK}/plain" sha)
 expect("${sha}" "" "a directory that isn't a checkout gives no commit")
 
