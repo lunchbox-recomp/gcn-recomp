@@ -256,6 +256,12 @@ void save_adds_keys_in_the_line_ending() {
     s.scale = 3;
     check(settings_save(q, s) && read_file(q) == mark + "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\n",
           "and so is one added to a file with the mark");
+
+    // Windows Notepad ends no file with a newline, so its last line has no CR.
+    const std::string r = path_of("crlf_open.txt");
+    write_file(r, "aspect 16:9\r\nscale 3");
+    check(settings_save(r, s) && read_file(r) == "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\n",
+          "a CR LF file with no newline after its last line gets CR LF there and on the key added");
 }
 
 void save_after_unterminated_line() {
