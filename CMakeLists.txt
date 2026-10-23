@@ -598,6 +598,20 @@ function(gcn_add_game)
     target_compile_options(${G_NAME} PRIVATE ${GCN_RUNTIME_WARNINGS})
     target_compile_definitions(${G_NAME} PRIVATE ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} ${GCN_GL_DEFS})
 
+    # The engine's commit, which a session records (GCN_SESSION): a header looked at every
+    # build and rewritten only when the commit changes, so only main.cpp compiles again.
+    # One target makes it for every game in the build.
+    set(_sha_dir ${CMAKE_BINARY_DIR}/gcn_engine_sha)
+    if(NOT TARGET gcn_engine_sha)
+      add_custom_target(gcn_engine_sha
+        COMMAND ${CMAKE_COMMAND} -DDIR=${GCN_RECOMP_DIR} -DOUT=${_sha_dir}/gcn_engine_sha.h
+                -P ${GCN_RECOMP_DIR}/tools/engine_sha.cmake
+        BYPRODUCTS ${_sha_dir}/gcn_engine_sha.h
+        VERBATIM)
+    endif()
+    add_dependencies(${G_NAME} gcn_engine_sha)
+    target_include_directories(${G_NAME} PRIVATE ${_sha_dir})
+
     # PC VR (--vr): the headset frontend in openxr/, on the window's own GL context. The
     # loader is Khronos' own, built from source and linked statically, so the executable
     # finds whichever runtime the system has active with nothing beside it.

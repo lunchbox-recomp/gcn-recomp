@@ -6,6 +6,7 @@
 // Android -- each of which supplies audio_open() and calls audio_render() from whatever
 // callback its API hands it.
 #include "runtime.h"
+#include "audio_stats.h"
 #include "hw/dtk.h"
 #include <algorithm>
 #include <mutex>
@@ -45,8 +46,10 @@ static size_t ring_limit() { return ring_cushion() + DMA_RATE * 100 / 1000; }
 static std::mutex g_ring_mutex;
 static std::vector<int16_t> g_ring(DMA_RATE * 2);  // 1 second
 static size_t g_ring_r, g_ring_w, g_ring_count;  // in frames
+static uint64_t g_ring_in;  // frames pushed so far, so the read position is frame g_ring_in - g_ring_count of the stream
 static double g_dma_pos;  // fractional read position for resampling
 static bool g_ring_filling = true;  // silent until the cushion is (back) in hand
+static bool g_ring_played;  // it has played since it opened, so running short of a pull is an underrun
 static double g_ring_avg;  // smoothed fill level, which the resampling rate steers by
 static int g_stat_underruns, g_stat_cuts;
 static size_t g_stat_min_fill = SIZE_MAX;   // the lowest level a callback found, since asked
@@ -74,6 +77,12 @@ void audio_push_dma(const int16_t* samples_be, uint32_t frames) {
         g_ring_w = (g_ring_w + 1) % cap;
         g_ring_count++;
     }
+    g_ring_in += frames;
+}
+
+uint64_t audio_frames_out() {
+    std::lock_guard<std::mutex> lk(g_ring_mutex);
+    return g_out_frames;
 }
 
 // ---- DTK (DVD streaming ADPCM) ----
@@ -140,6 +149,11 @@ void audio_ring_stats(int* underruns, int* min_fill_ms) {
 void audio_render(int16_t* out, int frames) {
     // DMA part: resample 32k -> 48k
     char cut_line[96] = "";  // a cut's log line, written under the lock and printed after it
+    // What audio_stats hears of this pull, also gathered under the lock and reported after it:
+    // where the ring reads from as the pull starts, and the frames it left unfilled.
+    bool playing = false, jumped = false;
+    uint64_t at_out = 0, at_dma = 0, short_at = 0;
+    int short_frames = 0;
     {
         std::lock_guard<std::mutex> lk(g_ring_mutex);
         size_t cap = g_ring.size() / 2;
@@ -163,13 +177,19 @@ void audio_render(int16_t* out, int frames) {
             g_ring_count -= drop;
             if (!g_ring_filling && before <= cap / 2) { g_cut_behind = drop; g_cut_left = kCutFade; }
             g_stat_cuts++;
+            jumped = true;
             if (stats) snprintf(cut_line, sizeof cut_line, "[ring] cut %zu frames at output frame %llu\n", drop, (unsigned long long)g_out_frames);
         }
         if (g_ring_filling && g_ring_count >= ring_cushion()) {
             g_ring_filling = false;
+            g_ring_played = true;
+            jumped = true;
             g_ring_avg = (double)g_ring_count;
             g_dma_pos = 0;
         }
+        playing = !g_ring_filling;
+        at_out = g_out_frames;
+        at_dma = g_ring_in - g_ring_count;
         // The guest's clock and the device's are not the same clock, so the level drifts.
         // Resample up to half a percent fast or slow to walk it back to the cushion, which
         // cannot be heard, where running dry or overflowing every few minutes could.
@@ -209,6 +229,9 @@ void audio_render(int16_t* out, int frames) {
                     g_ring_r = (g_ring_r + 1) % cap;
                     g_ring_count--;
                 }
+            } else if (g_ring_played) {
+                if (short_frames == 0) short_at = g_out_frames + i;
+                short_frames++;
             }
             out[2 * i] = (int16_t)l;
             out[2 * i + 1] = (int16_t)r;
@@ -216,6 +239,8 @@ void audio_render(int16_t* out, int frames) {
         g_out_frames += frames;
     }
     if (cut_line[0]) fputs(cut_line, stderr);
+    if (playing) audio_stats_position(at_out, at_dma, jumped);
+    if (short_frames) audio_stats_underrun(short_at, short_frames);
     // DTK streaming music
     if (ai_stream_playing()) {
         std::lock_guard<std::mutex> lk(g_dtk_mutex);

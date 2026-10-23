@@ -533,6 +533,99 @@ list and compares what the mixer wrote or counted with numbers worked out by han
 check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
 image, device or SDL.
 
+## The sound device
+
+`GCN_AUDIOSTATS` (set to anything) prints how the sound device is being fed, to stderr, and
+`GCN_AXSTATS` turns these lines on as well. `audio_sdl.cpp` hands the device it opened and the
+time each callback started to `audio_stats.cpp`, which keeps the count. `audio.cpp` tells it
+which pulls the ring couldn't fill.
+
+- `[audio] device driver=<name> rate=<hz> channels=<n> buffer=<frames>`, once when the device
+  opens. The driver is SDL's (`coreaudio` on macOS). The rate, channels and buffer are what
+  the device itself runs at, which SDL converts the ring's 48 kHz stereo to. Under the dummy
+  driver the device is the runtime's own clock, which pulls 512 frames of 48 kHz stereo at a
+  time.
+- `[audio] callbacks n=N period_ms=P late=L worst_ms=W underruns=U`, every 400th callback.
+  N, L and U count from when the device opened. P is the mean time between the callbacks
+  since the last such line, and W the longest of those times.
+- `[audio] late callback at output frame F gap_ms=G`, as it happens. A late callback started
+  more than 1.5 periods after the one before it, where the period is the device's buffer at
+  its rate (10.67 ms for 512 frames at 48 kHz). F is the frames the device had taken by
+  then, which is where that callback's sound lands in a `GCN_WAV` recording, and G is the
+  time since the last callback. Over a gap that long the device can run out of sound to
+  play, which a `GCN_WAV` recording doesn't show, since it holds what was handed over and
+  not when.
+- `[audio] underrun at output frame F frames=N`, as it happens. It's a pull the ring couldn't
+  fill once it had started playing. F is the first output frame that came out silent, and N
+  is how many did. A dry spell prints one of these for the pull that ran dry and one for
+  each pull after it until the cushion is back, while `[ring] underruns=` counts the dry
+  spells themselves, so the two counts differ.
+- `[audio] output frame F plays DMA frame D`, every 12,000 output frames (a quarter of a
+  second at 48 kHz) and again at each cut and each time the ring starts playing after a dry
+  spell. D is the frame of the DMA's stream the ring was about to read, which is its index
+  in a `GCN_AIDWAV` recording. Between two of these lines D moves on 32,000 frames for every
+  48,000 of F, give or take the ring's trim of half a percent at most, so a moment in a
+  `GCN_WAV` recording can be found in the `GCN_AIDWAV` one to within about 1.3 ms. A frame
+  that came out in a pull the ring couldn't fill was made from nothing.
+
+`GCN_WAV=<file>` writes what went to the device, the DVD music mixed in, as a 16-bit stereo
+WAV file at 48 kHz. Its header is rewritten after every write, so a run that's stopped from
+outside still leaves a file that reads.
+
+`ninja test_audio_ring` checks this accounting too, on the same virtual clock as the ring.
+A device that keeps exact time gets no late callbacks and no underruns. A gap of 1.4 periods
+isn't late, and one of 1.6 prints the late line word for word. The 400th callback's line
+carries the counts so far with the mean and the longest period. The stall's pulls print
+underrun lines that start where the ring ran dry and run on without a break. The position
+lines move at the output's pace within half a percent, and the ones at a cut and at the
+return from the stall name the frame the ring read next. A ring left with 100 frames runs
+dry about 149 frames into a pull, once its fade is done. The next pull is short by all 512.
+
+## Playtest sessions
+
+`GCN_SESSION=<dir>` records a session into one directory, for a reader that has nothing
+else to go on. It turns on these:
+
+- the input log, into `<dir>/inputs` (see "Input logging and replay" above), unless
+  `--input-log=` names another directory or `--no-input-log` turns it off
+- `GCN_WAV=<dir>/out.wav`, what went to the sound device ("The sound device" above)
+- `GCN_AIDWAV=<dir>/aid.raw`, the DMA's blocks before the ring ("The clock" above)
+- `GCN_AXSTATS`, `GCN_AUDIOSTATS` and `GCN_FRAMETIME`, whose lines go to stderr with the
+  rest of the run's output
+
+A switch that's already set keeps its value. Once the window and the sound device are open,
+it writes `<dir>/session.json`. This one is from a run on SDL's dummy driver, with its
+command line shortened and the game's binary called `game`:
+
+```json
+{
+  "start": "2026-10-22T16:18:51-07:00",
+  "start_epoch": 1792711131,
+  "host": {"os": "macOS 26.6.2 (25G83)", "cpu": "Apple M4 Max", "refresh_hz": 120},
+  "engine_sha": "b8481589c35a03b87ceda434d190f2c7b63c219a-dirty",
+  "audio_device": {"driver": "dummy", "rate": 48000, "channels": 2, "buffer": 512},
+  "command_line": ["build/game", "--hidden", "--pads=1"]
+}
+```
+
+`start` is the local time the process started with its offset from UTC. `start_epoch` is
+the same moment in seconds since 1970. `host` gives the OS with its version, the CPU's
+model and the refresh rate of the display the window opened on, or null where the platform
+doesn't say. `engine_sha` is the gcn-recomp commit the build was made from, ending `-dirty`
+when a tracked file had changed. The build writes it into a generated header
+(`tools/engine_sha.cmake`), and a build made outside a git checkout has null. `audio_device`
+holds the `[audio] device` line's values, and `command_line` the process's arguments.
+
+Each process prints `[session] <dir>` as it starts. A game that resets the console relaunches
+itself, and the switches the session turned on are cleared first, so the new process turns
+them on again for a directory of its own. Finding `session.json` there, it goes on in
+`<dir>/run-2` (or `run-3` after that), so nothing the first run wrote is written over. A
+switch that was set by hand stays as it was, so a file it names is written again from the
+start. The relaunched process prints to wherever the first one did, and a log split at its
+`[session]` lines gives each run its own part.
+
+Without `GCN_SESSION` none of this is recorded.
+
 ## Textures
 
 `GCN_TEXLOG=1` prints a line per decoded texture: frame, id, guest address, format, size and

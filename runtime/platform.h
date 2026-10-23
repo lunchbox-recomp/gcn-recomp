@@ -56,6 +56,12 @@ bool plat_thread_sched(long tid, uint64_t* run_ns, uint64_t* wait_ns, int* cpu);
 // Seconds to add to UTC to get local wall-clock time, including any DST in effect.
 long plat_utc_offset_seconds();
 
+// ---- the host ----
+// The OS and its version ("macOS 26.6 (25G104)", "Linux 6.8.0"), and the CPU's model name,
+// each "" where the platform doesn't say.
+std::string plat_os_version();
+std::string plat_cpu_model();
+
 // ---- files ----
 bool plat_readable(const char* path);
 // Create `path` and any missing parents. Ignores already-exists.

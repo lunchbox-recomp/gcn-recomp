@@ -13,8 +13,15 @@
 #include "telemetry.h"
 #include "record.h"
 #include "settings.h"
+#include "session.h"
 #ifdef GCN_OPENXR
 #include "xr_desktop.h"
+#endif
+// The engine's commit, which the build writes at every build (tools/engine_sha.cmake).
+#if __has_include("gcn_engine_sha.h")
+#include "gcn_engine_sha.h"
+#else
+#define GCN_ENGINE_SHA ""
 #endif
 // SDL_main.h is left out: this is a console program with its own main(), on Windows too.
 #include <SDL3/SDL.h>
@@ -146,6 +153,12 @@ static void on_fault(const void* fault_addr, int code) {
 
 bool audio_open();
 
+// The refresh rate of the display the window is on, for a session's record, or 0.
+static double display_hz(SDL_Window* win) {
+    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
+    return mode ? mode->refresh_rate : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Input: the keyboard on port 1, each gamepad on the port it is given (gamepads.h), and
 // controls.txt on the ports it names (input_map.h). --pads=N plugs in ports 1 to N
@@ -217,11 +230,14 @@ static bool pump_events() {
 
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv) {
+    // GCN_SESSION sets the switches a session turns on, so it goes before anything reads one.
+    const std::string session_inputs = session_begin(argc, argv);
     // The game resetting the console starts it again in a fresh process, as a power cycle
     // would -- except in a replay, which would only replay itself from the start again.
     static char** s_argv = argv;
     set_reset_handler([](uint32_t, uint32_t) {
         if (input_replay_active()) return;
+        session_relaunching();
         plat_relaunch(s_argv);
     });
     // Default: the image the build was configured with, else the first image in ./rom
@@ -304,7 +320,8 @@ int main(int argc, char** argv) {
 
     // Every run records what the guest read from the controller, so that a route to
     // wherever something went wrong can be played back with --replay=<dir>. See
-    // input_log.h. --no-input-log turns it off; --input-log=<dir> names the directory.
+    // input_log.h. --no-input-log turns it off; --input-log=<dir> names the directory, and
+    // without it a session (GCN_SESSION) puts the log in its own.
     // The memory card is snapshotted into the log, and a replay runs on a scratch copy
     // of that snapshot rather than the real card.
     std::string replay_card;
@@ -313,6 +330,7 @@ int main(int argc, char** argv) {
         if (!replay_card.empty()) g_memcard_path = replay_card.c_str();
     }
     if (input_log) {
+        if (input_log_dir.empty()) input_log_dir = session_inputs;
         if (input_log_dir.empty()) {
             char stamp[64];
             time_t now = time(nullptr);
@@ -396,6 +414,7 @@ int main(int argc, char** argv) {
             update_pads(1);
             return running;
         };
+        session_write(display_hz(win), GCN_ENGINE_SHA);  // the headset frontend opens the device later
         const int rc = xr_desktop_main({win, pump, merge_desktop_pad}, iso);
         record::finish();
         input_log_end();
@@ -411,6 +430,7 @@ int main(int argc, char** argv) {
     if (gx::g_dump_dir) plat_make_dirs(gx::g_dump_dir);
 
     audio_open();
+    session_write(display_hz(win), GCN_ENGINE_SHA);
 
     uint32_t entry = boot_load(iso);
     threads_start_boot(entry);

@@ -196,7 +196,11 @@ bool plat_read_at(PlatFile* f, uint64_t offset, void* dst, uint32_t len) {
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/resource.h>
-#ifndef __APPLE__
+#include <sys/utsname.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#include <sys/sysctl.h>
+#else
 #include <sys/syscall.h>
 #endif
 #ifdef __ANDROID__
@@ -452,6 +456,56 @@ void plat_set_thread_role_listener(void (*fn)(ThreadRole, long)) {
     }
     if (fn)
         for (const auto& r : known) fn(r.first, r.second);
+}
+
+#if defined(__APPLE__)
+// A sysctl string, or "".
+static std::string sysctl_text(const char* name) {
+    char buf[256];
+    size_t len = sizeof(buf);
+    if (sysctlbyname(name, buf, &len, nullptr, 0) != 0 || len == 0) return {};
+    return std::string(buf, strnlen(buf, len));
+}
+#endif
+
+std::string plat_os_version() {
+#if defined(__APPLE__)
+    const std::string version = sysctl_text("kern.osproductversion"), build = sysctl_text("kern.osversion");
+#if TARGET_OS_OSX
+    std::string os = "macOS " + version;
+#else
+    std::string os = "Apple OS " + version;
+#endif
+    return build.empty() ? os : os + " (" + build + ")";
+#elif defined(_WIN32)
+    return "Windows";
+#else
+    struct utsname u;
+    if (uname(&u) != 0) return {};
+    return std::string(u.sysname) + " " + u.release;
+#endif
+}
+
+std::string plat_cpu_model() {
+#if defined(__APPLE__)
+    return sysctl_text("machdep.cpu.brand_string");
+#elif defined(_WIN32)
+    return {};
+#else
+    FILE* f = fopen("/proc/cpuinfo", "r");
+    if (!f) return {};
+    char line[256];
+    std::string model;
+    while (model.empty() && fgets(line, sizeof(line), f)) {
+        if (strncmp(line, "model name", 10) != 0) continue;
+        if (const char* colon = strchr(line, ':')) {
+            model = colon + 1 + strspn(colon + 1, " \t");
+            model.erase(model.find_last_not_of(" \t\r\n") + 1);
+        }
+    }
+    fclose(f);
+    return model;
+#endif
 }
 
 void plat_make_dirs(const std::string& path) {
