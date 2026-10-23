@@ -7,6 +7,10 @@
 // the virtual time the jumps added, at whatever rate the clock runs (clock_set_cpu_scale):
 // the clock less the total is then the guest's own running.
 //
+// Under GCN_CLOCK=host the clock is the host's, less the time pauses held the guest
+// (clock_hold), so that the guest doesn't see a pause as time gone by. The last check runs
+// that clock.
+//
 // usage: test_clock
 // Exits 0 only if every check passes.
 #include "cpu.cpp"
@@ -59,6 +63,18 @@ int main() {
         run(300);
         check(now_ticks() - clock_jumped_ticks() == g_ran, "the clock less the jumped total is the guest's own running", scale);
     }
+
+    // The host clock 100 s in, and a 1 s hold. The host moves on a little between the reads,
+    // so the clock may go back by up to 10 ms less than the hold, and a tick of rounding more.
+    g_virtual_clock = false;
+    g_t0 = std::chrono::steady_clock::now() - std::chrono::seconds(100);
+    const uint64_t held = TB_FREQ, before = now_ticks();
+    clock_hold(1000000000);
+    const uint64_t after = now_ticks();
+    const bool back = after < before && before - after <= held + 1 && before - after >= held - TB_FREQ / 100;
+    printf("%s: a pause's hold takes its time out of the host clock\n", back ? "ok" : "FAIL");
+    if (!back) g_failed++;
+
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;
 }
