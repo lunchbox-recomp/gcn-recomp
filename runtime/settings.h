@@ -1,7 +1,8 @@
 // The player's settings: settings.txt in the working directory.
 //
 // One `key value` a line, the value being the rest of the line; blank lines and lines
-// whose first character past any spaces is # are ignored:
+// whose first character past any spaces is # are ignored. A UTF-8 byte order mark at the
+// start of the file is skipped, and a save doesn't write it back:
 //
 //   # Picture
 //   aspect 16:9

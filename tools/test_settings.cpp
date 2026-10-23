@@ -84,6 +84,19 @@ void parsing() {
     check(s.scale == 3, "scale 3 is read with trailing spaces");
 }
 
+void byte_order_mark() {
+    const std::string p = path_of("bom.txt");
+    // Two literals, since \xBF would otherwise take the a of aspect as another hex digit.
+    write_file(p, "\xEF\xBB\xBF" "aspect 16:9\nscale 3\n");
+    const Settings s = settings_load(p);
+    check(s.aspect == "16:9" && s.scale == 3, "a UTF-8 byte order mark before the first key doesn't hide it");
+    Settings w;
+    w.aspect = "21:9";
+    w.scale = 3;
+    check(settings_save(p, w) && read_file(p) == "aspect 21:9\nscale 3\nfullscreen 0\n",
+          "and a save rewrites that line, without the mark, rather than adding a second");
+}
+
 void aspects() {
     float r = -1;
     check(settings_parse_aspect("16:9", r) && std::fabs(r - 16.0f / 9.0f) < 1e-6f, "16:9 is a ratio of 16/9");
@@ -283,6 +296,7 @@ int main(int argc, char** argv) {
     }
     missing_file();
     parsing();
+    byte_order_mark();
     aspects();
     bad_values();
     save_keeps_lines();

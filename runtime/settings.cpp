@@ -48,6 +48,8 @@ bool read_lines(const std::string& path, std::vector<std::string>& lines, bool& 
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
     const bool ok = !ferror(f);
     fclose(f);
+    // An editor may put a UTF-8 byte order mark first, which isn't part of the first key.
+    if (text.compare(0, 3, "\xEF\xBB\xBF") == 0) text.erase(0, 3);
     for (size_t start = 0; start < text.size();) {
         size_t end = text.find('\n', start);
         if (end == std::string::npos) end = text.size();
