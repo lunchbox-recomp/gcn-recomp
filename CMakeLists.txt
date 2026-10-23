@@ -576,6 +576,12 @@ function(gcn_add_game)
     _gcn_set_standards(test_ax)
     target_include_directories(test_ax PRIVATE ${RT})
     target_compile_options(test_ax PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The output aspect's checks (tools/test_aspect.cpp): runtime/gx/aspect.h on its own.
+    add_executable(test_aspect EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_aspect.cpp)
+    _gcn_set_standards(test_aspect)
+    target_include_directories(test_aspect PRIVATE ${RT})
+    target_compile_options(test_aspect PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
   # The settings.txt checks (tools/test_settings.cpp): loading and saving the file in a

@@ -7,6 +7,7 @@
 #include "input_map.h"
 #include "gamepads.h"
 #include "gx/render_gl.h"
+#include "gx/aspect.h"
 #include "gx/gl.h"
 #include "hw/pad.h"
 #include "vr_game.h"
@@ -224,6 +225,12 @@ static bool pump_events() {
         gamepads_event(e);
         if (e.type == SDL_EVENT_QUIT) running = false;
         else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
+        // F11 switches fullscreen. On macOS Control-Command-F does too, through the Window menu
+        // SDL gives the app, so it isn't handled here as well: that would switch twice.
+        else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_F11 && !e.key.repeat) {
+            if (SDL_Window* w = SDL_GetWindowFromID(e.key.windowID))
+                SDL_SetWindowFullscreen(w, !(SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN));
+        }
     }
     return running;
 }
@@ -260,6 +267,10 @@ int main(int argc, char** argv) {
     const Settings settings = settings_load("settings.txt");
     int scale = settings.scale;
     int pads = 1;
+    // --aspect=W:H, or --aspect=window to follow the window's shape: what the picture is
+    // stretched to (gx::output_aspect). 4:3, the console's own, by default.
+    int aspect_w = 4, aspect_h = 3;
+    bool aspect_window = false, fullscreen = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--log-all")) for (auto& e : g_log_enabled) e = true;
         else if (!strncmp(argv[i], "--log=", 6)) {
@@ -290,8 +301,18 @@ int main(int argc, char** argv) {
         else if (!strncmp(argv[i], "--exit-after=", 13)) exit_after = (uint32_t)strtoul(argv[i] + 13, nullptr, 10);
         else if (!strcmp(argv[i], "--cull-swap")) gx::g_cull_swap = true;
         else if (!strncmp(argv[i], "--scale=", 8)) scale = atoi(argv[i] + 8);
+        else if (!strcmp(argv[i], "--aspect=window")) aspect_window = true;
+        else if (!strncmp(argv[i], "--aspect=", 9)) {
+            if (!gx::parse_aspect(argv[i] + 9, &aspect_w, &aspect_h)) {
+                fprintf(stderr, "--aspect: W:H, two whole numbers from 1 to 9999, or window, not %s\n", argv[i] + 9);
+                return 1;
+            }
+            aspect_window = false;
+        }
+        else if (!strcmp(argv[i], "--fullscreen")) fullscreen = true;
         else if (!strncmp(argv[i], "--dump-dir=", 11)) gx::g_dump_dir = argv[i] + 11;
         else if (!strncmp(argv[i], "--dump-every=", 13)) gx::g_dump_every = atoi(argv[i] + 13);
+        else if (!strcmp(argv[i], "--dump-output")) gx::g_dump_output = true;
         else if (argv[i][0] != '-') iso = argv[i];
     }
     if (test_ffb) return input_map_test_ffb(controls);
@@ -364,10 +385,12 @@ int main(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG |
                                                   (gl_debug ? SDL_GL_CONTEXT_DEBUG_FLAG : 0));
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    // Centred: where SDL3 puts a window it is not given a position for.
-    SDL_Window* win = SDL_CreateWindow(GCN_APP_LABEL, 1280, 960,
+    // Centred: where SDL3 puts a window it is not given a position for. 960 high and as wide
+    // as the output aspect makes that, 1280 for 4:3 and for --aspect=window.
+    const int win_w = aspect_window ? 1280 : gx::aspect_window_width(960, aspect_w, aspect_h);
+    SDL_Window* win = SDL_CreateWindow(GCN_APP_LABEL, win_w, 960,
                                        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                                       (hidden ? SDL_WINDOW_HIDDEN : 0));
+                                       (hidden ? SDL_WINDOW_HIDDEN : 0) | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
     if (!win) fatal("SDL_CreateWindow: %s", SDL_GetError());
     // Ask for the newest core profile first: the renderer needs only GCN_GL_MAJOR.MINOR, but an
     // OpenXR runtime may want more of the context it shares (Meta's wants 4.0), and drivers
@@ -425,6 +448,10 @@ int main(int argc, char** argv) {
     }
 #endif
     gx::render_init(scale);
+    // Before the guest starts, whose hooks may read it from the first frame. --vr has gone
+    // its own way by here, so a headset's panel keeps 4:3. --aspect=window takes the
+    // window's shape in the loop below.
+    if (!aspect_window) gx::render_set_output_aspect((float)aspect_w / (float)aspect_h);
     if (g_eye_mode) eye_init();
     if (first_person) gx::render_set_first_person(true);
     if (gx::g_dump_dir) plat_make_dirs(gx::g_dump_dir);
@@ -446,6 +473,7 @@ int main(int argc, char** argv) {
         int dw, dh;
         SDL_GetWindowSizeInPixels(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
+        if (aspect_window && dh > 0) gx::render_set_output_aspect((float)dw / (float)dh);
         auto b = gx::take_batch(4);
         if (!b) continue;
         // GCN_STEREOLOG=1: what the game's stereo hook (vr_game.h) would have a headset

@@ -191,4 +191,7 @@ void render_set_panel_band(float band);
 extern bool g_cull_swap;
 extern const char* g_dump_dir;
 extern int g_dump_every;
+// Beside each frame dump, an output_NNNNN.png of what the output shows: the frame stretched
+// to the output aspect, with any bars, at the size render_set_window_size gave.
+extern bool g_dump_output;
 }  // namespace gx

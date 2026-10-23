@@ -277,6 +277,12 @@ void set_view_turn(const float q[4]);
 // state (a projection, a viewport) between the change and the nearest draw.
 void set_draw_tag(uint8_t tag);
 
+// The shape the window shows the picture at, width over height: 4/3, the default, is the
+// console's own. Presentation stretches each frame to it (aspect.h), and a game's hooks read
+// it on the guest thread to draw for it. The frontend sets it, from any thread.
+void render_set_output_aspect(float aspect);
+float output_aspect();
+
 // Frame pacing / stats
 extern std::atomic<uint32_t> g_frames_submitted;
 

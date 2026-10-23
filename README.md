@@ -63,6 +63,16 @@ The game project provides:
   (`docs/diagnostics.md`, "Finding a game's per-frame steps"); absent for a game that
   does not try.
 
+## The window
+
+The window opens 960 pixels high and as wide as the output aspect makes it. The default
+aspect is 4:3, the console's own. `--aspect=W:H` stretches the picture to another, such as
+16:9 or 21:9, with W and H whole numbers from 1 to 9999. `--aspect=window` follows the
+window's own shape as it's resized. A window of another shape shows the picture centred
+between black bars. A game's hooks read the aspect with `gx::output_aspect()`, so it can
+draw its world wider to match. `--fullscreen` opens it fullscreen, and F11 switches. On
+macOS Control-Command-F switches too, from the Window menu SDL adds.
+
 ## Layout
 
 - `recomp/`: `recomp.py` drives the translation; `ppc.py` turns each instruction into C;

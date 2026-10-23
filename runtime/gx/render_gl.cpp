@@ -5,6 +5,7 @@
 #include "../runtime.h"
 #include "render.h"
 #include "render_gl.h"
+#include "aspect.h"
 #include "shadergen.h"
 #include "gl.h"
 #include <algorithm>
@@ -2571,23 +2572,30 @@ static void do_efb_copy(const EfbCopyCmd& c) {
 
 const char* g_dump_dir = nullptr;
 int g_dump_every = 0;
+bool g_dump_output = false;
 // The second pass of a stereo pair (render_execute_stereo_pair) presents the same frame
 // again: it is not counted twice, and its dump is told apart by a suffix.
 static bool g_pair_second = false;
 static const char* g_dump_suffix = "";
 
-static void dump_efb(const EfbCopyCmd& c) {
-    int w = c.src_w * g_scale, h = c.src_h * g_scale;
+// Writes the w by h rect at (x, y) of `fbo`, whose rows GL reads bottom up, as an opaque
+// PNG named for `kind` and the presented frame.
+static void dump_png(GLuint fbo, int x, int y, int w, int h, const char* kind) {
     std::vector<uint8_t> px((size_t)w * h * 4), flipped((size_t)w * h * 4);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, g_efb_fbo);
-    glReadPixels(c.src_x * g_scale, (EFB_H - c.src_y - c.src_h) * g_scale, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    for (int y = 0; y < h; y++) {
-        memcpy(&flipped[(size_t)y * w * 4], &px[(size_t)(h - 1 - y) * w * 4], (size_t)w * 4);
-        for (int x = 0; x < w; x++) flipped[((size_t)y * w + x) * 4 + 3] = 255;
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbo);
+    glReadPixels(x, y, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+    for (int r = 0; r < h; r++) {
+        memcpy(&flipped[(size_t)r * w * 4], &px[(size_t)(h - 1 - r) * w * 4], (size_t)w * 4);
+        for (int i = 0; i < w; i++) flipped[((size_t)r * w + i) * 4 + 3] = 255;
     }
     char path[512];
-    snprintf(path, sizeof(path), "%s/frame_%05u%s.png", g_dump_dir, g_present_count, g_dump_suffix);
+    snprintf(path, sizeof(path), "%s/%s_%05u%s.png", g_dump_dir, kind, g_present_count, g_dump_suffix);
     write_png(path, flipped.data(), w, h);
+}
+
+static void dump_efb(const EfbCopyCmd& c) {
+    dump_png(g_efb_fbo, c.src_x * g_scale, (EFB_H - c.src_y - c.src_h) * g_scale, c.src_w * g_scale,
+             c.src_h * g_scale, "frame");
 }
 
 // Where the finished frame is blitted. 0 is the window's framebuffer; a VR frontend
@@ -2596,14 +2604,12 @@ static GLuint g_output_fbo = 0;
 // The most recent presented rect, so the output can be refreshed without the game
 // having produced a new frame (a VR compositor wants one every display frame, which is
 // far more often than this game renders).
-// Blit a rect of a texture laid out like the EFB (guest row r at GL row h - 1 - r) to the
-// output, letterboxed to 4:3.
-static void blit_rect_to_output(GLuint src_tex, uint32_t tex_w, uint32_t tex_h, uint32_t rx, uint32_t ry, uint32_t rw, uint32_t rh);
-static void blit_to_output(const EfbCopyCmd& c, GLuint src_tex) {
-    blit_rect_to_output(src_tex, EFB_W, EFB_H, c.src_x, c.src_y, c.src_w, c.src_h);
-}
-static void blit_rect_to_output(GLuint src_tex, uint32_t tex_w, uint32_t tex_h, uint32_t rx, uint32_t ry, uint32_t rw, uint32_t rh) {
-    glBindFramebuffer(GL_FRAMEBUFFER, g_output_fbo);
+// Blit a rect of a texture laid out like the EFB (guest row r at GL row h - 1 - r) to a
+// w by h target, stretched to the output aspect and fitted with bars where the target's
+// shape differs (fit_aspect).
+static void blit_rect_to(GLuint fbo, int w, int h, GLuint src_tex, uint32_t tex_w, uint32_t tex_h, uint32_t rx,
+                         uint32_t ry, uint32_t rw, uint32_t rh) {
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_BLEND);
     set_logic_op_off();
@@ -2611,14 +2617,11 @@ static void blit_rect_to_output(GLuint src_tex, uint32_t tex_w, uint32_t tex_h, 
     glDisable(GL_CULL_FACE);
     g_gl_cull = 0;
     glColorMask(1, 1, 1, 1);
-    glViewport(0, 0, g_win_w, g_win_h);
+    glViewport(0, 0, w, h);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
-    // Letterbox to 4:3
-    int w = g_win_w, h = g_win_h;
-    int vw = w, vh = w * 3 / 4;
-    if (vh > h) { vh = h; vw = h * 4 / 3; }
-    glViewport((w - vw) / 2, (h - vh) / 2, vw, vh);
+    const OutputRect fit = fit_aspect(w, h, output_aspect());
+    glViewport(fit.x, fit.y, fit.w, fit.h);
     glUseProgram(g_blit_prog);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, src_tex);
@@ -2629,6 +2632,36 @@ static void blit_rect_to_output(GLuint src_tex, uint32_t tex_w, uint32_t tex_h, 
     glBindVertexArray(g_copy_vao);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
     glBindVertexArray(g_vao);
+}
+
+// --dump-output: what the window shows, drawn again into a target of the window's size and
+// read back from there, since a hidden window's own framebuffer has nothing to read.
+static void dump_output(GLuint src_tex, uint32_t tex_w, uint32_t tex_h, uint32_t rx, uint32_t ry, uint32_t rw,
+                        uint32_t rh) {
+    static GLuint tex, fbo;
+    static int tw, th;
+    if (g_win_w <= 0 || g_win_h <= 0) return;
+    if (tw != g_win_w || th != g_win_h) {
+        if (!fbo) {
+            glGenTextures(1, &tex);
+            glGenFramebuffers(1, &fbo);
+        }
+        tw = g_win_w;
+        th = g_win_h;
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, tw, th, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+    }
+    blit_rect_to(fbo, tw, th, src_tex, tex_w, tex_h, rx, ry, rw, rh);
+    dump_png(fbo, 0, 0, tw, th, "output");
+}
+
+// The frame to the output, and to its own dump too when this frame is dumped.
+static void blit_rect_to_output(GLuint src_tex, uint32_t tex_w, uint32_t tex_h, uint32_t rx, uint32_t ry,
+                                uint32_t rw, uint32_t rh, bool dump) {
+    blit_rect_to(g_output_fbo, g_win_w, g_win_h, src_tex, tex_w, tex_h, rx, ry, rw, rh);
+    if (dump && g_dump_output) dump_output(src_tex, tex_w, tex_h, rx, ry, rw, rh);
 }
 
 // The external framebuffers. A game whose EFB cannot hold a whole frame (anti-aliased,
@@ -2669,19 +2702,7 @@ static Xfb& xfb_for(uint32_t dest, uint32_t w, uint32_t stride, uint32_t h) {
     return g_xfbs.back();
 }
 
-static void dump_xfb(const Xfb& x, uint32_t w) {
-    int pw = w * g_scale, ph = x.h * g_scale;
-    std::vector<uint8_t> px((size_t)pw * ph * 4), flipped((size_t)pw * ph * 4);
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, x.fbo);
-    glReadPixels(0, 0, pw, ph, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-    for (int y = 0; y < ph; y++) {
-        memcpy(&flipped[(size_t)y * pw * 4], &px[(size_t)(ph - 1 - y) * pw * 4], (size_t)pw * 4);
-        for (int xx = 0; xx < pw; xx++) flipped[((size_t)y * pw + xx) * 4 + 3] = 255;
-    }
-    char path[512];
-    snprintf(path, sizeof(path), "%s/frame_%05u%s.png", g_dump_dir, g_present_count, g_dump_suffix);
-    write_png(path, flipped.data(), pw, ph);
-}
+static void dump_xfb(const Xfb& x, uint32_t w) { dump_png(x.fbo, 0, 0, w * g_scale, x.h * g_scale, "frame"); }
 
 // A display copy into its XFB. Returns the XFB when the copy completed a frame of it.
 static Xfb* xfb_write(const EfbCopyCmd& c) {
@@ -2730,13 +2751,14 @@ static void present(const EfbCopyCmd& c) {
     }
     const bool in_range = range_lo < 0 || ((int)g_present_count >= range_lo &&
                                            (int)g_present_count <= range_hi);
+    const bool dump = g_dump_dir && g_dump_every && in_range && g_present_count % g_dump_every == 0;
     if (xfb) {
-        if (g_dump_dir && g_dump_every && in_range && g_present_count % g_dump_every == 0) dump_xfb(*xfb, c.dst_w);
-        blit_rect_to_output(xfb->tex, c.dst_w, xfb->h, 0, 0, c.dst_w, xfb->h);
+        if (dump) dump_xfb(*xfb, c.dst_w);
+        blit_rect_to_output(xfb->tex, c.dst_w, xfb->h, 0, 0, c.dst_w, xfb->h, dump);
         return;
     }
-    if (g_dump_dir && g_dump_every && in_range && g_present_count % g_dump_every == 0) dump_efb(c);
-    blit_to_output(c, g_efb_color);
+    if (dump) dump_efb(c);
+    blit_rect_to_output(g_efb_color, EFB_W, EFB_H, c.src_x, c.src_y, c.src_w, c.src_h, dump);
 }
 
 void render_set_output_fbo(unsigned fbo) { g_output_fbo = (GLuint)fbo; }

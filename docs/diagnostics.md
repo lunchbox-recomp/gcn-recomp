@@ -126,6 +126,18 @@ the exit code is 0 only if all pass. It refuses to run while any joystick is con
 presented frame as a PNG. `GCN_DUMP_RANGE=a-b` restricts that to a window of frames.
 `--headless` runs the guest with no renderer at all.
 
+`--dump-output` adds an `output_NNNNN.png` beside each `frame_NNNNN.png`, showing what the
+window shows. That's the frame stretched to the output aspect (`--aspect`, in the README),
+with any bars, at the window's size in pixels. It's drawn a second time into a target of
+that size and read from there, because a hidden window's own framebuffer has nothing to
+read. A frame dump reads the EFB or the XFB before presentation, so it keeps the game's
+640 logical pixels across at any aspect.
+
+`ninja test_aspect` builds `tools/test_aspect.cpp`, which checks the aspect's arithmetic
+(`runtime/gx/aspect.h`) with no window or GL. At 4:3 the picture gets the same rect that
+integer division by 4 and 3 gives in each of the 9,000,000 windows up to 3000 by 3000, and
+a window opened at 4:3, 16:9, 16:10 or 21:9 is filled with no bar.
+
 `--exit-after=N` quits after the Nth presented frame, the way closing the window does: the
 frame loop ends, the input log and the movie are finished, and the exit status is 0. With
 `--hidden --fast` it makes a bounded unattended run; a dump on that frame is still written.

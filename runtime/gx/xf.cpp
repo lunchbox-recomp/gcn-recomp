@@ -19,6 +19,9 @@
 namespace gx {
 
 std::atomic<uint32_t> g_frames_submitted{0};
+static std::atomic<float> g_output_aspect{4.0f / 3.0f};
+void render_set_output_aspect(float aspect) { g_output_aspect.store(aspect, std::memory_order_relaxed); }
+float output_aspect() { return g_output_aspect.load(std::memory_order_relaxed); }
 static std::unique_ptr<Batch> g_batch;
 static uint32_t g_tev_reg[4][2], g_tev_konst[4][2];
 
