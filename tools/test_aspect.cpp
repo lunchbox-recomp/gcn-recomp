@@ -7,7 +7,8 @@
 // pixel short. A window opened at a landscape aspect must be filled with no bar at every
 // height, and the shapes a player picks must be filled at two pixels to a point too, or a
 // pixel of black would show down one side of every frame. A window that wouldn't fit the
-// display's usable area is scaled down in its own shape, and never opens past that area.
+// display's usable area is scaled down in its own shape, and never opens past that area,
+// title bar and frame included.
 //
 // usage: test_aspect
 // Exits 0 only if every check passes.
@@ -126,6 +127,30 @@ int main() {
     printf("  %ld sizes, %ld over their area, %ld not filled\n", samples, over, unfilled);
     check(over == 0 && unfilled == 0,
           "a landscape window never opens past its area and stays filled, scaled down at two pixels to a point too, at 8 shapes in a grid of areas");
+
+    // Placed in a usable area with its frame around it. A Mac's area under the menu bar with
+    // the Dock showing, 1440 by 875 at y 25, less a 28-point title bar, opens 4:3 at 1128 by
+    // 846, its client 53 down so that the title bar starts at 25. Windows gives the frame,
+    // here 31 on top and 8 on the other sides, and a 1920 by 1040 area has room for 1280 by
+    // 960.
+    check(same(gx::aspect_window_rect(960, 4, 3, {0, 25, 1440, 875}, 28, 0, 0, 0), {156, 53, 1128, 846}) &&
+              same(gx::aspect_window_rect(960, 4, 3, {0, 0, 1920, 1040}, 31, 8, 8, 8), {320, 51, 1280, 960}),
+          "a window's title bar starts inside the usable area, 4:3 at 1128 by 846 under a 28-point one");
+    const int frames[][4] = {{0, 0, 0, 0}, {28, 0, 0, 0}, {31, 8, 8, 8}, {40, 0, 0, 0}};
+    long outside = 0, off_centre = 0;
+    for (const auto& s : landscape)
+        for (const auto& f : frames)
+            for (int mw = 100; mw <= 4000; mw += 37)
+                for (int mh = 100; mh <= 2400; mh += 41) {
+                    const gx::OutputRect u = {-50, 25, mw, mh};
+                    const gx::OutputRect r = gx::aspect_window_rect(960, s[0], s[1], u, f[0], f[1], f[2], f[3]);
+                    const int above = r.y - f[0] - u.y, below = u.y + u.h - (r.y + r.h + f[2]);
+                    const int before = r.x - f[1] - u.x, after = u.x + u.w - (r.x + r.w + f[3]);
+                    if (above < 0 || below < 0 || before < 0 || after < 0) outside++;
+                    else if (std::abs(above - below) > 1 || std::abs(before - after) > 1) off_centre++;
+                }
+    printf("  %ld placed outside their area, %ld off centre\n", outside, off_centre);
+    check(outside == 0 && off_centre == 0, "a window and its frame open centred in the usable area, at 8 shapes, 4 frames and a grid of areas");
 
     const int picked[][2] = {{4, 3}, {16, 9}, {16, 10}, {21, 9}, {32, 9}, {5, 4}, {3, 2}, {2, 1},
                              {64, 27}, {43, 18}, {12, 5}, {1, 1}, {9, 16}, {3, 4}};

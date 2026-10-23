@@ -78,4 +78,15 @@ inline OutputRect fit_aspect(int w, int h, float a) {
     return {(w - vw) / 2, (h - vh) / 2, vw, vh};
 }
 
+// Where a window opens in a display's `usable` area, as SDL places windows: the rect of its
+// client area, with a frame `top`, `left`, `bottom` and `right` deep around that. Sized by
+// aspect_window_size to the area the frame leaves, with the frame centred, so that neither
+// the title bar nor the rest lands outside the usable area.
+inline OutputRect aspect_window_rect(int height, int w, int h, const OutputRect& usable, int top, int left,
+                                     int bottom, int right) {
+    const int area_w = std::max(1, usable.w - left - right), area_h = std::max(1, usable.h - top - bottom);
+    const WindowSize s = aspect_window_size(height, w, h, area_w, area_h);
+    return {usable.x + left + (area_w - s.w) / 2, usable.y + top + (area_h - s.h) / 2, s.w, s.h};
+}
+
 }  // namespace gx

@@ -426,18 +426,36 @@ int main(int argc, char** argv) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG |
                                                   (gl_debug ? SDL_GL_CONTEXT_DEBUG_FLAG : 0));
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    // Centred: where SDL3 puts a window it is not given a position for. 960 high and as wide
-    // as the output aspect makes that, 1280 for 4:3 and for --aspect=window, but never larger
-    // than the primary display's usable area: a wide aspect is scaled down to fit, in its own
-    // shape. The rect stays 0 by 0 where SDL can't say, which is no limit.
+    // 960 high and as wide as the output aspect makes that, 1280 for 4:3 and for
+    // --aspect=window, but never larger than the primary display's usable area: a wide aspect
+    // is scaled down to fit, in its own shape. A window that isn't fullscreen opens hidden and
+    // is then sized to the area its frame leaves and centred with the frame (aspect.h), so its
+    // title bar can't land outside the area, before it's shown. The frame is SDL's where SDL
+    // can say before the window is shown, as on Windows. Elsewhere SDL says nothing or 0, so a
+    // title bar of kTitleBar points is allowed for, more than macOS's 28. The rect stays 0 by
+    // 0 where SDL can't say what's usable, which is no limit, and SDL centres the window then.
+    constexpr int kTitleBar = 40;
     SDL_Rect usable = {};
     SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &usable);
-    const gx::WindowSize size = aspect_window ? gx::aspect_window_size(960, 4, 3, usable.w, usable.h)
-                                              : gx::aspect_window_size(960, aspect_w, aspect_h, usable.w, usable.h);
+    const int shape_w = aspect_window ? 4 : aspect_w, shape_h = aspect_window ? 3 : aspect_h;
+    const gx::WindowSize size = gx::aspect_window_size(960, shape_w, shape_h, usable.w, usable.h);
+    const bool place = !fullscreen && usable.w > 0 && usable.h > 0;
     SDL_Window* win = SDL_CreateWindow(GCN_APP_LABEL, size.w, size.h,
                                        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
-                                       (hidden ? SDL_WINDOW_HIDDEN : 0) | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
+                                       (hidden || place ? SDL_WINDOW_HIDDEN : 0) | (fullscreen ? SDL_WINDOW_FULLSCREEN : 0));
     if (!win) fatal("SDL_CreateWindow: %s", SDL_GetError());
+    if (place) {
+        int top = 0, left = 0, bottom = 0, right = 0;
+        if (!SDL_GetWindowBordersSize(win, &top, &left, &bottom, &right) || !(top || left || bottom || right)) {
+            top = kTitleBar;
+            left = bottom = right = 0;
+        }
+        const gx::OutputRect r =
+            gx::aspect_window_rect(960, shape_w, shape_h, {usable.x, usable.y, usable.w, usable.h}, top, left, bottom, right);
+        SDL_SetWindowSize(win, r.w, r.h);
+        SDL_SetWindowPosition(win, r.x, r.y);
+        if (!hidden) SDL_ShowWindow(win);
+    }
     // Ask for the newest core profile first: the renderer needs only GCN_GL_MAJOR.MINOR, but an
     // OpenXR runtime may want more of the context it shares (Meta's wants 4.0), and drivers
     // hand back exactly the version asked for.
