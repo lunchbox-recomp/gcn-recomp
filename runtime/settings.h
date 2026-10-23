@@ -19,8 +19,8 @@
 // other key is left alone: a load skips it and a save keeps its line.
 //
 // The desktop frontend reads the file at start, and a flag beats it for that run without
-// being written back. It applies `scale`; this build has no output aspect or fullscreen,
-// so `aspect` and `fullscreen` are only read and kept.
+// being written back. It applies `scale`. `--aspect` and `--fullscreen` don't read the file
+// yet, so `aspect` and `fullscreen` are only read and kept.
 #pragma once
 #include <string>
 
