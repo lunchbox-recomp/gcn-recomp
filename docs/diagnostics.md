@@ -509,6 +509,14 @@ words 93 to 96 (on, last output, a0, b0), so there the runtime reads and writes 
 words and takes per-millisecond updates up to word 96. The ucode hash alone decides this.
 The filter itself isn't applied.
 
+Each bus a voice mixes into leaves the last sample it took from the voice in the PB's depop
+words, 41 to 49 (main L, AuxA L, AuxB L, main R, AuxA R, AuxB R, main S, AuxA S, AuxB S), on
+every build. A bus the voice doesn't mix into leaves its word alone. The AX library sums
+those words for each voice it stops while it plays, and fades the sums out through the
+setup command's start and slope for each bus, which `depop` on the `[ax] bus` line counts.
+Until the mixer wrote them, the words held whatever the library had put there, and a voice
+stopped mid-sound cut off at the start of the next list.
+
 `ninja test_ax` builds `tools/test_ax.cpp`, which runs `hw/ax.cpp` over a fake main memory
 and ARAM. Each check writes parameter blocks, samples and a command list by hand, runs the
 list and compares what the mixer wrote or counted with numbers worked out by hand. Each

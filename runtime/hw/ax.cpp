@@ -29,6 +29,7 @@ enum {
     PB_MIXER = 9,           // 18 words: (vol, delta) pairs for L, R, AuxA L/R, AuxB L/R, AuxB S, S, AuxA S
     PB_ITD_ON = 27,         // initial time delay, 7 words from here; not applied
     PB_UPDATES = 34,        // num_updates[5], data_hi, data_lo
+    PB_DPOP = 41,           // 9 words: main L, AuxA L, AuxB L, main R, AuxA R, AuxB R, main S, AuxA S, AuxB S
     PB_VOL = 50, PB_VOL_DELTA = 51,
     PB_LOOPING = 55, PB_FORMAT = 56, PB_LOOP_HI = 57, PB_LOOP_LO = 58, PB_END_HI = 59, PB_END_LO = 60,
     PB_CUR_HI = 61, PB_CUR_LO = 62,
@@ -198,15 +199,19 @@ struct Accel {
     void finish() { pb.set32(PB_CUR_HI, cur); }
 };
 
-void mix_add(int32_t* out, const int16_t* in, int n, PB& pb, int vol_idx, bool ramp) {
+// Adds a voice's samples to a bus at its volume, and leaves the last sample it added in the
+// bus's depop word, for the AX library to fade out from if it stops the voice.
+void mix_add(int32_t* out, const int16_t* in, int n, PB& pb, int vol_idx, bool ramp, int dpop_idx) {
     uint16_t vol = pb.w[vol_idx];
     uint16_t delta = ramp ? pb.w[vol_idx + 1] : 0;
+    int32_t s = 0;
     for (int i = 0; i < n; i++) {
-        int32_t s = (int32_t)(((int64_t)in[i] * vol) >> 15);
-        out[i] += std::clamp(s, -32767, 32767);
+        s = std::clamp((int32_t)(((int64_t)in[i] * vol) >> 15), -32767, 32767);
+        out[i] += s;
         vol += delta;
     }
     pb.w[vol_idx] = vol;
+    pb.w[dpop_idx] = (uint16_t)s;
 }
 
 // The mixer control (PB word 6) decoded per bus, in kBuses' order: main L, R, S, AuxA L, R, S,
@@ -216,8 +221,9 @@ struct MixFlags {
     bool enable[9] = {}, ramp[9] = {};
 };
 
-// Offset of each bus's (volume, delta) pair from PB_MIXER.
+// Offset of each bus's (volume, delta) pair from PB_MIXER, and of its depop word from PB_DPOP.
 constexpr int kMixerWord[9] = {0, 2, 14, 4, 6, 16, 8, 10, 12};
+constexpr int kDpopWord[9] = {0, 3, 6, 1, 4, 7, 2, 5, 8};
 
 // Old (2001) ucode: main L/R always; bit0 AuxA, bit1 AuxB, bit2 surround, bit3 volume ramps
 // for every bus. Bit4 selects Dolby Pro Logic II mixing, where the low bits mean something else.
@@ -317,7 +323,8 @@ void process_voice(PB& pb, int offset) {
         pb.w[PB_VOL] = (uint16_t)(v + (int16_t)pb.w[PB_VOL_DELTA]);
     }
     for (int b = 0; b < 9; b++)
-        if (mf.enable[b]) mix_add(kBuses[b] + offset, samples, SPMS, pb, PB_MIXER + kMixerWord[b], mf.ramp[b]);
+        if (mf.enable[b])
+            mix_add(kBuses[b] + offset, samples, SPMS, pb, PB_MIXER + kMixerWord[b], mf.ramp[b], PB_DPOP + kDpopWord[b]);
 }
 
 void process_pb_list(uint32_t pb_addr) {
