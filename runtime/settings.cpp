@@ -27,11 +27,14 @@ bool split(const std::string& line, std::string& key, std::string& value) {
     return true;
 }
 
-// A whole number from 1 up, in digits alone and no more than nine of them, so that it fits.
-bool parse_positive(const std::string& text, int& out) {
+constexpr int kMaxScale = 999999999;  // nine digits, which atoi reads without overflow
+constexpr int kMaxAspectSide = 9999;
+
+// A whole number from 1 to `max`, in digits alone and no more than nine of them, so that it fits.
+bool parse_positive(const std::string& text, int max, int& out) {
     if (text.empty() || text.size() > 9 || text.find_first_not_of("0123456789") != std::string::npos) return false;
     const int v = atoi(text.c_str());
-    if (v < 1) return false;
+    if (v < 1 || v > max) return false;
     out = v;
     return true;
 }
@@ -68,8 +71,8 @@ bool settings_parse_aspect(const std::string& text, float& ratio) {
     }
     const size_t colon = text.find(':');
     int w, h;
-    if (colon == std::string::npos || !parse_positive(text.substr(0, colon), w) ||
-        !parse_positive(text.substr(colon + 1), h))
+    if (colon == std::string::npos || !parse_positive(text.substr(0, colon), kMaxAspectSide, w) ||
+        !parse_positive(text.substr(colon + 1), kMaxAspectSide, h))
         return false;
     ratio = (float)w / (float)h;
     return true;
@@ -92,12 +95,12 @@ Settings settings_load(const std::string& path) {
         float ratio;
         if (key == "aspect") {
             if (settings_parse_aspect(value, ratio)) s.aspect = value;
-            else takes = "W:H with two positive whole numbers, or window";
+            else takes = "W:H with two whole numbers from 1 to 9999, or window";
         } else if (key == "fullscreen") {
             if (value == "0" || value == "1") s.fullscreen = value == "1";
             else takes = "0 or 1";
         } else if (key == "scale") {
-            if (!parse_positive(value, s.scale)) takes = "a whole number from 1 up";
+            if (!parse_positive(value, kMaxScale, s.scale)) takes = "a whole number from 1 up";
         }
         if (takes)
             fprintf(stderr, "%s:%d: %s takes %s, not \"%s\", so the line is skipped\n", path.c_str(), n,
@@ -118,7 +121,7 @@ bool settings_save(const std::string& path, const Settings& s) {
                 s.aspect.c_str());
         return false;
     }
-    if (!parse_positive(std::to_string(s.scale), scale)) {
+    if (!parse_positive(std::to_string(s.scale), kMaxScale, scale)) {
         fprintf(stderr, "%s: scale %d isn't one a load takes, so nothing is saved\n", path.c_str(), s.scale);
         return false;
     }

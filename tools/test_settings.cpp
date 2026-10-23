@@ -103,21 +103,25 @@ void aspects() {
     check(settings_parse_aspect("21:9", r) && std::fabs(r - 21.0f / 9.0f) < 1e-6f, "21:9 is a ratio of 21/9");
     check(settings_parse_aspect("16:10", r) && std::fabs(r - 1.6f) < 1e-6f, "16:10 is a ratio of 1.6");
     check(settings_parse_aspect("window", r) && r == 0.0f, "window is a ratio of 0");
+    check(settings_parse_aspect("9999:1", r) && r == 9999.0f && settings_parse_aspect("1:9999", r) &&
+              std::fabs(r - 1.0f / 9999.0f) < 1e-9f,
+          "9999:1 and 1:9999 are the widest and the tallest, and are taken");
     static const char* kBad[] = {"", "16", "16:", ":9", "16:0", "0:9", "-16:9", "16:-9", "+16:9",
-                                 "16x9", "16:9:1", "16 :9", "1.5:1", "wide", "Window", "9999999999:1"};
+                                 "16x9", "16:9:1", "16 :9", "1.5:1", "wide", "Window", "9999999999:1",
+                                 "10000:1", "1:10000", "99999:1"};
     int refused = 0;
     for (const char* text : kBad) {
         r = 7.0f;
         if (!settings_parse_aspect(text, r) && r == 7.0f) refused++;
         else printf("     \"%s\" was taken\n", text);
     }
-    check(refused == (int)(sizeof(kBad) / sizeof(kBad[0])), "16 malformed aspects are refused and leave the ratio alone");
+    check(refused == (int)(sizeof(kBad) / sizeof(kBad[0])), "19 malformed or too large aspects are refused and leave the ratio alone");
 }
 
 void bad_values() {
     const std::string p = path_of("bad.txt");
     write_file(p,
-               "aspect 21:9\naspect 16:0\naspect wide\n"
+               "aspect 21:9\naspect 16:0\naspect wide\naspect 10000:9\n"
                "fullscreen 1\nfullscreen 2\nfullscreen yes\n"
                "scale 3\nscale 0\nscale -1\nscale two\nscale 2x\nscale\n");
     const Settings s = settings_load(p);

@@ -10,8 +10,8 @@
 //   scale 3
 //
 // The runtime owns three keys:
-//   aspect       the output's shape, "W:H" with two positive integers, or "window" for
-//                the window's own shape (settings_parse_aspect). Default 4:3
+//   aspect       the output's shape, "W:H" with two whole numbers from 1 to 9999, or
+//                "window" for the window's own shape (settings_parse_aspect). Default 4:3
 //   fullscreen   1 for fullscreen, 0 for a window. Default 0
 //   scale        the internal resolution, N times 640x480, N a whole number from 1 up.
 //                Default 2. The renderer caps it (gx::kMaxInternalScale)
@@ -44,7 +44,7 @@ Settings settings_load(const std::string& path);
 // Nothing is written then.
 bool settings_save(const std::string& path, const Settings& s);
 
-// An aspect as the file writes it: "W:H", two positive integers such as 16:9, or "window".
-// Sets `ratio` to W/H, or to 0 for "window". False, leaving `ratio` alone, for anything
-// else.
+// An aspect as the file writes it: "W:H", two whole numbers from 1 to 9999 such as 16:9, or
+// "window". Sets `ratio` to W/H, or to 0 for "window". False, leaving `ratio` alone, for
+// anything else.
 bool settings_parse_aspect(const std::string& text, float& ratio);
