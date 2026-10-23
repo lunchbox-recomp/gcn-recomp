@@ -1,6 +1,6 @@
 // GCN_SESSION=<dir>: one switch for a play session with every recording and counter on that
-// explains its sound and its pacing afterwards, all of it in one directory. See "A play
-// session" in docs/diagnostics.md.
+// explains its sound and its pacing afterwards, all of it in one directory. See "Playtest
+// sessions" in docs/diagnostics.md.
 #pragma once
 #include <string>
 

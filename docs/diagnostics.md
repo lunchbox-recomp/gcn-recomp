@@ -671,9 +671,9 @@ which pulls the ring couldn't fill.
   is how many did. A dry spell prints one of these for the pull that ran dry and one for
   each pull after it until the cushion is back, while `[ring] underruns=` counts the dry
   spells themselves, so the two counts differ.
-- `[audio] output frame F plays DMA frame D`, every 12,000 output frames (a quarter of a
-  second at 48 kHz) and again at each cut and each time the ring starts playing after a dry
-  spell. D is the frame of the DMA's stream the ring was about to read, which is its index
+- `[audio] output frame F plays DMA frame D`, at the first pull at least 12,000 output frames
+  (a quarter of a second at 48 kHz) after the last, which with 512-frame pulls is every
+  12,288, and again at each cut and each time the ring starts playing after a dry spell. D is the frame of the DMA's stream the ring was about to read, which is its index
   in a `GCN_AIDWAV` recording. Between two of these lines D moves on 32,000 frames for every
   48,000 of F, give or take the ring's trim of half a percent at most, so a moment in a
   `GCN_WAV` recording can be found in the `GCN_AIDWAV` one to within about 1.3 ms. A frame
@@ -692,13 +692,12 @@ that start where the ring ran dry and run on without a break. The position lines
 the output's pace within half a percent, and the ones at a cut and at the return from the
 stall name the frame the ring read next. So does the return from a stall of 110 ms that
 starts just after a position line and ends before the next one is due. A ring left with
-100 frames runs dry about 149 frames into a pull, once its fade is done. The next pull is
-short by all 512.
+100 frames runs dry about 149 frames into a pull. The next pull is short by all 512.
 
 ## Playtest sessions
 
-`GCN_SESSION=<dir>` records a session into one directory, for a reader that has nothing
-else to go on. It turns on these:
+`GCN_SESSION=<dir>` puts a session's recordings, its input log and `session.json` into one
+directory. It turns on these:
 
 - the input log, into `<dir>/inputs` (see "Input logging and replay" above), unless
   `--input-log=` names another directory or `--no-input-log` turns it off
@@ -707,10 +706,12 @@ else to go on. It turns on these:
 - `GCN_AXSTATS`, `GCN_AUDIOSTATS` and `GCN_FRAMETIME`, whose lines go to stderr with the
   rest of the run's output
 
-A switch that's already set keeps its value. Once the window and the sound device are open,
-it writes `<dir>/session.json`. Under `--vr` that is once the headset frontend has opened the
-device. Under `--headless` there is no window or device, so it is written before the guest
-boots with `refresh_hz` and `audio_device` null. This one is from a run on SDL's dummy
+A switch that's already set keeps its value. The stats lines don't go into `<dir>`, so
+keep the run's output beside it, as a script does that runs the game with
+`2>&1 | tee <dir>/stdout.txt`. Once the window and the sound device are open, the process
+writes `<dir>/session.json`. Under `--vr` that waits for the headset frontend to open the
+device. A `--headless` run has no window or device and writes it before the guest boots,
+with `refresh_hz` and `audio_device` null. This one is from a run on SDL's dummy
 driver, with its command line shortened and the game's binary called `game`:
 
 ```json

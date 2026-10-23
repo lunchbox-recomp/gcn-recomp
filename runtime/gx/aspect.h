@@ -28,8 +28,12 @@ inline bool parse_aspect(const char* s, int* w, int* h) {
     return true;
 }
 
-// The width of a window `height` pixels high at aspect w:h, rounded up, so that fit_aspect
-// fills it: 1280 at 960 high for 4:3, 1707 for 16:9.
+// The width of a window `height` pixels high at aspect w:h, rounded up: 1280 at 960 high for
+// 4:3, 1707 for 16:9. A landscape window this wide is filled by fit_aspect, with no bars.
+// Doubling it for a display of two pixels to a point keeps that for the shapes anyone is
+// likely to pick, but an odd ratio can lose a pixel: 15:11 doubles to 2620 by 1920 and the
+// picture is 2618 wide. A portrait shape can leave a bar at one pixel to a point, as 9:21
+// does with a 412 wide window and a picture 411 wide.
 inline int aspect_window_width(int height, int w, int h) {
     return (int)(((long long)height * w + h - 1) / h);
 }

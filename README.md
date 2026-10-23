@@ -65,15 +65,18 @@ The game project provides:
 
 ## The window
 
-The window opens 960 pixels high and as wide as the output aspect makes it, or smaller in
-the same shape where the display's usable area is smaller, as it is for 21:9 on many
-displays. The default aspect is 4:3, the console's own. `--aspect=W:H` stretches the picture to another, such as
-16:9 or 21:9, with W and H whole numbers from 1 to 9999. `--aspect=window` follows the
-window's own shape as it's resized. A window of another shape shows the picture centred
-between black bars. A game's hooks read the aspect with `gx::output_aspect()`, so it can
-draw its world wider to match. A headset's view stays 4:3, so `--eye` and
-`GCN_THEATER_STEREO` ignore `--aspect`. `--fullscreen` opens it fullscreen, and F11
-switches. On macOS Control-Command-F switches too, from the Window menu SDL adds.
+The window opens 960 points high (1920 pixels on a display of two pixels to a point) and
+as wide as the output aspect makes it, or smaller in the same shape where the display's
+usable area is smaller, as for 21:9 on many displays. The default aspect is 4:3, the
+console's own. `--aspect=W:H` stretches the picture to another, such as 16:9 or 21:9, with
+W and H whole numbers from 1 to 9999. `--aspect=window` follows the window's own shape as
+it's resized. A window of another shape shows the picture centred between black bars. The
+window as it opens has none for the usual shapes. An odd ratio on a two pixel display, or a
+portrait shape, can leave a bar a pixel wide. A game's hooks read the aspect with
+`gx::output_aspect()`, so it can draw its world wider to match. A headset's view stays 4:3,
+so `--eye` and `GCN_THEATER_STEREO` ignore `--aspect`. `--fullscreen` opens it fullscreen.
+F11 switches it on Windows and Linux, and Control-Command-F on a Mac, from the Window menu
+SDL adds, where F11 is Show Desktop by default.
 
 ## Layout
 
