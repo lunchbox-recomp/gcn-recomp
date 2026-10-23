@@ -332,10 +332,10 @@ void make_polyphase() {
             // what 16 bits can't hold goes on the other middle tap. Phase 64 is its own mirror
             // image, but taps that mirror each other sum to an even number and 0x7FFF is odd,
             // so its middle taps differ by 1.
-            const int near = p < kPolyPhases / 2 ? 1 : 2;
-            c[near] += 0x7FFF - total;
-            c[3 - near] += std::max(c[near] - 0x7FFF, 0);
-            c[near] = std::min(c[near], 0x7FFF);
+            const int nearer = p < kPolyPhases / 2 ? 1 : 2;
+            c[nearer] += 0x7FFF - total;
+            c[3 - nearer] += std::max(c[nearer] - 0x7FFF, 0);
+            c[nearer] = std::min(c[nearer], 0x7FFF);
             for (int k = 0; k < 4; k++) g_poly[s][p][k] = (int16_t)c[k];
         }
     }
