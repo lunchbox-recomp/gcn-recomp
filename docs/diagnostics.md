@@ -681,11 +681,14 @@ outside still leaves a file that reads.
 `ninja test_audio_ring` checks this accounting too, on the same virtual clock as the ring.
 A device that keeps exact time gets no late callbacks and no underruns. A gap of 1.4 periods
 isn't late, and one of 1.6 prints the late line word for word. The 400th callback's line
-carries the counts so far with the mean and the longest period. The stall's pulls print
-underrun lines that start where the ring ran dry and run on without a break. The position
-lines move at the output's pace within half a percent, and the ones at a cut and at the
-return from the stall name the frame the ring read next. A ring left with 100 frames runs
-dry about 149 frames into a pull, once its fade is done. The next pull is short by all 512.
+carries the counts so far with the mean and the longest period, and the 800th callback's
+line covers only the 400 gaps since the one before. The stall's pulls print underrun lines
+that start where the ring ran dry and run on without a break. The position lines move at
+the output's pace within half a percent, and the ones at a cut and at the return from the
+stall name the frame the ring read next. So does the return from a stall of 110 ms that
+starts just after a position line and ends before the next one is due. A ring left with
+100 frames runs dry about 149 frames into a pull, once its fade is done. The next pull is
+short by all 512.
 
 ## Playtest sessions
 

@@ -18,8 +18,10 @@
 // The device stage's accounting (audio_stats.cpp) is checked on the same runs, from the
 // lines it prints: starting up isn't an underrun, the stall's underruns cover the pulls it
 // left silent and no more, a ring with 100 frames left runs short where those frames run
-// out, the output's place in the DMA's stream is right after a cut and after a refill, and
-// a callback 1.6 periods after the last is late where one 1.4 periods after isn't.
+// out, the output's place in the DMA's stream is right after a cut and after a refill (also
+// after a dry spell too short for a periodic position line to fall in it), a callback 1.6
+// periods after the last is late where one 1.4 periods after isn't, and each callbacks line
+// covers only the gaps since the one before.
 //
 // usage: test_audio_ring
 // Exits 0 only if every check passes.
@@ -273,6 +275,47 @@ int main() {
     check(n == 400 && late == 1 && short_pulls == stalled.size(), "the callbacks line counts the callbacks, the late one and the underruns");
     check(std::fabs(mean_ms - 400.0 / 399 * period * 1000) < 0.01 && std::fabs(worst_ms - 1.6 * period * 1000) < 0.06,
           "the callbacks line gives the mean gap and the longest");
+    // The 800th callback prints the next line, whose window starts over: 400 gaps of one period
+    // each and none late. A window that kept the first one's gaps would show its late gap in the
+    // worst, and a mean over 800 gaps.
+    run.play(8.7, true);
+    {
+        int lines = 0;
+        unsigned long long n2 = 0, late2 = 0, short2 = 0;
+        double mean2 = 0, worst2 = 0;
+        for (const auto& line : g_lines)
+            if (sscanf(line.c_str(), "[audio] callbacks n=%llu period_ms=%lf late=%llu worst_ms=%lf underruns=%llu", &n2,
+                       &mean2, &late2, &worst2, &short2) == 5 && ++lines == 2)
+                break;
+        printf("  the 800th callback: period %.3f ms, worst %.2f ms\n", mean2, worst2);
+        check(lines == 2 && n2 == 800 && late2 == 1, "the second callbacks line carries the counts so far");
+        check(std::fabs(mean2 - period * 1000) < 0.01 && std::fabs(worst2 - period * 1000) < 0.06,
+              "the second callbacks line gives the mean gap and the longest of its own window");
+    }
+
+    // A dry spell that starts just after a position line and ends before the next is due, so
+    // only the refill's own jump can put a line where the ring plays again. The stall is
+    // 110 ms, over the 100 ms cushion and under the 250 ms between position lines.
+    {
+        size_t seen = g_lines.size();
+        for (bool marked = false; !marked;) {
+            run.push_due(true);
+            run.pull();
+            for (size_t i = seen; i < g_lines.size(); i++)
+                if (g_lines[i].rfind("[audio] output frame", 0) == 0) marked = true;
+            seen = g_lines.size();
+        }
+        const long long last_pushed = run.tone_frames - 1;
+        const size_t lines_before_spell = g_lines.size();
+        run.play(run.pull_time() + 0.11, false);
+        run.play(run.pull_time() + 0.2, true);
+        const auto spell = underruns_from(lines_before_spell);
+        const unsigned long long returned = spell.empty() ? 0 : spell.back().at + spell.back().frames;
+        printf("  the short stall left %zu pulls short, and the ring played again at output frame %llu\n", spell.size(),
+               returned);
+        check(!spell.empty() && position_at(returned) == last_pushed,
+              "a dry spell shorter than the time between position lines still marks where the ring plays again");
+    }
 
     // Cuts, seen in the fade's own counter. Pulls of 100 frames are shorter than the 480 of a
     // crossfade, so one still running is there to see after the pull that armed it.
