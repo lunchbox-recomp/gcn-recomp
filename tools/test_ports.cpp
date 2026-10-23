@@ -15,6 +15,7 @@
 // usage: test_ports <empty work dir>            the port checks
 //        test_ports --record <empty work dir>   two gamepads, played and logged
 //        test_ports --replay <that work dir>    that log replayed with none
+//        test_ports --replay-no-sram <that work dir>   that log again, its SRAM snapshot gone
 // Files are written into the work dir and left there.
 #define main gcn_frontend_main
 #include "main.cpp"
@@ -830,9 +831,13 @@ int run_replay(const std::string& dir) {
     input_map_load((dir + "/no-controls.txt").c_str());
     input_script_init("");
     std::string card, sram;
-    if (!input_replay_load(dir + "/log", card, sram)) return 1;
+    bool loaded = false;
+    const std::string said = dir + "/replay-stderr.txt";
+    capture(said, [&] { loaded = input_replay_load(dir + "/log", card, sram); });
+    if (!loaded) return 1;
     check(sram == dir + "/log/sram_replay.raw" && read_file(sram) == "the SRAM the run started with\n",
           "a replay gets a scratch copy of the logged SRAM");
+    check(lines_with(said, "(with its SRAM snapshot)") == 1, "and its summary line says the log had an SRAM snapshot");
     power_on(1);
     gamepads_init();
     frame();
@@ -853,12 +858,30 @@ int run_replay(const std::string& dir) {
     return finish("--replay");
 }
 
+// The recording's log with its SRAM snapshot taken away, after --replay has left a scratch
+// copy beside it. A log with no snapshot replays from the default SRAM, so the copy an
+// earlier replay left must be cleared, not loaded in its place.
+int run_replay_without_sram(const std::string& dir) {
+    remove((dir + "/log/sram.raw").c_str());
+    write_file(dir + "/log/sram_replay.raw", "left by an earlier replay\n");
+    std::string card, sram;
+    bool loaded = false;
+    const std::string said = dir + "/replay-without-sram-stderr.txt";
+    capture(said, [&] { loaded = input_replay_load(dir + "/log", card, sram); });
+    if (!loaded) return 1;
+    check(sram == dir + "/log/sram_replay.raw" && !plat_readable(sram.c_str()),
+          "a log with no SRAM snapshot replays from the default SRAM: the scratch copy an earlier replay left is cleared");
+    check(lines_with(said, "SRAM snapshot") == 0, "and its summary line doesn't claim a snapshot");
+    return finish("--replay-no-sram");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc == 2) return run_ports(argv[1]);
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);
-    fprintf(stderr, "usage: test_ports [--record|--replay] <work dir>\n");
+    if (argc == 3 && !strcmp(argv[1], "--replay-no-sram")) return run_replay_without_sram(argv[2]);
+    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram] <work dir>\n");
     return 2;
 }

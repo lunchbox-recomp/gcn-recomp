@@ -262,13 +262,18 @@ bool input_replay_load(const std::string& dir, std::string& memcard_out, std::st
     sram_out = dir + "/sram_replay.raw";
     remove(sram_out.c_str());
     const std::string sram_snap = dir + "/sram.raw";
-    if (plat_readable(sram_snap.c_str()) && !copy_file(sram_snap, sram_out))
+    bool sram_copied = plat_readable(sram_snap.c_str());
+    if (sram_copied && !copy_file(sram_snap, sram_out)) {
         fprintf(stderr, "[input] could not copy the SRAM snapshot; replaying from the default SRAM\n");
+        sram_copied = false;
+    }
     size_t poses = 0;
     for (const auto& c : g_poses) poses += c.replay.size();
+    const char* snapshots = memcard_out.empty() ? (sram_copied ? " (with its SRAM snapshot)" : "")
+                                                : (sram_copied ? " (with its card and SRAM snapshots)" : " (with its card snapshot)");
     fprintf(stderr, "[input] replaying %zu changes over %u %s, %zu clock jumps and %zu pose changes from %s%s%s\n", g_replay.size(),
             g_replay_last_key, g_replay_by_frame ? "frames" : "polls", g_jumps.size(), poses, path.c_str(),
-            memcard_out.empty() ? "" : " (with its card snapshot)",
+            snapshots,
             g_replay_by_frame ? " (v1 log: keyed by frame, so only approximate)" : "");
     return true;
 }

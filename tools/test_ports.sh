@@ -1,7 +1,8 @@
 #!/bin/bash
 # Runs the gamepad port checks: the port checks, a recording of two gamepads, and that
-# recording replayed with none. SDL's virtual joysticks stand in for the controllers, so
-# no joystick may be connected.
+# recording replayed with none, and that recording's log replayed again with its SRAM
+# snapshot taken away. SDL's virtual joysticks stand in for the controllers, so no joystick
+# may be connected.
 #
 # usage: tools/test_ports.sh <test_ports> <work dir>
 #   <test_ports>  the program `ninja test_ports` builds in a build directory of a game
@@ -24,4 +25,5 @@ export SDL_AUDIO_DRIVER=dummy
 "$test_ports" "$work/files" || status=1
 "$test_ports" --record "$work/log" || status=1
 "$test_ports" --replay "$work/log" || status=1
+"$test_ports" --replay-no-sram "$work/log" || status=1
 exit $status
