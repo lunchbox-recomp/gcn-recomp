@@ -13,6 +13,7 @@
 // usage: test_settings <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
 // every check passes.
+#include "gx/aspect.h"
 #include "settings.h"
 #include <cmath>
 #include <csignal>
@@ -108,14 +109,36 @@ void aspects() {
           "9999:1 and 1:9999 are the widest and the tallest, and are taken");
     static const char* kBad[] = {"", "16", "16:", ":9", "16:0", "0:9", "-16:9", "16:-9", "+16:9",
                                  "16x9", "16:9:1", "16 :9", "1.5:1", "wide", "Window", "9999999999:1",
-                                 "10000:1", "1:10000", "99999:1"};
+                                 "10000:1", "1:10000", "99999:1", "00016:9", "9:00016"};
     int refused = 0;
     for (const char* text : kBad) {
         r = 7.0f;
         if (!settings_parse_aspect(text, r) && r == 7.0f) refused++;
         else printf("     \"%s\" was taken\n", text);
     }
-    check(refused == (int)(sizeof(kBad) / sizeof(kBad[0])), "19 malformed or too large aspects are refused and leave the ratio alone");
+    check(refused == (int)(sizeof(kBad) / sizeof(kBad[0])),
+          "21 malformed, too large or too long aspects are refused and leave the ratio alone");
+}
+
+// The --aspect flag reads its value with gx::parse_aspect, and the frontend will take a value
+// from the file to the same place, so the two have to take the same strings. The file's alone
+// is "window".
+void aspects_match_the_flag() {
+    static const char* kTexts[] = {"16:9", "4:3", "0016:0009", "0001:1", "1:0001", "9999:9999", "09999:1", "00016:9",
+                                   "9:00016", "00001:00001", "0000:1", "16:0", "10000:1", "1:99999", "9999999999:1",
+                                   "", "16", "16:", ":9", "16:9:1", "+16:9", "16:9 ", " 16:9", "16:9\n", "1.5:1"};
+    int differ = 0;
+    for (const char* text : kTexts) {
+        float ratio;
+        int w, h;
+        const bool file = settings_parse_aspect(text, ratio), flag = gx::parse_aspect(text, &w, &h);
+        if (file != flag || (file && ratio != (float)w / (float)h)) {
+            differ++;
+            printf("     \"%s\": the file %s it and the flag %s it\n", text, file ? "takes" : "refuses",
+                   flag ? "takes" : "refuses");
+        }
+    }
+    check(differ == 0, "the file takes and refuses the same aspects as --aspect, zero-padded ones included");
 }
 
 void bad_values() {
@@ -302,6 +325,7 @@ int main(int argc, char** argv) {
     parsing();
     byte_order_mark();
     aspects();
+    aspects_match_the_flag();
     bad_values();
     save_keeps_lines();
     save_refuses_bad_values();

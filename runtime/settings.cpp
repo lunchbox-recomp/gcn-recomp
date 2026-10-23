@@ -34,11 +34,14 @@ bool split(const std::string& line, std::string& key, std::string& value) {
 }
 
 constexpr int kMaxScale = 999999999;  // nine digits, which atoi reads without overflow
-constexpr int kMaxAspectSide = 9999;
+constexpr int kMaxAspectSide = 9999;  // four, which --aspect takes (gx::parse_aspect)
 
-// A whole number from 1 to `max`, in digits alone and no more than nine of them, so that it fits.
+// A whole number from 1 to `max`, in digits alone and no more of them than `max` has. That keeps
+// it from overflowing, and keeps a zero-padded side as short as --aspect would take it.
 bool parse_positive(const std::string& text, int max, int& out) {
-    if (text.empty() || text.size() > 9 || text.find_first_not_of("0123456789") != std::string::npos) return false;
+    if (text.empty() || text.size() > std::to_string(max).size() ||
+        text.find_first_not_of("0123456789") != std::string::npos)
+        return false;
     const int v = atoi(text.c_str());
     if (v < 1 || v > max) return false;
     out = v;
