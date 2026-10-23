@@ -56,10 +56,14 @@ void render_set_output_fbo(unsigned fbo);
 
 bool render_execute(Batch& b);
 
-// Draws the last presented frame to the output again, fitted to the output aspect at the
+// Keeps a copy of every frame presented from now on, for render_present_last, or stops and
+// forgets the one kept. It costs a blit of the frame at each present, so only a frontend
+// that draws frames again asks for it.
+void render_keep_last(bool on);
+// Draws the newest presented frame to the output again, fitted to the output aspect at the
 // window's size now, for a frontend whose guest is paused (pause.h): nothing new comes, but
-// the window may be resized or drawn over. The renderer keeps that frame only while a pause is asked for, from the
-// first present after the asking. False, with nothing drawn, if it has none.
+// the window may be resized or drawn over. False, with nothing drawn, if no frame has been
+// presented since render_keep_last(true).
 bool render_present_last();
 
 // Frames presented so far, for tracing what a display frame is actually showing.

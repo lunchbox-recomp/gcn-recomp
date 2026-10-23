@@ -613,13 +613,23 @@ function(gcn_add_game)
     target_compile_options(test_sram PRIVATE ${GCN_RUNTIME_WARNINGS})
 
     # The pause checks (tools/test_pause.cpp): runtime/pause.cpp on a fake host clock, with a
-    # thread for the guest's. Needs no disc image, window or GL.
+    # thread for the guest's, gx/cmd.cpp taking it to its frame boundaries, and the paused
+    # redraw in gx/render_gl.cpp on a fake GL (tools/test_pause_gl.cpp, the GL ES build, whose
+    # entry points are glad's pointers). Needs no disc image, window or GL. The linker drops
+    # the rest of the renderer, which would otherwise want the whole runtime.
     find_package(Threads REQUIRED)
-    add_executable(test_pause EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_pause.cpp)
+    add_executable(test_pause EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_pause.cpp
+      ${GCN_RECOMP_DIR}/tools/test_pause_gl.cpp ${RT}/gx/glad_es/src/gles2.c)
     _gcn_set_standards(test_pause)
-    target_include_directories(test_pause PRIVATE ${RT})
+    target_include_directories(test_pause PRIVATE ${RT} ${RT}/gx/glad_es/include)
     target_link_libraries(test_pause PRIVATE Threads::Threads)
     target_compile_options(test_pause PRIVATE ${GCN_RUNTIME_WARNINGS})
+    if(APPLE)
+      target_link_options(test_pause PRIVATE -Wl,-dead_strip)
+    else()
+      target_compile_options(test_pause PRIVATE -ffunction-sections -fdata-sections)
+      target_link_options(test_pause PRIVATE -Wl,--gc-sections)
+    endif()
   endif()
 
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)

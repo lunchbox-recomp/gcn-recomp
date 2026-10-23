@@ -10,8 +10,8 @@
 // with it: the virtual clock only counts what the guest runs, and the host time the hold
 // took is handed to the clock (clock_hold), so the pacer doesn't make it up afterwards. The
 // guest resumes where it stopped, with nothing to catch up. Meanwhile the frontend draws the
-// last frame again (gx::render_present_last), so the window can still be redrawn, resized
-// or drawn over.
+// newest presented frame again (gx::render_present_last), which is the one the guest is held
+// after, so the window can still be redrawn, resized or drawn over.
 //
 // The sound ring isn't told. Nothing new reaches it while the guest is held, so it plays
 // out what it has, fades as it runs dry and fades back in once the cushion has refilled

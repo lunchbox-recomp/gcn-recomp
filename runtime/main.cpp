@@ -463,6 +463,8 @@ int main(int argc, char** argv) {
     }
 #endif
     gx::render_init(scale);
+    // A paused guest's frame is drawn again in the loop below (render_present_last).
+    gx::render_keep_last(true);
     // Before the guest starts, whose hooks may read it from the first frame. --vr has gone
     // its own way by here, so a headset's panel keeps 4:3. --aspect=window takes the
     // window's shape in the loop below.

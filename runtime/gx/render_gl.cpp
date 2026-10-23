@@ -3,7 +3,6 @@
 // One source serves desktop OpenGL 3.3 core and OpenGL ES 3.2; where the two profiles
 // differ, the difference is confined to the small block of helpers below.
 #include "../runtime.h"
-#include "../pause.h"
 #include "render.h"
 #include "render_gl.h"
 #include "aspect.h"
@@ -2607,12 +2606,13 @@ static GLuint g_output_fbo = 0;
 // The most recent presented frame, so the output can be drawn again without the game
 // having produced a new one (render_present_last): a copy of the texture it was shown from,
 // and the rect of it that was shown, in EFB pixels. The EFB can't be read again later, as
-// the display copy that presented it clears it. Kept only while a pause is asked for, so
-// play pays nothing for it.
+// the display copy that presented it clears it. Every presented frame is kept, so the copy
+// is always the newest one, but only for a frontend that asks (render_keep_last): it costs
+// a blit of the frame at each present.
 static GLuint g_last_tex, g_last_fbo;
 static uint32_t g_last_tex_w, g_last_tex_h, g_last_rect[4];
 static int g_last_scale;
-static bool g_have_last;
+static bool g_keep_last, g_have_last;
 static void keep_last(GLuint src_fbo, uint32_t tex_w, uint32_t tex_h, uint32_t rx, uint32_t ry, uint32_t rw, uint32_t rh) {
     const GLint w = (GLint)(tex_w * g_scale), h = (GLint)(tex_h * g_scale);
     if (!g_last_fbo) {
@@ -2793,13 +2793,18 @@ static void present(const EfbCopyCmd& c) {
     const bool dump = g_dump_dir && g_dump_every && in_range && g_present_count % g_dump_every == 0;
     if (xfb) {
         if (dump) dump_xfb(*xfb, c.dst_w);
-        if (pause_requested()) keep_last(xfb->fbo, c.dst_w, xfb->h, 0, 0, c.dst_w, xfb->h);
+        if (g_keep_last) keep_last(xfb->fbo, c.dst_w, xfb->h, 0, 0, c.dst_w, xfb->h);
         blit_rect_to_output(xfb->tex, c.dst_w, xfb->h, 0, 0, c.dst_w, xfb->h, dump);
         return;
     }
     if (dump) dump_efb(c);
-    if (pause_requested()) keep_last(g_efb_fbo, EFB_W, EFB_H, c.src_x, c.src_y, c.src_w, c.src_h);
+    if (g_keep_last) keep_last(g_efb_fbo, EFB_W, EFB_H, c.src_x, c.src_y, c.src_w, c.src_h);
     blit_rect_to_output(g_efb_color, EFB_W, EFB_H, c.src_x, c.src_y, c.src_w, c.src_h, dump);
+}
+
+void render_keep_last(bool on) {
+    g_keep_last = on;
+    if (!on) g_have_last = false;
 }
 
 // Through the same aspect fit as present(), at the window's size now, and never dumped.

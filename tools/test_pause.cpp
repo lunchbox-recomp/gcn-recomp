@@ -11,6 +11,8 @@
 // counts the frames as xf.cpp does inline and records whether the batch would end there;
 // the skim's sync counts them as fifo.cpp does. The VI shows 480 rows.
 //
+// tools/test_pause_gl.cpp has the paused redraw's checks, render_gl.cpp on a fake GL.
+//
 // usage: test_pause
 // Exits 0 only if every check passes. A guest thread still held after 2 s is a failure, and
 // the run then ends without waiting for it.
@@ -171,6 +173,7 @@ void check_frame_ends(bool inline_fe) {
 uint64_t host_ns() { return g_host.load(); }
 void clock_hold(uint64_t ns) { g_handed += ns; }
 uint64_t audio_frames_out() { return 0; }
+int present_last_checks();  // tools/test_pause_gl.cpp
 
 int main() {
     setenv("GCN_PAUSE_AT", "50:3", 1);
@@ -226,6 +229,8 @@ int main() {
 
     check_frame_ends(true);
     check_frame_ends(false);
+
+    g_failed += present_last_checks();
 
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     fflush(stdout);
