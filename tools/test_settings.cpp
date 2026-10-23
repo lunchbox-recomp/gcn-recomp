@@ -141,8 +141,8 @@ void aspects() {
 }
 
 // The --aspect flag reads its value with gx::parse_aspect, and the frontend will take a value
-// from the file to the same place, so the two have to take the same strings. The file's alone
-// is "window".
+// from the file to the same place, so the two have to take the same strings. gx::parse_aspect
+// doesn't take "window"; main.cpp reads --aspect=window itself.
 void aspects_match_the_flag() {
     static const char* kTexts[] = {"16:9", "4:3", "0016:0009", "0001:1", "1:0001", "9999:9999", "09999:1", "00016:9",
                                    "9:00016", "00001:00001", "0000:1", "16:0", "10000:1", "1:99999", "9999999999:1",
