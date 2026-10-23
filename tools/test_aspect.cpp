@@ -86,6 +86,7 @@ int main() {
             if (!same(gx::fit_aspect(w, h, (float)s[0] / (float)s[1]), {0, 0, w, h})) barred++;
         }
     check(barred == 0, "a window opened at a landscape aspect is filled, at every height to 2160");
+
     // The opening size inside a display. With room, or with no limit given, it is the size above.
     // Without room it is scaled down in its own shape: 21:9 on a 1728 by 1050 area is 1727 by
     // 740, and 4:3 on a 1366 by 700 area is 934 by 700. A shape too wide for even one pixel of
@@ -111,7 +112,6 @@ int main() {
             }
     printf("  %ld sizes, %ld over their area, %ld not filled\n", samples, over, unfilled);
     check(over == 0 && unfilled == 0, "a landscape window never opens past its area and stays filled, at 8 shapes in a grid of areas");
-
 
     const int picked[][2] = {{4, 3}, {16, 9}, {16, 10}, {21, 9}, {32, 9}, {5, 4}, {3, 2}, {2, 1},
                              {64, 27}, {43, 18}, {12, 5}, {1, 1}, {9, 16}, {3, 4}};

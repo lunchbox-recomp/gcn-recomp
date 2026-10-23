@@ -676,8 +676,9 @@ which pulls the ring couldn't fill.
   spells themselves, so the two counts differ.
 - `[audio] output frame F plays DMA frame D`, at the first pull at least 12,000 output frames
   (a quarter of a second at 48 kHz) after the last, which with 512-frame pulls is every
-  12,288, and again at each cut and each time the ring starts playing after a dry spell. D is the frame of the DMA's stream the ring was about to read, which is its index
-  in a `GCN_AIDWAV` recording. Between two of these lines D moves on 32,000 frames for every
+  12,288, and again at each cut and each time the ring starts playing after a dry spell. D
+  is the frame of the DMA's stream the ring was about to read, which is its index in a
+  `GCN_AIDWAV` recording. Between two of these lines D moves on 32,000 frames for every
   48,000 of F, give or take the ring's trim of half a percent at most, so a moment in a
   `GCN_WAV` recording can be found in the `GCN_AIDWAV` one to within about 1.3 ms. A frame
   that came out in a pull the ring couldn't fill was made from nothing.
