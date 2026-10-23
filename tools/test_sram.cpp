@@ -6,9 +6,10 @@
 // mode a game set lasted only until it quit. Each case writes a file into the work dir,
 // loads or saves it, and checks the bytes. A file that's missing, the wrong size or fails
 // a checksum must give the defaults, which is how every run started before. A save that
-// fails must leave the old file whole, so two failures are made to happen: a directory
-// where the save writes its temp file, and a file size limit (RLIMIT_FSIZE) that stops
-// that write partway as a full disk would.
+// fails must leave the old file whole, so three failures are made to happen: a directory
+// where the save writes its temp file, a file size limit (RLIMIT_FSIZE) that stops that
+// write partway as a full disk would, and a directory where the file is to go, so the
+// temp file is written whole and only the final replace fails.
 //
 // usage: test_sram <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
@@ -60,6 +61,11 @@ std::string bytes(const uint8_t* s) { return std::string((const char*)s, SRAM_SI
 bool exists(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0;
+}
+
+bool is_dir(const std::string& path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 bool is_defaults(const uint8_t* s) {
@@ -194,6 +200,20 @@ void failed_save_no_temp() {
     check(read_file(p) == bytes(before), "and leaves the old file whole");
 }
 
+// The temp file is written and closed whole, then the replace fails because a non-empty
+// directory is where the file goes (on Windows a sharing violation fails it the same way).
+// The save must say so, take its temp file away and leave the directory as it was.
+void failed_save_replace() {
+    uint8_t s[SRAM_SIZE];
+    const std::string p = path_of("dir.raw");
+    mkdir(p.c_str(), 0755);
+    write_file(p + "/keep", "kept", 4);
+    sram_defaults(s);
+    check(!sram_save(p, s), "a save fails when a directory is where the file goes");
+    check(!exists(p + ".tmp"), "and removes the temp file it wrote whole");
+    check(is_dir(p) && read_file(p + "/keep") == "kept", "and leaves the directory as it was");
+}
+
 void failed_save_cut_short() {
     uint8_t before[SRAM_SIZE], s[SRAM_SIZE];
     mono(before);
@@ -234,6 +254,7 @@ int main(int argc, char** argv) {
     flash_ids();
     bad_files();
     failed_save_no_temp();
+    failed_save_replace();
     failed_save_cut_short();
     printf("test_sram: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
