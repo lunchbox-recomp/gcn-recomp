@@ -236,14 +236,14 @@ void depop_checks() {
     check(out_l(0) == 0 && out_l(159) == 0 && g_sw.depop == 0, "a slope with a start of 0 leaves main L silent and counts no depop");
 }
 
-// The ADPCM decoder saturates to 16 bits, and what it decoded feeds the next prediction.
-void adpcm_checks() {
-    // Every nibble of 0xF is -1. With the header byte 0xFF as well, the scale is 1 << 15 and the
-    // prediction coefficients, in PB words that stay 0, add nothing, so each sample decodes to
-    // -32768 exactly, where a clamp at -32767 would give -32767.
+// One list of an ADPCM voice over 0x100 bytes of ARAM, each 8-byte frame of them the header
+// byte 0xFF and then seven bytes of `data`. With that header the scale is 1 << 15 and the
+// prediction coefficients, in PB words that stay 0, add nothing, so each sample decodes to
+// its nibble times 32768.
+void run_adpcm(uint8_t data) {
     reset(kHashLater);
     constexpr uint32_t kNibble = 0x1000;  // at ARAM byte 0x800, and a multiple of 16 for a header
-    for (uint32_t i = 0; i < 0x100; i++) g_aram[kNibble / 2 + i] = 0xFF;
+    for (uint32_t i = 0; i < 0x100; i++) g_aram[kNibble / 2 + i] = i % 8 ? data : 0xFF;
     PB pb = pcm_voice(0, 1, 0x8000, 0x8000);
     pb.w[PB_FORMAT] = 0x00;
     pb.set32(PB_LOOP_HI, kNibble);
@@ -251,7 +251,20 @@ void adpcm_checks() {
     pb.set32(PB_CUR_HI, kNibble);
     store_pb(pb);
     run_list();
+}
+
+// The ADPCM decoder saturates to 16 bits, and what it decoded feeds the next prediction.
+void adpcm_checks() {
+    // Every nibble of 0xF is -1, so each sample decodes to -32768 exactly, where a clamp at
+    // -32767 would give -32767.
+    run_adpcm(0xFF);
     check(pb_word(PB_YN1) == 0x8000 && pb_word(PB_YN2) == 0x8000, "an ADPCM sample that decodes to -32768 is kept as -32768 in the history");
+    // A nibble of 8 is -8, so -262144, which wrapped to 16 bits would be 0.
+    run_adpcm(0x88);
+    check(pb_word(PB_YN1) == 0x8000 && pb_word(PB_YN2) == 0x8000, "an ADPCM sample below -32768 saturates to -32768");
+    // A nibble of 7 gives 229376, which wrapped would be -32768.
+    run_adpcm(0x77);
+    check(pb_word(PB_YN1) == 0x7FFF && pb_word(PB_YN2) == 0x7FFF, "an ADPCM sample above 32767 saturates to 32767");
 }
 
 // Source type 0 filters the last four samples in with one of 128 phases of a computed set.
