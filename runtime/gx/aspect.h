@@ -6,6 +6,7 @@
 #include <climits>
 #include <cmath>
 #include <cstdlib>
+#include <numeric>
 
 namespace gx {
 
@@ -45,14 +46,19 @@ struct WindowSize {
 // The size a window opens at: `height` high and as wide as aspect w:h makes that, or, when
 // that wouldn't fit in a max_w by max_h area such as a display's usable bounds, the largest
 // window of the same shape that does, so it stays filled. A limit of 0 or less is no limit.
-// A shape too wide to be even one pixel high inside max_w can't keep its shape, and is
-// clipped to max_w at one pixel high.
+// The smaller window's height is a whole number of the shape's steps (3 at 4:3, 9 at 16:9),
+// so its width is exact and it stays filled at any number of pixels to a point; a width
+// rounded up would leave a pixel of bar at two. A shape too wide to be even one pixel high
+// inside max_w can't keep its shape, and is clipped to max_w at one pixel high.
 inline WindowSize aspect_window_size(int height, int w, int h, int max_w, int max_h) {
     if (max_w <= 0) max_w = INT_MAX;
     if (max_h <= 0) max_h = INT_MAX;
     const long long widest_fit = (long long)max_w * h / w;  // the tallest max_w wide at this shape
-    const int tall = (int)std::max(1LL, std::min({(long long)height, (long long)max_h, widest_fit}));
-    return {std::min(aspect_window_width(tall, w, h), max_w), tall};
+    long long tall = std::min({(long long)height, (long long)max_h, widest_fit});
+    const long long step = h / std::gcd(w, h);
+    if (tall < height && tall >= step) tall -= tall % step;
+    tall = std::max(1LL, tall);
+    return {std::min(aspect_window_width((int)tall, w, h), max_w), (int)tall};
 }
 
 struct OutputRect {

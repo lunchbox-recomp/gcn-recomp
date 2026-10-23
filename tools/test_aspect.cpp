@@ -88,9 +88,10 @@ int main() {
     check(barred == 0, "a window opened at a landscape aspect is filled, at every height to 2160");
 
     // The opening size inside a display. With room, or with no limit given, it is the size above.
-    // Without room it is scaled down in its own shape: 21:9 on a 1728 by 1050 area is 1727 by
-    // 740, and 4:3 on a 1366 by 700 area is 934 by 700. A shape too wide for even one pixel of
-    // height is clipped to the area's width at one pixel high, where it was 9,599,040 wide.
+    // Without room it is scaled down in its own shape, to a height that makes the width exact:
+    // 21:9 on a 1728 by 1050 area is 1722 by 738, and 4:3 on a 1366 by 700 area is 932 by 699.
+    // A shape too wide for even one pixel of height is clipped to the area's width at one pixel
+    // high, where it was 9,599,040 wide.
     auto sized = [](int h, int w, int ah, int mw, int mh) {
         const gx::WindowSize s = gx::aspect_window_size(h, w, ah, mw, mh);
         return s.w * 100000LL + s.h;
@@ -98,20 +99,33 @@ int main() {
     check(sized(960, 4, 3, 0, 0) == 1280 * 100000LL + 960 && sized(960, 16, 9, 3000, 2000) == 1707 * 100000LL + 960 &&
               sized(960, 21, 9, 0, 1200) == 2240 * 100000LL + 960 && sized(960, 4, 3, 1280, 960) == 1280 * 100000LL + 960,
           "a window with room opens at the size above, and so does one with no limit given");
-    check(sized(960, 21, 9, 1728, 1050) == 1727 * 100000LL + 740 && sized(960, 4, 3, 1366, 700) == 934 * 100000LL + 700 &&
+    check(sized(960, 21, 9, 1728, 1050) == 1722 * 100000LL + 738 && sized(960, 4, 3, 1366, 700) == 932 * 100000LL + 699 &&
               sized(960, 9999, 1, 3456, 2234) == 3456 * 100000LL + 1,
-          "a window that won't fit is scaled down in its own shape, 21:9 to 1727 by 740 on 1728 by 1050");
+          "a window that won't fit is scaled down in its own shape, 21:9 to 1722 by 738 on 1728 by 1050");
     long over = 0, unfilled = 0, samples = 0;
     for (const auto& s : landscape)
         for (int mw = 100; mw <= 4000; mw += 37)
             for (int mh = 100; mh <= 2400; mh += 41) {
                 const gx::WindowSize win = gx::aspect_window_size(960, s[0], s[1], mw, mh);
                 samples++;
-                if (win.w > mw || win.h > mh || win.h > 960) over++;
-                else if (win.h > 1 && !same(gx::fit_aspect(win.w, win.h, (float)s[0] / (float)s[1]), {0, 0, win.w, win.h})) unfilled++;
+                if (win.w > mw || win.h > mh || win.h > 960) {
+                    over++;
+                    continue;
+                }
+                // One scaled down is filled at two pixels to a point too. At full size an odd
+                // ratio such as 15:11 can lose a pixel there (aspect_window_width).
+                const int scales = win.h < 960 ? 2 : 1;
+                for (int px = 1; px <= scales && win.h > 1; px++) {
+                    const int w = win.w * px, h = win.h * px;
+                    if (!same(gx::fit_aspect(w, h, (float)s[0] / (float)s[1]), {0, 0, w, h})) {
+                        unfilled++;
+                        break;
+                    }
+                }
             }
     printf("  %ld sizes, %ld over their area, %ld not filled\n", samples, over, unfilled);
-    check(over == 0 && unfilled == 0, "a landscape window never opens past its area and stays filled, at 8 shapes in a grid of areas");
+    check(over == 0 && unfilled == 0,
+          "a landscape window never opens past its area and stays filled, scaled down at two pixels to a point too, at 8 shapes in a grid of areas");
 
     const int picked[][2] = {{4, 3}, {16, 9}, {16, 10}, {21, 9}, {32, 9}, {5, 4}, {3, 2}, {2, 1},
                              {64, 27}, {43, 18}, {12, 5}, {1, 1}, {9, 16}, {3, 4}};
