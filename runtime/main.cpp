@@ -113,6 +113,16 @@ static void eye_dump(uint32_t n) {
     write_png(path, fl.data(), kEyeW, kEyeH);
 }
 
+// The eye's newest frame, stretched to the window's dw by dh pixels. False, with nothing
+// drawn, before the eye has drawn one.
+static bool eye_to_window(int dw, int dh) {
+    if (!gx::present_count()) return false;
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, g_eye_fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, kEyeW, kEyeH, 0, 0, dw, dh, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    return true;
+}
+
 // Stringify, to quote the required GL version in a message without a format argument.
 #define GCN_STR_(x) #x
 #define GCN_STR(x) GCN_STR_(x)
@@ -496,11 +506,12 @@ int main(int argc, char** argv) {
         gx::render_set_window_size(dw, dh);
         if (aspect_window && dh > 0) gx::render_set_output_aspect((float)dw / (float)dh);
         // While the guest is held (pause.h) no batch comes, so each 16 ms wait that ends with
-        // nothing shows the last frame again, and each of those is a host frame to the pause.
+        // nothing draws the newest frame again, and each one drawn is a host frame to the
+        // pause. Before any frame there's nothing to draw, and no host frame.
         auto b = gx::take_batch(paused() ? 16 : 4);
         if (!b) {
-            if (paused()) {
-                if (gx::render_present_last()) show_frame(win);
+            if (paused() && (g_eye_mode ? eye_to_window(dw, dh) : gx::render_present_last())) {
+                show_frame(win);
                 pause_host_frame();
             }
             continue;
@@ -525,9 +536,7 @@ int main(int argc, char** argv) {
             static uint32_t eye_frames = 0;
             eye_frames++;
             if (gx::g_dump_dir && gx::g_dump_every && eye_frames % gx::g_dump_every == 0) eye_dump(eye_frames);
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, g_eye_fbo);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-            glBlitFramebuffer(0, 0, kEyeW, kEyeH, 0, 0, dw, dh, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            eye_to_window(dw, dh);
         } else if (theater_stereo_m > 0.0f &&
                    (!vr::game_hooks().wants_panel_pair || vr::game_hooks().wants_panel_pair(*b))) {
             // GCN_THEATER_STEREO=<metres>: the flat frame as the stereo pair a headset

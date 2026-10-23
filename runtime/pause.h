@@ -32,10 +32,11 @@ bool paused();
 // Those count display copies, so a game that copies its frames in two parts ends them two
 // apart. Holds the thread there while a pause is asked for. GCN_PAUSE_AT=<frame>:<host
 // frames> asks for one here, once, at the first boundary where the count has reached
-// <frame> (so 0 is the first boundary), and lifts it after the frontend has shown <host
-// frames> frames while held (pause_host_frame), for tests.
+// <frame> (so 0 is the first boundary), and lifts it after the frontend has drawn the held
+// frame <host frames> times (pause_host_frame), for tests.
 void pause_gate(uint32_t frame);
-// The frontend, once for each frame it shows while the guest is held.
+// The frontend, each time it draws the held frame again. A wait that draws nothing, before
+// any frame has been presented, doesn't count.
 void pause_host_frame();
 // When the last pause ended, or the clock's epoch if none has. For timing the guest's
 // frames, which shouldn't count the time it was held.
