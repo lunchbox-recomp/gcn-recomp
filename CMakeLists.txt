@@ -668,6 +668,42 @@ function(gcn_add_game)
       COMMAND ${CMAKE_COMMAND} -DENGINE_SHA=${GCN_RECOMP_DIR}/tools/engine_sha.cmake
               -DBASE=${CMAKE_BINARY_DIR}/test_engine_sha -P ${GCN_RECOMP_DIR}/tools/test_engine_sha.cmake
       USES_TERMINAL VERBATIM)
+
+    # `ninja unit` builds every check above and runs them, and tools/test_ports.sh, through
+    # CTest. None needs a disc image. A check that wants a new work dir gets one under
+    # <build>/unit, which the first test clears. This is what enable_testing() does, in the
+    # caller's scope: called here, it would hold for this function alone.
+    set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
+    set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
+    file(MAKE_DIRECTORY ${_unit_work})
+    set(_unit_plain test_audio_ring test_ax test_aspect test_aid test_blend test_clock test_pause)
+    set(_unit_in_dir test_settings test_sram test_exi test_session)
+    if(TARGET test_ports)
+      list(APPEND _unit_in_dir test_ports)
+    endif()
+    set(_unit_dirs ${_unit_work}/test_engine_sha)
+    foreach(_t ${_unit_plain})
+      add_test(NAME ${_t} COMMAND ${_t})
+    endforeach()
+    foreach(_t ${_unit_in_dir})
+      if(_t STREQUAL "test_ports")
+        add_test(NAME ${_t} COMMAND ${GCN_RECOMP_DIR}/tools/test_ports.sh $<TARGET_FILE:test_ports> ${_unit_work}/${_t})
+      else()
+        add_test(NAME ${_t} COMMAND ${_t} ${_unit_work}/${_t})
+      endif()
+      set_tests_properties(${_t} PROPERTIES FIXTURES_REQUIRED unit_dirs)
+      list(APPEND _unit_dirs ${_unit_work}/${_t})
+    endforeach()
+    add_test(NAME test_engine_sha COMMAND ${CMAKE_COMMAND} -DENGINE_SHA=${GCN_RECOMP_DIR}/tools/engine_sha.cmake
+             -DBASE=${_unit_work}/test_engine_sha -P ${GCN_RECOMP_DIR}/tools/test_engine_sha.cmake)
+    set_tests_properties(test_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
+    add_test(NAME unit_clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${_unit_dirs})
+    set_tests_properties(unit_clean PROPERTIES FIXTURES_SETUP unit_dirs)
+    add_custom_target(unit
+      COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_CURRENT_BINARY_DIR} -C $<CONFIG>
+              --no-tests=error --timeout 300 --output-on-failure
+      USES_TERMINAL VERBATIM)
+    add_dependencies(unit ${_unit_plain} ${_unit_in_dir})
   endif()
 
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)
@@ -850,3 +886,16 @@ function(gcn_add_game)
   set(GCN_GAME_DEFS ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} PARENT_SCOPE)
   set(GCN_GL_DEFS ${GCN_GL_DEFS} PARENT_SCOPE)
 endfunction()
+
+# Configured on its own, this repository has no game, and the checks that need none are
+# defined inside gcn_add_game(). Calling it with placeholders gives them a home:
+# `cmake -S . -B build -G Ninja && ninja -C build unit`, which is what CI runs. Under a game
+# project this directory is not the top level, and that project's own call defines them.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo)
+  endif()
+  gcn_add_game(NAME gcn_unit TITLE "Unit tests" DISC_ID TEST00 FPS 60
+               DOL_SHA1 0000000000000000000000000000000000000000
+               SYMBOLS ${CMAKE_SOURCE_DIR}/none TABLES ${CMAKE_SOURCE_DIR}/none)
+endif()

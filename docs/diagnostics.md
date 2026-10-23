@@ -137,6 +137,11 @@ files, including saves that are made to fail. It needs no disc image, device or 
 `test_settings <new dir>` makes that directory and writes its files there. It prints `ok`
 or `FAIL` for each check, and the exit code is 0 only if all pass.
 
+`ninja unit` builds every check named in this file that needs no disc image, with
+`tools/test_ports.sh`, and runs them through CTest. It gives each one a new work dir under
+`<build>/unit`. The repository configured on its own (`cmake -S . -B build -G Ninja` at its
+root) defines it too, with placeholders for the game, which is what its CI runs on macOS.
+
 ## Frame dumps
 
 `--hidden --dump-dir=DIR --dump-every=N` runs with the window hidden and writes every Nth
