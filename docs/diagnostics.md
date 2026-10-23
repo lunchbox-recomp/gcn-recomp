@@ -120,6 +120,11 @@ input loop and the SI layer in, so each port is read back as the guest reads it.
 recording of two gamepads and its replay with none. Each check prints `ok` or `FAIL`, and
 the exit code is 0 only if all pass. It refuses to run while any joystick is connected.
 
+`ninja test_settings` builds `tools/test_settings.cpp`, which loads and saves `settings.txt`
+files, including saves that are made to fail. It needs no disc image, device or SDL.
+`test_settings <new dir>` makes that directory and writes its files there. It prints `ok`
+or `FAIL` for each check, and the exit code is 0 only if all pass.
+
 ## Frame dumps
 
 `--hidden --dump-dir=DIR --dump-every=N` runs with the window hidden and writes every Nth

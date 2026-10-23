@@ -102,7 +102,8 @@ macOS Control-Command-F switches too, from the Window menu SDL adds.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
   `fullscreen` and `scale`, though this build applies only `scale`. A flag beats the file
-  for that run and isn't written back, and a save rewrites only the owned keys' lines.
+  for that run and isn't written back, and a save rewrites only the owned keys' lines and
+  adds any that are missing.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;
   `xr_desktop.cpp` puts it on the desktop's GL context for PC VR (`--vr`, Windows).
