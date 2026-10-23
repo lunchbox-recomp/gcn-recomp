@@ -84,6 +84,7 @@ void run_list() {
 }
 
 int16_t out_l(int i) { return (int16_t)mem_r16(kLR + 4 * i + 2); }
+int16_t out_r(int i) { return (int16_t)mem_r16(kLR + 4 * i); }
 
 // GCN_AXSTATS counts what each running voice asks for, once a millisecond.
 void stats_checks() {
@@ -196,13 +197,27 @@ void depop_checks() {
     run_list();
     check(pb_word(PB_DPOP + 0) == (uint16_t)-500, "a looping voice of -1000 leaves -500");
 
-    // -20000 at a main L volume of 0xFFFF is -40000, which the mix clamps to -32768 and 0E's
-    // output clamp to -32767.
+    // -20000 at a main L volume of 0xFFFF is -40000, which the mix clamps to -32768. 0E's output
+    // clamp stops there too, so it changes no sample.
     reset(kHashLater);
     pb = pcm_voice(-20000, 32, 0x8000, 0xFFFF);
     store_pb(pb);
     run_list();
-    check(pb_word(PB_DPOP + 0) == 0x8000 && out_l(0) == -32767, "a sample past -32768 leaves -32768 in its depop word");
+    check(pb_word(PB_DPOP + 0) == 0x8000 && out_l(0) == -32768, "a sample past -32768 leaves -32768 in its depop word and the output");
+    check(g_sw.clipped == 0, "and 0E's clamp, which stops at -32768, counts no clipped sample");
+
+    // The same voice over a main L that setup started at -5 is -32773, and a main R started at
+    // -40000 is that with no voice. 0E clamps both to -32768 in all 160 samples.
+    reset(kHashLater);
+    pb = pcm_voice(-20000, 32, 0x8000, 0xFFFF);
+    mem_w16(kSetup, 0xFFFF);
+    mem_w16(kSetup + 2, (uint16_t)-5);
+    mem_w16(kSetup + 6, 0xFFFF);
+    mem_w16(kSetup + 8, (uint16_t)-40000);
+    store_pb(pb);
+    run_list();
+    check(out_l(0) == -32768 && out_l(159) == -32768 && out_r(0) == -32768 && out_r(159) == -32768 && g_sw.clipped == 2 * SPF,
+          "main L and R sums past -32768 come out at -32768 and count as clipped");
 
     // The library fades a stopped voice out through the setup command: main L starting at
     // 500 and falling 3 a sample, with no voice running, is the whole of main L.

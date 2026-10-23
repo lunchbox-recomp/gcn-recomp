@@ -93,7 +93,7 @@ void stats_peak(const int32_t* buf) {
 void stats_output(uint32_t surround_addr, uint32_t lr_addr) {
     for (int32_t* b : {g_left, g_right, g_surround}) stats_peak(b);
     for (int i = 0; i < SPF; i++)
-        g_sw.clipped += (g_left[i] < -32767 || g_left[i] > 32767) + (g_right[i] < -32767 || g_right[i] > 32767);
+        g_sw.clipped += (g_left[i] < -32768 || g_left[i] > 32767) + (g_right[i] < -32768 || g_right[i] > 32767);
     for (uint32_t a : {surround_addr, lr_addr})
         for (uint32_t i = 0; i < 4 * SPF; i++) { g_stat_hash ^= mem_r8(a + i); g_stat_hash *= 0x100000001B3ull; }
 }
@@ -520,7 +520,7 @@ void output(uint32_t surround_addr, uint32_t lr_addr) {
     }
     for (int i = 0; i < SPF; i++) mem_w32(surround_addr + 4 * i, (uint32_t)g_surround[i]);
     for (int i = 0; i < SPF; i++) {
-        int32_t l = std::clamp(g_left[i], -32767, 32767), r = std::clamp(g_right[i], -32767, 32767);
+        int32_t l = std::clamp(g_left[i], -32768, 32767), r = std::clamp(g_right[i], -32768, 32767);
         mem_w16(lr_addr + 4 * i, (uint16_t)r);       // interleaved R, L
         mem_w16(lr_addr + 4 * i + 2, (uint16_t)l);
     }
