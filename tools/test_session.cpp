@@ -155,6 +155,7 @@ int main(int argc, char** argv) {
     const time_t after = time(nullptr);
     check(inputs == dir + "/inputs", "the input log goes to <dir>/inputs");
     check(exists(dir), "the directory is made");
+    check(!exists(dir + "/.session-write-test"), "and the file that tried writing there is gone");
     check(env("GCN_WAV") == "hand.wav" && env("GCN_FRAMETIME") == "2", "a switch set by hand keeps its value");
     check(env("GCN_AIDWAV") == dir + "/aid.raw", "GCN_AIDWAV points into the directory");
     check(env("GCN_AXSTATS") == "1" && env("GCN_AUDIOSTATS") == "1", "the stats switches are on");
