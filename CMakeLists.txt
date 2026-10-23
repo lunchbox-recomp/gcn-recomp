@@ -588,6 +588,12 @@ function(gcn_add_game)
     _gcn_set_standards(test_aid)
     target_include_directories(test_aid PRIVATE ${RT})
     target_compile_options(test_aid PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The blend factor checks (tools/test_blend.cpp): runtime/gx/blend.h on its own.
+    add_executable(test_blend EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_blend.cpp)
+    _gcn_set_standards(test_blend)
+    target_include_directories(test_blend PRIVATE ${RT})
+    target_compile_options(test_blend PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
   # The settings.txt checks (tools/test_settings.cpp): loading and saving the file in a

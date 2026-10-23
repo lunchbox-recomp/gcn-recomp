@@ -7,6 +7,7 @@
 #include "render.h"
 #include "render_gl.h"
 #include "aspect.h"
+#include "blend.h"
 #include "shadergen.h"
 #include "gl.h"
 #include <algorithm>
@@ -2277,7 +2278,8 @@ static void apply_state(const PixelState& st, int prim) {
             glEnable(GL_BLEND);
             set_logic_op_off();
             glBlendEquation(GL_FUNC_ADD);
-            GLenum sf = kBlendSrc[(bm >> 8) & 7], df = kBlendDst[(bm >> 5) & 7];
+            const BlendFactors bf = blend_factors(bm, bp[0x43]);
+            GLenum sf = kBlendSrc[bf.src], df = kBlendDst[bf.dst];
             if (dst_alpha) {
                 auto src1 = [](GLenum f) {
                     return f == GL_SRC_ALPHA ? (GLenum)GL_SRC1_ALPHA
