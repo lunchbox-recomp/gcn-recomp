@@ -472,8 +472,9 @@ both reached shows whether a change to the mixer changed what it made, and from 
   The main buses are measured at 06 and 0E, L and R before 0E's clamp. The aux buses are
   measured where 04, 05, 10 and 13 hand them to the CPU for its effects. `clipped` counts
   the L and R samples the 0E clamp changed. `depop` counts the setup commands (00) that
-  started a bus at a value other than zero or gave it a slope, which is how the AX library
-  fades out the last samples of the voices it stopped.
+  started a bus at a value other than zero, which is how the AX library fades out the last
+  samples of the voices it stopped. A bus that starts at zero stays silent whatever its
+  slope, as Dolphin has it.
 - `[ax] pb`: what the running voices asked for, in voice-milliseconds (one voice for one
   millisecond of a list). `mixer` gives the eight mixer control values (PB word 6) with the
   most as `value:count`. `mixer_rest` is the total for every other value. `src0`, `src1`

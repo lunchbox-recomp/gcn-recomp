@@ -469,14 +469,16 @@ void download_and_mix(uint32_t addr, uint16_t vol_main, uint16_t vol_auxa, uint1
 }
 
 // 0x00: start each bus at a value and step it by a delta per sample, in kBuses' order. The
-// AX library fills these from its depop sums, the last samples of voices it stopped.
+// AX library fills these from its depop sums, the last samples of voices it stopped. A bus
+// that starts at 0 stays silent whatever its delta, as Dolphin has it. The library sets a
+// delta only with a start that isn't 0.
 void setup(uint32_t addr) {
     bool off_zero = false;
     for (int b = 0; b < 9; b++) {
         int32_t init = (int32_t)(((uint32_t)mem_r16(addr) << 16) | mem_r16(addr + 2));
-        int16_t delta = (int16_t)mem_r16(addr + 4);
+        const int16_t delta = init ? (int16_t)mem_r16(addr + 4) : 0;
         addr += 6;
-        off_zero |= init || delta;
+        off_zero |= init != 0;
         for (int i = 0; i < SPF; i++) { kBuses[b][i] = init; init += delta; }
     }
     if (g_axstats) g_sw.depop += off_zero;

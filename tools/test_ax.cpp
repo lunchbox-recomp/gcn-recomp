@@ -97,13 +97,14 @@ void stats_checks() {
     pb.w[PB_LPF_ON] = 1;
     pb.w[PB_LPF_A0] = 0x7FFF;
     store_pb(pb);
-    mem_w16(kSetup + 6 * 3 + 4, 0xFFF0);      // AuxA L's delta
+    mem_w16(kSetup + 6 * 3 + 2, 160);         // AuxA L's start
+    mem_w16(kSetup + 6 * 3 + 4, 0xFFFF);      // and delta
     run_list();
     check(g_sw.voice_ms == 5 && g_sw.src[0] == 5 && g_sw.coef[1] == 5 && g_sw.coef[0] == 0,
           "a polyphase voice counts 5 ms under src0 and coefficient set 1");
     check(g_sw.lpf == 5, "the later build counts the low-pass filter on in all 5 ms");
     check(g_sw.ramp == 5 && g_sw.env_ramp == 5, "a ramped bus and an envelope delta count in all 5 ms");
-    check(g_sw.depop == 1, "a setup that slopes one bus counts as a depop list");
+    check(g_sw.depop == 1, "a setup that starts one bus off zero counts as a depop list");
 
     // The same voice with its ramp bit clear and no deltas.
     reset(kHashLater);
@@ -203,6 +204,13 @@ void depop_checks() {
     store_pb(PB{});
     run_list();
     check(out_l(0) == 500 && out_l(1) == 497 && out_l(159) == 23, "setup's start and slope reach the output");
+
+    // A slope with a start of 0 is dropped, so main L stays silent and the list isn't a depop.
+    reset(kHashLater);
+    mem_w16(kSetup + 4, (uint16_t)-3);
+    store_pb(PB{});
+    run_list();
+    check(out_l(0) == 0 && out_l(159) == 0 && g_sw.depop == 0, "a slope with a start of 0 leaves main L silent and counts no depop");
 }
 
 // Source type 0 filters the last four samples in with one of 128 phases of a computed set.
