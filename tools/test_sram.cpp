@@ -89,6 +89,20 @@ void mono(uint8_t* s) {
     fix_checksums(s);
 }
 
+// Mono with a flash ID in each slot, as the CARD library leaves them: 12 bytes at 0x14 and at
+// 0x20, none of them zero, and at 0x3A and 0x3B the complement of each one's sum.
+void with_flash_ids(uint8_t* s) {
+    mono(s);
+    for (int card = 0; card < 2; card++) {
+        uint8_t sum = 0;
+        for (int i = 0; i < 12; i++) {
+            s[0x14 + 12 * card + i] = (uint8_t)(0x10 + 0x30 * card + 3 * i);
+            sum += s[0x14 + 12 * card + i];
+        }
+        s[0x3A + card] = (uint8_t)~sum;
+    }
+}
+
 void defaults() {
     uint8_t s[SRAM_SIZE];
     sram_defaults(s);
@@ -123,9 +137,20 @@ void save_and_load() {
     check(sram_save(p, stereo) && read_file(p) == bytes(stereo), "a save over an existing file replaces it");
 }
 
+// A file with a flash ID in each slot and every checksum right is taken as it is.
+void flash_ids() {
+    uint8_t want[SRAM_SIZE], got[SRAM_SIZE];
+    with_flash_ids(want);
+    check(sram_checksums_ok(want), "a file with a flash ID in each slot passes the check");
+    const std::string p = path_of("ids.raw");
+    write_file(p, want, SRAM_SIZE);
+    memset(got, 0xA5, sizeof(got));
+    check(sram_load(p, got) && !memcmp(got, want, SRAM_SIZE), "and a load gives it back, both IDs included");
+}
+
 void bad_files() {
     uint8_t good[SRAM_SIZE], s[SRAM_SIZE];
-    mono(good);
+    with_flash_ids(good);
     struct Case {
         const char* name;
         int at;  // the byte to change, or -1 for the size
@@ -133,10 +158,14 @@ void bad_files() {
         const char* what;
     };
     const Case cases[] = {
-        {"sum.raw", 1, SRAM_SIZE, "a checksum one out gives the defaults"},
-        {"inv.raw", 3, SRAM_SIZE, "an inverse checksum one out gives the defaults"},
+        {"sum_hi.raw", 0, SRAM_SIZE, "a checksum's high byte one out gives the defaults"},
+        {"sum.raw", 1, SRAM_SIZE, "a checksum's low byte one out gives the defaults"},
+        {"inv_hi.raw", 2, SRAM_SIZE, "an inverse checksum's high byte one out gives the defaults"},
+        {"inv.raw", 3, SRAM_SIZE, "an inverse checksum's low byte one out gives the defaults"},
         {"flags.raw", 0x13, SRAM_SIZE, "a flags byte the checksums don't match gives the defaults"},
         {"flash_a.raw", 0x14, SRAM_SIZE, "slot A's flash ID changed under its checksum gives the defaults"},
+        {"flash_a_last.raw", 0x1F, SRAM_SIZE, "and so does its twelfth byte"},
+        {"flash_b_first.raw", 0x20, SRAM_SIZE, "slot B's flash ID changed under its checksum gives the defaults"},
         {"flash_b.raw", 0x3B, SRAM_SIZE, "slot B's flash ID checksum one out gives the defaults"},
         {"short.raw", -1, SRAM_SIZE - 1, "63 bytes give the defaults"},
         {"long.raw", -1, SRAM_SIZE + 1, "65 bytes give the defaults"},
@@ -202,6 +231,7 @@ int main(int argc, char** argv) {
     defaults();
     missing_file();
     save_and_load();
+    flash_ids();
     bad_files();
     failed_save_no_temp();
     failed_save_cut_short();
