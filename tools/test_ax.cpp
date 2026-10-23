@@ -196,6 +196,14 @@ void depop_checks() {
     run_list();
     check(pb_word(PB_DPOP + 0) == (uint16_t)-500, "a looping voice of -1000 leaves -500");
 
+    // -20000 at a main L volume of 0xFFFF is -40000, which the mix clamps to -32768 and 0E's
+    // output clamp to -32767.
+    reset(kHashLater);
+    pb = pcm_voice(-20000, 32, 0x8000, 0xFFFF);
+    store_pb(pb);
+    run_list();
+    check(pb_word(PB_DPOP + 0) == 0x8000 && out_l(0) == -32767, "a sample past -32768 leaves -32768 in its depop word");
+
     // The library fades a stopped voice out through the setup command: main L starting at
     // 500 and falling 3 a sample, with no voice running, is the whole of main L.
     reset(kHashLater);

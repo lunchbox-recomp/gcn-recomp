@@ -207,7 +207,7 @@ void mix_add(int32_t* out, const int16_t* in, int n, PB& pb, int vol_idx, bool r
     uint16_t delta = ramp ? pb.w[vol_idx + 1] : 0;
     int32_t s = 0;
     for (int i = 0; i < n; i++) {
-        s = std::clamp((int32_t)(((int64_t)in[i] * vol) >> 15), -32767, 32767);
+        s = std::clamp((int32_t)(((int64_t)in[i] * vol) >> 15), -32768, 32767);
         out[i] += s;
         vol += delta;
     }
