@@ -582,6 +582,12 @@ function(gcn_add_game)
     _gcn_set_standards(test_aspect)
     target_include_directories(test_aspect PRIVATE ${RT})
     target_compile_options(test_aspect PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The AI DMA checks (tools/test_aid.cpp): hw/dsp.cpp's audio DMA on a fake clock.
+    add_executable(test_aid EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_aid.cpp)
+    _gcn_set_standards(test_aid)
+    target_include_directories(test_aid PRIVATE ${RT})
+    target_compile_options(test_aid PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
   # The settings.txt checks (tools/test_settings.cpp): loading and saving the file in a

@@ -146,6 +146,15 @@ static uint64_t g_aid_due;
 // and was thrown away -- the sound cutting out for a fifth to two fifths of every second.
 // A guest that has not queued a buffer yet still gets the quarter block to do it in.
 //
+// That quarter block is the guest's own running. A jump that lands inside a block before
+// the guest has taken the interrupt leaves the block's end already behind the clock at the
+// guest's next poll. The block used to end right there, before the guest had queued
+// anything, and the DMA played the same buffer again; the guest then often queued one of
+// its own buffers twice in the blocks after. In six real-time runs of a game on the later
+// build, 21 clicks sat on blocks played twice like this, and none did once the jumps the
+// clock made since the block started stopped counting toward the quarter block. The clock
+// never jumps unpaced, where this changes nothing.
+//
 // Not solved here: a guest that fills its buffers from its main loop rather than in the
 // interrupt (a streamed-music player, say) has not refilled when blocks come this close
 // together, and the DMA plays the same buffer again, as the hardware would; in a slow
@@ -154,6 +163,7 @@ static uint64_t g_aid_due;
 // was tried and was worse: such a guest queues only once the DMA has moved on, so every
 // block waited and then repeated anyway, and the sound came up short.
 static uint64_t g_aid_started;   // when the block in flight started
+static uint64_t g_aid_jumped;    // clock_jumped_ticks() then
 static bool g_aid_queued;        // the guest has written the address since then
 
 static void aid_start_block() {
@@ -171,6 +181,7 @@ static void aid_start_block() {
     if (g_aid_due + TB_FREQ / 10 < now) g_aid_due = now;
     // Behind by less than that, catch up (above).
     g_aid_started = now;
+    g_aid_jumped = clock_jumped_ticks();
     g_aid_queued = false;
     event_schedule(std::max(g_aid_due, now + dur / 32), aid_block_done);
 }
@@ -202,8 +213,9 @@ static void aid_capture(const int16_t* be, uint32_t frames, bool catching_up, ui
 static void aid_block_done() {
     if (!g_aid_queued) {
         const uint64_t dur = (uint64_t)g_aid_blocks_left * 32 / 4 * TB_FREQ / ai_dma_sample_rate();
-        if (now_ticks() < g_aid_started + dur / 4) {
-            event_schedule(g_aid_started + dur / 4, aid_block_done);
+        const uint64_t until = g_aid_started + (clock_jumped_ticks() - g_aid_jumped) + dur / 4;
+        if (now_ticks() < until) {
+            event_schedule(until, aid_block_done);
             return;
         }
     }

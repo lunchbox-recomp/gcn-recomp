@@ -520,12 +520,17 @@ static const bool g_catchup = !(getenv("GCN_CATCHUP") && atoi(getenv("GCN_CATCHU
 static constexpr int64_t kCatchupNs = 4000000;
 static constexpr int64_t kForgiveNs = 100000000;
 
+static uint64_t g_jumped_ticks;  // the virtual time the jumps skipped, in ticks
+
 static void clock_jump(uint64_t edges) {
     g_vcount += edges;
     g_vskipped += edges;
     g_jumps++;
     g_jump_edges += edges;
+    g_jumped_ticks += edges * g_ticks_per_edge;
 }
+
+uint64_t clock_jumped_ticks() { return g_jumped_ticks; }
 
 // Hold virtual time to real time. Called from irq_poll, i.e. whenever an event is due,
 // which is at least every SI poll (1/120 s). When the host falls behind, the shortfall is
