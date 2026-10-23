@@ -158,7 +158,7 @@ struct Accel {
             if (t >= 8) t -= 16;
             int32_t yn1 = (int16_t)pb.w[PB_YN1], yn2 = (int16_t)pb.w[PB_YN2];
             val = scale * t + ((0x400 + c1 * yn1 + c2 * yn2) >> 11);
-            val = std::clamp(val, -0x7FFF, 0x7FFF);
+            val = std::clamp(val, -0x8000, 0x7FFF);
             pb.w[PB_YN2] = pb.w[PB_YN1];
             pb.w[PB_YN1] = (uint16_t)val;
             cur++;

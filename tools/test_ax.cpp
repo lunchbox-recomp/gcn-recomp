@@ -236,6 +236,24 @@ void depop_checks() {
     check(out_l(0) == 0 && out_l(159) == 0 && g_sw.depop == 0, "a slope with a start of 0 leaves main L silent and counts no depop");
 }
 
+// The ADPCM decoder saturates to 16 bits, and what it decoded feeds the next prediction.
+void adpcm_checks() {
+    // Every nibble of 0xF is -1. With the header byte 0xFF as well, the scale is 1 << 15 and the
+    // prediction coefficients, in PB words that stay 0, add nothing, so each sample decodes to
+    // -32768 exactly, where a clamp at -32767 would give -32767.
+    reset(kHashLater);
+    constexpr uint32_t kNibble = 0x1000;  // at ARAM byte 0x800, and a multiple of 16 for a header
+    for (uint32_t i = 0; i < 0x100; i++) g_aram[kNibble / 2 + i] = 0xFF;
+    PB pb = pcm_voice(0, 1, 0x8000, 0x8000);
+    pb.w[PB_FORMAT] = 0x00;
+    pb.set32(PB_LOOP_HI, kNibble);
+    pb.set32(PB_END_HI, kNibble + 0x1FF);
+    pb.set32(PB_CUR_HI, kNibble);
+    store_pb(pb);
+    run_list();
+    check(pb_word(PB_YN1) == 0x8000 && pb_word(PB_YN2) == 0x8000, "an ADPCM sample that decodes to -32768 is kept as -32768 in the history");
+}
+
 // Source type 0 filters the last four samples in with one of 128 phases of a computed set.
 void polyphase_checks() {
     reset(kHashLater);
@@ -407,6 +425,7 @@ int main() {
     if (!g_mem || !g_aram) return 2;
     stats_checks();
     depop_checks();
+    adpcm_checks();
     polyphase_checks();
     printf("%s: %d failed\n", g_failed ? "FAIL" : "ok", g_failed);
     return g_failed ? 1 : 0;
