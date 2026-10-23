@@ -5,8 +5,10 @@
 // glad's pointers, and the ones those two functions reach are pointed at fakes. The fake
 // keeps one number per texture for what it holds, a frame's id, and the window has its own.
 // A blit copies the number, a clear makes it 0, and a draw with the blit program copies the
-// bound texture's number to the target, with the rect and viewport recorded. The linker drops
-// the rest of the renderer, which nothing here reaches.
+// bound texture's number to the target, with the rect and viewport recorded. The XFB and the
+// EFB hold the same number once a frame is assembled, so a blit into the kept copy also
+// records the framebuffer it read. The linker drops the rest of the renderer, which nothing
+// here reaches.
 #define GCN_GL_ES
 #include "gx/render_gl.cpp"
 #include <cstdio>
@@ -23,6 +25,7 @@ std::map<GLuint, int> g_tex;       // what each texture holds
 std::map<GLuint, GLuint> g_attach;  // each framebuffer's texture
 int g_window;                       // what the window holds
 GLuint g_next = 1, g_read, g_draw, g_bound_tex, g_program;
+GLuint g_kept_from;                 // the framebuffer the last blit into the kept copy read
 float g_rect[4];
 GLint g_view[4];
 int g_failed;
@@ -43,6 +46,7 @@ void GLAD_API_PTR tex_image(GLenum, GLint, GLint, GLsizei, GLsizei, GLint, GLenu
 void GLAD_API_PTR attach(GLenum, GLenum, GLenum, GLuint tex, GLint) { g_attach[g_draw] = tex; }
 void GLAD_API_PTR blit(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum) {
     holds(g_draw) = holds(g_read);
+    if (g_draw && g_draw == gx::g_last_fbo) g_kept_from = g_read;
 }
 void GLAD_API_PTR clear(GLbitfield mask) {
     if (mask & GL_COLOR_BUFFER_BIT) holds(g_draw) = 0;
@@ -153,10 +157,13 @@ int present_last_checks() {
     present_frame(31, top);
     present_frame(32, bottom);
     const bool assembled = g_window == 32;
+    const GLuint kept_from = g_kept_from;
     present_frame(41, top);
     g_window = -1;
     check(assembled && gx::render_present_last() && g_window == 32,
           "a frame copied in halves is drawn as presented, though its XFB has since taken half the next one");
+    check(gx::g_xfbs.size() == 1 && kept_from == gx::g_xfbs[0].fbo,
+          "it was kept from the assembled XFB, not from the EFB that held only its last half");
 
     gx::render_keep_last(false);
     g_window = -1;
