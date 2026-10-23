@@ -504,22 +504,23 @@ While the guest is held, the desktop frontend waits 16 ms at a time for a frame 
 none comes, draws the last one again (`render_present_last`), fitted to the output aspect at
 the window's size then, as a running frame is. With `--eye` it draws the eye's last frame
 again. Each one drawn is a host frame, and 300 of them took 5.6 s in a hidden run. Before
-any frame has been presented there's nothing to draw, and no host frame. The display copy that presented the frame cleared the EFB, so the
-renderer keeps a copy of every frame it presents for a frontend that asks
-(`render_keep_last`), as the desktop one does, at the cost of a blit of each frame. What's
-drawn again is always the newest frame presented, which is the one the guest is held after
-once the frames queued before the hold have been shown. The presented count doesn't move and
-nothing is dumped, so a paused run writes the same frame dumps as one that never paused. The
-pad's rumble motor stops while the guest is held, on a gamepad and on a wheel's force
-feedback, and runs again after the resume if the game still has it on.
+any frame has been presented there's nothing to draw, and no host frame. The display copy
+that presented the frame cleared the EFB, so the renderer keeps a copy of every frame it
+presents for a frontend that asks (`render_keep_last`), as the desktop one does, at the cost
+of a blit of each frame. What's drawn again is always the newest frame presented, which is
+the one the guest is held after once the frames queued before the hold have been shown. The
+presented count doesn't move and nothing is dumped, so a paused run writes the same frame
+dumps as one that never paused. The pad's rumble motor stops while the guest is held, on a
+gamepad and on a wheel's force feedback, and runs again after the resume if the game still
+has it on.
 
 `GCN_PAUSE_AT=<frame>:<host frames>` pauses once, at the first frame boundary where the
 frames submitted have reached `<frame>` (`0` is the first boundary), and resumes after the
-frontend has drawn the held frame `<host frames>` times. A value that isn't two whole numbers in
-range, with `<host frames>` over 0, is refused with a `[pause]` line. It's for tests and
-needs the desktop window, since the benchmark shows no frames and would never resume. Each
-pause prints `[pause] held at frame N, output frame F` and `[pause] resumed at frame N after
-T ms, output frame F`, where F is how far a `GCN_WAV` recording had got. With
+frontend has drawn the held frame `<host frames>` times. A value that isn't two whole
+numbers in range, with `<host frames>` over 0, is refused with a `[pause]` line. It's for
+tests and needs the desktop window, since the benchmark shows no frames and would never
+resume. Each pause prints `[pause] held at frame N, output frame F` and `[pause] resumed at
+frame N after T ms, output frame F`, where F is how far a `GCN_WAV` recording had got. With
 `GCN_FRAMETIME=1` the `[ft]` line of the first frame after a resume is timed from the resume.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
