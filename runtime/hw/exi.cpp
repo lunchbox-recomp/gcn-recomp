@@ -58,10 +58,13 @@ static uint8_t ipl_transfer_byte(uint8_t in) {
     bool write = g_ipl_addr & 0x80000000u;
     uint32_t addr = g_ipl_addr & 0x7FFFFFFFu;
     uint8_t out = 0;
+    // The command's address counts a byte as 64, its low six bits unused. The RTC's four bytes
+    // are at 0x20000000 and the SRAM's 64 follow from 0x20000100, and a span may start at any
+    // of them: the OS writes the flash IDs from SRAM offset 0x14.
     if ((addr & 0x7FFFFF00u) == 0x20000000u) {  // RTC
         uint32_t rtc = rtc_now();
         if (!write && g_ipl_pos < 4) out = (uint8_t)(rtc >> (24 - 8 * g_ipl_pos));
-    } else if ((addr & 0x7FFFFF00u) == 0x20000100u) {  // SRAM
+    } else if (addr >= 0x20000100u && addr < 0x20000100u + ((uint32_t)SRAM_SIZE << 6)) {  // SRAM
         uint32_t o = ((addr - 0x20000100u) >> 6) + g_ipl_pos;
         if (o < 64) {
             if (write) {

@@ -75,6 +75,20 @@ void mono(uint8_t* s) {
     s[3] = 0xD4;
 }
 
+// The defaults with a flash ID in each slot, as the CARD library leaves them: 12 bytes at
+// 0x14 and at 0x20, none of them zero, and at 0x3A and 0x3B the complement of each one's sum.
+void with_flash_ids(uint8_t* s) {
+    sram_defaults(s);
+    for (int card = 0; card < 2; card++) {
+        uint8_t sum = 0;
+        for (int i = 0; i < 12; i++) {
+            s[0x14 + 12 * card + i] = (uint8_t)(0x10 + 0x30 * card + 3 * i);
+            sum += s[0x14 + 12 * card + i];
+        }
+        s[0x3A + card] = (uint8_t)~sum;
+    }
+}
+
 // ---- the guest's side of channel 0 ----
 constexpr uint32_t kCsr = 0x00, kCr = 0x0C, kData = 0x10;  // the channel's registers
 constexpr uint32_t kSelectIpl = 2u << 7;                    // chip select 1, the IPL device
@@ -94,14 +108,19 @@ uint32_t receive(int n) {
     return exi_read32(kData);
 }
 
-// The SRAM's 64 bytes from offset 0, where the OS starts its sync of the first 0x14 bytes.
-// It writes the rest, the flash IDs, from offset 0x14. exi.cpp's window takes only spans
-// that start at offsets 0 to 3, so it drops that write, and nothing here covers it.
-void send_sram(const uint8_t* s) {
-    send(kWriteSram, 4);
-    for (int i = 0; i < SRAM_SIZE; i += 4)
+// The command word for the SRAM from offset `at`, whose address counts a byte as 64.
+uint32_t at_offset(uint32_t command, int at) { return command + ((uint32_t)at << 6); }
+
+// Bytes `at` to the end of the SRAM `s`, after the command word.
+void send_span(const uint8_t* s, int at) {
+    send(at_offset(kWriteSram, at), 4);
+    for (int i = at; i < SRAM_SIZE; i += 4)
         send((uint32_t)s[i] << 24 | (uint32_t)s[i + 1] << 16 | (uint32_t)s[i + 2] << 8 | s[i + 3], 4);
 }
+
+// The SRAM's 64 bytes from offset 0, where the OS starts its sync of the first 0x14 bytes.
+// It writes the rest, the flash IDs, from offset 0x14 (later_offsets, below).
+void send_sram(const uint8_t* s) { send_span(s, 0); }
 
 void guest_write(const uint8_t* s) {
     select_ipl();
@@ -109,15 +128,18 @@ void guest_write(const uint8_t* s) {
     deselect();
 }
 
-void guest_read(uint8_t* s) {
+// Bytes `at` to the end of the SRAM, read into the same place in `s`, in one selection.
+void read_span(uint8_t* s, int at) {
     select_ipl();
-    send(kReadSram, 4);
-    for (int i = 0; i < SRAM_SIZE; i += 4) {
+    send(at_offset(kReadSram, at), 4);
+    for (int i = at; i < SRAM_SIZE; i += 4) {
         const uint32_t w = receive(4);
         for (int j = 0; j < 4; j++) s[i + j] = (uint8_t)(w >> (24 - 8 * j));
     }
     deselect();
 }
+
+void guest_read(uint8_t* s) { read_span(s, 0); }
 
 // A boot: the paths the frontend sets, then exi_init. The save dir is always one in the work
 // dir, and the checks run from the work dir, so a file saved to a path that's ignored, the
@@ -208,6 +230,28 @@ void failed_save_is_tried_again() {
     check(read_file(p) == bytes(want), "and the next write of the span saves it");
 }
 
+// The OS writes the flash IDs, from 0x14 to the end, in a span of their own, and reads them
+// back the same way.
+void later_offsets() {
+    uint8_t want[SRAM_SIZE];
+    with_flash_ids(want);
+    check(sram_checksums_ok(want), "the SRAM with flash IDs has the right checksums");
+
+    const std::string p = path_of("flash.raw");
+    boot(p, nullptr);
+    select_ipl();
+    send_span(want, 0x14);
+    deselect();
+    check(read_file(p) == bytes(want), "a span written from offset 0x14 reaches the SRAM and is saved");
+
+    const std::string q = path_of("flash_read.raw");
+    sram_save(q, want);
+    boot(q, nullptr);
+    uint8_t got[SRAM_SIZE] = {};
+    read_span(got, 0x14);
+    check(!memcmp(got + 0x14, want + 0x14, SRAM_SIZE - 0x14), "a span read from offset 0x14 reads the flash IDs");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -231,6 +275,7 @@ int main(int argc, char** argv) {
     next_boot_reads_it();
     path_choice();
     failed_save_is_tried_again();
+    later_offsets();
     printf("test_exi: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
 }
