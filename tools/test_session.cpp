@@ -9,7 +9,8 @@
 // quotes, backslashes and control characters have to be escaped. The game resetting the
 // console relaunches it, so the switches the session set are cleared and a second and third
 // process go on in run-2 and run-3 without touching the first's files. Without GCN_SESSION
-// nothing is set or written.
+// nothing is set or written. A directory that can't be written must be said out loud and
+// leave no session, where the recordings after it would fail without a word.
 //
 // usage: test_session <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
@@ -214,6 +215,37 @@ int main(int argc, char** argv) {
     check(read_file(dir + "/session.json") == first_json, "the first process's session.json is as it was");
     session_relaunching();
     check(session_begin(nargs, args) == dir + "/run-3/inputs", "the third process goes on in <dir>/run-3");
+
+    // A directory that can't be written. A process that is root writes anywhere.
+    if (geteuid() == 0) {
+        printf("skip root can write any directory, so the unwritable cases aren't run\n");
+    } else {
+        const std::string ro = g_dir + "/ro";
+        mkdir(ro.c_str(), 0555);
+        session_relaunching();
+        clear_switches();
+        set_env("GCN_SESSION", ro);
+        std::string got;
+        const std::string said = stderr_during([&] { got = session_begin(nargs, args); });
+        check(said.find("can't write " + ro) != std::string::npos, "a directory that can't be written is named on stderr");
+        check(got.empty(), "and no input directory is given");
+        check(env("GCN_WAV") == "<unset>" && env("GCN_AIDWAV") == "<unset>" && env("GCN_AXSTATS") == "<unset>",
+              "and no recording switch is turned on");
+        session_write(60, "sha");
+        check(!exists(ro + "/session.json"), "and no session.json is written");
+
+        set_env("GCN_SESSION", ro + "/new");
+        check(session_begin(nargs, args).empty() && !exists(ro + "/new"), "a directory that can't be made is no session either");
+
+        // The next process finds a directory it can write and goes on as usual.
+        const std::string again = g_dir + "/again";
+        session_relaunching();
+        clear_switches();
+        set_env("GCN_SESSION", again);
+        check(session_begin(nargs, args) == again + "/inputs" && env("GCN_AIDWAV") == again + "/aid.raw",
+              "a writable directory after that records as usual");
+        chmod(ro.c_str(), 0755);
+    }
 
     printf("test_session: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;

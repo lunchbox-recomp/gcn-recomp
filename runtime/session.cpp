@@ -50,6 +50,17 @@ std::string json_string(const std::string& s) {
 
 std::string json_or_null(const std::string& s) { return s.empty() ? "null" : json_string(s); }
 
+// Whether a file can be made in `dir`. plat_make_dirs says nothing when it fails, and the
+// recordings that follow open their files without a word.
+bool writable(const std::string& dir) {
+    const std::string probe = dir + "/.session-write-test";
+    FILE* f = fopen(probe.c_str(), "w");
+    if (!f) return false;
+    fclose(f);
+    remove(probe.c_str());
+    return true;
+}
+
 // The start as local time with its offset from UTC, as ISO 8601 writes it.
 std::string start_text() {
     const long offset = plat_utc_offset_seconds();
@@ -76,6 +87,11 @@ std::string session_begin(int argc, char** argv) {
         g_dir += "/run-" + std::to_string(n);
     }
     plat_make_dirs(g_dir);
+    if (!writable(g_dir)) {
+        fprintf(stderr, "[session] can't write %s, so no session is recorded\n", g_dir.c_str());
+        g_dir.clear();
+        return "";
+    }
     set_default("GCN_WAV", g_dir + "/out.wav");
     set_default("GCN_AIDWAV", g_dir + "/aid.raw");
     set_default("GCN_AXSTATS", "1");

@@ -733,7 +733,9 @@ them on again for a directory of its own. Finding `session.json` there, it goes 
 `<dir>/run-2` (or `run-3` after that), so nothing the first run wrote is written over. A
 switch that was set by hand stays as it was, so a file it names is written again from the
 start. The relaunched process prints to wherever the first one did, and a log split at its
-`[session]` lines gives each run its own part.
+`[session]` lines gives each run its own part. A directory the process can't write gets
+`[session] can't write <dir>, so no session is recorded` on stderr instead. The run goes on
+with none of the switches above, and its input log in the usual place.
 
 Without `GCN_SESSION` none of this is recorded.
 
