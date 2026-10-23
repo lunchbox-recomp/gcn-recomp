@@ -737,6 +737,12 @@ start. The relaunched process prints to wherever the first one did, and a log sp
 
 Without `GCN_SESSION` none of this is recorded.
 
+`ninja test_session` builds `tools/test_session.cpp`, which plays the part of the first
+process, the ones the game's resets relaunch and a switch set by hand, all in one process,
+and reads `session.json` back. It needs no disc image, device or SDL. `test_session <new
+dir>` makes that directory and leaves its files there. It prints `ok` or `FAIL` for each
+check, and the exit code is 0 only if all pass.
+
 ## Textures
 
 `GCN_TEXLOG=1` prints a line per decoded texture: frame, id, guest address, format, size and

@@ -654,6 +654,14 @@ function(gcn_add_game)
       target_link_options(test_clock PRIVATE -Wl,--gc-sections)
     endif()
 
+    # The GCN_SESSION checks (tools/test_session.cpp): session.cpp's directories, switches and
+    # session.json in a work dir. Needs no disc image, device or SDL.
+    add_executable(test_session EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_session.cpp
+      ${RT}/session.cpp ${RT}/audio_stats.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_session)
+    target_include_directories(test_session PRIVATE ${RT})
+    target_compile_options(test_session PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The engine commit script's checks (tools/test_engine_sha.cmake): engine_sha.cmake over
     # repositories it makes in the build directory. Needs git and nothing else.
     add_custom_target(test_engine_sha
