@@ -78,8 +78,9 @@ void input_map_event(const SDL_Event& e);
 // its name alone (gamepads.h gives such a device no port).
 bool input_map_binds(uint32_t joystick_id);
 // The file's bindings for `port` (0 is port 1), merged into `p`. Each port's once a frame:
-// the wheel's force feedback is updated with its own port's.
-void input_map_apply(PadState& p, int port);
+// the wheel's force feedback is updated with its own port's, `motor` being whether that
+// port's rumble motor is to run.
+void input_map_apply(PadState& p, int port, bool motor);
 // How many ports the file reaches: up to the highest it binds, 1 if it names none.
 int input_map_port_count();
 // Whether a line of the file pins a device to `port` (0 is port 1).

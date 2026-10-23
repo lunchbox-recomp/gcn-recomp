@@ -423,8 +423,8 @@ bool input_map_pins(int port) {
     return false;
 }
 
-void input_map_apply(PadState& p, int port) {
-    if (port == g_ffb_port) ffb_update(pad_motor(port));
+void input_map_apply(PadState& p, int port, bool motor) {
+    if (port == g_ffb_port) ffb_update(motor);
     if (g_bindings.empty()) return;
     const bool* keys = SDL_GetKeyboardState(nullptr);
     float v[(int)Target::Count] = {};

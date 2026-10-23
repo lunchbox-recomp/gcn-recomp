@@ -196,12 +196,15 @@ static void merge_keyboard(PadState& p) {
 
 // What drives `port`, merged into `p`: buttons are added, and a stick or trigger is taken
 // over only while it is pushed, so that port 1 can be shared with a headset's controllers
-// (xr_desktop.cpp). Then the game's rumble motor for the port goes to its gamepad.
+// (xr_desktop.cpp). Then the game's rumble motor for the port goes to its gamepad, and to a
+// wheel's force feedback, except while the guest is held: a pause stops the motor with it.
+static bool g_guest_held;  // the loop's, from paused() (pause.h)
 static void merge_port(int port, PadState& p) {
+    const bool motor = pad_motor(port) && !g_guest_held;
     if (port == 0) merge_keyboard(p);
     gamepads_merge(port, p);
-    input_map_apply(p, port);
-    gamepads_rumble(port, pad_motor(port));
+    input_map_apply(p, port, motor);
+    gamepads_rumble(port, motor);
 }
 
 static void merge_desktop_pad(PadState& p) { merge_port(0, p); }
@@ -486,6 +489,7 @@ int main(int argc, char** argv) {
     auto t0 = std::chrono::steady_clock::now();
     while (running) {
         running = pump_events();
+        g_guest_held = paused();
         update_pads(0);
         int dw, dh;
         SDL_GetWindowSizeInPixels(win, &dw, &dh);
