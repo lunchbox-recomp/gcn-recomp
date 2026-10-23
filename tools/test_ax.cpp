@@ -114,6 +114,18 @@ void stats_checks() {
     check(g_sw.ramp == 0 && g_sw.env_ramp == 0 && g_sw.depop == 0,
           "a delta with its ramp bit clear, and a flat setup, count nothing");
 
+    // A type 2 voice with set 1 in word 5, mixed into main L, with AuxA's ramp bit and a delta
+    // but AuxA off.
+    reset(kHashLater);
+    PB plain = pcm_voice(1000, 32, 0x4000, 0x8000);
+    plain.w[PB_COEF_SELECT] = 1;
+    plain.w[PB_MIXER_CONTROL] = 0x0041;
+    plain.w[PB_MIXER + kMixerWord[3] + 1] = 4;   // AuxA L's delta
+    store_pb(plain);
+    run_list();
+    check(g_sw.src[2] == 5 && g_sw.coef[1] == 0 && g_sw.ramp == 0,
+          "a type 2 voice counts no coefficient set, and a ramped bus that's off counts no ramp");
+
     // The 2001 build's PB stops at word 92, so word 93 is the next thing in memory, and an
     // update to it in the first millisecond is dropped there and kept on the later build.
     for (uint32_t hash : {kHash2001, kHashLater}) {
@@ -218,6 +230,19 @@ void polyphase_checks() {
     const int16_t* full = g_poly[2][0];
     check(full[0] == 0 && full[1] == 0x7FFF && full[2] == 0 && full[3] == 0,
           "the full-band set's phase 0 takes the second oldest sample alone");
+    // Entries pinned at what the windows give, so that a change to a window, a cutoff or the
+    // rounding shows here as well as in every audio hash. Set 2's phase 1 is one whose middle
+    // tap would pass 0x7FFF.
+    auto entry_is = [](int s, int p, std::initializer_list<int> want) {
+        bool same = true;
+        int k = 0;
+        for (int v : want) same &= g_poly[s][p][k++] == v;
+        return same;
+    };
+    check(entry_is(0, 0, {6675, 19417, 6675, 0}) && entry_is(0, 64, {1252, 15132, 15131, 1252}) &&
+              entry_is(1, 32, {420, 23507, 9044, -204}) && entry_is(2, 1, {-136, 32767, 146, -10}) &&
+              entry_is(2, 32, {-2140, 28372, 7018, -483}),
+          "five pinned entries keep the values the windows give");
 
     // A constant 1000 at a ratio of 1 always lands on phase 0: 1000 * 0x7FFF >> 15 is 999 for
     // the polyphase sets. Linear interpolation, which a set past the three falls back to,
@@ -233,12 +258,19 @@ void polyphase_checks() {
         snprintf(what, sizeof what, "a constant 1000 comes out at %d with coefficient set %u", coef < 3 ? 999 : 1000, coef);
         check(out_l(100) == (coef < 3 ? 999 : 1000), what);
     }
+    // Source type 1 interpolates linearly whatever set word 5 picks.
+    reset(kHashLater);
+    PB lin = pcm_voice(1000, 64, 0x8000, 0x8000);
+    lin.w[PB_SRC_TYPE] = 1;
+    store_pb(lin);
+    run_list();
+    check(out_l(100) == 1000, "a constant 1000 comes out at 1000 through source type 1 with set 0");
 
     // Samples alternating between +10000 and -10000 sit at the input's Nyquist frequency. The
-    // full-band set passes them and the half-band set (cut at half of it) holds them under a
-    // third.
+    // full-band set passes them, and the three-quarter and half-band sets hold them to about
+    // 0.6 and 0.19 of that.
     int peak[3] = {};
-    for (uint16_t coef : {0, 2}) {
+    for (uint16_t coef : {0, 1, 2}) {
         reset(kHashLater);
         PB pb = pcm_voice(10000, 64, 0x8000, 0x8000);
         for (int i = 1; i < 64; i += 2) {
@@ -251,26 +283,56 @@ void polyphase_checks() {
         run_list();
         for (int i = 8; i < SPF; i++) peak[coef] = std::max(peak[coef], std::abs((int)out_l(i)));
     }
-    char what[96];
-    snprintf(what, sizeof what, "Nyquist at 10000 comes out at %d through the full-band set and %d through the half-band",
-             peak[2], peak[0]);
-    check(peak[2] >= 9999 && peak[0] < 3333, what);
+    char what[128];
+    snprintf(what, sizeof what, "Nyquist at 10000 comes out at %d, %d and %d through the full-band, three-quarter and half-band sets",
+             peak[2], peak[1], peak[0]);
+    check(peak[2] >= 9999 && peak[1] >= 5500 && peak[1] <= 6500 && peak[0] >= 1600 && peak[0] <= 2100, what);
+
+    // Set 2's phase 64 has a gain of 1.18, so [-32768, 32767, 32767, -32768] there comes to
+    // 38677, which saturates at 32767 and would wrap to -26859. A loop of those four samples at
+    // a ratio of 1 from a fraction of a half puts every sample out on phase 64, with the last
+    // four in lined up that way once in four and the other way round once in four.
+    reset(kHashLater);
+    PB loud = pcm_voice(-32768, 4, 0x8000, 0x8000);
+    for (int i : {1, 2}) {
+        g_aram[2 * (kSampleAt + i)] = 0x7F;
+        g_aram[2 * (kSampleAt + i) + 1] = 0xFF;
+    }
+    loud.w[PB_SRC_TYPE] = 0;
+    loud.w[PB_COEF_SELECT] = 2;
+    loud.w[PB_FRAC] = 0x8000;
+    store_pb(loud);
+    run_list();
+    int lo = 0, hi = 0;
+    for (int i = 8; i < SPF; i++) {
+        lo = std::min(lo, (int)out_l(i));
+        hi = std::max(hi, (int)out_l(i));
+    }
+    snprintf(what, sizeof what, "full scale through set 2's phase 64 saturates at %d and %d instead of wrapping", lo, hi);
+    check(lo == -32767 && hi == 32767, what);
 
     // Two lists of a stream of distinct samples at ratios under and over 1, against the
     // position worked out from scratch for each sample out: (i + 1) * ratio, of which the
     // whole part counts the samples in and the fraction's top 7 bits pick the phase. The
     // ratios are odd, so 32 samples out never end on a whole sample in and the fraction has
-    // to carry from one millisecond to the next.
-    for (uint32_t ratio : {0x0C3A5u, 0x1A0F7u}) {
+    // to carry from one millisecond to the next. Source type 1 takes the same stream at the
+    // lower ratio. It takes each sample out before the step, at i * ratio, from the line
+    // between the newest two samples in.
+    struct Run {
+        uint16_t type;
+        uint32_t ratio;
+    };
+    for (Run run : {Run{0, 0x0C3A5u}, Run{0, 0x1A0F7u}, Run{1, 0x0C3A5u}}) {
         reset(kHashLater);
         constexpr int kIn = 1024;
+        const uint32_t ratio = run.ratio;
         PB pb = pcm_voice(0, kIn, 0x8000, 0x8000);
         auto input = [](int64_t n) { return n < 0 ? 0 : (int)(n * 37 % 2001) - 1000; };
         for (int n = 0; n < kIn; n++) {
             g_aram[2 * (kSampleAt + n)] = (uint8_t)((uint16_t)input(n) >> 8);
             g_aram[2 * (kSampleAt + n) + 1] = (uint8_t)input(n);
         }
-        pb.w[PB_SRC_TYPE] = 0;
+        pb.w[PB_SRC_TYPE] = run.type;
         pb.w[PB_COEF_SELECT] = 0;
         pb.set32(PB_RATIO_HI, ratio);
         store_pb(pb);
@@ -278,20 +340,30 @@ void polyphase_checks() {
         for (int list = 0; list < 2; list++) {
             run_list();
             for (int j = 0; j < SPF; j++) {
-                const int64_t pos = (int64_t)(list * SPF + j + 1) * ratio, in = pos >> 16;
-                const int16_t* c = g_poly[0][(pos & 0xFFFF) >> 9];
-                int64_t sum = 0;
-                for (int k = 0; k < 4; k++) sum += (int64_t)input(in - 4 + k) * c[k];
-                bad += out_l(j) != (int16_t)std::clamp<int64_t>(sum >> 15, -32768, 32767);
+                const int64_t i = list * SPF + j;
+                int16_t want;
+                if (run.type == 0) {
+                    const int64_t pos = (i + 1) * ratio, in = pos >> 16;
+                    const int16_t* c = g_poly[0][(pos & 0xFFFF) >> 9];
+                    int64_t sum = 0;
+                    for (int k = 0; k < 4; k++) sum += (int64_t)input(in - 4 + k) * c[k];
+                    want = (int16_t)std::clamp<int64_t>(sum >> 15, -32768, 32767);
+                } else {
+                    const int64_t pos = i * ratio, in = pos >> 16, a = input(in - 2), b = input(in - 1);
+                    want = (int16_t)(a + (((b - a) * (pos & 0xFFFF)) >> 16));
+                }
+                bad += out_l(j) != want;
             }
         }
         const int64_t end = (int64_t)2 * SPF * ratio, in = end >> 16;
         bool state = pb_word(PB_FRAC) == (uint16_t)end;
         for (int k = 0; k < 4; k++) state &= (int16_t)pb_word(PB_LAST + k) == input(in - 4 + k);
         char what[96];
-        snprintf(what, sizeof what, "ratio %05X: 320 samples out match the position worked out for each", ratio);
+        snprintf(what, sizeof what, "type %u at ratio %05X: 320 samples out match the position worked out for each",
+                 run.type, ratio);
         check(bad == 0, what);
-        snprintf(what, sizeof what, "ratio %05X: the fraction and the last four samples carry to the next list", ratio);
+        snprintf(what, sizeof what, "type %u at ratio %05X: the fraction and the last four samples carry to the next list",
+                 run.type, ratio);
         check(state, what);
     }
 }
