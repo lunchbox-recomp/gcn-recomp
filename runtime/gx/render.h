@@ -158,6 +158,7 @@ struct EfbCopyCmd {
     uint32_t format;                       // GX copy texture format (+0x10 if intensity)
     bool to_xfb;
     bool depth;                            // copying the Z buffer
+    bool efb_alpha;                        // the EFB's pixel format keeps alpha (gx::efb_has_alpha)
     bool clear;
     bool clear_color, clear_alpha, clear_z;
     uint32_t clear_rgba;                   // 0xRRGGBBAA

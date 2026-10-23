@@ -339,7 +339,7 @@ static void upload_indices(const Batch& b) {
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, rebased.size() * sizeof(uint32_t), rebased.data(), GL_STREAM_DRAW);
 }
 static GLuint g_copy_prog, g_copy_vao;
-static GLint g_copy_u_src, g_copy_u_rect, g_copy_u_mode, g_copy_u_depth;
+static GLint g_copy_u_src, g_copy_u_rect, g_copy_u_mode, g_copy_u_depth, g_copy_u_alpha;
 static GLuint g_blit_prog;
 static GLint g_blit_u_src, g_blit_u_rect;
 static GLuint g_copy_fbo;
@@ -894,10 +894,14 @@ in vec2 v_uv;
 uniform sampler2D u_src;
 uniform sampler2D u_depth;
 uniform int u_mode;   // copy texture format (+16 intensity, +32 depth)
+uniform int u_alpha;  // 0 when the EFB's pixel format has no alpha, which a copy reads as 1
 out vec4 o;
 void main() {
     vec2 uv = vec2(v_uv.x, 1.0 - v_uv.y);
     vec4 c = texture(u_src, uv);
+    // The GL framebuffer keeps an alpha channel whatever the format, holding what an earlier
+    // pass left there.
+    if (u_alpha == 0) c.a = 1.0;
     if ((u_mode & 32) != 0) {
         float z = texture(u_depth, uv).r;
         // Clamped: at the far plane z * 16777215 + 0.5 rounds up to 16777216 in single
@@ -1078,6 +1082,7 @@ void render_init(int internal_scale) {
     g_copy_u_depth = glGetUniformLocation(g_copy_prog, "u_depth");
     g_copy_u_rect = glGetUniformLocation(g_copy_prog, "u_rect");
     g_copy_u_mode = glGetUniformLocation(g_copy_prog, "u_mode");
+    g_copy_u_alpha = glGetUniformLocation(g_copy_prog, "u_alpha");
     g_blit_prog = link(cvs, compile(GL_FRAGMENT_SHADER, kBlitFS));
     g_blit_u_src = glGetUniformLocation(g_blit_prog, "u_src");
     g_blit_u_rect = glGetUniformLocation(g_blit_prog, "u_rect");
@@ -2511,6 +2516,7 @@ static void do_efb_copy(const EfbCopyCmd& c) {
                          (float)(c.src_x + c.src_w) / EFB_W, (float)(c.src_y + c.src_h) / EFB_H};
         glUniform4fv(g_copy_u_rect, 1, rect);
         glUniform1i(g_copy_u_mode, (int)c.format | (c.depth ? 32 : 0));
+        glUniform1i(g_copy_u_alpha, c.efb_alpha ? 1 : 0);
         glBindVertexArray(g_copy_vao);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         if (c.writeback) copy_writeback(c);
@@ -2561,8 +2567,10 @@ static void do_efb_copy(const EfbCopyCmd& c) {
         glEnable(GL_SCISSOR_TEST);
         glScissor(c.src_x * g_scale, (EFB_H - c.src_y - c.src_h) * g_scale, c.src_w * g_scale, c.src_h * g_scale);
         GLbitfield bits = 0;
-        glColorMask(c.clear_color, c.clear_color, c.clear_color, c.clear_alpha);
-        if (c.clear_color || c.clear_alpha) bits |= GL_COLOR_BUFFER_BIT;
+        // Alpha is cleared only on a format that has it, as on the console.
+        const bool clear_alpha = c.clear_alpha && c.efb_alpha;
+        glColorMask(c.clear_color, c.clear_color, c.clear_color, clear_alpha);
+        if (c.clear_color || clear_alpha) bits |= GL_COLOR_BUFFER_BIT;
         if (c.clear_z) { bits |= GL_DEPTH_BUFFER_BIT; glDepthMask(GL_TRUE); }
         glClearColor(((c.clear_rgba >> 24) & 0xFF) / 255.0f, ((c.clear_rgba >> 16) & 0xFF) / 255.0f,
                      ((c.clear_rgba >> 8) & 0xFF) / 255.0f, (c.clear_rgba & 0xFF) / 255.0f);

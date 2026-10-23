@@ -3,6 +3,7 @@
 #include "../runtime.h"
 #include "../platform.h"
 #include "../pause.h"
+#include "blend.h"
 #include "gx.h"
 #include "render.h"
 #include "texture.h"
@@ -1772,6 +1773,7 @@ void renderer_efb_copy(uint32_t dest_addr, bool ends_frame) {
     cc.format = tf / 2 + (tf & 1) * 8;
     if ((v >> 15) & 1) cc.format |= 0x10;
     cc.depth = (bp[0x43] & 7) == 3;
+    cc.efb_alpha = gx::efb_has_alpha(bp[0x43]);
     cc.clear = (v >> 11) & 1;
     cc.clear_color = (bp[0x41] >> 3) & 1;
     cc.clear_alpha = (bp[0x41] >> 4) & 1;
