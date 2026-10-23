@@ -612,6 +612,15 @@ function(gcn_add_game)
     target_include_directories(test_sram PRIVATE ${RT})
     target_compile_options(test_sram PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The SRAM save checks through the EXI device (tools/test_exi.cpp): hw/exi.cpp driven by
+    # its registers over the card and SRAM file code as they are. Needs no disc image,
+    # device or SDL.
+    add_executable(test_exi EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_exi.cpp
+      ${RT}/hw/memcard.cpp ${RT}/hw/sram.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_exi)
+    target_include_directories(test_exi PRIVATE ${RT})
+    target_compile_options(test_exi PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The pause checks (tools/test_pause.cpp): runtime/pause.cpp on a fake host clock, with a
     # thread for the guest's, gx/cmd.cpp taking it to its frame boundaries, and the paused
     # redraw in gx/render_gl.cpp on a fake GL (tools/test_pause_gl.cpp, the GL ES build, whose

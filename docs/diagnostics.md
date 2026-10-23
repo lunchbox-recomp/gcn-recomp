@@ -15,7 +15,11 @@ The SRAM holds what a console keeps on its battery, such as the sound mode. It l
 `saves/sram.raw` beside the card. It's read at boot, and a file that's missing, isn't 64
 bytes or fails its checksums gives the defaults every run started from before 2026-10-22.
 It's written through a temp file each time the guest changes it. `ninja test_sram` builds
-`tools/test_sram.cpp`, which checks the load and the save in a work dir.
+`tools/test_sram.cpp`, which checks the load and the save in a work dir. `ninja test_exi`
+builds `tools/test_exi.cpp`, which drives the EXI device the way the guest does to check
+that a changed span is saved when the device is deselected, an unchanged one isn't, a
+failed save is tried again, and the file is the replay's SRAM path or `sram.raw` in the
+save dir.
 
 `--replay=<dir>` plays a log back. The guest reads the logged controller instead of the live
 one until the log runs out, then the live controller takes over. The run uses scratch copies
