@@ -528,7 +528,9 @@ every build. A bus the voice doesn't mix into leaves its word alone. The AX libr
 those words for each voice it stops while it plays, and fades the sums out through the
 setup command's start and slope for each bus, which `depop` on the `[ax] bus` line counts.
 Until the mixer wrote them, the words held whatever the library had put there, and a voice
-stopped mid-sound cut off at the start of the next list.
+stopped mid-sound cut off at the start of the next list. On the main buses it still does in
+a mode whose lists send 07 or 11. Both commands replace the main buses after setup, so in
+those modes only a fade on an aux bus reaches the output.
 
 Source type 0 (PB word 4) resamples through a four-tap polyphase filter. For each sample
 out the position steps by the ratio and a sample comes in for each whole step. The last
