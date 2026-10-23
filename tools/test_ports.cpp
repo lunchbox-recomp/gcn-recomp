@@ -66,11 +66,13 @@ struct Virtual {
     bool gamepad = true;
     SDL_JoystickID id = 0;
     int rumbles = 0;  // rumbles started on it
+    int stops = 0;    // rumbles stopped on it
     int player = -1;  // the player index SDL last told the device
 };
 
 bool SDLCALL on_rumble(void* u, Uint16 low, Uint16 high) {
     if (low || high) static_cast<Virtual*>(u)->rumbles++;
+    else static_cast<Virtual*>(u)->stops++;
     return true;
 }
 
@@ -281,6 +283,21 @@ void rules() {
 
     motor(1);
     check(b.rumbles == 1 && a.rumbles == 0, "port 2's rumble motor runs port 2's gamepad alone");
+
+    // While the guest is held (pause.h), the motor stays off, and one running stops.
+    g_guest_held = true;
+    motor(1);
+    check(b.rumbles == 1, "port 2's motor turned on while the guest is held runs nothing");
+    g_guest_held = false;
+    g_outbuf[1] = 0x00400001;
+    frame();
+    const int stops = b.stops;
+    g_guest_held = true;
+    frame();
+    check(b.rumbles == 2 && b.stops == stops + 1, "a running motor is stopped once the guest is held");
+    g_guest_held = false;
+    g_outbuf[1] = 0x00400000;
+    frame();
 
     unplug({&b});
     check(!read(1).connected && port(a) == 1,
