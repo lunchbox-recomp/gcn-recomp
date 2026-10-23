@@ -517,6 +517,16 @@ setup command's start and slope for each bus, which `depop` on the `[ax] bus` li
 Until the mixer wrote them, the words held whatever the library had put there, and a voice
 stopped mid-sound cut off at the start of the next list.
 
+Source type 0 (PB word 4) resamples through a four-tap polyphase filter. For each sample
+out the position steps by the ratio and a sample comes in for each whole step. The last
+four in are then weighed by one of 128 phases, which the top 7 bits of the fraction pick,
+from one of three sets, which word 5 picks. The ucode takes its sets from the DSP's ROM,
+which the runtime doesn't have, so it computes its own when AX starts: a sinc in a Hann
+window four samples wide, cut off at a half, three quarters and all of the input's Nyquist
+frequency, with each phase summing to 0x7FFF. Its output differs from a console's by
+however much the ROM's coefficients differ from these. A set past 2 falls back to the
+linear interpolation type 1 runs.
+
 `ninja test_ax` builds `tools/test_ax.cpp`, which runs `hw/ax.cpp` over a fake main memory
 and ARAM. Each check writes parameter blocks, samples and a command list by hand, runs the
 list and compares what the mixer wrote or counted with numbers worked out by hand. Each
