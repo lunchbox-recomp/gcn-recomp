@@ -44,11 +44,17 @@ int wrong_pairs(uint32_t pe, bool has_alpha) {
 }  // namespace
 
 int main() {
-    check(gx::efb_has_alpha(1) && gx::efb_has_alpha(0x41), "RGBA6_Z24 has alpha, whatever PE control's other bits");
-    int with_alpha = 0;
+    // PE control's pixel format is bits 0-2. Bits 3-5 are the z format and bit 6 the z compare
+    // location, so each format is tried with all 16 settings of those four bits.
+    int lost = 0, gained = 0;
     for (uint32_t fmt = 0; fmt < 8; fmt++)
-        if (gx::efb_has_alpha(fmt) || gx::efb_has_alpha(0x40 | fmt)) with_alpha++;
-    check(with_alpha == 1, "and no other of the eight pixel formats does");
+        for (uint32_t other = 0; other < 0x80; other += 8) {
+            const bool has = gx::efb_has_alpha(other | fmt);
+            if (fmt == 1 && !has) lost++;
+            if (fmt != 1 && has) gained++;
+        }
+    check(lost == 0, "RGBA6_Z24 has alpha, whatever PE control's other bits");
+    check(gained == 0, "and no other of the eight pixel formats does");
 
     const int kept = wrong_pairs(1, true) + wrong_pairs(0x41, true);
     if (kept) printf("  %d pairs changed\n", kept);
