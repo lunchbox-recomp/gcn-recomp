@@ -160,8 +160,10 @@ bool settings_save(const std::string& path, const Settings& s) {
         }
         text += out + "\n";
     }
+    // A key added to a file whose last line ends in CR gets the same line ending.
+    const bool crlf = !lines.empty() && !lines.back().empty() && lines.back().back() == '\r';
     for (int i = 0; i < 3; i++)
-        if (!written[i]) text += std::string(owned[i].first) + " " + owned[i].second + "\n";
+        if (!written[i]) text += std::string(owned[i].first) + " " + owned[i].second + (crlf ? "\r\n" : "\n");
 
     const std::string tmp = path + ".tmp";
     FILE* f = fopen(tmp.c_str(), "wb");

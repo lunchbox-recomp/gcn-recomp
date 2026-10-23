@@ -242,6 +242,22 @@ void save_refuses_bad_values() {
     check(took && back.aspect == "window" && back.scale == 999999999, "a save takes window and a scale of 9 digits");
 }
 
+void save_adds_keys_in_the_line_ending() {
+    const std::string p = path_of("crlf.txt");
+    write_file(p, "vsync on\r\naspect 16:9\r\n");
+    Settings s;
+    s.aspect = "16:9";
+    check(settings_save(p, s) && read_file(p) == "vsync on\r\naspect 16:9\r\nfullscreen 0\r\nscale 2\r\n",
+          "a key added to a file whose last line ends in CR LF ends in CR LF too");
+
+    const std::string mark = "\xEF\xBB\xBF";
+    const std::string q = path_of("bom_crlf.txt");
+    write_file(q, mark + "aspect 16:9\r\nscale 3\r\n");
+    s.scale = 3;
+    check(settings_save(q, s) && read_file(q) == mark + "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\n",
+          "and so is one added to a file with the mark");
+}
+
 void save_after_unterminated_line() {
     const std::string p = path_of("unterminated.txt");
     write_file(p, "vsync on");
@@ -349,6 +365,7 @@ int main(int argc, char** argv) {
     bad_values();
     save_keeps_lines();
     save_refuses_bad_values();
+    save_adds_keys_in_the_line_ending();
     save_after_unterminated_line();
     save_creates();
     failed_save_no_temp();
