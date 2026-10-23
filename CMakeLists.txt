@@ -653,6 +653,13 @@ function(gcn_add_game)
       target_compile_options(test_clock PRIVATE -ffunction-sections -fdata-sections)
       target_link_options(test_clock PRIVATE -Wl,--gc-sections)
     endif()
+
+    # The engine commit script's checks (tools/test_engine_sha.cmake): engine_sha.cmake over
+    # repositories it makes in the build directory. Needs git and nothing else.
+    add_custom_target(test_engine_sha
+      COMMAND ${CMAKE_COMMAND} -DENGINE_SHA=${GCN_RECOMP_DIR}/tools/engine_sha.cmake
+              -DBASE=${CMAKE_BINARY_DIR}/test_engine_sha -P ${GCN_RECOMP_DIR}/tools/test_engine_sha.cmake
+      USES_TERMINAL VERBATIM)
   endif()
 
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)

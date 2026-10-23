@@ -719,8 +719,10 @@ the same moment in seconds since 1970. `host` gives the OS with its version, the
 model and the refresh rate of the display the window opened on, or null where the platform
 doesn't say. `engine_sha` is the gcn-recomp commit the build was made from, ending `-dirty`
 when a tracked file had changed. The build writes it into a generated header
-(`tools/engine_sha.cmake`), and a build made outside a git checkout has null. `audio_device`
-holds the `[audio] device` line's values, and `command_line` the process's arguments.
+(`tools/engine_sha.cmake`), and a build whose engine isn't a git checkout of its own, such as
+a copy inside a game's repository, has null. `ninja test_engine_sha` checks that script in
+repositories it makes. `audio_device` holds the `[audio] device` line's values, and
+`command_line` the process's arguments.
 
 Each process prints `[session] <dir>` as it starts. A game that resets the console relaunches
 itself, and the switches the session turned on are cleared first, so the new process turns
