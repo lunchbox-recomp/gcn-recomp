@@ -390,6 +390,9 @@ int main(int argc, char** argv) {
     }
 
     if (headless) {
+        // No window and no sound device, so session.json has no display or device to name. It
+        // is written all the same: a reset relaunches into the next run-N by finding it.
+        session_write(0, GCN_ENGINE_SHA);
         uint32_t entry = boot_load(iso);
         threads_start_boot(entry);
         for (;;) {
@@ -465,8 +468,10 @@ int main(int argc, char** argv) {
             update_pads(1);
             return running;
         };
-        session_write(display_hz(win), GCN_ENGINE_SHA);  // the headset frontend opens the device later
-        const int rc = xr_desktop_main({win, pump, merge_desktop_pad}, iso);
+        // The headset frontend opens the sound device, so it is told to write session.json then.
+        const int rc = xr_desktop_main({win, pump, merge_desktop_pad,
+                                        [](SDL_Window* w) { session_write(display_hz(w), GCN_ENGINE_SHA); }},
+                                       iso);
         record::finish();
         input_log_end();
         input_map_shutdown();

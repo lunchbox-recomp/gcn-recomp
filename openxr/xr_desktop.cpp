@@ -206,6 +206,7 @@ int xr_desktop_main(const XrDesktopHost& host, const char* iso) {
 
     if (!g_audio_device.empty()) audio_set_device(g_audio_device.c_str());
     audio_open();
+    if (g_host.audio_opened) g_host.audio_opened(g_host.window);
     uint32_t entry = boot_load(iso);
     threads_start_boot(entry);
     xrf::run();

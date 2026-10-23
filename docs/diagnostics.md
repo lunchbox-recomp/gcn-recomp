@@ -703,8 +703,10 @@ else to go on. It turns on these:
   rest of the run's output
 
 A switch that's already set keeps its value. Once the window and the sound device are open,
-it writes `<dir>/session.json`. This one is from a run on SDL's dummy driver, with its
-command line shortened and the game's binary called `game`:
+it writes `<dir>/session.json`. Under `--vr` that is once the headset frontend has opened the
+device. Under `--headless` there is no window or device, so it is written before the guest
+boots with `refresh_hz` and `audio_device` null. This one is from a run on SDL's dummy
+driver, with its command line shortened and the game's binary called `game`:
 
 ```json
 {
