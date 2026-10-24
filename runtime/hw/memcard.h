@@ -34,6 +34,9 @@ public:
     uint64_t saves() const { return saves_.load(); }
     void format();
     void write_serial(uint8_t* header);
+    // Tests only: called at the start of each write of the file, on the thread writing it,
+    // so a test can hold a write and act while it's under way.
+    static void (*before_write_for_tests)();
 
 private:
     using Clock = std::chrono::steady_clock;

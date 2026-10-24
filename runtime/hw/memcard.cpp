@@ -4,6 +4,11 @@
 #include "memcard.h"
 #include <cstdio>
 #include <ctime>
+#ifdef _WIN32
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
 
 enum : uint8_t {
     CMD_ID = 0x00, CMD_READ_ARRAY = 0x52, CMD_SET_INT = 0x81, CMD_READ_STATUS = 0x83, CMD_READ_ID = 0x85,
@@ -119,9 +124,25 @@ void MemCard::format() {
     }
 }
 
-// Writes `image` to a temporary file and renames that over the card's file. Only one thread
-// at a time calls this: the saver, or whoever made the card or shut it down.
+void (*MemCard::before_write_for_tests)();
+
+// Puts what was written to `f` on the disk, so the rename never makes a card of a file that
+// isn't there yet.
+static bool sync_file(FILE* f) {
+    if (fflush(f) != 0) return false;
+#ifdef _WIN32
+    return _commit(_fileno(f)) == 0;
+#else
+    return fsync(fileno(f)) == 0;
+#endif
+}
+
+// Writes `image` to a temporary file and renames that over the card's file. A write that
+// fails anywhere leaves the card's file as it was and no temporary file behind. Only one
+// thread at a time calls this: the saver, or whoever made the card or shut it down.
 bool MemCard::write_file(const std::vector<uint8_t>& image) {
+    if (before_write_for_tests) before_write_for_tests();
+    static std::atomic<bool> warned{false};
     size_t slash = path_.find_last_of("/\\");
     if (slash != std::string::npos) plat_make_dirs(path_.substr(0, slash));
     std::string tmp = path_ + ".tmp";
@@ -129,16 +150,21 @@ bool MemCard::write_file(const std::vector<uint8_t>& image) {
     if (!f) {
         // This used to do nothing at all when the path was not writable, which is how an
         // app with "/" for a working directory came up with a blank card every launch.
-        static std::atomic<bool> warned{false};
         if (!warned.exchange(true))
             LOG(LOG_EXI, "memcard: cannot write %s -- saves will not persist", tmp.c_str());
         return false;
     }
-    fwrite(image.data(), 1, image.size(), f);
-    fclose(f);
+    // A full disk cuts the write short, and renaming that over the card would lose the card.
+    const bool wrote = fwrite(image.data(), 1, image.size(), f) == image.size() && sync_file(f);
+    const bool closed = fclose(f) == 0;
     // Windows' rename() fails if the destination exists, so go through the
     // platform layer, which replaces it.
-    plat_replace_file(tmp.c_str(), path_.c_str());
+    if (!wrote || !closed || !plat_replace_file(tmp.c_str(), path_.c_str())) {
+        remove(tmp.c_str());
+        if (!warned.exchange(true))
+            LOG(LOG_EXI, "memcard: cannot write %s -- the card is as it was", tmp.c_str());
+        return false;
+    }
     saves_++;
     LOG(LOG_EXI, "memcard: saved %s", path_.c_str());
     return true;

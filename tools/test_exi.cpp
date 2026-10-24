@@ -14,10 +14,12 @@
 //
 // The card checks drive a MemCard with a shorter quiet period the same way, a page program
 // at a time. A save is hundreds of those, and the card's file is written once a save: a quiet
-// period after the last write, and at shutdown if it still lacks one. The last two checks
-// write a page through the EXI registers in a child process that leaves by plat_exit_now,
-// as the runtime does, or by a SIGHUP taken on the interrupt thread, and find the page in
-// the file.
+// period after the last write, and at shutdown if it still lacks one. A write that fails,
+// at the open or cut short by a file size limit, leaves the file as it was and is tried
+// again. A gate MemCard calls before each write holds one so a page or a shutdown can land
+// during it. The last two checks write a page through the EXI registers in a child process
+// that leaves by plat_exit_now, as the runtime does, or by a SIGHUP taken on the interrupt
+// thread, and find the page in the file.
 //
 // Stubbed: logging, guest memory, the clock, the event queue and the interrupt line.
 //
@@ -26,9 +28,12 @@
 // every check passes.
 #include "hw/exi.cpp"
 #include <chrono>
+#include <condition_variable>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <thread>
@@ -372,6 +377,96 @@ void card_failed_save_is_tried_again() {
     check(file_has_pages(p, 0, 1), "a card write that fails is tried again a quiet period on");
 }
 
+// A full disk, made with a file size limit: the write stops partway.
+void card_short_write() {
+    const std::string p = path_of("short.raw");
+    MemCard card(p, 4, kQuiet);
+    const uint64_t made = card.saves();
+    const std::string before = read_file(p);
+    signal(SIGXFSZ, SIG_IGN);  // so going past the limit fails the write instead of the process
+    struct rlimit was;
+    getrlimit(RLIMIT_FSIZE, &was);
+    struct rlimit small = was;
+    small.rlim_cur = 100 * 1024;
+    setrlimit(RLIMIT_FSIZE, &small);
+    const Clock::time_point wrote = Clock::now();
+    program_page(card, 0);
+    // Halfway between the first try, a quiet period on, and the next.
+    std::this_thread::sleep_until(wrote + kQuiet * 3 / 2);
+    const bool kept = card.saves() == made && read_file(p) == before && !exists(p + ".tmp");
+    setrlimit(RLIMIT_FSIZE, &was);
+    check(kept, "a card write cut short leaves the file as it was and no temporary file");
+    wait_for_save(card, made);
+    check(file_has_pages(p, 0, 1), "and is tried again a quiet period on");
+}
+
+// ---- holding a write of the card's file ----
+// A gate the next write of a card's file stops at once it's armed, until it's opened or 10 s
+// pass, so a check can act while the write is under way. MemCard calls gate() before each
+// write. The time limit keeps a write on the checks' own thread from waiting on itself.
+std::mutex g_gate_mutex;
+std::condition_variable g_gate_cv;
+bool g_gate_armed, g_gate_reached, g_gate_open;
+
+void gate() {
+    std::unique_lock<std::mutex> lk(g_gate_mutex);
+    if (!g_gate_armed) return;
+    g_gate_armed = false;
+    g_gate_reached = true;
+    g_gate_cv.notify_all();
+    g_gate_cv.wait_for(lk, std::chrono::seconds(10), [] { return g_gate_open; });
+}
+
+void arm_gate() {
+    std::lock_guard<std::mutex> lk(g_gate_mutex);
+    g_gate_armed = true;
+    g_gate_reached = g_gate_open = false;
+}
+
+// Waits up to 10 s for a write to stop at the gate.
+void wait_at_gate() {
+    std::unique_lock<std::mutex> lk(g_gate_mutex);
+    g_gate_cv.wait_for(lk, std::chrono::seconds(10), [] { return g_gate_reached; });
+}
+
+void open_gate() {
+    std::lock_guard<std::mutex> lk(g_gate_mutex);
+    g_gate_armed = false;
+    g_gate_open = true;
+    g_gate_cv.notify_all();
+}
+
+// The copy the saver is writing predates a page written meanwhile, so the page needs the
+// next write.
+void card_page_during_save() {
+    const std::string p = path_of("during.raw");
+    MemCard card(p, 4, kQuiet);
+    const uint64_t made = card.saves();
+    arm_gate();
+    program_page(card, 0);
+    wait_at_gate();
+    program_page(card, 1);
+    open_gate();
+    wait_for_save(card, made + 1);
+    check(file_has_pages(p, 0, 2), "a page written during the file's write is in the next one");
+}
+
+void card_shutdown_during_save() {
+    const std::string p = path_of("stop_during.raw");
+    MemCard card(p, 4, kQuiet);
+    arm_gate();
+    program_page(card, 0);
+    wait_at_gate();
+    program_page(card, 1);
+    std::thread stopper([&card] { card.shutdown(); });
+    // Time for a shutdown that didn't wait for the saver to write the file first.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    open_gate();
+    stopper.join();
+    check(file_has_pages(p, 0, 2),
+          "shutdown during the file's write waits for it, then writes the page that came after");
+}
+
 // A child process that starts as the frontend does, writes a page through the EXI registers
 // and then calls `leave`. Returns its wait status. `handlers` installs the crash handlers
 // first, with an interrupt exiting 0.
@@ -449,6 +544,10 @@ int main(int argc, char** argv) {
     card_write_puts_save_off();
     card_shutdown_saves();
     card_failed_save_is_tried_again();
+    card_short_write();
+    MemCard::before_write_for_tests = gate;
+    card_page_during_save();
+    card_shutdown_during_save();
     card_saved_at_exit();
     card_saved_at_hangup();
     printf("test_exi: %d of %d checks passed\n", g_checks - g_failed, g_checks);
