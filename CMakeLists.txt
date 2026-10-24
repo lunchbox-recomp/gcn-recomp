@@ -541,6 +541,21 @@ function(gcn_add_game)
     endif()
   endif()
 
+  # The engine's commit, which a session records (GCN_SESSION): a header looked at every
+  # build and rewritten only when the commit changes, so only main.cpp compiles again.
+  # One target makes it for every game in the build and for runtime_check, so main.cpp
+  # compiled without a disc records the commit as the game's own build does.
+  if(NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)
+    set(_sha_dir ${CMAKE_BINARY_DIR}/gcn_engine_sha)
+    if(NOT TARGET gcn_engine_sha)
+      add_custom_target(gcn_engine_sha
+        COMMAND ${CMAKE_COMMAND} -DDIR=${GCN_RECOMP_DIR} -DOUT=${_sha_dir}/gcn_engine_sha.h
+                -P ${GCN_RECOMP_DIR}/tools/engine_sha.cmake
+        BYPRODUCTS ${_sha_dir}/gcn_engine_sha.h
+        VERBATIM)
+    endif()
+  endif()
+
   # Compile-only target: available even without a disc image, so the runtime and any
   # port work can be checked on its own. With an image present the game target already
   # compiles these sources, so keep it out of the default build; `ninja runtime_check`
@@ -552,7 +567,8 @@ function(gcn_add_game)
       add_library(runtime_check OBJECT ${RUNTIME_SOURCES})
     endif()
     _gcn_set_standards(runtime_check)
-    target_include_directories(runtime_check PRIVATE ${RT} ${RECOMP_GEN_DIR} ${GLAD_INCLUDE_DIR})
+    target_include_directories(runtime_check PRIVATE ${RT} ${RECOMP_GEN_DIR} ${GLAD_INCLUDE_DIR} ${_sha_dir})
+    add_dependencies(runtime_check gcn_engine_sha)
     target_link_libraries(runtime_check PRIVATE ${GCN_SDL_TARGET})
     target_compile_options(runtime_check PRIVATE ${GCN_RUNTIME_WARNINGS})
     target_compile_definitions(runtime_check PRIVATE ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} ${GCN_GL_DEFS})
@@ -722,6 +738,16 @@ function(gcn_add_game)
                -DFLAGS=${CMAKE_BINARY_DIR}/game_cflags.txt -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
                -P ${GCN_RECOMP_DIR}/tools/test_game_cflags.cmake)
     endif()
+    # runtime_check's engine commit (tools/test_runtime_engine_sha.cmake): its include path
+    # reaches the gcn_engine_sha.h that `unit` has written. Needs the C++ compiler and git.
+    if(TARGET runtime_check)
+      add_test(NAME test_runtime_engine_sha COMMAND ${CMAKE_COMMAND} -DCXX=${CMAKE_CXX_COMPILER}
+               "-DINCLUDES=$<JOIN:$<TARGET_PROPERTY:runtime_check,INCLUDE_DIRECTORIES>,|>"
+               -DDIR=${GCN_RECOMP_DIR} -DWORK=${_unit_work}/test_runtime_engine_sha
+               -P ${GCN_RECOMP_DIR}/tools/test_runtime_engine_sha.cmake)
+      set_tests_properties(test_runtime_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
+      list(APPEND _unit_dirs ${_unit_work}/test_runtime_engine_sha)
+    endif()
     add_test(NAME unit_clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${_unit_dirs})
     set_tests_properties(unit_clean PROPERTIES FIXTURES_SETUP unit_dirs)
     add_custom_target(unit
@@ -729,6 +755,9 @@ function(gcn_add_game)
               --no-tests=error --timeout 300 --output-on-failure
       USES_TERMINAL VERBATIM)
     add_dependencies(unit ${_unit_plain} ${_unit_in_dir})
+    if(TARGET runtime_check)
+      add_dependencies(unit gcn_engine_sha)
+    endif()
   endif()
 
   if(HAVE_GAME_ISO AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS)
@@ -741,17 +770,7 @@ function(gcn_add_game)
     target_compile_options(${G_NAME} PRIVATE ${GCN_RUNTIME_WARNINGS})
     target_compile_definitions(${G_NAME} PRIVATE ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} ${GCN_GL_DEFS})
 
-    # The engine's commit, which a session records (GCN_SESSION): a header looked at every
-    # build and rewritten only when the commit changes, so only main.cpp compiles again.
-    # One target makes it for every game in the build.
-    set(_sha_dir ${CMAKE_BINARY_DIR}/gcn_engine_sha)
-    if(NOT TARGET gcn_engine_sha)
-      add_custom_target(gcn_engine_sha
-        COMMAND ${CMAKE_COMMAND} -DDIR=${GCN_RECOMP_DIR} -DOUT=${_sha_dir}/gcn_engine_sha.h
-                -P ${GCN_RECOMP_DIR}/tools/engine_sha.cmake
-        BYPRODUCTS ${_sha_dir}/gcn_engine_sha.h
-        VERBATIM)
-    endif()
+    # The engine's commit (gcn_engine_sha, above).
     add_dependencies(${G_NAME} gcn_engine_sha)
     target_include_directories(${G_NAME} PRIVATE ${_sha_dir})
 
