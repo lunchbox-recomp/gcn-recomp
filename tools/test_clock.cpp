@@ -7,6 +7,9 @@
 // the virtual time the jumps added, at whatever rate the clock runs (clock_set_cpu_scale):
 // the clock less the total is then the guest's own running.
 //
+// Paced, clock_pace holds the guest's time to the host's by waiting whenever the guest gets
+// ahead. It sleeps in steps to a millisecond short of the time and spins the rest.
+//
 // Under GCN_CLOCK=host the clock is the host's, less the time pauses held the guest
 // (clock_hold), so that the guest doesn't see a pause as time gone by. The last check runs
 // that clock.
@@ -63,6 +66,30 @@ int main() {
         run(300);
         check(now_ticks() - clock_jumped_ticks() == g_ran, "the clock less the jumped total is the guest's own running", scale);
     }
+
+    // The pacer's sleeps on the way to a time 20 ms off: 1 ms steps, the last one ending 1 ms
+    // short of it, then none, which leaves the spin.
+    const uint64_t ms = 1000000;
+    const bool steps = pace_sleep_ns(0, 20 * ms) == ms && pace_sleep_ns(18 * ms + ms / 2, 20 * ms) == ms / 2 &&
+                       pace_sleep_ns(19 * ms, 20 * ms) == 0 && pace_sleep_ns(21 * ms, 20 * ms) == 0;
+    printf("%s: the pacer sleeps in 1 ms steps to 1 ms short of the time\n", steps ? "ok" : "FAIL");
+    if (!steps) g_failed++;
+
+    // The paced clock 20 ms ahead of the host, five times. clock_pace returns once the host
+    // gets there, and never before.
+    clock_set_scale(1);
+    g_t0 = std::chrono::steady_clock::now();
+    const auto virt_ns = [] { return (int64_t)((double)now_ticks() * (1e9 / TB_FREQ)); };
+    bool on_time = true;
+    for (int i = 0; i < 5; i++) {
+        g_pace_offset_ns = virt_ns() - (int64_t)host_ns();  // the two clocks agree
+        g_vcount += (uint64_t)(0.020 * TB_FREQ) / g_ticks_per_edge;
+        const int64_t until = virt_ns() - g_pace_offset_ns;
+        clock_pace();
+        on_time = on_time && (int64_t)host_ns() >= until;
+    }
+    printf("%s: the pacer waits until the host reaches the guest's time\n", on_time ? "ok" : "FAIL");
+    if (!on_time) g_failed++;
 
     // The host clock 100 s in, and a 1 s hold. The host moves on a little between the reads,
     // so the clock may go back by up to 10 ms less than the hold, and a tick of rounding more.

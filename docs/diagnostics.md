@@ -354,7 +354,12 @@ Guest time is virtual by default. Every backward branch in recompiled code count
 back-edge, and the time base is that count times a constant (`TICKS_PER_EDGE` in
 `cpu.cpp`); events are due when the count reaches them, and the SDK's idle spin
 (`idle.txt` in the game's tables) jumps the count to the next event instead of iterating.
-The host is held to real time by sleeping when virtual time runs ahead. So the game's view
+The host is held to real time by waiting when virtual time runs ahead (`wait_until_host` in
+`cpu.cpp`). The wait sleeps in 1 ms steps to 1 ms short of the time and spins the rest,
+since a sleep ends whenever the scheduler gets back to the thread. The steps are for macOS,
+which coalesces timers: a sleep may end late by a share of its length, half of it at
+latency tier 2, so a 16 ms sleep ended up to 8 ms late on an idle M4 Max. Android sleeps
+the whole way in one go, sparing a headset's cores and battery. So the game's view
 of time depends only on what it executed, which is what makes replays exact; the cost is
 that a scene heavier than a frame's budget of back-edges looks to the game like a dropped
 frame, at a threshold set by the constant rather than by the real console.

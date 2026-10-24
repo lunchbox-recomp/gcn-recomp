@@ -533,6 +533,36 @@ static void clock_jump(uint64_t edges) {
 
 uint64_t clock_jumped_ticks() { return g_jumped_ticks; }
 
+// The pacer's wait. A sleep ends when the scheduler gets back to the thread, which is later
+// than asked, and the guest's next frame starts that much late. So it sleeps to kSpinNs short
+// of the time and spins the rest, as Dolphin's PrecisionTimer::SleepUntil does
+// (Common/Timer.cpp, with 1 ms and 20 us). The spin doesn't yield, since a yield on a busy
+// core hands it to whatever else is queued there.
+//
+// It sleeps in steps of kStepNs, as that function does on Windows. macOS coalesces timers,
+// letting a sleep end late by a share of its length that the process's latency tier sets
+// (the kern.timer_coalesce_tier* sysctls). At tier 2 that's half, and on an idle M4 Max a
+// 16 ms sleep ended up to 8 ms late at any thread QoS. A 1 ms step then ends at most 0.5 ms
+// late, which the spin covers. Android sleeps all the way in one go, as Dolphin does there by
+// default, since a headset's cores and battery are the tighter limit.
+#ifdef __ANDROID__
+static constexpr uint64_t kSpinNs = 0, kStepNs = UINT64_MAX;
+#else
+static constexpr uint64_t kSpinNs = 1000000, kStepNs = 1000000;
+#endif
+
+// How long the wait for `until` sleeps next, at host time `now`: a step, ending no later
+// than kSpinNs short of it, or 0 once it's that close and the spin takes over.
+static uint64_t pace_sleep_ns(uint64_t now, uint64_t until) {
+    return until > now + kSpinNs ? std::min(until - now - kSpinNs, kStepNs) : 0;
+}
+
+static void wait_until_host(uint64_t until) {
+    while (const uint64_t ns = pace_sleep_ns(host_ns(), until))
+        std::this_thread::sleep_for(std::chrono::nanoseconds(ns));
+    while (host_ns() < until) {}
+}
+
 // Hold virtual time to real time. Called from irq_poll, i.e. whenever an event is due,
 // which is at least every SI poll (1/120 s). When the host falls behind, the shortfall is
 // caught up (above) or, under GCN_CATCHUP=0 or in a replay with no jump recorded here,
@@ -543,10 +573,11 @@ void clock_pace() {
     if (const uint64_t edges = input_replay_take_jump(g_vcount)) clock_jump(edges);
     if (g_time_scale <= 0) return;
     int64_t virt_ns = (int64_t)((double)now_ticks() * (1e9 / TB_FREQ) / g_time_scale);
-    int64_t ahead = virt_ns - (int64_t)(host_ns() - g_held_ns.load()) - g_pace_offset_ns;
+    const uint64_t now = host_ns();
+    int64_t ahead = virt_ns - (int64_t)(now - g_held_ns.load()) - g_pace_offset_ns;
     if (ahead > 300000) {
         if (ahead > 50000000) ahead = 50000000;
-        std::this_thread::sleep_for(std::chrono::nanoseconds(ahead));
+        wait_until_host(now + (uint64_t)ahead);
     } else if (ahead < -kForgiveNs) {
         g_pace_offset_ns += ahead;  // too far behind: re-anchor
     } else if (ahead < -kCatchupNs && g_catchup && !input_replay_active()) {
