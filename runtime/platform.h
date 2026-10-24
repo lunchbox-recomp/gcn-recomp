@@ -28,6 +28,10 @@ void plat_record_fatal(const char* msg);
 // Replace this process with a fresh run of the same program and arguments (argv as main
 // had it). Returns only if that failed.
 void plat_relaunch(char** argv);
+// Run `fn` on the way out of the two above, which skip destructors, for state that has to
+// reach a file first. The functions run once, in the order they were added, on the thread
+// that's leaving.
+void plat_at_exit(void (*fn)());
 
 // ---- threads ----
 // Start a thread with a `stack_size`-byte stack (reserved, not committed).

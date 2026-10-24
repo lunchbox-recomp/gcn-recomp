@@ -1,5 +1,6 @@
 // Host OS services: POSIX and Windows implementations of platform.h.
 #include "platform.h"
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <ctime>
@@ -10,6 +11,17 @@
 #include <thread>
 #include <utility>
 #include <vector>
+
+static std::vector<void (*)()> g_exit_fns;
+
+void plat_at_exit(void (*fn)()) { g_exit_fns.push_back(fn); }
+
+// Only the first exit runs them: one may have faulted in the middle of them.
+static void run_exit_fns() {
+    static std::atomic<bool> s_ran{false};
+    if (s_ran.exchange(true)) return;
+    for (auto fn : g_exit_fns) fn();
+}
 
 // ===========================================================================
 #ifdef _WIN32
@@ -71,8 +83,8 @@ void plat_watchdog(int seconds, int exit_code) {
     }).detach();
 }
 
-void plat_exit_now(int code) { _exit(code); }
-void plat_relaunch(char** argv) { fflush(nullptr); _execv(argv[0], argv); }
+void plat_exit_now(int code) { run_exit_fns(); _exit(code); }
+void plat_relaunch(char** argv) { run_exit_fns(); fflush(nullptr); _execv(argv[0], argv); }
 
 static void (*g_on_interrupt)();
 static void (*g_on_fault)(const void*, int);
@@ -273,8 +285,8 @@ void plat_watchdog(int seconds, int exit_code) {
     alarm((unsigned)seconds);
 }
 
-void plat_exit_now(int code) { _exit(code); }
-void plat_relaunch(char** argv) { fflush(nullptr); execv("/proc/self/exe", argv); execvp(argv[0], argv); }
+void plat_exit_now(int code) { run_exit_fns(); _exit(code); }
+void plat_relaunch(char** argv) { run_exit_fns(); fflush(nullptr); execv("/proc/self/exe", argv); execvp(argv[0], argv); }
 
 static void (*g_on_interrupt)();
 static void (*g_on_fault)(const void*, int);

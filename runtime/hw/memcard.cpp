@@ -4,6 +4,10 @@
 #include "memcard.h"
 #include <cstdio>
 #include <ctime>
+#ifndef _WIN32
+#include <csignal>
+#include <pthread.h>
+#endif
 
 enum : uint8_t {
     CMD_ID = 0x00, CMD_READ_ARRAY = 0x52, CMD_SET_INT = 0x81, CMD_READ_STATUS = 0x83, CMD_READ_ID = 0x85,
@@ -12,8 +16,10 @@ enum : uint8_t {
 };
 enum : uint8_t { ST_BUSY = 0x80, ST_UNLOCKED = 0x40, ST_SLEEP = 0x20, ST_ERASE_ERR = 0x10, ST_PROG_ERR = 0x08, ST_READY = 0x01 };
 
-MemCard::MemCard(const std::string& path, uint32_t size_mbit) : path_(path), size_mbit_(size_mbit) {
+MemCard::MemCard(const std::string& path, uint32_t size_mbit, std::chrono::milliseconds quiet)
+    : path_(path), size_mbit_(size_mbit), quiet_(quiet) {
     data_.assign((size_t)size_mbit * 1024 * 1024 / 8, 0xFF);
+    bool save = false;
     if (FILE* f = fopen(path.c_str(), "rb")) {
         size_t n = fread(data_.data(), 1, data_.size(), f);
         fclose(f);
@@ -21,8 +27,7 @@ MemCard::MemCard(const std::string& path, uint32_t size_mbit) : path_(path), siz
     } else {
         LOG(LOG_EXI, "memcard: creating formatted card %s", path.c_str());
         format();
-        dirty_ = true;
-        flush();
+        save = true;
     }
     status_ = ST_UNLOCKED | ST_READY;
     // A card formatted before 2026-10-08 has an all-zero serial, which a game can take
@@ -32,10 +37,15 @@ MemCard::MemCard(const std::string& path, uint32_t size_mbit) : path_(path), siz
     if (zero) {
         LOG(LOG_EXI, "memcard: %s has a zero serial; writing one", path.c_str());
         write_serial(&data_[0]);
-        dirty_ = true;
-        flush();
+        save = true;
     }
+    // If this fails, the saver tries again a quiet period on.
+    if (save) dirty_ = !write_file(data_);
+    last_write_ = Clock::now();
+    saver_ = std::thread([this] { saver_main(); });
 }
+
+MemCard::~MemCard() { shutdown(); }
 
 static void put16(uint8_t* p, uint16_t v) { p[0] = v >> 8; p[1] = (uint8_t)v; }
 
@@ -113,27 +123,72 @@ void MemCard::format() {
     }
 }
 
-void MemCard::flush() {
-    if (!dirty_) return;
+// Writes `image` to a temporary file and renames that over the card's file. Only one thread
+// at a time calls this: the saver, or whoever made the card or shut it down.
+bool MemCard::write_file(const std::vector<uint8_t>& image) {
     size_t slash = path_.find_last_of("/\\");
     if (slash != std::string::npos) plat_make_dirs(path_.substr(0, slash));
     std::string tmp = path_ + ".tmp";
-    if (FILE* f = fopen(tmp.c_str(), "wb")) {
-        fwrite(data_.data(), 1, data_.size(), f);
-        fclose(f);
-        // Windows' rename() fails if the destination exists, so go through the
-        // platform layer, which replaces it.
-        plat_replace_file(tmp.c_str(), path_.c_str());
-        dirty_ = false;
-    } else {
+    FILE* f = fopen(tmp.c_str(), "wb");
+    if (!f) {
         // This used to do nothing at all when the path was not writable, which is how an
         // app with "/" for a working directory came up with a blank card every launch.
-        static bool warned = false;
-        if (!warned) {
-            warned = true;
+        static std::atomic<bool> warned{false};
+        if (!warned.exchange(true))
             LOG(LOG_EXI, "memcard: cannot write %s -- saves will not persist", tmp.c_str());
+        return false;
+    }
+    fwrite(image.data(), 1, image.size(), f);
+    fclose(f);
+    // Windows' rename() fails if the destination exists, so go through the
+    // platform layer, which replaces it.
+    plat_replace_file(tmp.c_str(), path_.c_str());
+    saves_++;
+    LOG(LOG_EXI, "memcard: saved %s", path_.c_str());
+    return true;
+}
+
+// The saver: once the card has writes the file lacks, it waits until the guest has left the
+// card alone for quiet_, copies the card and writes the copy, so the guest never waits on
+// the file. Dolphin's raw card does the same on a fixed interval (GCMemcardRaw.cpp).
+void MemCard::saver_main() {
+#ifndef _WIN32
+    // A signal for the process goes to some other thread: its handler may shut the card
+    // down, which waits for this one.
+    sigset_t set;
+    sigemptyset(&set);
+    sigaddset(&set, SIGINT);
+    sigaddset(&set, SIGTERM);
+    pthread_sigmask(SIG_BLOCK, &set, nullptr);
+#endif
+    std::unique_lock<std::mutex> lk(mutex_);
+    for (;;) {
+        cv_.wait(lk, [this] { return dirty_ || stop_; });
+        // Each write moves last_write_ on, so look again at each wake.
+        while (!stop_ && Clock::now() < last_write_ + quiet_) cv_.wait_until(lk, last_write_ + quiet_);
+        if (stop_) return;
+        snapshot_ = data_;
+        dirty_ = false;
+        lk.unlock();
+        const bool ok = write_file(snapshot_);
+        lk.lock();
+        if (!ok) {
+            dirty_ = true;
+            last_write_ = Clock::now();
         }
     }
+}
+
+void MemCard::shutdown() {
+    std::unique_lock<std::mutex> lk(mutex_);
+    if (stop_) return;
+    stop_ = true;
+    cv_.notify_one();
+    lk.unlock();
+    saver_.join();
+    lk.lock();
+    stopped_ = true;
+    if (dirty_) dirty_ = !write_file(data_);
 }
 
 void MemCard::select() {
@@ -146,12 +201,12 @@ void MemCard::select() {
 bool MemCard::deselect() {
     bool irq = false;
     if (pos_) LOG(LOG_EXI, "memcard cmd %02X bytes=%u addr=%05X", cmd_, pos_, addr_);
+    std::lock_guard<std::mutex> lk(mutex_);
     switch (cmd_) {
     case CMD_SECTOR_ERASE:
         if (pos_ >= 3) {
             uint32_t a = addr_ & ~0x1FFFu & (uint32_t)(data_.size() - 1);
             memset(&data_[a], 0xFF, 0x2000);
-            dirty_ = true;
             irq = true;
         }
         break;
@@ -159,17 +214,24 @@ bool MemCard::deselect() {
         if (pos_ >= 5 && !prog_.empty()) {
             uint32_t a = addr_ & (uint32_t)(data_.size() - 1);
             for (size_t i = 0; i < prog_.size(); i++) data_[(a & ~0x7Fu) | ((a + i) & 0x7F)] = prog_[i];
-            dirty_ = true;
             irq = true;
         }
         break;
     case CMD_CHIP_ERASE:
         memset(data_.data(), 0xFF, data_.size());
-        dirty_ = true;
         irq = true;
         break;
     }
-    if (dirty_) flush();
+    // Each command that raises the interrupt has written the card.
+    if (irq && stopped_) {
+        dirty_ = !write_file(data_);
+    } else if (irq) {
+        last_write_ = Clock::now();
+        if (!dirty_) {
+            dirty_ = true;
+            cv_.notify_one();
+        }
+    }
     pos_ = 0;
     cmd_ = 0;
     return irq && int_enabled_;

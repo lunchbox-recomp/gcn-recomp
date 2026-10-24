@@ -156,7 +156,18 @@ const char* g_memcard_path;
 // points this at its scratch copy of the logged run's.
 const char* g_sram_path;
 
+// The card writes its file on a thread of its own (memcard.h), and the runtime leaves through
+// plat_exit_now, which skips destructors, so the card is shut down from there.
+static void exi_shutdown() {
+    if (g_card_a) g_card_a->shutdown();
+}
+
 void exi_init() {
+    static bool s_at_exit = false;
+    if (!s_at_exit) {
+        s_at_exit = true;
+        plat_at_exit(exi_shutdown);
+    }
     g_sram_file = g_sram_path ? std::string(g_sram_path)
                 : g_save_dir  ? std::string(g_save_dir) + "/sram.raw"
                               : std::string("saves/sram.raw");
