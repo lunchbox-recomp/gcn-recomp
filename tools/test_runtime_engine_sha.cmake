@@ -1,17 +1,25 @@
 # runtime_check's engine commit: the `test_runtime_engine_sha` test. Needs the C++ compiler
 # and git, and nothing of a game. `ninja unit` writes the header first.
 #
-# Preprocesses test_runtime_engine_sha.cpp with runtime_check's include directories, as
-# main.cpp is compiled there, and compares the GCN_ENGINE_SHA it sees with what
-# engine_sha.cmake writes for the engine right now: the commit in a checkout, "" elsewhere.
+# runtime_check has to depend on gcn_engine_sha (DEPENDS, its added dependencies), or a
+# fresh build can compile main.cpp before the header exists. Then it preprocesses
+# test_runtime_engine_sha.cpp with runtime_check's include directories, as main.cpp is
+# compiled there, and compares the GCN_ENGINE_SHA it sees with what engine_sha.cmake writes
+# for the engine right now: the commit in a checkout, "" elsewhere.
 #
-# usage: cmake -DCXX=<C++ compiler> -DINCLUDES=<dir|dir|...> -DDIR=<gcn-recomp> -DWORK=<dir>
-#        -P test_runtime_engine_sha.cmake
+# usage: cmake -DCXX=<C++ compiler> -DINCLUDES=<dir|dir|...> -DDEPENDS=<target|target|...>
+#        -DDIR=<gcn-recomp> -DWORK=<dir> -P test_runtime_engine_sha.cmake
 # Writes WORK/expected.h. Exits 0 only if every check passes.
 cmake_minimum_required(VERSION 3.20)
 if(NOT CXX OR NOT INCLUDES OR NOT DIR OR NOT WORK)
-  message(FATAL_ERROR "usage: cmake -DCXX=<C++ compiler> -DINCLUDES=<dir|dir|...> -DDIR=<gcn-recomp> -DWORK=<dir> -P test_runtime_engine_sha.cmake")
+  message(FATAL_ERROR "usage: cmake -DCXX=<C++ compiler> -DINCLUDES=<dir|dir|...> -DDEPENDS=<target|target|...> -DDIR=<gcn-recomp> -DWORK=<dir> -P test_runtime_engine_sha.cmake")
 endif()
+
+string(REPLACE "|" ";" depends "${DEPENDS}")
+if(NOT "gcn_engine_sha" IN_LIST depends)
+  message(FATAL_ERROR "FAIL: runtime_check doesn't depend on gcn_engine_sha, only on: ${DEPENDS}")
+endif()
+message(STATUS "ok  : runtime_check builds after gcn_engine_sha")
 
 file(MAKE_DIRECTORY "${WORK}")
 execute_process(COMMAND "${CMAKE_COMMAND}" "-DDIR=${DIR}" "-DOUT=${WORK}/expected.h"

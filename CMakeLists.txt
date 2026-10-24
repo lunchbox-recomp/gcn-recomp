@@ -904,10 +904,14 @@ function(gcn_add_game)
              -DBASE=${_unit_work}/test_engine_sha -P ${GCN_RECOMP_DIR}/tools/test_engine_sha.cmake)
     set_tests_properties(test_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
     # game_cflags.txt's checks (tools/test_game_cflags.cmake): the flags the configure wrote
-    # compile optimized GNU C11 with no fused multiply-add. Needs the C compiler only.
+    # hold the build type's and compile optimized GNU C11 with no fused multiply-add. Needs
+    # the C compiler only.
     if(NOT _gcn_multi_config)
+      separate_arguments(_cflags_build UNIX_COMMAND "${CMAKE_C_FLAGS_${_gcn_config}}")
+      list(JOIN _cflags_build "|" _cflags_build)
       add_test(NAME test_game_cflags COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
-               -DFLAGS=${CMAKE_BINARY_DIR}/game_cflags.txt -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
+               -DFLAGS=${CMAKE_BINARY_DIR}/game_cflags.txt "-DBUILD_FLAGS=${_cflags_build}"
+               -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
                -P ${GCN_RECOMP_DIR}/tools/test_game_cflags.cmake)
       # gcn_add_game()'s default build type (tools/test_game_build_type.cmake): a game
       # configured with none gets RelWithDebInfo. Needs the generator and the compilers.
@@ -919,11 +923,13 @@ function(gcn_add_game)
       set_tests_properties(test_game_build_type PROPERTIES FIXTURES_REQUIRED unit_dirs)
       list(APPEND _unit_dirs ${_unit_work}/test_game_build_type)
     endif()
-    # runtime_check's engine commit (tools/test_runtime_engine_sha.cmake): its include path
-    # reaches the gcn_engine_sha.h that `unit` has written. Needs the C++ compiler and git.
+    # runtime_check's engine commit (tools/test_runtime_engine_sha.cmake): it builds after
+    # gcn_engine_sha, and its include path reaches the gcn_engine_sha.h that writes. Needs the
+    # C++ compiler and git.
     if(TARGET runtime_check)
       add_test(NAME test_runtime_engine_sha COMMAND ${CMAKE_COMMAND} -DCXX=${CMAKE_CXX_COMPILER}
                "-DINCLUDES=$<JOIN:$<TARGET_PROPERTY:runtime_check,INCLUDE_DIRECTORIES>,|>"
+               "-DDEPENDS=$<JOIN:$<TARGET_PROPERTY:runtime_check,MANUALLY_ADDED_DEPENDENCIES>,|>"
                -DDIR=${GCN_RECOMP_DIR} -DWORK=${_unit_work}/test_runtime_engine_sha
                -P ${GCN_RECOMP_DIR}/tools/test_runtime_engine_sha.cmake)
       set_tests_properties(test_runtime_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
