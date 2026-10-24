@@ -275,10 +275,10 @@ host threads, `gx-frontend`, `gx-transform`, and on a headset `xr-frame-loop`. T
 frontend hands those roles to the runtime as thread hints (`thread_hints` in vr.txt,
 `XR_KHR_android_thread_settings`); a Quest 3 accepts the main and renderer ones and refuses
 the workers. Turning them off and on made no difference to a replayed session's frame rate.
-On macOS `plat_thread_role` puts the `guest` threads, `gx-frontend` and a frontend's render
-thread at `QOS_CLASS_USER_INTERACTIVE`, the class an app's main thread has, so they go
-ahead of the host's other work at the default class when cores are short. The desktop
-frontend renders on the main thread. `gx-transform` stays at the default.
+On Apple platforms `plat_thread_role` puts the `guest` threads and `gx-frontend` at
+`QOS_CLASS_USER_INTERACTIVE`, the class an app's main thread has, so they go ahead of the
+host's other work at the default class when cores are short. The desktop frontend renders
+on the main thread, and `gx-transform` stays at the default. A refused class is logged once.
 
 `GCN_XR_INPUT_LOG=1` (either frontend) prints every button action's state on change:
 *inactive* means the runtime has bound it to nothing present, which is how an API layer
@@ -359,14 +359,28 @@ back-edge, and the time base is that count times a constant (`TICKS_PER_EDGE` in
 `cpu.cpp`); events are due when the count reaches them, and the SDK's idle spin
 (`idle.txt` in the game's tables) jumps the count to the next event instead of iterating.
 The host is held to real time by waiting when virtual time runs ahead (`wait_until_host` in
-`cpu.cpp`). The wait sleeps in 1 ms steps to 1 ms short of the time and spins the rest,
-since a sleep ends whenever the scheduler gets back to the thread. The steps are for macOS,
-which coalesces timers: a sleep may end late by a share of its length, half of it at
-latency tier 2, so a 16 ms sleep ended up to 8 ms late on an idle M4 Max. Android sleeps
-the whole way in one go, sparing a headset's cores and battery. So the game's view
-of time depends only on what it executed, which is what makes replays exact; the cost is
-that a scene heavier than a frame's budget of back-edges looks to the game like a dropped
-frame, at a threshold set by the constant rather than by the real console.
+`cpu.cpp`). So the game's view of time depends only on what it executed, which is what
+makes replays exact; the cost is that a scene heavier than a frame's budget of back-edges
+looks to the game like a dropped frame, at a threshold set by the constant rather than by
+the real console.
+
+The wait sleeps toward the time and spins the last of it, since a sleep ends whenever the
+scheduler gets back to the thread. Each sleep is two thirds of the wait left beyond the
+last 100 us, capped at 1 ms. A sleep under 50 us is skipped.
+
+The steps are for Apple platforms, which coalesce timers. A sleep there may end late by a
+share of its length, up to half of it at latency tier 2. On an idle M4 Max a 16 ms sleep
+ended up to 8 ms late, and in a hidden real-time run the guest thread's 1 ms sleeps ended a
+median 0.26 ms late.
+
+`clock_pace` runs at every event poll and waits about six times a frame, so the spin adds
+up. In a real-time race on an M4 Max beside six busy processes it came to 0.78 ms a frame,
+and the process used 26% of a core, against 21% with one plain sleep.
+
+Linux, Windows and visionOS take the same steps and spin, though only macOS has been timed.
+Windows sleeps round to the system timer, which the runtime doesn't raise, so a 1 ms step
+there may last 15.6 ms. Android sleeps the whole way in one go, sparing a headset's cores
+and battery.
 
 When the host cannot keep up, virtual time **catches up**: once it has fallen more than
 4 ms behind the wall clock, it jumps to it (`clock_pace` in `cpu.cpp`). The game's next
