@@ -5,17 +5,19 @@
 # flags gcn_add_game() wrote, the object, SDL's library when this build made it, then the
 # libraries it wrote. Any library or framework missing from them fails the link. The link
 # flags have to hold the build type's C++ flags (BUILD_FLAGS) and the flags CMake links an
-# executable with (EXE_FLAGS), each in order. Then it runs the program.
+# executable with (EXE_FLAGS), each in order. Either one empty fails unless NO_BUILD_FLAGS or
+# NO_EXE_FLAGS says there are none. Then it runs the program.
 #
 # usage: cmake -DCC=<C compiler> -DCXX=<C++ compiler> -DLDFLAGS=<game_ldflags.txt>
 #        -DLIBS=<game_libs.txt> [-DSDL=<SDL library>] [-DTARGET_FLAGS=<flag|flag|...>]
-#        [-DBUILD_FLAGS=<flag|flag|...>] [-DEXE_FLAGS=<flag|flag|...>]
+#        -DBUILD_FLAGS=<flag|flag|...> | -DNO_BUILD_FLAGS=ON
+#        -DEXE_FLAGS=<flag|flag|...> | -DNO_EXE_FLAGS=ON
 #        -DSOURCE=<test_game_link.c> -DWORK=<dir> -P test_game_link.cmake
 # TARGET_FLAGS are the architecture, SDK and deployment target, which the files leave out.
 # Writes WORK/probe.o and WORK/probe. Exits 0 only if every check passes.
 cmake_minimum_required(VERSION 3.20)
 if(NOT CC OR NOT CXX OR NOT LDFLAGS OR NOT LIBS OR NOT SOURCE OR NOT WORK)
-  message(FATAL_ERROR "usage: cmake -DCC=<C compiler> -DCXX=<C++ compiler> -DLDFLAGS=<game_ldflags.txt> -DLIBS=<game_libs.txt> [-DSDL=<SDL library>] [-DTARGET_FLAGS=<flag|flag|...>] [-DBUILD_FLAGS=<flag|flag|...>] [-DEXE_FLAGS=<flag|flag|...>] -DSOURCE=<test_game_link.c> -DWORK=<dir> -P test_game_link.cmake")
+  message(FATAL_ERROR "usage: cmake -DCC=<C compiler> -DCXX=<C++ compiler> -DLDFLAGS=<game_ldflags.txt> -DLIBS=<game_libs.txt> [-DSDL=<SDL library>] [-DTARGET_FLAGS=<flag|flag|...>] -DBUILD_FLAGS=<flag|flag|...> | -DNO_BUILD_FLAGS=ON -DEXE_FLAGS=<flag|flag|...> | -DNO_EXE_FLAGS=ON -DSOURCE=<test_game_link.c> -DWORK=<dir> -P test_game_link.cmake")
 endif()
 
 foreach(name LDFLAGS LIBS)
@@ -48,9 +50,11 @@ message(STATUS "ok  : the probe links with ${LDFLAGS} and ${LIBS}")
 list(JOIN LDFLAGS_ARGS " " ldflags)
 foreach(name BUILD_FLAGS EXE_FLAGS)
   string(REPLACE "|" " " want "${${name}}")
-  if(want STREQUAL "")
-    message(STATUS "ok  : no ${name} to look for")
+  if(want STREQUAL "" AND NO_${name})
+    message(STATUS "ok  : there are no ${name} to look for")
     continue()
+  elseif(want STREQUAL "")
+    message(FATAL_ERROR "FAIL: no ${name} to look for, and no NO_${name} saying there are none")
   endif()
   string(FIND " ${ldflags} " " ${want} " at)
   if(at EQUAL -1)

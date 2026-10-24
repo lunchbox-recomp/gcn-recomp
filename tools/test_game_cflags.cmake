@@ -2,16 +2,18 @@
 # a game.
 #
 # The flags gcn_add_game() wrote have to hold the build type's C flags (BUILD_FLAGS), in
-# order. Then it compiles test_game_cflags.c to assembly with them, which fails unless they
-# optimize and select GNU C11, and looks for a fused multiply-add (arm64's fmadd, x86's
-# vfmadd), which -ffp-contract=off rules out.
+# order. No BUILD_FLAGS fails unless NO_BUILD_FLAGS says the build type has none. Then it
+# compiles test_game_cflags.c to assembly with them, which fails unless they optimize and
+# select GNU C11, and looks for a fused multiply-add (arm64's fmadd, x86's vfmadd), which
+# -ffp-contract=off rules out.
 #
-# usage: cmake -DCC=<C compiler> -DFLAGS=<game_cflags.txt> [-DBUILD_FLAGS=<flag|flag|...>]
+# usage: cmake -DCC=<C compiler> -DFLAGS=<game_cflags.txt>
+#        -DBUILD_FLAGS=<flag|flag|...> | -DNO_BUILD_FLAGS=ON
 #        -DSOURCE=<test_game_cflags.c> -P test_game_cflags.cmake
 # Writes nothing. Exits 0 only if every check passes.
 cmake_minimum_required(VERSION 3.20)
 if(NOT CC OR NOT FLAGS OR NOT SOURCE)
-  message(FATAL_ERROR "usage: cmake -DCC=<C compiler> -DFLAGS=<game_cflags.txt> [-DBUILD_FLAGS=<flag|flag|...>] -DSOURCE=<test_game_cflags.c> -P test_game_cflags.cmake")
+  message(FATAL_ERROR "usage: cmake -DCC=<C compiler> -DFLAGS=<game_cflags.txt> -DBUILD_FLAGS=<flag|flag|...> | -DNO_BUILD_FLAGS=ON -DSOURCE=<test_game_cflags.c> -P test_game_cflags.cmake")
 endif()
 
 file(READ "${FLAGS}" flags)
@@ -21,8 +23,10 @@ if(flags STREQUAL "")
 endif()
 separate_arguments(flags UNIX_COMMAND "${flags}")
 string(REPLACE "|" " " build_flags "${BUILD_FLAGS}")
-if(build_flags STREQUAL "")
-  message(STATUS "ok  : no build type's flags to look for")
+if(build_flags STREQUAL "" AND NO_BUILD_FLAGS)
+  message(STATUS "ok  : the build type has no flags to look for")
+elseif(build_flags STREQUAL "")
+  message(FATAL_ERROR "FAIL: no BUILD_FLAGS to look for, and no NO_BUILD_FLAGS saying the build type has none")
 else()
   list(JOIN flags " " joined)
   string(FIND " ${joined} " " ${build_flags} " at)

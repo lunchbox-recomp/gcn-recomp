@@ -905,13 +905,19 @@ function(gcn_add_game)
     set_tests_properties(test_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
     # game_cflags.txt's checks (tools/test_game_cflags.cmake): the flags the configure wrote
     # hold the build type's and compile optimized GNU C11 with no fused multiply-add. Needs
-    # the C compiler only.
+    # the C compiler only. NO_BUILD_FLAGS says the build type has none, read from its flags
+    # and not from the list passed, so a list emptied by mistake still fails.
     if(NOT _gcn_multi_config)
       separate_arguments(_cflags_build UNIX_COMMAND "${CMAKE_C_FLAGS_${_gcn_config}}")
       list(JOIN _cflags_build "|" _cflags_build)
+      set(_cflags_none "")
+      string(STRIP "${CMAKE_C_FLAGS_${_gcn_config}}" _cflags_type)
+      if(_cflags_type STREQUAL "")
+        set(_cflags_none -DNO_BUILD_FLAGS=ON)
+      endif()
       add_test(NAME test_game_cflags COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
                -DFLAGS=${CMAKE_BINARY_DIR}/game_cflags.txt "-DBUILD_FLAGS=${_cflags_build}"
-               -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
+               ${_cflags_none} -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
                -P ${GCN_RECOMP_DIR}/tools/test_game_cflags.cmake)
       # gcn_add_game()'s default build type (tools/test_game_build_type.cmake): a game
       # configured with none gets RelWithDebInfo. Needs the generator and the compilers.
@@ -937,6 +943,7 @@ function(gcn_add_game)
     endif()
     # game_ldflags.txt's and game_libs.txt's checks (tools/test_game_link.cmake): a program
     # that calls SDL and GL links with them, after the SDL library this build made, and runs.
+    # NO_BUILD_FLAGS and NO_EXE_FLAGS say there are none of those, as for test_game_cflags.
     if(_gcn_link_files)
       set(_link_sdl "")
       get_target_property(_sdl_imported ${_gcn_sdl} IMPORTED)
@@ -960,10 +967,19 @@ function(gcn_add_game)
       list(JOIN _link_build "|" _link_build)
       separate_arguments(_link_exe UNIX_COMMAND "${_gcn_exe_flags}")
       list(JOIN _link_exe "|" _link_exe)
+      set(_link_none "")
+      string(STRIP "${CMAKE_CXX_FLAGS_${_gcn_config}}" _link_type)
+      if(_link_type STREQUAL "")
+        list(APPEND _link_none -DNO_BUILD_FLAGS=ON)
+      endif()
+      string(STRIP "${_gcn_exe_flags}" _link_type)
+      if(_link_type STREQUAL "")
+        list(APPEND _link_none -DNO_EXE_FLAGS=ON)
+      endif()
       add_test(NAME test_game_link COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
                -DCXX=${CMAKE_CXX_COMPILER} -DLDFLAGS=${CMAKE_BINARY_DIR}/game_ldflags.txt
                -DLIBS=${CMAKE_BINARY_DIR}/game_libs.txt ${_link_sdl} "-DTARGET_FLAGS=${_link_target}"
-               "-DBUILD_FLAGS=${_link_build}" "-DEXE_FLAGS=${_link_exe}"
+               "-DBUILD_FLAGS=${_link_build}" "-DEXE_FLAGS=${_link_exe}" ${_link_none}
                -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_link.c
                -DWORK=${_unit_work}/test_game_link -P ${GCN_RECOMP_DIR}/tools/test_game_link.cmake)
       set_tests_properties(test_game_link PROPERTIES FIXTURES_REQUIRED unit_dirs)
