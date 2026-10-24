@@ -255,6 +255,40 @@ function(gcn_add_game)
   set(RECOMP_GEN_DIR ${CMAKE_BINARY_DIR}/gen)
   set(RT ${GCN_RECOMP_DIR}/runtime)
 
+  # How the recompiled game's C is compiled. Set outside the disc check, so a configure with
+  # no disc has them too and writes them out (game_cflags.txt, below) for a build that
+  # compiles the generated C elsewhere against a prebuilt runtime.
+  if(MSVC)
+    # Generated code is enormous and machine-written: keep the optimizer honest about
+    # aliasing and floating point, and silence the noise it legitimately produces.
+    set(GCN_GAME_C_FLAGS /O2 /fp:precise /fp:except- /wd4101 /wd4102 /wd4723 /bigobj)
+  else()
+    set(GCN_GAME_C_FLAGS -O2 -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable
+                         -Wno-parentheses-equality -ffp-contract=off)
+    # Line tables only, where the build has debug info at all: a crash's frames still
+    # resolve to a line (addr2line, a symbolized backtrace), and nobody reads a
+    # recompiled function's locals. Full debug info took about 15% longer to compile and
+    # made the binaries nearly twice the size (110 MB against 63 for an Android build).
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang")
+      list(APPEND GCN_GAME_C_FLAGS $<$<CONFIG:Debug,RelWithDebInfo>:-gline-tables-only>)
+    else()
+      list(APPEND GCN_GAME_C_FLAGS $<$<CONFIG:Debug,RelWithDebInfo>:-g1>)
+    endif()
+  endif()
+  # <build>/game_cflags.txt is the game's compile line on one line, without the include
+  # directories or the target's architecture, SDK and deployment target: CMAKE_C_FLAGS and
+  # the build type's, the C standard _gcn_set_standards asks for (C11, with CMake's default
+  # GNU extensions) and the flags above, in the order CMake passes them. A multi-config
+  # generator's flags differ by configuration, so it writes none.
+  get_property(_gcn_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+  if(NOT _gcn_multi_config)
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" _gcn_config)
+    separate_arguments(_gcn_cflags UNIX_COMMAND "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_gcn_config}}")
+    list(APPEND _gcn_cflags ${CMAKE_C11_EXTENSION_COMPILE_OPTION} ${GCN_GAME_C_FLAGS})
+    list(JOIN _gcn_cflags " " _gcn_cflags)
+    file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/game_cflags.txt CONTENT "${_gcn_cflags}\n")
+  endif()
+
   # ---- Recompiled game code ----
   if(HAVE_GAME_ISO)
     execute_process(COMMAND ${Python3_EXECUTABLE} ${GCN_RECOMP_DIR}/recomp/extract_dol.py
@@ -352,23 +386,7 @@ function(gcn_add_game)
     if(ANDROID)
       target_compile_definitions(game_recomp PUBLIC GCN_MEM_BASE=0x2000000000ull)
     endif()
-    if(MSVC)
-      # Generated code is enormous and machine-written: keep the optimizer honest about
-      # aliasing and floating point, and silence the noise it legitimately produces.
-      target_compile_options(game_recomp PRIVATE /O2 /fp:precise /fp:except- /wd4101 /wd4102 /wd4723 /bigobj)
-    else()
-      target_compile_options(game_recomp PRIVATE -O2 -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable
-                             -Wno-parentheses-equality -ffp-contract=off)
-      # Line tables only, where the build has debug info at all: a crash's frames still
-      # resolve to a line (addr2line, a symbolized backtrace), and nobody reads a
-      # recompiled function's locals. Full debug info took about 15% longer to compile and
-      # made the binaries nearly twice the size (110 MB against 63 for an Android build).
-      if(CMAKE_C_COMPILER_ID MATCHES "Clang")
-        target_compile_options(game_recomp PRIVATE $<$<CONFIG:Debug,RelWithDebInfo>:-gline-tables-only>)
-      else()
-        target_compile_options(game_recomp PRIVATE $<$<CONFIG:Debug,RelWithDebInfo>:-g1>)
-      endif()
-    endif()
+    target_compile_options(game_recomp PRIVATE ${GCN_GAME_C_FLAGS})
   endif()
 
   # ---- Runtime ----
@@ -697,6 +715,13 @@ function(gcn_add_game)
     add_test(NAME test_engine_sha COMMAND ${CMAKE_COMMAND} -DENGINE_SHA=${GCN_RECOMP_DIR}/tools/engine_sha.cmake
              -DBASE=${_unit_work}/test_engine_sha -P ${GCN_RECOMP_DIR}/tools/test_engine_sha.cmake)
     set_tests_properties(test_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
+    # game_cflags.txt's checks (tools/test_game_cflags.cmake): the flags the configure wrote
+    # compile optimized GNU C11 with no fused multiply-add. Needs the C compiler only.
+    if(NOT _gcn_multi_config)
+      add_test(NAME test_game_cflags COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
+               -DFLAGS=${CMAKE_BINARY_DIR}/game_cflags.txt -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
+               -P ${GCN_RECOMP_DIR}/tools/test_game_cflags.cmake)
+    endif()
     add_test(NAME unit_clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${_unit_dirs})
     set_tests_properties(unit_clean PROPERTIES FIXTURES_SETUP unit_dirs)
     add_custom_target(unit
