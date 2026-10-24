@@ -17,9 +17,14 @@
 // period after the last write, and at shutdown if it still lacks one. A write that fails,
 // at the open or cut short by a file size limit, leaves the file as it was and is tried
 // again. A gate MemCard calls before each write holds one so a page or a shutdown can land
-// during it. The last two checks write a page through the EXI registers in a child process
-// that leaves by plat_exit_now, as the runtime does, or by a SIGHUP taken on the interrupt
-// thread, and find the page in the file.
+// during it. Running exi_init again makes a new card from the same file, and the new card
+// has to hold a page the old one hadn't written yet.
+//
+// The exit checks each run in a child process. Two write a page through the EXI registers
+// and leave by plat_exit_now, as the runtime does, or by a SIGHUP taken on the interrupt
+// thread. They find the page in the file. A thread started after the crash handlers has to
+// find the interrupts blocked. An exit on a second thread while the first runs the exit
+// functions waits for them, and an exit from the fault handler skips them.
 //
 // Stubbed: logging, guest memory, the clock, the event queue and the interrupt line.
 //
@@ -27,11 +32,13 @@
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
 // every check passes.
 #include "hw/exi.cpp"
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <mutex>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -273,7 +280,7 @@ using Clock = std::chrono::steady_clock;
 constexpr std::chrono::milliseconds kQuiet{400};
 constexpr uint32_t kPageSize = 128;
 constexpr uint32_t kFirstPage = 0x10000;  // past the card's header, directory and block table
-constexpr uint8_t kPageProgram = 0xF2;
+constexpr uint8_t kPageProgram = 0xF2, kReadArray = 0x52;
 constexpr uint32_t kSelectCard = 1u << 7;  // chip select 0, the card in slot A
 
 uint32_t page_addr(int page) { return kFirstPage + (uint32_t)page * kPageSize; }
@@ -296,6 +303,19 @@ void program_page(MemCard& card, int page) {
     for (uint8_t b : h) card.transfer(b, false);
     for (uint32_t i = 0; i < kPageSize; i++) card.transfer(page_byte(page, i), false);
     card.deselect();
+}
+
+// Whether the card holds page `page`, read back with the array read the CARD library uses.
+bool card_has_page(MemCard& card, int page) {
+    uint8_t h[5];
+    page_header(page_addr(page), h);
+    h[0] = kReadArray;
+    card.select();
+    for (uint8_t b : h) card.transfer(b, false);
+    bool same = true;
+    for (uint32_t i = 0; i < kPageSize; i++) same = card.transfer(0, true) == page_byte(page, i) && same;
+    card.deselect();
+    return same;
 }
 
 // Whether the file at `path` holds pages `first` to `first + count - 1`.
@@ -467,34 +487,73 @@ void card_shutdown_during_save() {
           "shutdown during the file's write waits for it, then writes the page that came after");
 }
 
-// A child process that starts as the frontend does, writes a page through the EXI registers
-// and then calls `leave`. Returns its wait status. `handlers` installs the crash handlers
-// first, with an interrupt exiting 0.
-int child_writes_page(const std::string& path, bool handlers, void (*leave)()) {
+// Page 0 programmed through the EXI registers into the card in slot A, as the guest does it.
+void exi_write_page() {
+    uint8_t h[5];
+    page_header(page_addr(0), h);
+    exi_write32(kCsr, kSelectCard);
+    send((uint32_t)h[0] << 24 | (uint32_t)h[1] << 16 | (uint32_t)h[2] << 8 | h[3], 4);
+    send((uint32_t)h[4] << 24, 1);
+    for (uint32_t i = 0; i < kPageSize; i += 4)
+        send((uint32_t)page_byte(0, i) << 24 | (uint32_t)page_byte(0, i + 1) << 16 |
+             (uint32_t)page_byte(0, i + 2) << 8 | page_byte(0, i + 3), 4);
+    deselect();
+}
+
+// A reset runs exi_init again, which makes a new card from the same file while the old one
+// still has a page to write.
+void card_made_again() {
+    const std::string p = path_of("again.raw");
+    const char* was = g_memcard_path;
+    g_memcard_path = p.c_str();
+    exi_init();
+    exi_write_page();
+    const bool unsaved = !file_has_pages(p, 0, 1);  // a quiet period hasn't passed
+    exi_init();
+    check(unsaved && card_has_page(*g_card_a, 0), "a card made again from its file has the page the old one hadn't saved");
+    g_card_a.reset();
+    g_memcard_path = was;
+}
+
+// Runs `body` in a child process and returns its wait status. A child that never leaves is
+// ended by SIGALRM after 10 s, and one that returns from `body` exits 3.
+int in_child(const std::function<void()>& body) {
     g_card_a.reset();  // so no other thread is running at the fork
     fflush(stdout);
     const pid_t pid = fork();
     if (pid == 0) {
-        alarm(10);  // SIGALRM ends a child that never leaves
-        if (handlers)
-            plat_install_crash_handlers([] { plat_exit_now(0); }, [](const void*, int) { plat_exit_now(1); });
-        g_memcard_path = path.c_str();
-        exi_init();
-        uint8_t h[5];
-        page_header(page_addr(0), h);
-        exi_write32(kCsr, kSelectCard);
-        send((uint32_t)h[0] << 24 | (uint32_t)h[1] << 16 | (uint32_t)h[2] << 8 | h[3], 4);
-        send((uint32_t)h[4] << 24, 1);
-        for (uint32_t i = 0; i < kPageSize; i += 4)
-            send((uint32_t)page_byte(0, i) << 24 | (uint32_t)page_byte(0, i + 1) << 16 |
-                 (uint32_t)page_byte(0, i + 2) << 8 | page_byte(0, i + 3), 4);
-        deselect();
-        leave();
+        alarm(10);
+        body();
         _exit(3);
     }
     int status = 0;
     waitpid(pid, &status, 0);
     return status;
+}
+
+void install_handlers(int fault_code) {
+    static int s_fault_code;
+    s_fault_code = fault_code;
+    plat_install_crash_handlers([] { plat_exit_now(0); }, [](const void*, int) { plat_exit_now(s_fault_code); });
+}
+
+// Makes an empty file named `name`, to show an exit function ran.
+void mark(const char* name) {
+    FILE* f = fopen(path_of(name).c_str(), "wb");
+    if (f) fclose(f);
+}
+
+// A child process that starts as the frontend does, writes a page through the EXI registers
+// and then calls `leave`. Returns its wait status. `handlers` installs the crash handlers
+// first, with an interrupt exiting 0.
+int child_writes_page(const std::string& path, bool handlers, void (*leave)()) {
+    return in_child([&] {
+        if (handlers) install_handlers(1);
+        g_memcard_path = path.c_str();
+        exi_init();
+        exi_write_page();
+        leave();
+    });
 }
 
 // The runtime leaves through plat_exit_now, which runs no destructors, well within a quiet
@@ -514,6 +573,55 @@ void card_saved_at_hangup() {
     });
     check(WIFEXITED(status) && WEXITSTATUS(status) == 0 && file_has_pages(p, 0, 1),
           "and one written just before a SIGHUP, which the interrupt thread exits on");
+}
+
+// The runtime starts its threads after the crash handlers, so none of them is handed an
+// interrupt to run the exit in a signal handler.
+void later_threads_block_interrupts() {
+    const int status = in_child([] {
+        install_handlers(1);
+        bool blocked = false;
+        std::thread([&blocked] {
+            sigset_t mask;
+            pthread_sigmask(SIG_BLOCK, nullptr, &mask);
+            blocked = sigismember(&mask, SIGINT) && sigismember(&mask, SIGTERM) && sigismember(&mask, SIGHUP);
+        }).join();
+        _exit(blocked ? 0 : 4);
+    });
+    check(WIFEXITED(status) && WEXITSTATUS(status) == 0,
+          "a thread started after the crash handlers has SIGINT, SIGTERM and SIGHUP blocked");
+}
+
+std::atomic<bool> g_slow_started;
+
+void slow_exit_function() {
+    g_slow_started = true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    mark("slow.mark");
+}
+
+void second_exit_waits() {
+    const int status = in_child([] {
+        plat_at_exit(slow_exit_function);
+        std::thread([] {
+            while (!g_slow_started) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            plat_exit_now(7);
+        }).detach();
+        plat_exit_now(0);
+    });
+    check(WIFEXITED(status) && exists(path_of("slow.mark")),
+          "an exit on a second thread while the first runs the exit functions waits for them");
+}
+
+// After a fault the process may be in any state, so its exit runs none of them.
+void fault_skips_exit_functions() {
+    const int status = in_child([] {
+        install_handlers(5);
+        plat_at_exit([] { mark("fault.mark"); });
+        raise(SIGSEGV);
+    });
+    check(WIFEXITED(status) && WEXITSTATUS(status) == 5 && !exists(path_of("fault.mark")),
+          "an exit from the fault handler skips the exit functions");
 }
 
 }  // namespace
@@ -548,8 +656,12 @@ int main(int argc, char** argv) {
     MemCard::before_write_for_tests = gate;
     card_page_during_save();
     card_shutdown_during_save();
+    card_made_again();
     card_saved_at_exit();
     card_saved_at_hangup();
+    later_threads_block_interrupts();
+    second_exit_waits();
+    fault_skips_exit_functions();
     printf("test_exi: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
 }
