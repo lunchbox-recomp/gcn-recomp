@@ -448,13 +448,16 @@ void plat_thread_role(ThreadRole role, const char* name) {
         if (nice) setpriority(PRIO_PROCESS, (id_t)tid, nice);
     }
 #elif defined(__APPLE__)
-    // The threads a frame waits on run at the QoS class macOS gives an app's main thread, so
-    // they go ahead of the host's other work at the default class when cores are short: the
-    // guest (one host thread per guest thread, one running at a time), the GX front end and
-    // a frontend's render thread. The desktop frontend renders on the main thread, which has
-    // the class already. The transform stays at the default, for the slack given above.
-    if (role == ThreadRole::GuestMain || role == ThreadRole::GuestWorker || role == ThreadRole::RenderMain)
-        pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+    // The threads a frame waits on run at the QoS class Apple platforms give an app's main
+    // thread, so they go ahead of the host's other work at the default class when cores are
+    // short. They're the guest (one host thread per guest thread, one running at a time) and
+    // the GX front end. The desktop frontend renders on the main thread, which has the class
+    // already. The transform stays at the default, for the slack given above.
+    if (role == ThreadRole::GuestMain || role == ThreadRole::GuestWorker) {
+        const int e = pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+        static std::atomic<bool> logged{false};
+        if (e && !logged.exchange(true)) fprintf(stderr, "%s: user-interactive QoS refused: %s\n", name, strerror(e));
+    }
 #endif
     void (*fn)(ThreadRole, long);
     {
