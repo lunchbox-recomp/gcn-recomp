@@ -19,7 +19,10 @@ static bool g_exit_done;
 // Set by the fault handlers. Lock-free, so a signal handler may set it.
 static std::atomic<bool> g_faulted{false};
 
-void plat_at_exit(void (*fn)()) { g_exit_fns.push_back(fn); }
+void plat_at_exit(void (*fn)()) {
+    std::lock_guard<std::mutex> lk(g_exit_mutex);  // an exit on another thread may be reading them
+    g_exit_fns.push_back(fn);
+}
 
 // The first exit runs them. One from another thread meanwhile waits here until they're done
 // and the first ends the process; one from the same thread, a function that exits, goes
@@ -332,6 +335,7 @@ void plat_install_crash_handlers(void (*on_interrupt)(), void (*on_fault)(const 
     interrupt_thread.detach();
     struct sigaction fwd = {};
     fwd.sa_handler = sig_forward;
+    fwd.sa_flags = SA_RESTART;  // a call it lands in restarts rather than failing with EINTR
     sigaction(SIGINT, &fwd, nullptr);
     sigaction(SIGTERM, &fwd, nullptr);
     sigaction(SIGHUP, &fwd, nullptr);
