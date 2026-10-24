@@ -275,6 +275,10 @@ host threads, `gx-frontend`, `gx-transform`, and on a headset `xr-frame-loop`. T
 frontend hands those roles to the runtime as thread hints (`thread_hints` in vr.txt,
 `XR_KHR_android_thread_settings`); a Quest 3 accepts the main and renderer ones and refuses
 the workers. Turning them off and on made no difference to a replayed session's frame rate.
+On macOS `plat_thread_role` puts the `guest` threads, `gx-frontend` and a frontend's render
+thread at `QOS_CLASS_USER_INTERACTIVE`, the class an app's main thread has, so they go
+ahead of the host's other work at the default class when cores are short. The desktop
+frontend renders on the main thread. `gx-transform` stays at the default.
 
 `GCN_XR_INPUT_LOG=1` (either frontend) prints every button action's state on change:
 *inactive* means the runtime has bound it to nothing present, which is how an API layer

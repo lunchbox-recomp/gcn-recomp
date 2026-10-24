@@ -225,6 +225,7 @@ bool plat_read_at(PlatFile* f, uint64_t offset, void* dst, uint32_t len) {
 #include <sys/utsname.h>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
+#include <pthread/qos.h>
 #include <sys/sysctl.h>
 #else
 #include <sys/syscall.h>
@@ -446,6 +447,14 @@ void plat_thread_role(ThreadRole role, const char* name) {
         const int nice = e ? atoi(e) : 5;
         if (nice) setpriority(PRIO_PROCESS, (id_t)tid, nice);
     }
+#elif defined(__APPLE__)
+    // The threads a frame waits on run at the QoS class macOS gives an app's main thread, so
+    // they go ahead of the host's other work at the default class when cores are short: the
+    // guest (one host thread per guest thread, one running at a time), the GX front end and
+    // a frontend's render thread. The desktop frontend renders on the main thread, which has
+    // the class already. The transform stays at the default, for the slack given above.
+    if (role == ThreadRole::GuestMain || role == ThreadRole::GuestWorker || role == ThreadRole::RenderMain)
+        pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
 #endif
     void (*fn)(ThreadRole, long);
     {
