@@ -397,9 +397,11 @@ function(gcn_add_game)
   # <build>/game_ldflags.txt (with game_libs.txt, below) is the game's link flags the same
   # way: CMAKE_CXX_FLAGS and the build type's (clang on macOS hands its -O to the linker,
   # which then folds identical functions), the flags CMake links the game's executable with
-  # (CMAKE_CXX_LINK_FLAGS) and CMAKE_EXE_LINKER_FLAGS and the build type's. A configure that
-  # names no build type gets RelWithDebInfo, which the game project's own CMakeLists may set
-  # first.
+  # and CMAKE_EXE_LINKER_FLAGS and the build type's. The executable's flags follow CMP0210
+  # here, where the executable is made: NEW (CMake 4.3) puts the platform's
+  # CMAKE_EXECUTABLE_CREATE_CXX_FLAGS before CMAKE_CXX_LINK_FLAGS, OLD uses
+  # CMAKE_CXX_LINK_FLAGS alone. A configure that names no build type gets RelWithDebInfo,
+  # which the game project's own CMakeLists may set first.
   get_property(_gcn_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
   if(NOT _gcn_multi_config)
     if(NOT CMAKE_BUILD_TYPE)
@@ -412,8 +414,15 @@ function(gcn_add_game)
     list(APPEND _gcn_cflags ${CMAKE_C11_EXTENSION_COMPILE_OPTION} ${GCN_GAME_C_FLAGS})
     list(JOIN _gcn_cflags " " _gcn_cflags)
     file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/game_cflags.txt CONTENT "${_gcn_cflags}\n")
+    set(_gcn_exe_flags "${CMAKE_CXX_LINK_FLAGS}")
+    if(POLICY CMP0210)
+      cmake_policy(GET CMP0210 _gcn_cmp0210)
+      if(_gcn_cmp0210 STREQUAL "NEW")
+        set(_gcn_exe_flags "${CMAKE_EXECUTABLE_CREATE_CXX_FLAGS} ${CMAKE_CXX_LINK_FLAGS}")
+      endif()
+    endif()
     separate_arguments(_gcn_ldflags UNIX_COMMAND
-      "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_gcn_config}} ${CMAKE_CXX_LINK_FLAGS} ${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_EXE_LINKER_FLAGS_${_gcn_config}}")
+      "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_gcn_config}} ${_gcn_exe_flags} ${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_EXE_LINKER_FLAGS_${_gcn_config}}")
     list(JOIN _gcn_ldflags " " _gcn_ldflags)
   endif()
 
@@ -943,10 +952,12 @@ function(gcn_add_game)
       list(JOIN _link_target "|" _link_target)
       separate_arguments(_link_build UNIX_COMMAND "${CMAKE_CXX_FLAGS_${_gcn_config}}")
       list(JOIN _link_build "|" _link_build)
+      separate_arguments(_link_exe UNIX_COMMAND "${_gcn_exe_flags}")
+      list(JOIN _link_exe "|" _link_exe)
       add_test(NAME test_game_link COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
                -DCXX=${CMAKE_CXX_COMPILER} -DLDFLAGS=${CMAKE_BINARY_DIR}/game_ldflags.txt
                -DLIBS=${CMAKE_BINARY_DIR}/game_libs.txt ${_link_sdl} "-DTARGET_FLAGS=${_link_target}"
-               "-DBUILD_FLAGS=${_link_build}"
+               "-DBUILD_FLAGS=${_link_build}" "-DEXE_FLAGS=${_link_exe}"
                -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_link.c
                -DWORK=${_unit_work}/test_game_link -P ${GCN_RECOMP_DIR}/tools/test_game_link.cmake)
       set_tests_properties(test_game_link PROPERTIES FIXTURES_REQUIRED unit_dirs)

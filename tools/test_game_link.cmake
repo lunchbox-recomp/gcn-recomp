@@ -4,17 +4,18 @@
 # Compiles test_game_link.c and links it as the game is linked: the C++ compiler with the
 # flags gcn_add_game() wrote, the object, SDL's library when this build made it, then the
 # libraries it wrote. Any library or framework missing from them fails the link. The link
-# flags have to hold the build type's C++ flags (BUILD_FLAGS). Then it runs the program.
+# flags have to hold the build type's C++ flags (BUILD_FLAGS) and the flags CMake links an
+# executable with (EXE_FLAGS), each in order. Then it runs the program.
 #
 # usage: cmake -DCC=<C compiler> -DCXX=<C++ compiler> -DLDFLAGS=<game_ldflags.txt>
 #        -DLIBS=<game_libs.txt> [-DSDL=<SDL library>] [-DTARGET_FLAGS=<flag|flag|...>]
-#        [-DBUILD_FLAGS=<flag|flag|...>] -DSOURCE=<test_game_link.c> -DWORK=<dir>
-#        -P test_game_link.cmake
+#        [-DBUILD_FLAGS=<flag|flag|...>] [-DEXE_FLAGS=<flag|flag|...>]
+#        -DSOURCE=<test_game_link.c> -DWORK=<dir> -P test_game_link.cmake
 # TARGET_FLAGS are the architecture, SDK and deployment target, which the files leave out.
 # Writes WORK/probe.o and WORK/probe. Exits 0 only if every check passes.
 cmake_minimum_required(VERSION 3.20)
 if(NOT CC OR NOT CXX OR NOT LDFLAGS OR NOT LIBS OR NOT SOURCE OR NOT WORK)
-  message(FATAL_ERROR "usage: cmake -DCC=<C compiler> -DCXX=<C++ compiler> -DLDFLAGS=<game_ldflags.txt> -DLIBS=<game_libs.txt> [-DSDL=<SDL library>] [-DTARGET_FLAGS=<flag|flag|...>] [-DBUILD_FLAGS=<flag|flag|...>] -DSOURCE=<test_game_link.c> -DWORK=<dir> -P test_game_link.cmake")
+  message(FATAL_ERROR "usage: cmake -DCC=<C compiler> -DCXX=<C++ compiler> -DLDFLAGS=<game_ldflags.txt> -DLIBS=<game_libs.txt> [-DSDL=<SDL library>] [-DTARGET_FLAGS=<flag|flag|...>] [-DBUILD_FLAGS=<flag|flag|...>] [-DEXE_FLAGS=<flag|flag|...>] -DSOURCE=<test_game_link.c> -DWORK=<dir> -P test_game_link.cmake")
 endif()
 
 foreach(name LDFLAGS LIBS)
@@ -42,15 +43,17 @@ if(NOT result EQUAL 0)
 endif()
 message(STATUS "ok  : the probe links with ${LDFLAGS} and ${LIBS}")
 
-# The build type's flags, in order: an optimized build links optimized, and clang on macOS
-# hands the linker the -O that has it fold identical functions.
-string(REPLACE "|" " " build_flags "${BUILD_FLAGS}")
+# The build type's flags, so an optimized build links optimized (clang on macOS hands the
+# linker the -O that has it fold identical functions), and the executable's.
 list(JOIN LDFLAGS_ARGS " " ldflags)
-string(FIND " ${ldflags} " " ${build_flags} " at)
-if(at EQUAL -1)
-  message(FATAL_ERROR "FAIL: ${LDFLAGS} hasn't the build type's flags, ${build_flags}")
-endif()
-message(STATUS "ok  : ${LDFLAGS} has the build type's flags, ${build_flags}")
+foreach(name BUILD_FLAGS EXE_FLAGS)
+  string(REPLACE "|" " " want "${${name}}")
+  string(FIND " ${ldflags} " " ${want} " at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "FAIL: ${LDFLAGS} hasn't the ${name}, ${want}")
+  endif()
+  message(STATUS "ok  : ${LDFLAGS} has the ${name}, ${want}")
+endforeach()
 
 execute_process(COMMAND "${WORK}/probe" RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
 if(NOT result EQUAL 0)
