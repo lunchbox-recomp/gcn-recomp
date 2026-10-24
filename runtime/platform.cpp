@@ -13,14 +13,24 @@
 #include <vector>
 
 static std::vector<void (*)()> g_exit_fns;
+static std::mutex g_exit_mutex;
+static std::atomic<std::thread::id> g_exit_thread;  // the one running them
+static bool g_exit_done;
+// Set by the fault handlers. Lock-free, so a signal handler may set it.
+static std::atomic<bool> g_faulted{false};
 
 void plat_at_exit(void (*fn)()) { g_exit_fns.push_back(fn); }
 
-// Only the first exit runs them: one may have faulted in the middle of them.
-static void run_exit_fns() {
-    static std::atomic<bool> s_ran{false};
-    if (s_ran.exchange(true)) return;
+// The first exit runs them. One from another thread meanwhile waits here until they're done
+// and the first ends the process; one from the same thread, a function that exits, goes
+// straight on.
+void plat_run_at_exit() {
+    if (g_faulted || g_exit_thread.load() == std::this_thread::get_id()) return;
+    std::lock_guard<std::mutex> lk(g_exit_mutex);
+    if (g_exit_done) return;
+    g_exit_thread = std::this_thread::get_id();
     for (auto fn : g_exit_fns) fn();
+    g_exit_done = true;
 }
 
 // ===========================================================================
@@ -83,8 +93,8 @@ void plat_watchdog(int seconds, int exit_code) {
     }).detach();
 }
 
-void plat_exit_now(int code) { run_exit_fns(); _exit(code); }
-void plat_relaunch(char** argv) { run_exit_fns(); fflush(nullptr); _execv(argv[0], argv); }
+void plat_exit_now(int code) { plat_run_at_exit(); _exit(code); }
+void plat_relaunch(char** argv) { plat_run_at_exit(); fflush(nullptr); _execv(argv[0], argv); }
 
 static void (*g_on_interrupt)();
 static void (*g_on_fault)(const void*, int);
@@ -103,6 +113,7 @@ static LONG WINAPI unhandled_filter(EXCEPTION_POINTERS* ep) {
     if ((code == EXCEPTION_ACCESS_VIOLATION || code == EXCEPTION_IN_PAGE_ERROR) &&
         ep->ExceptionRecord->NumberParameters >= 2)
         addr = (const void*)ep->ExceptionRecord->ExceptionInformation[1];
+    g_faulted = true;
     if (g_on_fault) g_on_fault(addr, (int)code);
     return EXCEPTION_EXECUTE_HANDLER;
 }
@@ -285,22 +296,45 @@ void plat_watchdog(int seconds, int exit_code) {
     alarm((unsigned)seconds);
 }
 
-void plat_exit_now(int code) { run_exit_fns(); _exit(code); }
-void plat_relaunch(char** argv) { run_exit_fns(); fflush(nullptr); execv("/proc/self/exe", argv); execvp(argv[0], argv); }
+void plat_exit_now(int code) { plat_run_at_exit(); _exit(code); }
+void plat_relaunch(char** argv) { plat_run_at_exit(); fflush(nullptr); execv("/proc/self/exe", argv); execvp(argv[0], argv); }
 
 static void (*g_on_interrupt)();
 static void (*g_on_fault)(const void*, int);
 
-static void sig_interrupt(int) { if (g_on_interrupt) g_on_interrupt(); }
+static pthread_t g_interrupt_thread;
+
+// A thread that was running before the signals were blocked (one the OS started, or one a
+// frontend started first) can still be handed one. It passes it on to the interrupt thread,
+// which has them blocked and so takes it in sigwait.
+static void sig_forward(int sig) { pthread_kill(g_interrupt_thread, sig); }
+
 static void sig_fault(int sig, siginfo_t* si, void*) {
+    g_faulted = true;
     if (g_on_fault) g_on_fault(si ? si->si_addr : nullptr, sig);
 }
 
 void plat_install_crash_handlers(void (*on_interrupt)(), void (*on_fault)(const void*, int)) {
     g_on_interrupt = on_interrupt;
     g_on_fault = on_fault;
-    signal(SIGINT, sig_interrupt);
-    signal(SIGTERM, sig_interrupt);
+    sigset_t interrupts;
+    sigemptyset(&interrupts);
+    sigaddset(&interrupts, SIGINT);
+    sigaddset(&interrupts, SIGTERM);
+    sigaddset(&interrupts, SIGHUP);
+    pthread_sigmask(SIG_BLOCK, &interrupts, nullptr);
+    std::thread interrupt_thread([interrupts] {
+        int sig = 0;
+        while (sigwait(&interrupts, &sig) != 0) {}
+        if (g_on_interrupt) g_on_interrupt();
+    });
+    g_interrupt_thread = interrupt_thread.native_handle();
+    interrupt_thread.detach();
+    struct sigaction fwd = {};
+    fwd.sa_handler = sig_forward;
+    sigaction(SIGINT, &fwd, nullptr);
+    sigaction(SIGTERM, &fwd, nullptr);
+    sigaction(SIGHUP, &fwd, nullptr);
     struct sigaction sa = {};
     sa.sa_sigaction = sig_fault;
     sa.sa_flags = SA_SIGINFO;

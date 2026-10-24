@@ -14,9 +14,10 @@
 //
 // The card checks drive a MemCard with a shorter quiet period the same way, a page program
 // at a time. A save is hundreds of those, and the card's file is written once a save: a quiet
-// period after the last write, and at shutdown if it still lacks one. The last check writes
-// a page through the EXI registers in a child process that leaves by plat_exit_now, as the
-// runtime does, and finds the page in the file.
+// period after the last write, and at shutdown if it still lacks one. The last two checks
+// write a page through the EXI registers in a child process that leaves by plat_exit_now,
+// as the runtime does, or by a SIGHUP taken on the interrupt thread, and find the page in
+// the file.
 //
 // Stubbed: logging, guest memory, the clock, the event queue and the interrupt line.
 //
@@ -25,6 +26,7 @@
 // every check passes.
 #include "hw/exi.cpp"
 #include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstring>
 #include <sys/stat.h>
@@ -370,15 +372,18 @@ void card_failed_save_is_tried_again() {
     check(file_has_pages(p, 0, 1), "a card write that fails is tried again a quiet period on");
 }
 
-// The runtime leaves through plat_exit_now, which runs no destructors, well within a quiet
-// period of a save's last page.
-void card_saved_at_exit() {
-    const std::string p = path_of("exit.raw");
+// A child process that starts as the frontend does, writes a page through the EXI registers
+// and then calls `leave`. Returns its wait status. `handlers` installs the crash handlers
+// first, with an interrupt exiting 0.
+int child_writes_page(const std::string& path, bool handlers, void (*leave)()) {
     g_card_a.reset();  // so no other thread is running at the fork
     fflush(stdout);
     const pid_t pid = fork();
     if (pid == 0) {
-        g_memcard_path = p.c_str();
+        alarm(10);  // SIGALRM ends a child that never leaves
+        if (handlers)
+            plat_install_crash_handlers([] { plat_exit_now(0); }, [](const void*, int) { plat_exit_now(1); });
+        g_memcard_path = path.c_str();
         exi_init();
         uint8_t h[5];
         page_header(page_addr(0), h);
@@ -389,12 +394,31 @@ void card_saved_at_exit() {
             send((uint32_t)page_byte(0, i) << 24 | (uint32_t)page_byte(0, i + 1) << 16 |
                  (uint32_t)page_byte(0, i + 2) << 8 | page_byte(0, i + 3), 4);
         deselect();
-        plat_exit_now(0);
+        leave();
+        _exit(3);
     }
     int status = 0;
     waitpid(pid, &status, 0);
+    return status;
+}
+
+// The runtime leaves through plat_exit_now, which runs no destructors, well within a quiet
+// period of a save's last page.
+void card_saved_at_exit() {
+    const std::string p = path_of("exit.raw");
+    const int status = child_writes_page(p, false, [] { plat_exit_now(0); });
     check(WIFEXITED(status) && WEXITSTATUS(status) == 0 && file_has_pages(p, 0, 1),
           "a page written just before plat_exit_now is in the card's file");
+}
+
+void card_saved_at_hangup() {
+    const std::string p = path_of("hangup.raw");
+    const int status = child_writes_page(p, true, [] {
+        kill(getpid(), SIGHUP);
+        for (;;) pause();
+    });
+    check(WIFEXITED(status) && WEXITSTATUS(status) == 0 && file_has_pages(p, 0, 1),
+          "and one written just before a SIGHUP, which the interrupt thread exits on");
 }
 
 }  // namespace
@@ -426,6 +450,7 @@ int main(int argc, char** argv) {
     card_shutdown_saves();
     card_failed_save_is_tried_again();
     card_saved_at_exit();
+    card_saved_at_hangup();
     printf("test_exi: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
 }

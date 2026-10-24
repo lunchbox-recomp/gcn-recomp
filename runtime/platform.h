@@ -15,23 +15,34 @@ bool plat_commit(void* base, size_t size);
 // ---- diagnostics ----
 // Print a symbolized backtrace of the calling thread to stderr.
 void plat_backtrace_print();
-// Install handlers for interactive interrupt and for memory faults. `on_fault` is
-// passed the faulting address (0 if unknown); both callbacks must not return.
+// Install handlers for an interrupt (SIGINT, SIGTERM or SIGHUP, or the console's Ctrl+C) and
+// for memory faults. Call it before starting threads: on POSIX it blocks the interrupt
+// signals, which every thread started after it inherits, and takes them on a thread of its
+// own, so `on_interrupt` runs on an ordinary thread and can take locks and wait for others.
+// `on_fault` runs in the signal handler and is passed the faulting address (0 if unknown).
+// Both callbacks must not return.
 void plat_install_crash_handlers(void (*on_interrupt)(), void (*on_fault)(const void* addr, int sig));
 // Hard-exit after `seconds` no matter what, so a crash handler can never hang.
 void plat_watchdog(int seconds, int exit_code);
 // Record a fatal message where the platform keeps crash reports, which on Android is the
 // one place the app's own logging cannot overwrite it. See the definition.
 void plat_record_fatal(const char* msg);
-// Exit immediately without running destructors or flushing other threads' buffers.
+// Run the plat_at_exit functions, then exit without running destructors or flushing other
+// threads' buffers.
 [[noreturn]] void plat_exit_now(int code);
-// Replace this process with a fresh run of the same program and arguments (argv as main
-// had it). Returns only if that failed.
+// Run the plat_at_exit functions, then replace this process with a fresh run of the same
+// program and arguments (argv as main had it). Returns only if that failed.
 void plat_relaunch(char** argv);
-// Run `fn` on the way out of the two above, which skip destructors, for state that has to
-// reach a file first. The functions run once, in the order they were added, on the thread
-// that's leaving.
+// Add `fn` to what the two above run on the way out, for state that has to reach a file
+// first, since they skip destructors. The functions run once, in the order they were added,
+// on the thread that's leaving, and never inside a signal handler: an interrupt reaches
+// on_interrupt on a thread of its own (plat_install_crash_handlers), and an exit after a
+// fault skips them, since a crashed process may hold broken state. An exit from another
+// thread while they run waits for them.
 void plat_at_exit(void (*fn)());
+// Run the plat_at_exit functions now, as plat_exit_now would, for a way out that doesn't
+// go through it, such as abort().
+void plat_run_at_exit();
 
 // ---- threads ----
 // Start a thread with a `stack_size`-byte stack (reserved, not committed).

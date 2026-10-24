@@ -3,6 +3,7 @@
 #include "../platform.h"
 #include <ctime>
 #include <memory>
+#include <mutex>
 #include "memcard.h"
 #include "sram.h"
 
@@ -157,8 +158,12 @@ const char* g_memcard_path;
 const char* g_sram_path;
 
 // The card writes its file on a thread of its own (memcard.h), and the runtime leaves through
-// plat_exit_now, which skips destructors, so the card is shut down from there.
+// plat_exit_now, which skips destructors, so the card is shut down from there. An exit can
+// come on another thread while exi_init replaces the card, so the two hold g_card_mutex.
+static std::mutex g_card_mutex;
+
 static void exi_shutdown() {
+    std::lock_guard<std::mutex> lk(g_card_mutex);
     if (g_card_a) g_card_a->shutdown();
 }
 
@@ -177,6 +182,8 @@ void exi_init() {
     const std::string path = g_memcard_path ? std::string(g_memcard_path)
                            : g_save_dir ? std::string(g_save_dir) + "/memcard_a.raw"
                                         : std::string("saves/memcard_a.raw");
+    std::lock_guard<std::mutex> lk(g_card_mutex);
+    g_card_a.reset();  // the old card saves what it hasn't before the new one reads the file
     g_card_a = std::make_unique<MemCard>(path, 4);
 }
 

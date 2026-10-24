@@ -4,10 +4,6 @@
 #include "memcard.h"
 #include <cstdio>
 #include <ctime>
-#ifndef _WIN32
-#include <csignal>
-#include <pthread.h>
-#endif
 
 enum : uint8_t {
     CMD_ID = 0x00, CMD_READ_ARRAY = 0x52, CMD_SET_INT = 0x81, CMD_READ_STATUS = 0x83, CMD_READ_ID = 0x85,
@@ -150,17 +146,9 @@ bool MemCard::write_file(const std::vector<uint8_t>& image) {
 
 // The saver: once the card has writes the file lacks, it waits until the guest has left the
 // card alone for quiet_, copies the card and writes the copy, so the guest never waits on
-// the file. Dolphin's raw card does the same on a fixed interval (GCMemcardRaw.cpp).
+// the file. Dolphin's raw card does the same on a fixed interval (GCMemcardRaw.cpp). It
+// never handles a signal: plat_install_crash_handlers blocks them before threads start.
 void MemCard::saver_main() {
-#ifndef _WIN32
-    // A signal for the process goes to some other thread: its handler may shut the card
-    // down, which waits for this one.
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, SIGINT);
-    sigaddset(&set, SIGTERM);
-    pthread_sigmask(SIG_BLOCK, &set, nullptr);
-#endif
     std::unique_lock<std::mutex> lk(mutex_);
     for (;;) {
         cv_.wait(lk, [this] { return dirty_ || stop_; });

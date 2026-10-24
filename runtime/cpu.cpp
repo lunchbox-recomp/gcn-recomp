@@ -70,6 +70,7 @@ void fatal(const char* fmt, ...) {
     }
     plat_backtrace_print();
     fflush(stderr);
+    plat_run_at_exit();  // a save the guest made just before this still reaches its file
     abort();
 }
 
