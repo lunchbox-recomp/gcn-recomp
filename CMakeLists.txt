@@ -382,16 +382,14 @@ function(gcn_add_game)
   # <build>/game_ldflags.txt is the game's link flags the same way: CMAKE_CXX_FLAGS and the
   # build type's (clang on macOS hands its -O to the linker, which then folds identical
   # functions), the platform's flags for linking an executable and CMAKE_EXE_LINKER_FLAGS and
-  # the build type's. The libraries are game_libs.txt (below). Without a build type the
-  # runtime would compile unoptimized and the game would link so, so a single-config
-  # configure needs one.
+  # the build type's. The libraries are game_libs.txt (below). A configure that names no
+  # build type gets RelWithDebInfo, which the game project's own CMakeLists may set first.
   get_property(_gcn_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
   if(NOT _gcn_multi_config)
     if(NOT CMAKE_BUILD_TYPE)
-      message(FATAL_ERROR
-        "CMAKE_BUILD_TYPE is empty, so the runtime would compile unoptimized and the game "
-        "would link so. Configure with -DCMAKE_BUILD_TYPE=RelWithDebInfo (or Release or "
-        "Debug), or set a default before calling gcn_add_game().")
+      set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING
+          "The build type: Debug, Release, RelWithDebInfo or MinSizeRel" FORCE)
+      message(STATUS "No CMAKE_BUILD_TYPE given, so the build type is RelWithDebInfo")
     endif()
     string(TOUPPER "${CMAKE_BUILD_TYPE}" _gcn_config)
     separate_arguments(_gcn_cflags UNIX_COMMAND "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_gcn_config}}")
@@ -863,8 +861,8 @@ function(gcn_add_game)
       add_test(NAME test_game_cflags COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
                -DFLAGS=${CMAKE_BINARY_DIR}/game_cflags.txt -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
                -P ${GCN_RECOMP_DIR}/tools/test_game_cflags.cmake)
-      # gcn_add_game()'s build type check (tools/test_game_build_type.cmake): a game
-      # configured with none stops. Needs the generator and the compilers.
+      # gcn_add_game()'s default build type (tools/test_game_build_type.cmake): a game
+      # configured with none gets RelWithDebInfo. Needs the generator and the compilers.
       add_test(NAME test_game_build_type COMMAND ${CMAKE_COMMAND} -DDIR=${GCN_RECOMP_DIR}
                "-DGENERATOR=${CMAKE_GENERATOR}" -DMAKE=${CMAKE_MAKE_PROGRAM}
                -DCC=${CMAKE_C_COMPILER} -DCXX=${CMAKE_CXX_COMPILER} "-DSYSROOT=${CMAKE_OSX_SYSROOT}"

@@ -1,9 +1,10 @@
-# gcn_add_game()'s build type check: the `test_game_build_type` test. Needs the generator and
-# compilers the build uses, and nothing of a game.
+# gcn_add_game()'s default build type: the `test_game_build_type` test. Needs the generator
+# and compilers the build uses, and nothing of a game.
 #
-# Configures a game project of its own, with no disc and no CMAKE_BUILD_TYPE, under a
-# single-config generator, and expects the configure to stop and say why before it fetches
-# anything.
+# Configures a game project of its own under a single-config generator, with no disc, no
+# CMAKE_BUILD_TYPE and only the benchmark (GCN_BENCH_ONLY), so nothing is fetched. The
+# configure has to say it chose RelWithDebInfo, keep it in the cache, and write
+# game_cflags.txt with RelWithDebInfo's C flags.
 #
 # usage: cmake -DDIR=<gcn-recomp> -DGENERATOR=<generator> -DMAKE=<its build tool>
 #        -DCC=<C compiler> -DCXX=<C++ compiler> [-DSYSROOT=<SDK>] -DWORK=<dir>
@@ -29,12 +30,27 @@ endif()
 execute_process(COMMAND "${CMAKE_COMMAND}" -S "${WORK}/project" -B "${WORK}/build" -G "${GENERATOR}"
                         "-DCMAKE_MAKE_PROGRAM=${MAKE}"
                         "-DCMAKE_C_COMPILER=${CC}" "-DCMAKE_CXX_COMPILER=${CXX}" ${sysroot}
-                        -DCMAKE_BUILD_TYPE= -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+                        -DCMAKE_BUILD_TYPE= -DGCN_BENCH_ONLY=ON -DFETCHCONTENT_FULLY_DISCONNECTED=ON
                 RESULT_VARIABLE result OUTPUT_VARIABLE out ERROR_VARIABLE err)
-if(result EQUAL 0)
-  message(FATAL_ERROR "FAIL: a configure with no build type went through:\n${out}")
+if(NOT result EQUAL 0)
+  message(FATAL_ERROR "FAIL: a configure with no build type exited ${result}:\n${err}")
 endif()
-if(NOT err MATCHES "CMAKE_BUILD_TYPE[ \n]+is[ \n]+empty")
-  message(FATAL_ERROR "FAIL: a configure with no build type stopped for something else:\n${err}")
+if(NOT out MATCHES "No CMAKE_BUILD_TYPE given, so the build type is RelWithDebInfo")
+  message(FATAL_ERROR "FAIL: a configure with no build type didn't say it chose one:\n${out}")
 endif()
-message(STATUS "ok  : a configure with no build type stops and says so")
+message(STATUS "ok  : a configure with no build type says it chose RelWithDebInfo")
+
+file(STRINGS "${WORK}/build/CMakeCache.txt" cache REGEX "^CMAKE_(BUILD_TYPE|C_FLAGS_RELWITHDEBINFO):")
+if(NOT "CMAKE_BUILD_TYPE:STRING=RelWithDebInfo" IN_LIST cache)
+  message(FATAL_ERROR "FAIL: the cache doesn't keep RelWithDebInfo:\n${cache}")
+endif()
+message(STATUS "ok  : the cache keeps RelWithDebInfo")
+
+list(FILTER cache INCLUDE REGEX "^CMAKE_C_FLAGS_RELWITHDEBINFO:")
+string(REGEX REPLACE "^[^=]*=" "" want "${cache}")
+file(READ "${WORK}/build/game_cflags.txt" cflags)
+string(FIND " ${cflags}" " ${want} " at)
+if(want STREQUAL "" OR at EQUAL -1)
+  message(FATAL_ERROR "FAIL: game_cflags.txt hasn't RelWithDebInfo's flags, ${want}:\n${cflags}")
+endif()
+message(STATUS "ok  : game_cflags.txt has RelWithDebInfo's flags, ${want}")
