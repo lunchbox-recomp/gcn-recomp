@@ -542,11 +542,11 @@ uint64_t clock_jumped_ticks() { return g_jumped_ticks; }
 // Apple platforms coalesce timers, letting a sleep end late by a share of its length that
 // the process's latency tier sets (the kern.timer_coalesce_tier* sysctls), up to half at
 // tier 2. In a hidden run the guest thread's 1 ms sleeps ended 0.26 ms late. So each sleep
-// is two thirds of the wait left beyond kSpinNs, at most kStepNs, and even half again as long
-// it ends before the last kSpinNs. The pacer waits at every event poll, about six times a
-// frame, so the spin is kept to kSpinNs and a sleep under kMinSleepNs is skipped. Android
-// sleeps the whole way in one go, as Dolphin does there by default, since a headset's cores
-// and battery are the tighter limit.
+// is two thirds of the wait left beyond kSpinNs, at most kStepNs, and even if it runs half
+// again as long, it ends before the last kSpinNs. The pacer waits at every event poll, about
+// six times a frame, so the spin is kept to kSpinNs and a sleep under kMinSleepNs is skipped.
+// Android sleeps the whole way in one go, as Dolphin does there by default, since a headset's
+// cores and battery are the tighter limit.
 //
 // pace_sleep_ns is how long the wait for `until` sleeps next at host time `now`, or 0 when
 // the spin takes over.

@@ -275,10 +275,11 @@ host threads, `gx-frontend`, `gx-transform`, and on a headset `xr-frame-loop`. T
 frontend hands those roles to the runtime as thread hints (`thread_hints` in vr.txt,
 `XR_KHR_android_thread_settings`); a Quest 3 accepts the main and renderer ones and refuses
 the workers. Turning them off and on made no difference to a replayed session's frame rate.
-On Apple platforms `plat_thread_role` puts the `guest` threads and `gx-frontend` at
-`QOS_CLASS_USER_INTERACTIVE`, the class an app's main thread has, so they go ahead of the
-host's other work at the default class when cores are short. The desktop frontend renders
-on the main thread, and `gx-transform` stays at the default. A refused class is logged once.
+On Apple platforms (timed only on macOS) `plat_thread_role` puts the `guest` threads and
+`gx-frontend` at `QOS_CLASS_USER_INTERACTIVE`, the class an app's main thread has, so they go
+ahead of the host's other work at the default class when cores are short. The desktop
+frontend renders on the main thread, and `gx-transform` stays at the default. A refused class
+is logged once.
 
 `GCN_XR_INPUT_LOG=1` (either frontend) prints every button action's state on change:
 *inactive* means the runtime has bound it to nothing present, which is how an API layer
@@ -369,9 +370,9 @@ scheduler gets back to the thread. Each sleep is two thirds of the wait left bey
 last 100 us, capped at 1 ms. A sleep under 50 us is skipped.
 
 The steps are for Apple platforms, which coalesce timers. A sleep there may end late by a
-share of its length, up to half of it at latency tier 2. On an idle M4 Max a 16 ms sleep
-ended up to 8 ms late, and in a hidden real-time run the guest thread's 1 ms sleeps ended a
-median 0.26 ms late.
+share of its length, up to half of it at latency tier 2. A small test program's 16 ms sleep
+on an idle M4 Max ended up to 8 ms late, while in a hidden real-time run the guest thread's
+1 ms sleeps ended a median 0.26 ms late, about a quarter of their length.
 
 `clock_pace` runs at every event poll and waits about six times a frame, so the spin adds
 up. In a real-time race on an M4 Max beside six busy processes it came to 0.78 ms a frame,
