@@ -534,28 +534,33 @@ static void clock_jump(uint64_t edges) {
 uint64_t clock_jumped_ticks() { return g_jumped_ticks; }
 
 // The pacer's wait. A sleep ends when the scheduler gets back to the thread, which is later
-// than asked, and the guest's next frame starts that much late. So it sleeps to kSpinNs short
-// of the time and spins the rest, as Dolphin's PrecisionTimer::SleepUntil does
-// (Common/Timer.cpp, with 1 ms and 20 us). The spin doesn't yield, since a yield on a busy
-// core hands it to whatever else is queued there.
+// than asked, and the guest's next frame starts that much late. So it sleeps toward the time
+// and spins the rest, as Dolphin's PrecisionTimer::SleepUntil does (Common/Timer.cpp, which
+// spins the last 1 ms and 20 us). The spin doesn't yield, since a yield on a busy core hands
+// it to whatever else is queued there.
 //
-// It sleeps in steps of kStepNs, as that function does on Windows. macOS coalesces timers,
-// letting a sleep end late by a share of its length that the process's latency tier sets
-// (the kern.timer_coalesce_tier* sysctls). At tier 2 that's half, and on an idle M4 Max a
-// 16 ms sleep ended up to 8 ms late at any thread QoS. A 1 ms step then ends at most 0.5 ms
-// late, which the spin covers. Android sleeps all the way in one go, as Dolphin does there by
-// default, since a headset's cores and battery are the tighter limit.
+// Apple platforms coalesce timers, letting a sleep end late by a share of its length that
+// the process's latency tier sets (the kern.timer_coalesce_tier* sysctls), up to half at
+// tier 2. In a hidden run the guest thread's 1 ms sleeps ended 0.26 ms late. So each sleep
+// is two thirds of the wait left beyond kSpinNs, at most kStepNs, and even half again as long
+// it ends before the last kSpinNs. The pacer waits at every event poll, about six times a
+// frame, so the spin is kept to kSpinNs and a sleep under kMinSleepNs is skipped. Android
+// sleeps the whole way in one go, as Dolphin does there by default, since a headset's cores
+// and battery are the tighter limit.
+//
+// pace_sleep_ns is how long the wait for `until` sleeps next at host time `now`, or 0 when
+// the spin takes over.
 #ifdef __ANDROID__
-static constexpr uint64_t kSpinNs = 0, kStepNs = UINT64_MAX;
+static uint64_t pace_sleep_ns(uint64_t now, uint64_t until) { return until > now ? until - now : 0; }
 #else
-static constexpr uint64_t kSpinNs = 1000000, kStepNs = 1000000;
-#endif
+static constexpr uint64_t kSpinNs = 100000, kStepNs = 1000000, kMinSleepNs = 50000;
 
-// How long the wait for `until` sleeps next, at host time `now`: a step, ending no later
-// than kSpinNs short of it, or 0 once it's that close and the spin takes over.
 static uint64_t pace_sleep_ns(uint64_t now, uint64_t until) {
-    return until > now + kSpinNs ? std::min(until - now - kSpinNs, kStepNs) : 0;
+    if (until <= now + kSpinNs) return 0;
+    const uint64_t ns = std::min((until - now - kSpinNs) * 2 / 3, kStepNs);
+    return ns >= kMinSleepNs ? ns : 0;
 }
+#endif
 
 static void wait_until_host(uint64_t until) {
     while (const uint64_t ns = pace_sleep_ns(host_ns(), until))

@@ -8,7 +8,7 @@
 // the clock less the total is then the guest's own running.
 //
 // Paced, clock_pace holds the guest's time to the host's by waiting whenever the guest gets
-// ahead. It sleeps in steps to a millisecond short of the time and spins the rest.
+// ahead. It sleeps in shrinking steps toward the time and spins the last of it.
 //
 // Under GCN_CLOCK=host the clock is the host's, less the time pauses held the guest
 // (clock_hold), so that the guest doesn't see a pause as time gone by. The last check runs
@@ -67,12 +67,15 @@ int main() {
         check(now_ticks() - clock_jumped_ticks() == g_ran, "the clock less the jumped total is the guest's own running", scale);
     }
 
-    // The pacer's sleeps on the way to a time 20 ms off: 1 ms steps, the last one ending 1 ms
-    // short of it, then none, which leaves the spin.
-    const uint64_t ms = 1000000;
-    const bool steps = pace_sleep_ns(0, 20 * ms) == ms && pace_sleep_ns(18 * ms + ms / 2, 20 * ms) == ms / 2 &&
-                       pace_sleep_ns(19 * ms, 20 * ms) == 0 && pace_sleep_ns(21 * ms, 20 * ms) == 0;
-    printf("%s: the pacer sleeps in 1 ms steps to 1 ms short of the time\n", steps ? "ok" : "FAIL");
+    // The pacer's sleeps on the way to a time 20 ms off. Each is two thirds of the wait left
+    // beyond its last 100 us, capped at 1 ms. One under 50 us is skipped, leaving the spin.
+    const uint64_t ms = 1000000, us = 1000;
+    const bool steps = pace_sleep_ns(0, 20 * ms) == ms && pace_sleep_ns(19 * ms, 20 * ms) == 600 * us &&
+                       pace_sleep_ns(20 * ms - 175 * us, 20 * ms) == 50 * us &&
+                       pace_sleep_ns(20 * ms - 174 * us, 20 * ms) == 0 &&
+                       pace_sleep_ns(20 * ms - 100 * us, 20 * ms) == 0 && pace_sleep_ns(21 * ms, 20 * ms) == 0;
+    printf("%s: the pacer sleeps two thirds of the wait beyond its last 100 us, from 50 us to 1 ms\n",
+           steps ? "ok" : "FAIL");
     if (!steps) g_failed++;
 
     // The paced clock 20 ms ahead of the host, five times. clock_pace returns once the host
