@@ -10,6 +10,105 @@ function(_gcn_set_standards target)
   set_target_properties(${target} PROPERTIES C_STANDARD 11 CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 endfunction()
 
+# Appends link option OPT to the list OUT as it goes on a link line: LINKER:a,b through the
+# compiler's linker wrapper flag, SHELL:a b split into arguments, anything else as it is.
+function(_gcn_link_option out opt)
+  set(items ${${out}})
+  if(opt MATCHES "\\$<")
+    message(FATAL_ERROR "game_libs.txt: can't write the link option ${opt}")
+  elseif(opt MATCHES "^LINKER:(.*)")
+    string(REPLACE "," ";" parts "${CMAKE_MATCH_1}")
+    set(wrap ${CMAKE_CXX_LINKER_WRAPPER_FLAG})
+    list(GET wrap 0 flag)
+    if(CMAKE_CXX_LINKER_WRAPPER_FLAG_SEP)
+      list(JOIN parts "${CMAKE_CXX_LINKER_WRAPPER_FLAG_SEP}" joined)
+      list(APPEND items "${flag}${joined}")
+    else()
+      list(LENGTH wrap n)
+      foreach(p IN LISTS parts)
+        if(n GREATER 1)  # "-Xlinker" " ": the flag and its value are two arguments
+          list(APPEND items "${flag}" "${p}")
+        else()
+          list(APPEND items "${flag}${p}")
+        endif()
+      endforeach()
+    endif()
+  elseif(opt MATCHES "^SHELL:(.*)")
+    separate_arguments(flags UNIX_COMMAND "${CMAKE_MATCH_1}")
+    list(APPEND items ${flags})
+  else()
+    list(APPEND items "${opt}")
+  endif()
+  set(${out} ${items} PARENT_SCOPE)
+endfunction()
+
+# Appends to the list OUT what ITEMS, given as target_link_libraries() takes them, put on a
+# link line: a name becomes -l<name>, a link feature ($<LINK_LIBRARY:FRAMEWORK,Cocoa>) what
+# the platform defines it as, and a target its interface's libraries and options, the same
+# way down. A library a target of this build makes is left out, so the caller links that file
+# from wherever it put it. An imported library's file goes in. Anything else stops the
+# configure, so the list is whole or there is none.
+function(_gcn_link_line out)
+  set(items ${${out}})
+  foreach(item IN LISTS ARGN)
+    while(item MATCHES "^\\$<(LINK_ONLY|BUILD_INTERFACE|TARGET_NAME):(.*)>$")
+      set(item "${CMAKE_MATCH_2}")
+    endwhile()
+    if(item MATCHES "^\\$<INSTALL_INTERFACE:")
+      continue()
+    elseif(item MATCHES "^\\$<LINK_LIBRARY:([A-Z_]+),([^,>]+)>$")
+      set(name "${CMAKE_MATCH_2}")
+      set(how "${CMAKE_LINK_LIBRARY_USING_${CMAKE_MATCH_1}}")
+      if(NOT how)
+        message(FATAL_ERROR "game_libs.txt: this platform defines no link feature for ${item}")
+      endif()
+      if(how MATCHES "NAME{([^}]*)}")  # PATH{...}NAME{...}: the item is a name
+        set(how "${CMAKE_MATCH_1}")
+      endif()
+      string(REPLACE "<LIBRARY>" "${name}" how "${how}")
+      _gcn_link_option(items "${how}")
+    elseif(TARGET "${item}")
+      get_target_property(real "${item}" ALIASED_TARGET)
+      if(real)
+        set(item "${real}")
+      endif()
+      get_target_property(type "${item}" TYPE)
+      get_target_property(imported "${item}" IMPORTED)
+      if(imported AND NOT type STREQUAL "INTERFACE_LIBRARY")
+        list(APPEND items "$<TARGET_LINKER_FILE:${item}>")
+      endif()
+      get_target_property(libs "${item}" INTERFACE_LINK_LIBRARIES)
+      if(libs)
+        _gcn_link_line(items ${libs})
+      endif()
+      get_target_property(opts "${item}" INTERFACE_LINK_OPTIONS)
+      if(opts)
+        foreach(o IN LISTS opts)
+          _gcn_link_option(items "${o}")
+        endforeach()
+      endif()
+      get_target_property(dirs "${item}" INTERFACE_LINK_DIRECTORIES)
+      if(dirs)
+        foreach(d IN LISTS dirs)
+          _gcn_link_option(items "${CMAKE_LIBRARY_PATH_FLAG}${d}")
+        endforeach()
+      endif()
+    elseif(item MATCHES "\\$<")
+      message(FATAL_ERROR "game_libs.txt: can't write the link item ${item}")
+    elseif(item MATCHES "^-")
+      separate_arguments(flags UNIX_COMMAND "${item}")
+      list(APPEND items ${flags})
+    elseif(IS_ABSOLUTE "${item}")
+      list(APPEND items "${item}")
+    elseif(item MATCHES "^[A-Za-z0-9_.+-]+$")
+      list(APPEND items "${CMAKE_LINK_LIBRARY_FLAG}${item}${CMAKE_LINK_LIBRARY_SUFFIX}")
+    else()
+      message(FATAL_ERROR "game_libs.txt: can't write the link item ${item}")
+    endif()
+  endforeach()
+  set(${out} ${items} PARENT_SCOPE)
+endfunction()
+
 # GCN_BENCH_ONLY builds just the headless benchmark: no renderer, no SDL, no GL. That
 # is what a cross-build for a device uses, since it only needs a C++ toolchain and the
 # recompiled code.
@@ -280,13 +379,29 @@ function(gcn_add_game)
   # the build type's, the C standard _gcn_set_standards asks for (C11, with CMake's default
   # GNU extensions) and the flags above, in the order CMake passes them. A multi-config
   # generator's flags differ by configuration, so it writes none.
+  # <build>/game_ldflags.txt is the game's link flags the same way: CMAKE_CXX_FLAGS and the
+  # build type's (clang on macOS hands its -O to the linker, which then folds identical
+  # functions), the platform's flags for linking an executable and CMAKE_EXE_LINKER_FLAGS and
+  # the build type's. The libraries are game_libs.txt (below). Without a build type the
+  # runtime would compile unoptimized and the game would link so, so a single-config
+  # configure needs one.
   get_property(_gcn_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
   if(NOT _gcn_multi_config)
+    if(NOT CMAKE_BUILD_TYPE)
+      message(FATAL_ERROR
+        "CMAKE_BUILD_TYPE is empty, so the runtime would compile unoptimized and the game "
+        "would link so. Configure with -DCMAKE_BUILD_TYPE=RelWithDebInfo (or Release or "
+        "Debug), or set a default before calling gcn_add_game().")
+    endif()
     string(TOUPPER "${CMAKE_BUILD_TYPE}" _gcn_config)
     separate_arguments(_gcn_cflags UNIX_COMMAND "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${_gcn_config}}")
     list(APPEND _gcn_cflags ${CMAKE_C11_EXTENSION_COMPILE_OPTION} ${GCN_GAME_C_FLAGS})
     list(JOIN _gcn_cflags " " _gcn_cflags)
     file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/game_cflags.txt CONTENT "${_gcn_cflags}\n")
+    separate_arguments(_gcn_ldflags UNIX_COMMAND
+      "${CMAKE_CXX_FLAGS} ${CMAKE_CXX_FLAGS_${_gcn_config}} ${CMAKE_CXX_LINK_FLAGS} ${CMAKE_EXE_LINKER_FLAGS} ${CMAKE_EXE_LINKER_FLAGS_${_gcn_config}}")
+    list(JOIN _gcn_ldflags " " _gcn_ldflags)
+    file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/game_ldflags.txt CONTENT "${_gcn_ldflags}\n")
   endif()
 
   # ---- Recompiled game code ----
@@ -488,6 +603,17 @@ function(gcn_add_game)
   else()
     find_package(OpenGL REQUIRED)
     list(APPEND GCN_PLATFORM_LIBS OpenGL::GL)
+  endif()
+
+  # <build>/game_libs.txt is what the game links after its own libraries and SDL's, on one
+  # line: the libraries above and SDL's dependencies, as _gcn_link_line writes them (the
+  # frameworks on macOS). The SDL library itself is in it only when it was installed, not
+  # built here. Single-config only, as game_cflags.txt.
+  if(GCN_SDL_TARGET AND NOT _gcn_multi_config)
+    set(_gcn_libs "")
+    _gcn_link_line(_gcn_libs ${GCN_PLATFORM_LIBS} ${GCN_SDL_TARGET})
+    list(JOIN _gcn_libs " " _gcn_libs)
+    file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/game_libs.txt CONTENT "${_gcn_libs}\n")
   endif()
 
   # What the runtime knows about the game it was built for. The image, the label and the
@@ -737,6 +863,15 @@ function(gcn_add_game)
       add_test(NAME test_game_cflags COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
                -DFLAGS=${CMAKE_BINARY_DIR}/game_cflags.txt -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_cflags.c
                -P ${GCN_RECOMP_DIR}/tools/test_game_cflags.cmake)
+      # gcn_add_game()'s build type check (tools/test_game_build_type.cmake): a game
+      # configured with none stops. Needs the generator and the compilers.
+      add_test(NAME test_game_build_type COMMAND ${CMAKE_COMMAND} -DDIR=${GCN_RECOMP_DIR}
+               "-DGENERATOR=${CMAKE_GENERATOR}" -DMAKE=${CMAKE_MAKE_PROGRAM}
+               -DCC=${CMAKE_C_COMPILER} -DCXX=${CMAKE_CXX_COMPILER} "-DSYSROOT=${CMAKE_OSX_SYSROOT}"
+               -DWORK=${_unit_work}/test_game_build_type
+               -P ${GCN_RECOMP_DIR}/tools/test_game_build_type.cmake)
+      set_tests_properties(test_game_build_type PROPERTIES FIXTURES_REQUIRED unit_dirs)
+      list(APPEND _unit_dirs ${_unit_work}/test_game_build_type)
     endif()
     # runtime_check's engine commit (tools/test_runtime_engine_sha.cmake): its include path
     # reaches the gcn_engine_sha.h that `unit` has written. Needs the C++ compiler and git.
@@ -748,6 +883,41 @@ function(gcn_add_game)
       set_tests_properties(test_runtime_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
       list(APPEND _unit_dirs ${_unit_work}/test_runtime_engine_sha)
     endif()
+    # game_ldflags.txt's and game_libs.txt's checks (tools/test_game_link.cmake): a program
+    # that calls SDL and GL links with them, after the SDL library this build made, and runs.
+    if(NOT _gcn_multi_config AND GCN_SDL_TARGET)
+      set(_link_sdl "")
+      get_target_property(_sdl ${GCN_SDL_TARGET} ALIASED_TARGET)
+      if(NOT _sdl)
+        set(_sdl ${GCN_SDL_TARGET})
+      endif()
+      get_target_property(_sdl_imported ${_sdl} IMPORTED)
+      if(NOT _sdl_imported)
+        set(_link_sdl "-DSDL=$<TARGET_LINKER_FILE:${_sdl}>")
+      endif()
+      set(_link_target "")
+      if(APPLE)
+        foreach(_arch ${CMAKE_OSX_ARCHITECTURES})
+          list(APPEND _link_target -arch ${_arch})
+        endforeach()
+        if(CMAKE_OSX_SYSROOT)
+          list(APPEND _link_target -isysroot ${CMAKE_OSX_SYSROOT})
+        endif()
+        if(CMAKE_OSX_DEPLOYMENT_TARGET)
+          list(APPEND _link_target ${CMAKE_C_OSX_DEPLOYMENT_TARGET_FLAG}${CMAKE_OSX_DEPLOYMENT_TARGET})
+        endif()
+      endif()
+      list(JOIN _link_target "|" _link_target)
+      separate_arguments(_link_build UNIX_COMMAND "${CMAKE_CXX_FLAGS_${_gcn_config}}")
+      list(JOIN _link_build "|" _link_build)
+      add_test(NAME test_game_link COMMAND ${CMAKE_COMMAND} -DCC=${CMAKE_C_COMPILER}
+               -DCXX=${CMAKE_CXX_COMPILER} -DLDFLAGS=${CMAKE_BINARY_DIR}/game_ldflags.txt
+               -DLIBS=${CMAKE_BINARY_DIR}/game_libs.txt ${_link_sdl} "-DTARGET_FLAGS=${_link_target}"
+               "-DBUILD_FLAGS=${_link_build}" -DSOURCE=${GCN_RECOMP_DIR}/tools/test_game_link.c
+               -DWORK=${_unit_work}/test_game_link -P ${GCN_RECOMP_DIR}/tools/test_game_link.cmake)
+      set_tests_properties(test_game_link PROPERTIES FIXTURES_REQUIRED unit_dirs)
+      list(APPEND _unit_dirs ${_unit_work}/test_game_link)
+    endif()
     add_test(NAME unit_clean COMMAND ${CMAKE_COMMAND} -E rm -rf ${_unit_dirs})
     set_tests_properties(unit_clean PROPERTIES FIXTURES_SETUP unit_dirs)
     add_custom_target(unit
@@ -757,6 +927,9 @@ function(gcn_add_game)
     add_dependencies(unit ${_unit_plain} ${_unit_in_dir})
     if(TARGET runtime_check)
       add_dependencies(unit gcn_engine_sha)
+    endif()
+    if(TEST test_game_link AND NOT _sdl_imported)
+      add_dependencies(unit ${_sdl})
     endif()
   endif()
 
