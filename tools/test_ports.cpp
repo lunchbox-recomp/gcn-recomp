@@ -10,12 +10,15 @@
 // ffb_update, ffb_shutdown; ffb_update keeps the motor it was given), the RTC
 // (rtc_set_base), the event queue and interrupt request (event_schedule_in, irq_request),
 // and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a check sets
-// by hand.
+// by hand. The interrupt handler's thread dump (debug_dump_threads) and guest memory
+// (g_mem) are stubbed too.
 //
 // usage: test_ports <empty work dir>            the port checks
 //        test_ports --record <empty work dir>   two gamepads, played and logged
 //        test_ports --replay <that work dir>    that log replayed with none
 //        test_ports --replay-no-sram <that work dir>   that log again, its SRAM snapshot gone
+//        test_ports --interrupt <empty work dir>   the interrupt handler run beside the
+//                                                  main loop, which ends the process
 // Files are written into the work dir and left there.
 #define main gcn_frontend_main
 #include "main.cpp"
@@ -41,6 +44,8 @@ void ffb_configure(const FfbSettings&) {}
 void ffb_attach(SDL_Joystick*, int, float) {}
 void ffb_update(bool motor) { g_ffb_motor = motor ? 1 : 0; }
 void ffb_shutdown() {}
+uint8_t* g_mem;  // on_interrupt's GCN_RAM_DUMP, which nothing here sets
+void debug_dump_threads() {}
 
 namespace {
 
@@ -892,6 +897,38 @@ int run_replay_without_sram(const std::string& dir) {
     return finish("--replay-no-sram");
 }
 
+// ---- An interrupt runs on a thread of its own (plat_install_crash_handlers), so it stops
+// the gamepads' rumble while the main loop may still be running frames.
+Virtual* g_rumbling;
+
+// The interrupt's plat_exit_now runs this last, after the gamepads have been shut down.
+void after_interrupt() {
+    check(g_rumbling->stops > 0, "an interrupt on its own thread stops a rumbling gamepad while frames run");
+    printf("test_ports --interrupt: %d of %d checks passed\n", g_checks - g_failed, g_checks);
+    fflush(stdout);
+    _exit(g_failed ? 1 : 0);
+}
+
+int run_interrupt(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    input_map_load((dir + "/no-controls.txt").c_str());
+    power_on(1);
+    gamepads_init();
+    Virtual a{"virtual pad a"};
+    attach(a);
+    frame();
+    g_outbuf[0] = 0x00400001;  // port 1's motor on from here
+    frame();
+    check(a.rumbles == 1 && a.stops == 0, "port 1's motor rumbles its gamepad");
+    g_rumbling = &a;
+    plat_at_exit(after_interrupt);
+    std::thread(on_interrupt).detach();
+    // The interrupt ends the process, or its 2 s watchdog does.
+    for (const Uint64 give_up = SDL_GetTicks() + 5000; SDL_GetTicks() < give_up;) frame();
+    check(false, "the interrupt ends the process");
+    return finish("--interrupt");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -899,6 +936,7 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay-no-sram")) return run_replay_without_sram(argv[2]);
-    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram] <work dir>\n");
+    if (argc == 3 && !strcmp(argv[1], "--interrupt")) return run_interrupt(argv[2]);
+    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--interrupt] <work dir>\n");
     return 2;
 }
