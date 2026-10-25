@@ -578,8 +578,12 @@ The sound ring isn't told about a pause. It plays out its cushion and fades as i
 then fades back in once the cushion has refilled after the resume, as after any stall. Under
 `GCN_AUDIOSTATS` a pause shows as a run of `[audio] underrun` lines from where the ring ran
 dry, and an `[audio] output frame F plays DMA frame D` line where it plays again ("The sound
-device", below). DVD streamed music is mixed on the audio thread and isn't held, so a game
-that streams its music plays on through a pause.
+device", below).
+
+DVD streamed music is held with the guest. The audio thread reads `paused()`, fades the music
+out over 5 ms as the ring does when it runs dry, then keeps it silent with its place on the
+disc unmoved. The resume fades it back in over 8 ms from the same sample, and a pause that's
+asked for but not yet held leaves it playing.
 
 ## The AX mixer
 

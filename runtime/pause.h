@@ -17,6 +17,10 @@
 // The sound ring isn't told. Nothing new reaches it while the guest is held, so it plays
 // out what it has, fades as it runs dry and fades back in once the cushion has refilled
 // after the resume (audio.cpp), as after any stall.
+//
+// DVD streamed music (DTK) is held with the guest. The audio thread reads paused(), fades the
+// music out over the ring's dry fade and keeps it silent and still. On the resume it fades
+// back in over the ring's rise fade from the same sample (audio.cpp).
 #pragma once
 #include <chrono>
 #include <cstdint>
