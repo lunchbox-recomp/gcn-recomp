@@ -261,7 +261,7 @@ bool matches(const Pcm& got, size_t from, size_t to, const Pcm& ref, size_t ref_
     return true;
 }
 
-// The largest step between neighbouring left samples in [from, to).
+// The largest step between neighboring left samples in [from, to).
 int worst_step(const Pcm& p, size_t from, size_t to) {
     int w = 0;
     for (size_t i = from + 1; i < to; i++) w = std::max(w, std::abs(p.l[i] - p.l[i - 1]));
@@ -272,19 +272,26 @@ int worst_step(const Pcm& p, size_t from, size_t to) {
 // release, each of `pull` frames, set against the same stream run without a hold. The music
 // fades out over the first kDryFade frames of the hold, so the run with no hold plays on that
 // far past the hold's start, and the released music picks up there.
-void dtk_hold_run(int pull, int pre, int held, int post, bool flat) {
-    char what[160];
-    const char* kind = flat ? "flat" : "varied";
+void dtk_hold_run(int pull, int pre, int held, int post, bool flat, uint32_t rate = 32000, uint32_t vol_left = 255,
+                  uint32_t vol_right = 255) {
+    char what[160], kind[64];
+    snprintf(kind, sizeof kind, "%s", flat ? "flat" : "varied");
+    if (rate != 32000) snprintf(kind + strlen(kind), sizeof kind - strlen(kind), ", %u Hz", rate);
+    if (vol_left != 255 || vol_right != 255)
+        snprintf(kind + strlen(kind), sizeof kind - strlen(kind), ", volume %u/%u", vol_left, vol_right);
+    g_vol_left = vol_left;
+    g_vol_right = vol_right;
     const int lead = pre * pull, hold = held * pull, tail = post * pull;
     const int fade_pulls = (kDryFade + pull - 1) / pull;
     const size_t at_hold = lead, quiet = lead + kDryFade, at_release = lead + hold;
 
-    dtk_start(32000, 400, flat);
+    dtk_start(rate, 400, flat);
     Pcm ref;
     dtk_play(ref, lead + kDryFade + tail, pull);
     const DtkAt ref_end = dtk_at();
+    const uint64_t ref_advanced = g_advanced;
 
-    dtk_start(32000, 400, flat);
+    dtk_start(rate, 400, flat);
     Pcm got;
     dtk_play(got, lead, pull);
     const DtkAt before = dtk_at();
@@ -325,13 +332,16 @@ void dtk_hold_run(int pull, int pre, int held, int post, bool flat) {
     snprintf(what, sizeof what, "%s, pulls of %d, the release fades the music in linearly over %d frames", kind, pull, kRiseFade);
     check(matches(got, at_release, at_release + kRiseFade, ref, quiet, [](size_t j) { return std::pair{(int)j + 1, kRiseFade}; }),
           what);
-    snprintf(what, sizeof what, "%s, pulls of %d, the music goes on from the same block, as if it had not been held", kind, pull);
+    snprintf(what, sizeof what, "%s, pulls of %d, the music goes on from the same block, as if it hadn't been held", kind, pull);
     check(matches(got, at_release + kRiseFade, got.l.size(), ref, quiet + kRiseFade, [](size_t) { return std::pair{1, 1}; }),
           what);
     snprintf(what, sizeof what, "%s, pulls of %d, the stream ends where a run with no hold, the same length of music, does", kind, pull);
     check(dtk_at() == ref_end, what);
     snprintf(what, sizeof what, "%s, pulls of %d, ai_stream_advance is told of samples again after the release", kind, pull);
     check(g_advanced > advanced_held, what);
+    // The static fraction it carries from one run to the next can move the total by one.
+    snprintf(what, sizeof what, "%s, pulls of %d, the samples ai_stream_advance is told of add up to a run with no hold's", kind, pull);
+    check(std::llabs((long long)g_advanced - (long long)ref_advanced) <= 1, what);
 
     if (!flat) return;
     // On a flat stream the fades are a line, and a click is a step bigger than its slope. A
@@ -348,6 +358,85 @@ void dtk_hold_run(int pull, int pre, int held, int post, bool flat) {
     check(worst_step(got, at_hold - 1, quiet + 1) <= bar_out && got.l[at_hold - 1] == level, what);
     snprintf(what, sizeof what, "%s, pulls of %d, nothing steps out of the silence, through the fade-in or out of it", kind, pull);
     check(worst_step(got, at_release - 1, at_release + kRiseFade + 1) <= bar_in && got.l[at_release + kRiseFade] == level, what);
+}
+
+// `pulls` pulls with the guest held, or let go.
+struct Leg {
+    bool held;
+    int pulls;
+};
+
+// What a script's gain did, so a check can tell its pauses were the kind it meant.
+struct Walk {
+    bool part_way = false;     // a hold ended before the gain reached 0
+    bool in_the_rise = false;  // a hold began with the gain between 0 and 1
+    bool reached_zero = false;
+};
+
+// The stream through a script of holds and releases, in pulls of `pull` frames, against what
+// the fades must make of it. A frame plays the stream's next frame at a gain that falls 1/kDryFade
+// of the way to 0 in a held frame and rises 1/kRiseFade of the way to 1 in any other. A held
+// frame at gain 0 plays nothing and uses no frame, so a pause shorter than the fade stops
+// part way, and one that comes in the rise falls from where the rise had got.
+Walk dtk_script(const char* name, int pull, uint32_t rate, uint32_t vol_left, uint32_t vol_right, const std::vector<Leg>& script) {
+    char what[200];
+    constexpr int kFull = kDryFade * kRiseFade;  // the gain's 1, so each step is a whole number
+    g_vol_left = vol_left;
+    g_vol_right = vol_right;
+    int frames = 0;
+    for (const Leg& leg : script) frames += leg.pulls * pull;
+
+    dtk_start(rate, 400, false);
+    Pcm ref;
+    dtk_play(ref, frames, pull);
+
+    Walk walk;
+    Pcm want;
+    int gain = kFull;
+    size_t used = 0;
+    for (const Leg& leg : script) {
+        if (leg.held && gain > 0 && gain < kFull) walk.in_the_rise = true;
+        for (int i = 0; i < leg.pulls * pull; i++) {
+            if (leg.held && gain == 0) {
+                want.l.push_back(0);
+                want.r.push_back(0);
+                continue;
+            }
+            gain = leg.held ? std::max(0, gain - kRiseFade) : std::min(kFull, gain + kDryFade);
+            walk.reached_zero = walk.reached_zero || gain == 0;
+            want.l.push_back(scaled(ref.l[used], gain, kFull));
+            want.r.push_back(scaled(ref.r[used], gain, kFull));
+            used++;
+        }
+        if (leg.held && gain > 0) walk.part_way = true;
+    }
+
+    dtk_start(rate, 400, false);
+    Pcm got;
+    for (const Leg& leg : script) {
+        if (!leg.held) {
+            dtk_play(got, leg.pulls * pull, pull);
+            continue;
+        }
+        HeldGuest guest;
+        dtk_play(got, leg.pulls * pull, pull);
+        guest.release();
+    }
+    const DtkAt got_end = dtk_at();
+    const uint64_t got_advanced = g_advanced;
+
+    dtk_start(rate, 400, false);
+    Pcm plain;
+    dtk_play(plain, (int)used, pull);
+
+    snprintf(what, sizeof what, "%s, the music is the stream at the gain the fades give, frame by frame", name);
+    check(got.l == want.l && got.r == want.r, what);
+    snprintf(what, sizeof what, "%s, the stream ends where a run with no hold does after the frames it played", name);
+    check(got_end == dtk_at(), what);
+    snprintf(what, sizeof what, "%s, the samples ai_stream_advance is told of add up to that run's", name);
+    check(std::llabs((long long)got_advanced - (long long)g_advanced) <= 1, what);
+    g_vol_left = g_vol_right = 255;
+    return walk;
 }
 
 // A pause that's asked for and not held yet leaves the guest running, so the music plays on.
@@ -402,6 +491,24 @@ void dtk_hold_checks() {
     dtk_hold_run(512, 3, 6, 8, false);
     dtk_hold_run(37, 40, 70, 120, false);
     dtk_hold_run(100, 15, 30, 50, true);
+    dtk_hold_run(100, 15, 30, 50, false, 48000);
+    dtk_hold_run(37, 40, 70, 120, false, 32000, 200, 100);
+    g_vol_left = g_vol_right = 255;
+
+    // A pause shorter than the fade, and one that comes during the rise. Each has to fall
+    // from the gain it finds to exactly 0 or stop where it is, and rise again from there.
+    Walk walk = dtk_script("a pause of 100 frames", 100, 32000, 255, 255, {{false, 10}, {true, 1}, {false, 12}});
+    check(walk.part_way && !walk.reached_zero, "a pause of 100 frames ends before the fade does");
+    walk = dtk_script("a pause in the rise", 100, 32000, 255, 255,
+                      {{false, 10}, {true, 24}, {false, 1}, {true, 24}, {false, 10}});
+    check(walk.in_the_rise && walk.reached_zero, "a pause in the rise falls from the gain the rise had reached to 0");
+    walk = dtk_script("a pause of 111 frames at 48 kHz, volume 200/100", 37, 48000, 200, 100,
+                      {{false, 30}, {true, 3}, {false, 20}});
+    check(walk.part_way && !walk.reached_zero, "a pause of 111 frames ends before the fade does");
+    walk = dtk_script("a pause in the rise at 48 kHz, volume 200/100", 37, 48000, 200, 100,
+                      {{false, 30}, {true, 40}, {false, 3}, {true, 40}, {false, 20}});
+    check(walk.in_the_rise && walk.reached_zero, "a pause in the rise at 48 kHz falls from the gain the rise had reached to 0");
+
     dtk_asked_not_held();
     // Taken from the mix before it knew of a hold. Printed when it differs.
     constexpr uint64_t kUnheldHash = 0x4f1ce1ed9911c824ull;
