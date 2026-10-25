@@ -68,9 +68,10 @@ std::string ports_format(const SavedPorts& saved);
 // `name` on stderr.
 SavedPorts ports_parse(const std::string& text, const char* name);
 
-// The ports in the file at `path`. A missing file gives none, and so does one that can't be
-// read, with a line on stderr.
-SavedPorts ports_load(const std::string& path);
+// The ports in the file at `path`. A missing file gives none. So does one that exists and
+// can't be read, with a line on stderr, and `readable` is false then so that the caller
+// doesn't save over what it couldn't read. A missing file is readable.
+SavedPorts ports_load(const std::string& path, bool& readable);
 // Writes `saved` to `path`, making its directory if need be. The new file goes to
 // `path`.tmp and is renamed over `path`, so a save that fails leaves the old file whole.
 // False, with the reason on stderr, if it failed.

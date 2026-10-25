@@ -42,7 +42,8 @@ void gamepads_load_mappings();
 // Where the saved ports are kept (port_memory.h), or nowhere for null or empty, which is
 // how a program starts. The file is read when a gamepad first needs a port and written when
 // one lands on a port the file doesn't have it on, so a launch with no gamepad touches
-// nothing. Call it before gamepads_init.
+// nothing. A file that exists and can't be read is never written over. Call it before
+// gamepads_init.
 void gamepads_remember(const char* path);
 // After SDL_Init with SDL_INIT_GAMEPAD. Takes the gamepads already connected. Saved ports
 // go to their gamepads first, and the others follow in SDL's order.

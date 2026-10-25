@@ -1054,6 +1054,38 @@ void memory_no_pads(const std::string& dir, const std::string& file) {
     gamepads_shutdown();
 }
 
+// A ports.txt that exists and can't be read isn't saved over. The gamepads still land, with
+// nothing remembered, and the file is as it was when they have.
+void memory_unreadable(const std::string& dir, const std::string& file) {
+    plat_make_dirs(dir + "/saves");
+    write_file(file, "1 " + std::string(32, 'a') + " - 0000:0000\n");
+    const uint64_t before = file_id(file);
+    const std::string kept = read_file(file);
+    if (chmod(file.c_str(), 0) != 0 || access(file.c_str(), R_OK) == 0) {
+        chmod(file.c_str(), 0644);
+        printf("this account reads files whatever their mode, so the unreadable ports.txt check didn't run\n");
+        return;
+    }
+    gamepads_remember(file.c_str());
+    power_on(1);
+    gamepads_init();
+    Virtual a{"virtual pad locked a"}, b{"virtual pad locked b"};
+    const std::string said = dir + "/memory-unreadable-stderr.txt";
+    capture(said, [&] {
+        attach(a);
+        frame();
+        attach(b);
+        frame();
+    });
+    chmod(file.c_str(), 0644);
+    check(port(a) == 1 && port(b) == 2 && lines_with(said, "can't read it") == 1 && file_id(file) == before &&
+              read_file(file) == kept && !exists_path(file + ".tmp"),
+          "a ports.txt that can't be read is said once, the gamepads still take ports 1 and 2, and nothing is written");
+    unplug({&a, &b});
+    gamepads_shutdown();
+    remove(file.c_str());
+}
+
 int run_ports(const std::string& dir) {
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
@@ -1085,6 +1117,7 @@ int run_ports(const std::string& dir) {
     memory_pinned(dir, file);
     memory_file(dir, file);
     memory_no_pads(dir, file);
+    memory_unreadable(dir, file);
     return finish("ports");
 }
 

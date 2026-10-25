@@ -290,20 +290,39 @@ void parse_last_line_wins() {
 
 // ---- The file
 
+SavedPorts load(const std::string& path) {
+    bool readable;
+    return ports_load(path, readable);
+}
+
 void load_missing() {
-    check(ports_load(path_of("missing.txt")) == SavedPorts{}, "a missing file gives no ports");
+    bool readable = false;
+    check(ports_load(path_of("missing.txt"), readable) == SavedPorts{} && readable, "a missing file gives no ports, and is readable");
     check(!exists(path_of("missing.txt")), "and doesn't make one");
 }
 
 void load_unreadable() {
+    // A directory where the file should be can be opened but not read, whoever is running this.
+    const std::string dir = path_of("dir-for-file.txt");
+    mkdir(dir.c_str(), 0755);
+    bool readable = true;
+    std::string said = stderr_of([&] { check(ports_load(dir, readable) == SavedPorts{}, "a file that can't be read gives no ports"); });
+    check(!readable && contains(said, "can't read it (") && contains(said, "isn't saved over"),
+          "and isn't readable, with a line that says why and that nothing will be saved over it");
+    check(std::count(said.begin(), said.end(), '\n') == 1, "that one line is all it says");
+    rmdir(dir.c_str());
+
     const std::string p = path_of("locked.txt");
     write_file(p, "1 " + guid('a') + " - 045e:0b13\n");
     if (chmod(p.c_str(), 0) != 0 || access(p.c_str(), R_OK) == 0) {
-        printf("skip load_unreadable: this account reads files whatever their mode\n");
+        printf("skip locked file: this account reads files whatever their mode\n");
         return;
     }
-    check(ports_load(p) == SavedPorts{}, "a file that can't be read gives no ports");
+    readable = true;
+    said = stderr_of([&] { check(ports_load(p, readable) == SavedPorts{}, "a file without read permission gives no ports"); });
+    check(!readable && contains(said, strerror(EACCES)), "and isn't readable, with the reason");
     chmod(p.c_str(), 0644);
+    check(load(p) == saved_of({{0, device('a')}}), "and reads once it can be");
 }
 
 void save_and_load() {
@@ -311,9 +330,9 @@ void save_and_load() {
     SavedPorts saved = saved_of({{1, device('a', "SN-1")}, {3, device('b')}});
     check(!exists(path_of("saves")) && ports_save(p, saved), "a save makes the directory that holds the file");
     check(read_file(p) == ports_format(saved) && !exists(p + ".tmp"), "the file holds the formatted ports, and no temp file is left");
-    check(ports_load(p) == saved, "and loads back to the same ports");
+    check(load(p) == saved, "and loads back to the same ports");
     saved[0] = device('c');
-    check(ports_save(p, saved) && ports_load(p) == saved && !exists(p + ".tmp"), "a second save replaces the file");
+    check(ports_save(p, saved) && load(p) == saved && !exists(p + ".tmp"), "a second save replaces the file");
 }
 
 void failed_save_leaves_old_file() {

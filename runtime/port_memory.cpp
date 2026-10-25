@@ -209,22 +209,24 @@ SavedPorts ports_parse(const std::string& text, const char* name) {
     return saved;
 }
 
-SavedPorts ports_load(const std::string& path) {
-    FILE* f = fopen(path.c_str(), "rb");
-    if (!f) {
-        if (errno != ENOENT) fprintf(stderr, "%s: can't read it (%s), so no ports are remembered\n", path.c_str(), strerror(errno));
+SavedPorts ports_load(const std::string& path, bool& readable) {
+    readable = true;
+    auto refuse = [&](int err) {
+        readable = false;
+        fprintf(stderr, "%s: can't read it (%s), so no ports are remembered and it isn't saved over\n", path.c_str(),
+                strerror(err));
         return SavedPorts{};
-    }
+    };
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return errno == ENOENT ? SavedPorts{} : refuse(errno);
     std::string text;
     char buf[1024];
     size_t n;
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
     const bool ok = !ferror(f);
+    const int err = errno;
     fclose(f);
-    if (!ok) {
-        fprintf(stderr, "%s: can't read it, so no ports are remembered\n", path.c_str());
-        return SavedPorts{};
-    }
+    if (!ok) return refuse(err);
     return ports_parse(text, path.c_str());
 }
 

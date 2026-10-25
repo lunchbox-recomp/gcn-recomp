@@ -39,6 +39,7 @@ int port_of(SDL_JoystickID which) {
 std::string g_memory_path;  // where the saved ports are kept, empty for nowhere
 SavedPorts g_saved;         // what the file said, and what has been put on a port since
 bool g_saved_loaded = false;
+bool g_may_save = true;  // false once the file turned out to exist and not be readable
 
 // What tells the gamepad from another across launches.
 PortDevice device_of(SDL_Gamepad* g) {
@@ -90,7 +91,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
     if (!arrivals.empty()) {
         // The file is read here and not before, so that a launch with no gamepad reads nothing.
         if (!g_memory_path.empty() && !g_saved_loaded) {
-            g_saved = ports_load(g_memory_path);
+            g_saved = ports_load(g_memory_path, g_may_save);
             g_saved_loaded = true;
         }
         std::vector<PresentDevice> present;
@@ -117,7 +118,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
             if (!g_memory_path.empty() && ports_assign(g_saved, i, present[first + k].id)) moved = true;
             fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(a.pad), i + 1);
         }
-        if (moved) ports_save(g_memory_path, g_saved);
+        if (moved && g_may_save) ports_save(g_memory_path, g_saved);
     }
     if (!arrivals.empty() || disturbed) set_indexes();
 }
@@ -147,6 +148,7 @@ void gamepads_remember(const char* path) {
     g_memory_path = path ? path : "";
     g_saved = SavedPorts{};
     g_saved_loaded = false;
+    g_may_save = true;
 }
 
 void gamepads_init() {
@@ -214,4 +216,5 @@ void gamepads_shutdown() {
     // The next launch in this process reads the file again.
     g_saved = SavedPorts{};
     g_saved_loaded = false;
+    g_may_save = true;
 }
