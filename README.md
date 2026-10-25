@@ -79,6 +79,75 @@ wider to match. A headset's view stays 4:3, so `--eye` and `GCN_THEATER_STEREO` 
 Control-Command-F on a Mac, from the Window menu SDL adds, where F11 is Show Desktop by
 default.
 
+## Audio
+
+This fork changes the audio path from upstream `9b0a2fe` in the commits below. Nothing in it
+keys on a game. The mixer control layout, the compressor and the PB's length follow the AX
+ucode's hash.
+
+| Change | Commits |
+|---|---|
+| The PB's mixer control word decodes with the 2001 layout for ucode `4E8A8B21` only. Every other build gets the later layout, with an enable bit for each of the nine buses and ramps by group. `GCN_AX_LAYOUT` forces either one | `6616d55`, `3bde515` |
+| Command `12`, the compressor, runs on every ucode build but `4E8A8B21`, which has no such command | `bf31b7b`, `b839cf6` |
+| On every build but `4E8A8B21` the PB is 97 words long, and the mixer reads, writes back and updates its four low-pass filter words. It doesn't apply the filter | `3056588` |
+| Source type 0 resamples through a four-tap polyphase filter of 128 phases, in one of three sets that PB word 5 picks. The ucode reads its sets from the DSP's ROM, which the runtime doesn't have, so the runtime computes its own. A set past 2 interpolates linearly | `cce9fbc`, `795ccc4` |
+| Source type 2 and every type past it take one sample in for each sample out, with no rate conversion | `fd1f6a8`, `b839cf6` |
+| Each bus a voice mixes into leaves the voice's last sample in the PB's depop words, which the AX library fades out through the setup command when it stops the voice. In a mode whose lists send `07` or `11` only the aux buses' fades reach the output | `3b025ac` |
+| A bus the setup command starts at zero stays silent whatever its slope | `84471cc` |
+| A mixed sample, command `0E`'s output and an ADPCM sample the accelerator decodes clamp at `-32768`, where they stopped at `-32767`. The volume envelope still clamps at `-32767` | `2b7ae75`, `3d4fe9b`, `6def94c` |
+| The AI DMA holds a block the guest hasn't queued after for up to a quarter block of the guest's own running, with the clock's catch-up jumps left out. It looks again every 32nd of a block and ends the hold once the guest has queued | `a87ab06`, `3c55458` |
+| The sound ring crossfades a cut over 10 ms, and a cut with the ring over half full splices. Near empty it fades out over 5 ms, and it fades back in over 8 ms | `3ae8463`, `dbd8c99` |
+| While a pause holds the guest, DVD streamed music fades out over 5 ms and keeps its place on the disc. On the resume it fades back in over 8 ms from the next sample | `26db0da`, `c0a12ea` |
+| The desktop frontend plays through an SDL3 audio stream and asks the device for 512 frames a pull | `d9ee73d` |
+| Under SDL's dummy audio driver the runtime pulls 512 frames itself on 48 kHz deadlines, so a run with no sound keeps a sound card's pace | `e6ea431`, `dbd8c99` |
+| `GCN_AXSTATS` also prints command counts, bus peaks, the samples the output clamp changed, what the running voices ask for, a hash of the output and each ring cut | `8fabc65`, `3056588`, `3f5da1e` |
+| `GCN_AUDIOSTATS` prints the device it opened and each late callback and underrun. It also says where the device's output lines up with the DMA's stream | `3c71be8` |
+| `ninja test_ax`, `test_aid`, `test_clock` and `test_audio_ring` check the mixer, the DMA's hold, the clock's jumps and the sound ring with no disc or device | `3056588`, `a87ab06`, `250ebda`, `3ae8463` |
+
+A GameCube racing game on a later AX build measured the sound by program, with nobody
+listening. The method, the routes and every figure below are in
+[the game project's scorecard](https://github.com/lunchbox-recomp/dragoon/blob/ffa002217b804735ae5bf9c644ec226c04f5ce4a/docs/dev/scorecard.md).
+
+Passes 1 to 4 and the title at 91 s compare `caf12a2` (before) with `b848158` (after), and
+pass 5 compares `b848158` with `b97c019`. `caf12a2` is upstream plus 13 commits whose only
+audio change is the SDL3 port. Pass 4 played only before and pass 3 only after.
+
+The mixer stage is every block the DMA delivered, and the device stage is what the ring
+handed the device. Unpaced figures cover the five routes' 324 scored seconds.
+
+An unpaced run's guest clock doesn't wait on the host, and each pair of unpaced runs compared
+gave the same samples. A real-time run's clock jumps to catch up when the host falls behind,
+so two real-time runs of a route needn't sound the same. Each real-time cell gives each
+run's figure in order.
+
+| Measured | Passes | Before | After |
+|---|---|---|---|
+| Mixer clicks, five routes unpaced | 4 and 3 | 132 | 136 |
+| Mixer gaps, five routes unpaced | 4 and 3 | 3 | 8 |
+| Mixer clipped runs (samples), five routes unpaced | 4 and 3 | 208 (2,200) | 25 (371) |
+| Highest main L peak before the clamp, five routes unpaced | 4 and 3 | 85,094 | 64,999 |
+| Mixer clicks, title played to 91 s in real time | Title at 91 s | 1,097, 979 | 22, 22 |
+| Device clicks a minute, five routes in real time | 1 and 2 | 57.9, 45.1 | 36.3, 33.1 |
+| Mixer clicks, five routes unpaced | 5 | 136 | 94 |
+| Mixer clicks on a block join, five routes unpaced | 5 | 35, against 4.2 by chance | 7, against 2.9 by chance |
+
+Over the scored seconds the mixer stage's clicks didn't fall at `b848158`, and what fell
+there was clipping. On the title and the mode select the clicks fell past the seconds the
+totals score. A bisect in the scorecard puts the five new gaps in an intro stream that was
+digital silence before `fd1f6a8`.
+
+In pass 5 every route made fewer mixer clicks at `b97c019`, and the scorecard doesn't say
+which commit took them away. Pass 6 played `3a8d154` and `dac449e` four times each, and
+their unpaced mixer stage scored the same as pass 5's `b97c019` on every figure. Their
+real-time mixer and device clicks overlapped across the plays, so no row comes from pass 6.
+
+In passes 1 and 2 the before build's device stage ran at the pace of SDL's dummy driver,
+which took 92.7% and 92.8% of the sound the DMA delivered. That build doesn't log the
+ring's cuts, so its log doesn't say where the rest went.
+
+A click is any sharp edge, the game's own sounds included. Nobody listened to any build, and
+nothing was compared with a real console. Every run was on one machine.
+
 ## Layout
 
 - `recomp/`: `recomp.py` drives the translation; `ppc.py` turns each instruction into C;
