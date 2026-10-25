@@ -32,6 +32,10 @@
 // it played. A pause that's asked for but not yet held, and a run that's never held, must mix
 // as they did before the hold existed, the second against a hash taken then.
 //
+// That hash is taken twice. One run goes through a stream's regions and end in pulls of unequal
+// sizes. The other sweeps a stream of noise over all 65536 pairs of AIVR volumes at both stream
+// rates, then with the music muted.
+//
 // usage: test_audio_ring
 // Exits 0 only if every check passes.
 #include "audio.cpp"
@@ -54,6 +58,7 @@ bool g_stream_on;
 uint32_t g_stream_rate = 48000, g_vol_left = 255, g_vol_right = 255;
 uint64_t g_advanced;  // the samples ai_stream_advance has been told of
 bool g_flat_disc;     // every block the same, where a block otherwise has levels of its own
+bool g_noise_disc;    // every byte from a fixed generator, over the other two
 constexpr uint32_t kDiscBlocks = 1000;
 }  // namespace
 
@@ -68,11 +73,28 @@ void clock_hold(uint64_t) {}
 // Block n of the disc has 28 stereo samples at predictor 0 and scale 0, so a sample is its
 // nibble, signed, times 4096. The left level is 1 to 7 times that and the right is -7 to -3
 // times it, each stepping from one block to the next. A flat disc has 4 and -4 in every block.
+// A noise disc has a predictor from 0 to 3 and a scale from 0 to 12 for each channel, and noise
+// in the nibbles, so the decoder meets every history path and a sample can be any 16-bit value.
 bool iso_read(uint64_t off, void* buf, uint32_t n) {
     if (off % 32 || n != 32 || off / 32 >= kDiscBlocks) return false;
     const uint32_t block = (uint32_t)(off / 32);
-    const uint8_t left = g_flat_disc ? 4 : 1 + block % 7, right = g_flat_disc ? 12 : 9 + block % 5;
     auto* b = (uint8_t*)buf;
+    if (g_noise_disc) {
+        uint64_t x = block * 0x9E3779B97F4A7C15ull + 1;
+        auto next = [&x] {
+            x += 0x9E3779B97F4A7C15ull;
+            uint64_t z = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ull;
+            z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+            return z ^ (z >> 31);
+        };
+        for (int i = 0; i < 32; i++) b[i] = (uint8_t)next();
+        for (int channel = 0; channel < 2; channel++) {
+            const uint64_t predictor = next() % 4, scale = next() % 13;
+            b[channel] = (uint8_t)(predictor << 4 | scale);
+        }
+        return true;
+    }
+    const uint8_t left = g_flat_disc ? 4 : 1 + block % 7, right = g_flat_disc ? 12 : 9 + block % 5;
     memset(b, 0, 32);
     for (int i = 4; i < 32; i++) b[i] = (uint8_t)(right << 4 | left);
     return true;
@@ -453,13 +475,18 @@ void dtk_asked_not_held() {
     check(got.l == ref.l && got.r == ref.r, "a pause asked for and not held leaves the music as it was");
 }
 
-// The mix of streams that are never held, hashed (FNV-1a over both channels), against the
-// hash of the same runs taken before the hold was added.
+// FNV-1a over a frame's two channels.
+constexpr uint64_t kFnvBasis = 1469598103934665603ull;
+void hash_frame(uint64_t& h, int16_t l, int16_t r) {
+    for (int16_t v : {l, r}) h = (h ^ (uint16_t)v) * 1099511628211ull;
+}
+
+// The mix of streams that are never held, hashed, against the hash of the same runs taken
+// before the hold was added.
 uint64_t dtk_unheld_hash() {
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = kFnvBasis;
     auto add = [&h](const Pcm& p) {
-        for (size_t i = 0; i < p.l.size(); i++)
-            for (int16_t v : {p.l[i], p.r[i]}) h = (h ^ (uint16_t)v) * 1099511628211ull;
+        for (size_t i = 0; i < p.l.size(); i++) hash_frame(h, p.l[i], p.r[i]);
     };
     // At 32 kHz and under full volume, one region of the disc into the next and then the
     // stream's end, in pulls of unequal sizes.
@@ -483,6 +510,34 @@ uint64_t dtk_unheld_hash() {
     Pcm b;
     dtk_play(b, 500, 128);
     add(b);
+    return h;
+}
+
+// The mix of an unheld stream of noise at each stream rate under every pair of AIVR volumes, all
+// 65536 of them, then with the music muted under a stride of 17 that takes both ends of each
+// channel (0 and 255). One pull of 96 frames each, which is 64 frames of stream at 32 kHz, so
+// the decoder passes a block end.
+uint64_t dtk_sweep_hash() {
+    uint64_t h = kFnvBasis;
+    int16_t out[2 * 96];
+    auto pull = [&](uint32_t rate, uint32_t vl, uint32_t vr) {
+        g_vol_left = vl;
+        g_vol_right = vr;
+        dtk_start(rate, 6, false);
+        audio_render(out, 96);
+        for (int i = 0; i < 96; i++) hash_frame(h, out[2 * i], out[2 * i + 1]);
+    };
+    g_noise_disc = true;
+    for (uint32_t rate : {32000u, 48000u})
+        for (uint32_t vl = 0; vl < 256; vl++)
+            for (uint32_t vr = 0; vr < 256; vr++) pull(rate, vl, vr);
+    audio_mute_music(true);
+    for (uint32_t rate : {32000u, 48000u})
+        for (uint32_t vl = 0; vl < 256; vl += 17)
+            for (uint32_t vr = 0; vr < 256; vr += 17) pull(rate, vl, vr);
+    audio_mute_music(false);
+    g_noise_disc = false;
+    g_vol_left = g_vol_right = 255;
     return h;
 }
 
@@ -515,6 +570,10 @@ void dtk_hold_checks() {
     const uint64_t got = dtk_unheld_hash();
     if (got != kUnheldHash) printf("  the unheld mix hashes to 0x%016llx\n", (unsigned long long)got);
     check(got == kUnheldHash, "streams that are never held mix as they did before the hold existed");
+    constexpr uint64_t kSweepHash = 0x9783f7f9f1fa19a3ull;
+    const uint64_t swept = dtk_sweep_hash();
+    if (swept != kSweepHash) printf("  the volume sweep hashes to 0x%016llx\n", (unsigned long long)swept);
+    check(swept == kSweepHash, "noise at both rates under every AIVR volume pair, and muted, mixes as it did before the hold existed");
     g_stream_on = false;
 }
 
