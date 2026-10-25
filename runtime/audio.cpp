@@ -99,7 +99,8 @@ std::mutex g_dtk_mutex;
 // kRiseFade from where it stopped.
 //
 // The gain counts steps out of kDtkOne, so both fades land exactly on 0 and on 1. Only the
-// audio thread touches it.
+// audio thread touches it. When no stream plays it goes to 0 while held and to 1 otherwise, so
+// the next stream starts as a run with no hold would, or silent if the guest is still held.
 static constexpr int kDtkOne = std::lcm(kDryFade, kRiseFade);
 static constexpr int kDtkOut = kDtkOne / kDryFade, kDtkIn = kDtkOne / kRiseFade;
 static int g_dtk_gain = kDtkOne;
@@ -269,7 +270,10 @@ void audio_render(int16_t* out, int frames) {
         uint32_t elapsed = (uint32_t)counter_frac;
         counter_frac -= elapsed;
         for (int i = 0; i < live; i++) {
-            if (g_dtk_buf_pos + 2 > g_dtk_buf.size() && !dtk_decode_block()) break;
+            if (g_dtk_buf_pos + 2 > g_dtk_buf.size() && !dtk_decode_block()) {
+                g_dtk_gain = held ? 0 : kDtkOne;
+                break;
+            }
             if (held) g_dtk_gain = std::max(0, g_dtk_gain - kDtkOut);
             else if (g_dtk_gain < kDtkOne) g_dtk_gain = std::min(kDtkOne, g_dtk_gain + kDtkIn);
             int32_t l = g_dtk_buf[g_dtk_buf_pos], r = g_dtk_buf[g_dtk_buf_pos + 1];
@@ -288,6 +292,8 @@ void audio_render(int16_t* out, int frames) {
             }
         }
         ai_stream_advance(elapsed);
+    } else {
+        g_dtk_gain = paused() ? 0 : kDtkOne;
     }
     audio_wav_capture(out, frames);
     if (g_audio_tap) g_audio_tap(out, frames);

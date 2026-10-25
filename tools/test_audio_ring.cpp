@@ -32,6 +32,10 @@
 // it played. A pause that's asked for but not yet held, and a run that's never held, must mix
 // as they did before the hold existed, the second against a hash taken then.
 //
+// A pause shorter than the fade, and one in the rise, must land on 0 or stop part way and then
+// rise without skipping a frame. A stream that ends or stops under a hold, or in a rise,
+// must leave the next one the gain a run with no hold gives, or silence while the guest is held.
+//
 // That hash is taken twice. One run goes through a stream's regions and end in pulls of unequal
 // sizes. The other sweeps a stream of noise over all 65536 pairs of AIVR volumes at both stream
 // rates, then with the music muted.
@@ -461,6 +465,82 @@ Walk dtk_script(const char* name, int pull, uint32_t rate, uint32_t vol_left, ui
     return walk;
 }
 
+// The first `frames` frames of a stream started from the top of the disc, with no hold.
+Pcm dtk_plain(int frames) {
+    dtk_start(32000, 400, false);
+    Pcm p;
+    dtk_play(p, frames, 100);
+    return p;
+}
+
+// A stream that ends under a hold leaves the next one silent while the guest stays held and
+// rising from 0 after it, and one that comes after the release opens at the gain a run with no
+// hold gives, which is 1. The first stream has 140 frames left when the hold comes, so it ends
+// 140 frames into the fade-out.
+void dtk_stream_ends_in_fade() {
+    const Pcm ref = dtk_plain(600);
+    Pcm sink;
+    dtk_start(32000, 20, false);
+    dtk_play(sink, 700, 100);
+    HeldGuest guest;
+    dtk_play(sink, 500, 100);
+    dtk_start(32000, 400, false);
+    Pcm got;
+    dtk_play(got, 200, 100);
+    guest.release();
+    dtk_play(got, 600, 100);
+    bool silent = true;
+    for (size_t i = 0; i < 200; i++) silent = silent && got.l[i] == 0 && got.r[i] == 0;
+    check(silent, "a stream that starts while the guest is held is silent");
+    check(matches(got, 200, 200 + kRiseFade, ref, 0, [](size_t j) { return std::pair{(int)j + 1, kRiseFade}; }) &&
+              matches(got, 200 + kRiseFade, 800, ref, kRiseFade, [](size_t) { return std::pair{1, 1}; }),
+          "and it rises from 0 over the rise fade after the release");
+
+    dtk_start(32000, 20, false);
+    sink = Pcm{};
+    dtk_play(sink, 700, 100);
+    {
+        HeldGuest again;
+        dtk_play(sink, 500, 100);
+        again.release();
+    }
+    dtk_play(sink, 200, 100);
+    dtk_start(32000, 400, false);
+    Pcm next;
+    dtk_play(next, 300, 100);
+    check(matches(next, 0, 300, ref, 0, [](size_t) { return std::pair{1, 1}; }),
+          "a stream that starts after a stream ended under a hold opens at the gain a run with no hold gives");
+}
+
+// A stream the guest stops, or turns the AI's stream off for, in the rise after a hold leaves
+// the next one the same gain.
+void dtk_stream_stops_in_rise(bool ai_off) {
+    const Pcm ref = dtk_plain(300);
+    dtk_start(32000, 400, false);
+    Pcm sink;
+    dtk_play(sink, 1000, 100);
+    {
+        HeldGuest guest;
+        dtk_play(sink, 2400, 100);
+        guest.release();
+    }
+    dtk_play(sink, 100, 100);  // 100 frames up the rise, to 500/1920
+    if (ai_off) {
+        g_stream_on = false;
+    } else {
+        std::lock_guard<std::mutex> lk(g_dtk_mutex);
+        g_dtk.playing = false;
+        g_dtk.len = 0;
+    }
+    dtk_play(sink, 200, 100);
+    dtk_start(32000, 400, false);
+    Pcm next;
+    dtk_play(next, 300, 100);
+    check(matches(next, 0, 300, ref, 0, [](size_t) { return std::pair{1, 1}; }),
+          ai_off ? "a stream that starts after the AI's stream was turned off in a rise opens at the gain a run with no hold gives"
+                 : "a stream that starts after one was stopped in a rise opens at the gain a run with no hold gives");
+}
+
 // A pause that's asked for and not held yet leaves the guest running, so the music plays on.
 void dtk_asked_not_held() {
     dtk_start(32000, 400, false);
@@ -563,6 +643,10 @@ void dtk_hold_checks() {
     walk = dtk_script("a pause in the rise at 48 kHz, volume 200/100", 37, 48000, 200, 100,
                       {{false, 30}, {true, 40}, {false, 3}, {true, 40}, {false, 20}});
     check(walk.in_the_rise && walk.reached_zero, "a pause in the rise at 48 kHz falls from the gain the rise had reached to 0");
+
+    dtk_stream_ends_in_fade();
+    dtk_stream_stops_in_rise(false);
+    dtk_stream_stops_in_rise(true);
 
     dtk_asked_not_held();
     // Taken from the mix before it knew of a hold. Printed when it differs.
