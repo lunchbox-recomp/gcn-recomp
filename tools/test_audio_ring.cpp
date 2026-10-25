@@ -541,6 +541,30 @@ void dtk_stream_stops_in_rise(bool ai_off) {
                  : "a stream that starts after one was stopped in a rise opens at the gain a run with no hold gives");
 }
 
+// The AI's stream turned off part way down a fade-out leaves the next stream silent while the
+// guest stays held, not fading out from where the first one was.
+void dtk_stream_off_under_hold() {
+    const Pcm ref = dtk_plain(600);
+    dtk_start(32000, 400, false);
+    Pcm sink;
+    dtk_play(sink, 500, 100);
+    HeldGuest guest;
+    dtk_play(sink, 100, 100);  // 100 frames down the fade, to 1120/1920
+    g_stream_on = false;
+    dtk_play(sink, 100, 100);
+    dtk_start(32000, 400, false);
+    Pcm next;
+    dtk_play(next, 400, 100);
+    guest.release();
+    dtk_play(next, 600, 100);
+    bool silent = true;
+    for (size_t i = 0; i < 400; i++) silent = silent && next.l[i] == 0 && next.r[i] == 0;
+    check(silent, "a stream that starts under a hold after the AI's stream was turned off in a fade-out is silent");
+    check(matches(next, 400, 400 + kRiseFade, ref, 0, [](size_t j) { return std::pair{(int)j + 1, kRiseFade}; }) &&
+              matches(next, 400 + kRiseFade, 1000, ref, kRiseFade, [](size_t) { return std::pair{1, 1}; }),
+          "and it rises from 0 over the rise fade after the release");
+}
+
 // A pause that's asked for and not held yet leaves the guest running, so the music plays on.
 void dtk_asked_not_held() {
     dtk_start(32000, 400, false);
@@ -647,6 +671,7 @@ void dtk_hold_checks() {
     dtk_stream_ends_in_fade();
     dtk_stream_stops_in_rise(false);
     dtk_stream_stops_in_rise(true);
+    dtk_stream_off_under_hold();
 
     dtk_asked_not_held();
     // Taken from the mix before it knew of a hold. Printed when it differs.
