@@ -770,11 +770,14 @@ function(gcn_add_game)
   endif()
 
   # The audio ring checks (tools/test_audio_ring.cpp): audio.cpp's mix against a device
-  # that keeps exact time. Needs no disc image, no device and no SDL.
+  # that keeps exact time, and its music held by pause.cpp's gate on a thread for the
+  # guest's. Needs no disc image, no device and no SDL.
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID)
+    find_package(Threads REQUIRED)
     add_executable(test_audio_ring EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_audio_ring.cpp)
     _gcn_set_standards(test_audio_ring)
     target_include_directories(test_audio_ring PRIVATE ${RT})
+    target_link_libraries(test_audio_ring PRIVATE Threads::Threads)
     target_compile_options(test_audio_ring PRIVATE ${GCN_RUNTIME_WARNINGS})
 
     # The AX mixer checks (tools/test_ax.cpp): hw/ax.cpp over a fake main memory and ARAM.

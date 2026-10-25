@@ -23,23 +23,60 @@
 // periods after the last is late where one 1.4 periods after isn't, and each callbacks line
 // covers only the gaps since the one before.
 //
+// DVD music (DTK) holds with the guest. The disc is a fake whose block n has levels of its
+// own, so a sample says where in the stream it came from. The real pause gate holds a guest
+// thread while the music is pulled, and every run is set against the same stream with no hold.
+//
+// Held, the music must fade out over the ring's dry fade and then stand silent and still.
+// Released, it must fade back in over the ring's rise fade from the sample after the last one
+// it played. A pause that's asked for but not yet held, and a run that's never held, must mix
+// as they did before the hold existed, the second against a hash taken then.
+//
 // usage: test_audio_ring
 // Exits 0 only if every check passes.
 #include "audio.cpp"
 #include "audio_stats.cpp"
+#include "pause.cpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <numbers>
 #include <string>
+#include <thread>
 
-uint32_t ai_volume_left() { return 255; }
-uint32_t ai_volume_right() { return 255; }
-bool ai_stream_playing() { return false; }
-uint32_t ai_stream_rate() { return 48000; }
-void ai_stream_advance(uint32_t) {}
-bool iso_read(uint64_t, void*, uint32_t) { return false; }
+namespace {
+// What the AI and the disc give the music, as a check sets them. The stream plays only when
+// a check turns it on.
+bool g_stream_on;
+uint32_t g_stream_rate = 48000, g_vol_left = 255, g_vol_right = 255;
+uint64_t g_advanced;  // the samples ai_stream_advance has been told of
+bool g_flat_disc;     // every block the same, where a block otherwise has levels of its own
+constexpr uint32_t kDiscBlocks = 1000;
+}  // namespace
+
+uint32_t ai_volume_left() { return g_vol_left; }
+uint32_t ai_volume_right() { return g_vol_right; }
+bool ai_stream_playing() { return g_stream_on; }
+uint32_t ai_stream_rate() { return g_stream_rate; }
+void ai_stream_advance(uint32_t samples) { g_advanced += samples; }
+uint64_t host_ns() { return 0; }
+void clock_hold(uint64_t) {}
+
+// Block n of the disc has 28 stereo samples at predictor 0 and scale 0, so a sample is its
+// nibble, signed, times 4096. The left level is 1 to 7 times that and the right is -7 to -3
+// times it, each stepping from one block to the next. A flat disc has 4 and -4 in every block.
+bool iso_read(uint64_t off, void* buf, uint32_t n) {
+    if (off % 32 || n != 32 || off / 32 >= kDiscBlocks) return false;
+    const uint32_t block = (uint32_t)(off / 32);
+    const uint8_t left = g_flat_disc ? 4 : 1 + block % 7, right = g_flat_disc ? 12 : 9 + block % 5;
+    auto* b = (uint8_t*)buf;
+    memset(b, 0, 32);
+    for (int i = 4; i < 32; i++) b[i] = (uint8_t)(right << 4 | left);
+    return true;
+}
 
 namespace {
 
@@ -148,15 +185,246 @@ struct Run {
 
 }  // namespace
 
+namespace {
+
+// ---- DTK music, held with the guest ----
+
+// Music pulled and the ring's silence mixed into it, as audio_render hands it out.
+struct Pcm {
+    std::vector<int16_t> l, r;
+};
+
+// Starts a stream of `blocks` disc blocks at `rate`, from the first, with nothing decoded.
+void dtk_start(uint32_t rate, uint64_t blocks, bool flat) {
+    std::lock_guard<std::mutex> lk(g_dtk_mutex);
+    g_dtk = DtkState{};
+    g_dtk.playing = true;
+    g_dtk.len = blocks * 32;
+    g_dtk_buf.clear();
+    g_dtk_buf_pos = 0;
+    g_dtk_pos = 0;
+    g_stream_on = true;
+    g_stream_rate = rate;
+    g_flat_disc = flat;
+    g_advanced = 0;
+}
+
+// `frames` output frames of music in pulls of `pull`, the last one shorter if it has to be.
+// Whatever the ring has left is silent by now, so what comes out is the music's.
+void dtk_play(Pcm& pcm, int frames, int pull) {
+    int16_t out[2 * 512];
+    for (int done = 0; done < frames; done += pull) {
+        const int n = std::min(pull, frames - done);
+        audio_render(out, n);
+        for (int i = 0; i < n; i++) {
+            pcm.l.push_back(out[2 * i]);
+            pcm.r.push_back(out[2 * i + 1]);
+        }
+    }
+}
+
+// Where the stream stands, apart from what ai_stream_advance was told.
+struct DtkAt {
+    uint64_t cur;
+    size_t buf_pos, buf_size;
+    double pos;
+    bool operator==(const DtkAt&) const = default;
+};
+DtkAt dtk_at() { return {g_dtk.cur, g_dtk_buf_pos, g_dtk_buf.size(), g_dtk_pos}; }
+
+// A guest thread held at a frame boundary by the pause gate, as a game's is.
+struct HeldGuest {
+    std::thread t;
+    HeldGuest() {
+        pause_request(true);
+        t = std::thread([] { pause_gate(0); });
+        for (int i = 0; i < 2000 && !paused(); i++) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    void release() {
+        pause_request(false);
+        t.join();
+    }
+};
+
+// `a` scaled by the fraction n/d, the way the mix scales a sample.
+int16_t scaled(int16_t a, int n, int d) { return (int16_t)((int64_t)a * n / d); }
+
+// The frames [from, to) of both channels equal the music's `ref` frames from `ref_from` on,
+// each scaled by gain(j) for its place j in the window.
+template <class Gain>
+bool matches(const Pcm& got, size_t from, size_t to, const Pcm& ref, size_t ref_from, Gain gain) {
+    for (size_t j = 0; j < to - from; j++) {
+        const auto [n, d] = gain(j);
+        if (got.l[from + j] != scaled(ref.l[ref_from + j], n, d) || got.r[from + j] != scaled(ref.r[ref_from + j], n, d))
+            return false;
+    }
+    return true;
+}
+
+// The largest step between neighbouring left samples in [from, to).
+int worst_step(const Pcm& p, size_t from, size_t to) {
+    int w = 0;
+    for (size_t i = from + 1; i < to; i++) w = std::max(w, std::abs(p.l[i] - p.l[i - 1]));
+    return w;
+}
+
+// `pre` pulls of music, then the guest held through `held` pulls, then `post` pulls after the
+// release, each of `pull` frames, set against the same stream run without a hold. The music
+// fades out over the first kDryFade frames of the hold, so the run with no hold plays on that
+// far past the hold's start, and the released music picks up there.
+void dtk_hold_run(int pull, int pre, int held, int post, bool flat) {
+    char what[160];
+    const char* kind = flat ? "flat" : "varied";
+    const int lead = pre * pull, hold = held * pull, tail = post * pull;
+    const int fade_pulls = (kDryFade + pull - 1) / pull;
+    const size_t at_hold = lead, quiet = lead + kDryFade, at_release = lead + hold;
+
+    dtk_start(32000, 400, flat);
+    Pcm ref;
+    dtk_play(ref, lead + kDryFade + tail, pull);
+    const DtkAt ref_end = dtk_at();
+
+    dtk_start(32000, 400, flat);
+    Pcm got;
+    dtk_play(got, lead, pull);
+    const DtkAt before = dtk_at();
+
+    HeldGuest guest;
+    snprintf(what, sizeof what, "%s, pulls of %d, the pause gate holds the guest", kind, pull);
+    check(paused(), what);
+    dtk_play(got, fade_pulls * pull, pull);
+    const DtkAt faded = dtk_at();
+    const uint64_t advanced_faded = g_advanced;
+    dtk_play(got, hold - fade_pulls * pull, pull);
+    const DtkAt held_still = dtk_at();
+    const uint64_t advanced_held = g_advanced;
+    guest.release();
+    snprintf(what, sizeof what, "%s, pulls of %d, the guest is let go", kind, pull);
+    check(!paused(), what);
+    dtk_play(got, tail, pull);
+
+    snprintf(what, sizeof what, "%s, pulls of %d, the music before the hold is the stream's", kind, pull);
+    check(matches(got, 0, at_hold, ref, 0, [](size_t) { return std::pair{1, 1}; }), what);
+    // Linear, and 0 at its last frame, as the ring's fade to silence is.
+    snprintf(what, sizeof what, "%s, pulls of %d, the hold fades the music out linearly over %d frames", kind, pull, kDryFade);
+    check(matches(got, at_hold, quiet, ref, at_hold, [](size_t j) { return std::pair{kDryFade - 1 - (int)j, kDryFade}; }),
+          what);
+    bool silent = true;
+    for (size_t i = quiet; i < at_release; i++) silent = silent && got.l[i] == 0 && got.r[i] == 0;
+    snprintf(what, sizeof what, "%s, pulls of %d, the music is silent through the rest of the hold", kind, pull);
+    check(silent, what);
+    snprintf(what, sizeof what, "%s, pulls of %d, the fade-out plays the stream on", kind, pull);
+    check(!(faded == before), what);
+    snprintf(what, sizeof what, "%s, pulls of %d, the stream's place doesn't move once the music is silent", kind, pull);
+    check(held_still == faded, what);
+    snprintf(what, sizeof what, "%s, pulls of %d, ai_stream_advance isn't told of samples the held music doesn't play", kind, pull);
+    check(advanced_held == advanced_faded, what);
+    // The released music is the stream from the frame after the last one the fade-out played,
+    // not from where an unheld stream would be now, and it rises as the ring comes back, 1/384
+    // at its first frame and all of it at its last.
+    snprintf(what, sizeof what, "%s, pulls of %d, the release fades the music in linearly over %d frames", kind, pull, kRiseFade);
+    check(matches(got, at_release, at_release + kRiseFade, ref, quiet, [](size_t j) { return std::pair{(int)j + 1, kRiseFade}; }),
+          what);
+    snprintf(what, sizeof what, "%s, pulls of %d, the music goes on from the same block, as if it had not been held", kind, pull);
+    check(matches(got, at_release + kRiseFade, got.l.size(), ref, quiet + kRiseFade, [](size_t) { return std::pair{1, 1}; }),
+          what);
+    snprintf(what, sizeof what, "%s, pulls of %d, the stream ends where a run with no hold, the same length of music, does", kind, pull);
+    check(dtk_at() == ref_end, what);
+    snprintf(what, sizeof what, "%s, pulls of %d, ai_stream_advance is told of samples again after the release", kind, pull);
+    check(g_advanced > advanced_held, what);
+
+    if (!flat) return;
+    // On a flat stream the fades are a line, and a click is a step bigger than its slope. A
+    // hard stop or a hard start would step by the whole level.
+    const int level = ref.l[0];
+    const int bar_out = level / kDryFade + 1, bar_in = level / kRiseFade + 1;
+    printf("  flat level %d, steepest step %d going out and %d coming in\n", level,
+           worst_step(got, at_hold, quiet + 1), worst_step(got, at_release, at_release + kRiseFade + 1));
+    snprintf(what, sizeof what, "%s, pulls of %d, a hard stop would step far over the fade-out's steepest step", kind, pull);
+    check(level > 10 * bar_out, what);
+    snprintf(what, sizeof what, "%s, pulls of %d, a hard start would step far over the fade-in's steepest step", kind, pull);
+    check(level > 10 * bar_in, what);
+    snprintf(what, sizeof what, "%s, pulls of %d, nothing steps into the fade-out, through it or into the silence", kind, pull);
+    check(worst_step(got, at_hold - 1, quiet + 1) <= bar_out && got.l[at_hold - 1] == level, what);
+    snprintf(what, sizeof what, "%s, pulls of %d, nothing steps out of the silence, through the fade-in or out of it", kind, pull);
+    check(worst_step(got, at_release - 1, at_release + kRiseFade + 1) <= bar_in && got.l[at_release + kRiseFade] == level, what);
+}
+
+// A pause that's asked for and not held yet leaves the guest running, so the music plays on.
+void dtk_asked_not_held() {
+    dtk_start(32000, 400, false);
+    Pcm ref;
+    dtk_play(ref, 1500, 100);
+    dtk_start(32000, 400, false);
+    Pcm got;
+    pause_request(true);
+    check(pause_requested() && !paused(), "a pause is asked for and the guest isn't held");
+    dtk_play(got, 1500, 100);
+    pause_request(false);
+    check(got.l == ref.l && got.r == ref.r, "a pause asked for and not held leaves the music as it was");
+}
+
+// The mix of streams that are never held, hashed (FNV-1a over both channels), against the
+// hash of the same runs taken before the hold was added.
+uint64_t dtk_unheld_hash() {
+    uint64_t h = 1469598103934665603ull;
+    auto add = [&h](const Pcm& p) {
+        for (size_t i = 0; i < p.l.size(); i++)
+            for (int16_t v : {p.l[i], p.r[i]}) h = (h ^ (uint16_t)v) * 1099511628211ull;
+    };
+    // At 32 kHz and under full volume, one region of the disc into the next and then the
+    // stream's end, in pulls of unequal sizes.
+    g_vol_left = 200;
+    g_vol_right = 100;
+    dtk_start(32000, 30, false);
+    g_dtk.next_start = 40 * 32;
+    g_dtk.next_len = 20 * 32;
+    Pcm a;
+    const int pulls[] = {512, 100, 37, 480, 1};
+    int done = 0;
+    for (int k = 0; done < 4000; k++) {
+        if (done >= 1500) g_dtk.stop_at_end = true;
+        dtk_play(a, pulls[k % 5], pulls[k % 5]);
+        done += pulls[k % 5];
+    }
+    add(a);
+    // At 48 kHz and full volume, a flat disc.
+    g_vol_left = g_vol_right = 255;
+    dtk_start(48000, 12, true);
+    Pcm b;
+    dtk_play(b, 500, 128);
+    add(b);
+    return h;
+}
+
+void dtk_hold_checks() {
+    dtk_hold_run(100, 15, 30, 50, false);
+    dtk_hold_run(512, 3, 6, 8, false);
+    dtk_hold_run(37, 40, 70, 120, false);
+    dtk_hold_run(100, 15, 30, 50, true);
+    dtk_asked_not_held();
+    // Taken from the mix before it knew of a hold. Printed when it differs.
+    constexpr uint64_t kUnheldHash = 0x4f1ce1ed9911c824ull;
+    const uint64_t got = dtk_unheld_hash();
+    if (got != kUnheldHash) printf("  the unheld mix hashes to 0x%016llx\n", (unsigned long long)got);
+    check(got == kUnheldHash, "streams that are never held mix as they did before the hold existed");
+    g_stream_on = false;
+}
+
+}  // namespace
+
 int main() {
     // The cushion sets when the ring cuts and runs dry, so the caller's setting must not.
-    // The [audio] lines are on, and collected here instead of printed.
+    // The [audio] lines are on, and collected here instead of printed. The pause gate reads
+    // GCN_PAUSE_AT on its first boundary, so that's cleared too.
 #ifdef _WIN32
     _putenv_s("GCN_AUDIO_CUSHION_MS", "100");
     _putenv_s("GCN_AUDIOSTATS", "1");
+    _putenv_s("GCN_PAUSE_AT", "");
 #else
     setenv("GCN_AUDIO_CUSHION_MS", "100", 1);
     setenv("GCN_AUDIOSTATS", "1", 1);
+    unsetenv("GCN_PAUSE_AT");
 #endif
     g_print = collect;
     audio_stats_opened("test", OUT_RATE, 2, kPull);
@@ -364,6 +632,8 @@ int main() {
           "a ring with 100 frames left runs short where they run out, to the end of the pull");
     check(dry.size() == 2 && dry[1].at == dry_from + kPull && dry[1].frames == kPull,
           "the next pull with nothing in the ring is short all through");
+
+    dtk_hold_checks();
 
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;

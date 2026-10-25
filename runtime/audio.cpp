@@ -8,8 +8,10 @@
 #include "runtime.h"
 #include "audio_stats.h"
 #include "hw/dtk.h"
+#include "pause.h"
 #include <algorithm>
 #include <mutex>
+#include <numeric>
 #include <vector>
 
 uint32_t ai_volume_left();
@@ -92,6 +94,15 @@ DtkState g_dtk;
 static bool g_music_muted;
 void audio_mute_music(bool muted) { g_music_muted = muted; }
 std::mutex g_dtk_mutex;
+// A held guest (pause.h) holds the music too. It fades out over kDryFade like the ring does
+// when it runs dry and then stands silent and still. On the release it fades back in over
+// kRiseFade from where it stopped.
+//
+// The gain counts steps out of kDtkOne, so both fades land exactly on 0 and on 1. Only the
+// audio thread touches it.
+static constexpr int kDtkOne = std::lcm(kDryFade, kRiseFade);
+static constexpr int kDtkOut = kDtkOne / kDryFade, kDtkIn = kDtkOne / kRiseFade;
+static int g_dtk_gain = kDtkOne;
 
 static int16_t adp_decode(int32_t bits, int32_t q, int32_t& h1, int32_t& h2) {
     int32_t hist = 0;
@@ -243,19 +254,32 @@ void audio_render(int16_t* out, int frames) {
     if (short_frames) audio_stats_underrun(short_at, short_frames);
     // DTK streaming music
     if (ai_stream_playing()) {
+        // The same flag the frontend reads. It's an atomic load, so it takes neither the pause
+        // gate's mutex nor g_dtk_mutex. A pause that's asked for and not yet held leaves the
+        // guest and its music running.
+        const bool held = paused();
         std::lock_guard<std::mutex> lk(g_dtk_mutex);
         const double step = (double)ai_stream_rate() / OUT_RATE;
         int32_t vl = (int32_t)ai_volume_left(), vr = (int32_t)ai_volume_right();
         if (g_music_muted) vl = vr = 0;
+        // Held, only the frames the fade-out has left play and count, and none once it's done.
+        const int live = held ? std::min(frames, (g_dtk_gain + kDtkOut - 1) / kDtkOut) : frames;
         static double counter_frac;
-        counter_frac += frames * step;
+        counter_frac += live * step;
         uint32_t elapsed = (uint32_t)counter_frac;
         counter_frac -= elapsed;
-        for (int i = 0; i < frames; i++) {
+        for (int i = 0; i < live; i++) {
             if (g_dtk_buf_pos + 2 > g_dtk_buf.size() && !dtk_decode_block()) break;
+            if (held) g_dtk_gain = std::max(0, g_dtk_gain - kDtkOut);
+            else if (g_dtk_gain < kDtkOne) g_dtk_gain = std::min(kDtkOne, g_dtk_gain + kDtkIn);
             int32_t l = g_dtk_buf[g_dtk_buf_pos], r = g_dtk_buf[g_dtk_buf_pos + 1];
-            out[2 * i] = (int16_t)std::clamp(out[2 * i] + l * vl / 255, -32768, 32767);
-            out[2 * i + 1] = (int16_t)std::clamp(out[2 * i + 1] + r * vr / 255, -32768, 32767);
+            int32_t dl = l * vl / 255, dr = r * vr / 255;
+            if (g_dtk_gain != kDtkOne) {
+                dl = dl * g_dtk_gain / kDtkOne;
+                dr = dr * g_dtk_gain / kDtkOne;
+            }
+            out[2 * i] = (int16_t)std::clamp(out[2 * i] + dl, -32768, 32767);
+            out[2 * i + 1] = (int16_t)std::clamp(out[2 * i + 1] + dr, -32768, 32767);
             g_dtk_pos += step;
             while (g_dtk_pos >= 1.0) {
                 g_dtk_pos -= 1.0;
