@@ -1,8 +1,8 @@
 #!/bin/bash
-# Runs the gamepad port checks: the port checks, which include the ports remembered in
-# saves/ports.txt (written under the work dir), a recording of two gamepads, and that
+# Runs the gamepad port checks: the port checks, a recording of two gamepads, and that
 # recording replayed with none, and that recording's log replayed again with its SRAM
-# snapshot taken away, then an interrupt handled beside the main loop. SDL's virtual
+# snapshot taken away, then an interrupt handled beside the main loop. The port checks
+# include the ports remembered in saves/ports.txt under the work dir. SDL's virtual
 # joysticks stand in for the controllers, so no joystick may be connected.
 #
 # usage: tools/test_ports.sh <test_ports> <work dir>

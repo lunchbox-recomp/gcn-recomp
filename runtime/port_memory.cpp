@@ -246,7 +246,7 @@ bool ports_save(const std::string& path, const SavedPorts& saved) {
     if (!wrote || !closed || !plat_replace_file(tmp.c_str(), path.c_str())) {
 #ifdef _WIN32
         // MoveFileExA reports through GetLastError and leaves errno as it was. Any call can
-        // change the last error, so it is read before anything else is.
+        // change the last error, so it's read before anything else is.
         const DWORD win_error = GetLastError();
 #endif
         std::string why = strerror(errno);

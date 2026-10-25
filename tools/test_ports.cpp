@@ -797,8 +797,8 @@ std::string describe(const PadState& p) {
     return s;
 }
 
-// ---- Remembered ports. SDL's virtual joysticks have a GUID, from their name, and USB IDs of
-// 0, but no serial, so what a serial adds is checked on its own in test_port_memory.
+// ---- Remembered ports. SDL's virtual joysticks have a GUID made from their name and USB IDs
+// of 0. They have no serial, so what a serial adds is checked on its own in test_port_memory.
 
 // The file's identity. A write renames a new file over the old one, so its inode changes
 // with every write and with nothing else. 0 for no file.
@@ -975,7 +975,7 @@ void memory_pinned(const std::string& dir, const std::string& file) {
     input_map_load((dir + "/no-controls.txt").c_str());
 }
 
-// A gamepad on a port keeps it, though the file also names it on a lower port that is free
+// A gamepad on a port keeps it, though the file also names it on a lower port that's free
 // by now. The gamepad landed on port 2 because controls.txt pinned port 1 then, and the pin
 // is gone when the next gamepad asks for port 2.
 void memory_held(const std::string& dir, const std::string& file) {
