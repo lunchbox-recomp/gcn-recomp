@@ -415,6 +415,22 @@ void launch(const std::string& dir) {
           "five gamepads at launch: four on ports 1 to 4 and one left out, each said once");
     unplug({&t1, &t2, &t3, &t4, &t5});
     gamepads_shutdown();
+
+    // A first gamepad with no player index, as one is that a gamecontrollerdb.txt maps, and
+    // the next two with indexes 0 and 1. They are placed together, so each index is read before
+    // any placement moves another's. The second and third land on ports 2 and 3, in SDL's order.
+    power_on(1);
+    Virtual u1{"virtual pad u1"}, u2{"virtual pad u2"}, u3{"virtual pad u3"};
+    attach(u1, -1);
+    attach(u2);
+    attach(u3);
+    const bool indexes = player(u1) == -1 && player(u2) == 0 && player(u3) == 1;
+    gamepads_init();
+    frame();
+    check(indexes && port(u1) == 1 && port(u2) == 2 && port(u3) == 3,
+          "three gamepads at launch, the first with no player index and the others holding 0 and 1: ports 1, 2 and 3 in SDL's order");
+    unplug({&u1, &u2, &u3});
+    gamepads_shutdown();
 }
 
 // ---- --pads=2.
