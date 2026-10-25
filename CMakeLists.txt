@@ -811,6 +811,15 @@ function(gcn_add_game)
     target_include_directories(test_settings PRIVATE ${RT})
     target_compile_options(test_settings PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The port memory checks (tools/test_port_memory.cpp): which port each gamepad gets from
+    # what ports.txt remembers, and loading and saving that file in a work dir. Needs no
+    # disc image, device or SDL.
+    add_executable(test_port_memory EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_port_memory.cpp
+      ${RT}/port_memory.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_port_memory)
+    target_include_directories(test_port_memory PRIVATE ${RT})
+    target_compile_options(test_port_memory PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The SRAM file checks (tools/test_sram.cpp): loading and saving it in a work dir.
     add_executable(test_sram EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_sram.cpp
       ${RT}/hw/sram.cpp ${RT}/platform.cpp)
@@ -883,7 +892,7 @@ function(gcn_add_game)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_audio_ring test_ax test_aspect test_aid test_blend test_clock test_pause)
-    set(_unit_in_dir test_settings test_sram test_exi test_session)
+    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()
