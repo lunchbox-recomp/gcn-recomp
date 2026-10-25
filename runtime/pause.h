@@ -20,7 +20,7 @@
 //
 // DVD streamed music (DTK) is held with the guest. The audio thread reads paused(), fades the
 // music out over the ring's dry fade and keeps it silent and still. On the resume it fades
-// back in over the ring's rise fade from the same sample (audio.cpp).
+// back in over the ring's rise fade from the next sample (audio.cpp).
 #pragma once
 #include <chrono>
 #include <cstdint>

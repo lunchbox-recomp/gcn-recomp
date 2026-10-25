@@ -582,7 +582,7 @@ device", below).
 
 DVD streamed music is held with the guest. The audio thread reads `paused()`, fades the music
 out over 5 ms as the ring does when it runs dry, then keeps it silent with its place on the
-disc unmoved. The resume fades it back in over 8 ms from the same sample, and a pause that's
+disc unmoved. The resume fades it back in over 8 ms from the next sample, and a pause that's
 asked for but not yet held leaves it playing.
 
 ## The AX mixer
