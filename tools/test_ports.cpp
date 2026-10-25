@@ -975,7 +975,31 @@ void memory_pinned(const std::string& dir, const std::string& file) {
     input_map_load((dir + "/no-controls.txt").c_str());
 }
 
-// A gamepad left out for want of a port isn't saved, and a file that can't be read is
+// A gamepad on a port keeps it, though the file also names it on a lower port that is free
+// by now. The gamepad landed on port 2 because controls.txt pinned port 1 then, and the pin
+// is gone when the next gamepad asks for port 2.
+void memory_held(const std::string& dir, const std::string& file) {
+    const std::string controls = dir + "/controls.txt";
+    fresh_file(file);
+    write_file(controls, "A = \"virtual pad nobody\" button 0 port 1\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    Virtual held{"virtual pad held"}, next{"virtual pad next"};
+    attach(held);
+    write_file(file, "1 " + guid_of(held) + " - 0000:0000\n");
+    gamepads_init();
+    frame();
+    const bool on_two = port(held) == 2 && has(read_file(file), line_for(2, held));
+    input_map_load((dir + "/no-controls.txt").c_str());
+    attach(next, 1);
+    frame();
+    check(on_two && port(held) == 2 && port(next) == 1,
+          "a gamepad saved on port 1 but put on port 2 by a pin keeps port 2, and a newcomer holding index 1 takes port 1");
+    unplug({&held, &next});
+    gamepads_shutdown();
+}
+
+// A gamepad left out for want of a port isn't saved. A file of lines that aren't ports is
 // replaced when a gamepad lands.
 void memory_file(const std::string& dir, const std::string& file) {
     fresh_file(file);
@@ -1131,6 +1155,7 @@ int run_ports(const std::string& dir) {
     memory_twins(file);
     memory_missing(file);
     memory_pinned(dir, file);
+    memory_held(dir, file);
     memory_file(dir, file);
     memory_no_pads(dir, file);
     memory_unreadable(dir, file);
