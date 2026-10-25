@@ -432,6 +432,7 @@ int main(int argc, char** argv) {
         std::lock_guard<std::mutex> lk(g_pads_mutex);
         input_map_load(controls);
         gamepads_load_mappings();
+        gamepads_remember("saves/ports.txt");
         gamepads_init();
     }
     // Ports 1 to the highest controls.txt binds are plugged in at power-on, as --pads would.

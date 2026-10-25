@@ -5,8 +5,8 @@
 // is the frontend's own pump_events / update_pads / merge_port, and runtime/hw/si.cpp too,
 // so each port is read back the way the guest reads it: pad_get, with scripted presses
 // (input_script.cpp) applied and the input log (input_log.cpp) consulted. gamepads.cpp,
-// input_map.cpp, input_defaults.cpp, input_script.cpp, input_log.cpp, platform.cpp and
-// hw/mmio.cpp are linked as they are. Stubbed: force feedback (ffb_configure, ffb_attach,
+// port_memory.cpp, input_map.cpp, input_defaults.cpp, input_script.cpp, input_log.cpp,
+// platform.cpp and hw/mmio.cpp are linked as they are. Stubbed: force feedback (ffb_configure, ffb_attach,
 // ffb_update, ffb_shutdown; ffb_update keeps the motor it was given), the RTC
 // (rtc_set_base), the event queue and interrupt request (event_schedule_in, irq_request),
 // and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a check sets
@@ -30,6 +30,7 @@
 #include <functional>
 #include <initializer_list>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace gx {
@@ -773,32 +774,323 @@ void swap_order() {
     gamepads_shutdown();
 }
 
-int run_ports(const std::string& dir) {
-    if (!sdl_up()) return 1;
-    input_map_load((dir + "/no-controls.txt").c_str());
-    // Port 2 and port 3 pressed B by script from frame 1000 to 1099.
-    input_script_init("2/1000:B:100,3/1000:B:100");
-    rules();
-    swap_order();
-    launch(dir);
-    pads2();
-    named(dir);
-    pins(dir);
-    pins_more(dir);
-    mappings(dir);
-    return finish("ports");
-}
-
-// ---- Recording and replay: the same reads in both runs. Each step sets what the live
-// gamepads do (when there are any), runs a frame and reads the four ports once.
-const int kSteps = 6;
-
 std::string describe(const PadState& p) {
     char s[64];
     snprintf(s, sizeof(s), "%d %04X %02X %02X %02X %02X %02X %02X\n", p.connected ? 1 : 0, p.buttons, p.stick_x, p.stick_y,
              p.cstick_x, p.cstick_y, p.trig_l, p.trig_r);
     return s;
 }
+
+// ---- Remembered ports. SDL's virtual joysticks have a GUID, from their name, and USB IDs of
+// 0, but no serial, so what a serial adds is checked on its own in test_port_memory.
+
+// The file's identity. A write renames a new file over the old one, so its inode changes
+// with every write and with nothing else. 0 for no file.
+uint64_t file_id(const std::string& path) {
+    struct stat st;
+    return stat(path.c_str(), &st) == 0 ? (uint64_t)st.st_ino : 0;
+}
+
+bool exists_path(const std::string& path) { return file_id(path) != 0; }
+
+bool has(const std::string& text, const std::string& what) { return text.find(what) != std::string::npos; }
+
+// The line the file has for `v` on `port` (1 to 4): none of its serial, none of its IDs.
+std::string line_for(int port, const Virtual& v) { return "\n" + std::to_string(port) + " " + guid_of(v) + " - 0000:0000\n"; }
+
+// A launch from nothing: the file gone, and read again at the first gamepad.
+void fresh_file(const std::string& file) {
+    remove(file.c_str());
+    gamepads_remember(file.c_str());
+}
+
+// A new launch: the gamepads let go, and the file read again at the first gamepad.
+void relaunch() {
+    gamepads_shutdown();
+    power_on(1);
+}
+
+// Gamepads pulled out and plugged in the other order get their saved ports back. Pulled
+// out, nothing is written; plugged back in as they were, nothing is written either.
+void memory_order(const std::string& file) {
+    fresh_file(file);
+    power_on(1);
+    gamepads_init();
+    Virtual a{"virtual pad ma"}, b{"virtual pad mb"};
+    attach(a);
+    frame();
+    attach(b);
+    frame();
+    const bool first = port(a) == 1 && port(b) == 2;
+    const std::string text = read_file(file);
+    check(first && has(text, line_for(1, a)) && has(text, line_for(2, b)) && has(text, "\n3 none\n"),
+          "two gamepads take ports 1 and 2, and ports.txt names them there");
+    const uint64_t written = file_id(file);
+
+    unplug({&a, &b});
+    check(file_id(file) == written, "pulling both out writes nothing");
+    attach(b);
+    frame();
+    attach(a);
+    frame();
+    check(port(b) == 2 && port(a) == 1 && file_id(file) == written,
+          "plugged back in the other order, each gets its saved port, and nothing is written");
+    unplug({&a, &b});
+
+    relaunch();
+    attach(b);
+    attach(a);
+    gamepads_init();
+    frame();
+    check(port(b) == 2 && port(a) == 1 && file_id(file) == written,
+          "at the next launch, listed in the other order, they get their saved ports, and nothing is written");
+    unplug({&a, &b});
+    gamepads_shutdown();
+}
+
+// Four gamepads connecting in the reverse order, which asks every player index to move.
+void memory_reversed(const std::string& file) {
+    fresh_file(file);
+    power_on(1);
+    gamepads_init();
+    Virtual p1{"virtual pad r1"}, p2{"virtual pad r2"}, p3{"virtual pad r3"}, p4{"virtual pad r4"};
+    for (Virtual* v : {&p1, &p2, &p3, &p4}) {
+        attach(*v);
+        frame();
+    }
+    const bool in_order = port(p1) == 1 && port(p2) == 2 && port(p3) == 3 && port(p4) == 4;
+    unplug({&p1, &p2, &p3, &p4});
+    relaunch();
+    for (Virtual* v : {&p4, &p3, &p2, &p1}) attach(*v);
+    gamepads_init();
+    frame();
+    check(in_order && port(p1) == 1 && port(p2) == 2 && port(p3) == 3 && port(p4) == 4,
+          "four gamepads that connect in the reverse order at launch each get their saved port and player index");
+    unplug({&p1, &p2, &p3, &p4});
+    relaunch();
+    for (Virtual* v : {&p3, &p1, &p4, &p2}) {
+        attach(*v);
+        frame();
+    }
+    check(port(p1) == 1 && port(p2) == 2 && port(p3) == 3 && port(p4) == 4,
+          "and plugged in one at a time in a shuffled order, the same");
+    unplug({&p1, &p2, &p3, &p4});
+    gamepads_shutdown();
+}
+
+// Two gamepads of one model, which have the same GUID and no serial, can't be told apart:
+// they fill their ports in the order they connect.
+void memory_twins(const std::string& file) {
+    fresh_file(file);
+    power_on(1);
+    gamepads_init();
+    Virtual t1{"virtual pad twin"}, t2{"virtual pad twin"};
+    attach(t1);
+    frame();
+    attach(t2);
+    frame();
+    const uint64_t written = file_id(file);
+    check(port(t1) == 1 && port(t2) == 2 && has(read_file(file), line_for(1, t1)) && has(read_file(file), line_for(2, t2)),
+          "two gamepads with the same GUID take ports 1 and 2");
+    unplug({&t1, &t2});
+    relaunch();
+    attach(t2);
+    frame();
+    attach(t1);
+    frame();
+    check(port(t2) == 1 && port(t1) == 2 && file_id(file) == written,
+          "and when they come back, the first to connect gets port 1: the file can't tell them apart, and says the same");
+    unplug({&t1, &t2});
+    gamepads_shutdown();
+}
+
+// A saved port isn't a reservation: its gamepad is away, and another takes it. The
+// gamepad that comes back holding port 1's player index doesn't move the one on port 1.
+void memory_missing(const std::string& file) {
+    fresh_file(file);
+    power_on(1);
+    gamepads_init();
+    Virtual a{"virtual pad away"};
+    attach(a);
+    frame();
+    const bool on_one = port(a) == 1;
+    const std::string away = guid_of(a);
+    unplug({&a});
+    relaunch();
+    Virtual c{"virtual pad cover"};
+    attach(c);
+    frame();
+    const std::string text = read_file(file);
+    check(on_one && port(c) == 1 && has(text, line_for(1, c)) && !has(text, away),
+          "port 1's saved gamepad is away: another takes port 1, and the file now names that one there");
+    attach(a, 0);
+    frame();
+    check(port(c) == 1 && port(a) == 2,
+          "the first comes back holding port 1's player index and finds port 1 taken: it takes port 2, and the one on port 1 stays");
+    unplug({&a, &c});
+    gamepads_shutdown();
+}
+
+// A port controls.txt pins beats the file. The gamepad saved there takes the lowest free
+// port, not the port of its player index.
+void memory_pinned(const std::string& dir, const std::string& file) {
+    fresh_file(file);
+    power_on(1);
+    gamepads_init();
+    Virtual d{"virtual pad pinned away"};
+    attach(d, 2);
+    frame();
+    const bool on_three = port(d) == 3;
+    unplug({&d});
+    relaunch();
+
+    const std::string controls = dir + "/controls.txt";
+    write_file(controls, "A = \"virtual pad pinning\" button 0 port 3\n");
+    input_map_load(controls.c_str());
+    power_on(1);
+    gamepads_init();
+    attach(d, 1);
+    frame();
+    const bool one = port(d) == 1;
+    check(on_three && one && has(read_file(file), line_for(1, d)),
+          "port 3 saved for a gamepad and pinned by controls.txt: it takes the lowest free port, 1, though its player index says 2");
+    unplug({&d});
+    gamepads_shutdown();
+    input_map_load((dir + "/no-controls.txt").c_str());
+}
+
+// A gamepad left out for want of a port isn't saved, and a file that can't be read is
+// replaced when a gamepad lands.
+void memory_file(const std::string& dir, const std::string& file) {
+    fresh_file(file);
+    power_on(1);
+    gamepads_init();
+    Virtual g[5] = {{"virtual pad f1"}, {"virtual pad f2"}, {"virtual pad f3"}, {"virtual pad f4"}, {"virtual pad f5"}};
+    for (Virtual& v : g) {
+        attach(v);
+        frame();
+    }
+    const std::string text = read_file(file);
+    check(port(g[4]) == 0 && has(text, line_for(4, g[3])) && !has(text, guid_of(g[4])),
+          "a fifth gamepad is left out and ports.txt doesn't name it");
+    unplug({&g[0], &g[1], &g[2], &g[3], &g[4]});
+    gamepads_shutdown();
+
+    write_file(file, "this is not a port\n9 none\n1 " + std::string(32, 'a') + " - 0000:0000 more\n");
+    gamepads_remember(file.c_str());
+    power_on(1);
+    gamepads_init();
+    const std::string said = dir + "/memory-bad-stderr.txt";
+    Virtual v{"virtual pad after the bad file"};
+    capture(said, [&] {
+        attach(v);
+        frame();
+    });
+    check(lines_with(said, "so the line is skipped") == 3 && port(v) == 1 && has(read_file(file), line_for(1, v)),
+          "a file of lines that aren't ports is read as empty with each line said, the gamepad takes port 1, and the file is written whole");
+    unplug({&v});
+    gamepads_shutdown();
+}
+
+// A launch with no gamepad reads nothing and writes nothing, as a hidden or headless run
+// has none. Each port reads as it does with no memory at all.
+void memory_no_pads(const std::string& dir, const std::string& file) {
+    // The ports as the guest reads them over a few frames.
+    auto ports_seen = [] {
+        std::string out;
+        for (int s = 0; s < 4; s++) {
+            frame();
+            for (int i = 0; i < 4; i++) out += describe(read(i));
+        }
+        return out;
+    };
+
+    gamepads_remember(nullptr);
+    power_on(1);
+    gamepads_init();
+    const std::string plain = ports_seen();
+    gamepads_shutdown();
+
+    // No file: none is made, and neither is its directory.
+    fresh_file(file);
+    rmdir((dir + "/saves").c_str());
+    const std::string quiet = dir + "/memory-none-stderr.txt";
+    std::string with_none;
+    capture(quiet, [&] {
+        power_on(1);
+        gamepads_init();
+        with_none = ports_seen();
+    });
+    check(with_none == plain && !exists_path(file) && !exists_path(dir + "/saves") && read_file(quiet).empty(),
+          "no gamepad and no ports.txt: the ports read as with no memory, and no file or directory is made");
+    gamepads_shutdown();
+
+    // A file with ports in it that can't even be opened: if the launch tried to read it, it would say so.
+    plat_make_dirs(dir + "/saves");
+    write_file(file, "1 " + std::string(32, 'a') + " - 0000:0000\n");
+    const uint64_t before = file_id(file);
+    const std::string kept = read_file(file);
+    gamepads_remember(file.c_str());
+    const bool locked = chmod(file.c_str(), 0) == 0 && access(file.c_str(), R_OK) != 0;
+    const std::string loud = dir + "/memory-locked-stderr.txt";
+    std::string with_file;
+    capture(loud, [&] {
+        power_on(1);
+        gamepads_init();
+        with_file = ports_seen();
+    });
+    chmod(file.c_str(), 0644);
+    if (!locked) printf("this account reads files whatever their mode: the unreadable-file check is weaker here\n");
+    check(with_file == plain && read_file(loud).empty() && file_id(file) == before && read_file(file) == kept,
+          "no gamepad and a ports.txt that can't be read: it isn't opened, nothing is said, and the file is as it was");
+    gamepads_shutdown();
+
+    // The same with the file readable.
+    gamepads_remember(file.c_str());
+    power_on(1);
+    gamepads_init();
+    const std::string readable = ports_seen();
+    check(readable == plain && file_id(file) == before, "with a readable ports.txt and no gamepad, the file isn't rewritten");
+    gamepads_shutdown();
+}
+
+int run_ports(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    input_map_load((dir + "/no-controls.txt").c_str());
+    // Port 2 and port 3 pressed B by script from frame 1000 to 1099.
+    input_script_init("2/1000:B:100,3/1000:B:100");
+    // Every section but the one on the order runs with remembered ports and a file of its
+    // own to start from, so what it checks is what a first launch does.
+    const std::string file = dir + "/saves/ports.txt";
+    fresh_file(file);
+    rules();
+    gamepads_remember(nullptr);
+    swap_order();
+    fresh_file(file);
+    launch(dir);
+    fresh_file(file);
+    pads2();
+    fresh_file(file);
+    named(dir);
+    fresh_file(file);
+    pins(dir);
+    fresh_file(file);
+    pins_more(dir);
+    fresh_file(file);
+    mappings(dir);
+    memory_order(file);
+    memory_reversed(file);
+    memory_twins(file);
+    memory_missing(file);
+    memory_pinned(dir, file);
+    memory_file(dir, file);
+    memory_no_pads(dir, file);
+    return finish("ports");
+}
+
+// ---- Recording and replay: the same reads in both runs. Each step sets what the live
+// gamepads do (when there are any), runs a frame and reads the four ports once.
+const int kSteps = 6;
 
 std::string steps(Virtual* a, Virtual* b, std::vector<PadState>& seen) {
     std::string out;

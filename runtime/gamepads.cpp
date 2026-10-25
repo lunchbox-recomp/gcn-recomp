@@ -2,7 +2,9 @@
 #include "gamepads.h"
 #include "input_map.h"
 #include "platform.h"
+#include "port_memory.h"
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -34,16 +36,20 @@ int port_of(SDL_JoystickID which) {
     return -1;
 }
 
-// Whether a gamepad may take port `i`: none is on it, and controls.txt pins no device there.
-bool free_port(int i) { return !g_ports[i].pad && !input_map_pins(i); }
+std::string g_memory_path;  // where the saved ports are kept, empty for nowhere
+SavedPorts g_saved;         // what the file said, and what has been put on a port since
+bool g_saved_loaded = false;
 
-// The port for a gamepad whose SDL player index is `index`: that port if it is one of the
-// four and free, else the lowest free one; -1 with none free.
-int choose(int index) {
-    if (index >= 0 && index < 4 && free_port(index)) return index;
-    for (int i = 0; i < 4; i++)
-        if (free_port(i)) return i;
-    return -1;
+// What tells the gamepad from another across launches.
+PortDevice device_of(SDL_Gamepad* g) {
+    PortDevice d;
+    char guid[33];
+    SDL_GUIDToString(SDL_GetJoystickGUID(SDL_GetGamepadJoystick(g)), guid, sizeof(guid));
+    d.guid = guid;
+    if (const char* serial = SDL_GetGamepadSerial(g)) d.serial = serial;
+    d.vendor = SDL_GetGamepadVendor(g);
+    d.product = SDL_GetGamepadProduct(g);
+    return d;
 }
 
 // Each placed gamepad's player index set to its port, a new one's included. A joystick
@@ -55,34 +61,65 @@ void set_indexes() {
         if (g_ports[i].pad && SDL_GetGamepadPlayerIndex(g_ports[i].pad) != i) SDL_SetGamepadPlayerIndex(g_ports[i].pad, i);
 }
 
-// The gamepad with instance ID `which`, onto a port.
-void add(SDL_JoystickID which) {
-    // SDL also announces the gamepads gamepads_init took.
-    if (port_of(which) >= 0 || std::find(g_left_out.begin(), g_left_out.end(), which) != g_left_out.end()) return;
-    // A device controls.txt binds is the file's alone.
-    if (input_map_binds(which)) {
-        set_indexes();
-        return;
+// The gamepads with these instance IDs, onto ports together, so that every saved port
+// gets its gamepad before another takes it.
+void add(const std::vector<SDL_JoystickID>& ids) {
+    struct Arrival {
+        SDL_Gamepad* pad;
+        SDL_JoystickID which;
+    };
+    std::vector<Arrival> arrivals;
+    bool disturbed = false;  // a joystick SDL gave an index, whether or not it gets a port
+    for (const SDL_JoystickID which : ids) {
+        // SDL also announces the gamepads gamepads_init took.
+        if (port_of(which) >= 0 || std::find(g_left_out.begin(), g_left_out.end(), which) != g_left_out.end()) continue;
+        // A device controls.txt binds is the file's alone.
+        if (input_map_binds(which)) {
+            disturbed = true;
+            continue;
+        }
+        SDL_Gamepad* g = SDL_OpenGamepad(which);
+        if (!g) {
+            const char* n = SDL_GetJoystickNameForID(which);
+            fprintf(stderr, "gamepads: cannot open \"%s\": %s\n", n ? n : "?", SDL_GetError());
+            disturbed = true;
+            continue;
+        }
+        arrivals.push_back({g, which});
     }
-    SDL_Gamepad* g = SDL_OpenGamepad(which);
-    if (!g) {
-        const char* n = SDL_GetJoystickNameForID(which);
-        fprintf(stderr, "gamepads: cannot open \"%s\": %s\n", n ? n : "?", SDL_GetError());
-        set_indexes();
-        return;
+    if (!arrivals.empty()) {
+        // The file is read here and not before, so that a launch with no gamepad reads nothing.
+        if (!g_memory_path.empty() && !g_saved_loaded) {
+            g_saved = ports_load(g_memory_path);
+            g_saved_loaded = true;
+        }
+        std::vector<PresentDevice> present;
+        for (int i = 0; i < 4; i++)
+            if (g_ports[i].pad) present.push_back({device_of(g_ports[i].pad), SDL_GetGamepadPlayerIndex(g_ports[i].pad), i});
+        const size_t first = present.size();
+        for (const Arrival& a : arrivals) present.push_back({device_of(a.pad), SDL_GetGamepadPlayerIndex(a.pad), -1});
+        std::array<bool, 4> pinned;
+        for (int i = 0; i < 4; i++) pinned[i] = input_map_pins(i);
+        const std::vector<int> got = match_ports(g_saved, present, pinned);
+
+        bool moved = false;  // a gamepad landed on a port the saved ports didn't have it on
+        for (size_t k = 0; k < arrivals.size(); k++) {
+            const Arrival& a = arrivals[k];
+            const int i = got[first + k];
+            if (i < 0) {
+                fprintf(stderr, "gamepads: \"%s\" left out: no port is free\n", pad_name(a.pad));
+                SDL_SetGamepadPlayerIndex(a.pad, -1);
+                SDL_CloseGamepad(a.pad);
+                g_left_out.push_back(a.which);
+                continue;
+            }
+            g_ports[i] = {a.pad, a.which, false};
+            if (!g_memory_path.empty() && ports_assign(g_saved, i, present[first + k].id)) moved = true;
+            fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(a.pad), i + 1);
+        }
+        if (moved) ports_save(g_memory_path, g_saved);
     }
-    const int i = choose(SDL_GetGamepadPlayerIndex(g));
-    if (i < 0) {
-        fprintf(stderr, "gamepads: \"%s\" left out: no port is free\n", pad_name(g));
-        SDL_SetGamepadPlayerIndex(g, -1);
-        SDL_CloseGamepad(g);
-        g_left_out.push_back(which);
-        set_indexes();
-        return;
-    }
-    g_ports[i] = {g, which, false};
-    set_indexes();
-    fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(g), i + 1);
+    if (!arrivals.empty() || disturbed) set_indexes();
 }
 
 uint8_t axis_to_u8(int v, bool invert) {
@@ -106,16 +143,22 @@ void gamepads_load_mappings() {
     else fprintf(stderr, "gamepads: %d new mapping%s from %s\n", n, n == 1 ? "" : "s", file.c_str());
 }
 
+void gamepads_remember(const char* path) {
+    g_memory_path = path ? path : "";
+    g_saved = SavedPorts{};
+    g_saved_loaded = false;
+}
+
 void gamepads_init() {
     int n = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&n);
-    for (int i = 0; ids && i < n; i++) add(ids[i]);
+    add(std::vector<SDL_JoystickID>(ids, ids + (ids ? n : 0)));
     SDL_free(ids);
 }
 
 void gamepads_event(const SDL_Event& e) {
     if (e.type == SDL_EVENT_GAMEPAD_ADDED) {
-        add(e.gdevice.which);
+        add({e.gdevice.which});
     } else if (e.type == SDL_EVENT_GAMEPAD_REMOVED) {
         g_left_out.erase(std::remove(g_left_out.begin(), g_left_out.end(), e.gdevice.which), g_left_out.end());
         const int i = port_of(e.gdevice.which);
@@ -168,4 +211,7 @@ void gamepads_shutdown() {
         g = Port();
     }
     g_left_out.clear();
+    // The next launch in this process reads the file again.
+    g_saved = SavedPorts{};
+    g_saved_loaded = false;
 }
