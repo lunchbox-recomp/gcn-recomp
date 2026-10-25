@@ -95,16 +95,16 @@ ucode's hash.
 | Each bus a voice mixes into leaves the voice's last sample in the PB's depop words, which the AX library fades out through the setup command when it stops the voice. In a mode whose lists send `07` or `11` only the aux buses' fades reach the output | `3b025ac` |
 | A bus the setup command starts at zero stays silent whatever its slope | `84471cc` |
 | A mixed sample, command `0E`'s output and an ADPCM sample the accelerator decodes clamp at `-32768`, where they stopped at `-32767`. The volume envelope still clamps at `-32767` | `2b7ae75`, `3d4fe9b`, `6def94c` |
-| The AI DMA holds a block the guest hasn't queued after for up to a quarter block of the guest's own running, with the clock's catch-up jumps left out. It looks again every 32nd of a block and ends the hold once the guest has queued | `a87ab06`, `3c55458` |
+| The AI DMA's quarter block hold, for a block the guest hasn't queued after, now counts only the guest's own running and leaves out the clock's catch-up jumps. The hold is looked at again every 32nd of a block and ends once the guest has queued | `a87ab06`, `3c55458` |
 | The sound ring crossfades a cut over 10 ms, and a cut with the ring over half full splices. Near empty it fades out over 5 ms, and it fades back in over 8 ms | `3ae8463`, `dbd8c99` |
 | While a pause holds the guest, DVD streamed music fades out over 5 ms and keeps its place on the disc. On the resume it fades back in over 8 ms from the next sample | `26db0da`, `c0a12ea` |
 | The desktop frontend plays through an SDL3 audio stream and asks the device for 512 frames a pull | `d9ee73d` |
 | Under SDL's dummy audio driver the runtime pulls 512 frames itself on 48 kHz deadlines, so a run with no sound keeps a sound card's pace | `e6ea431`, `dbd8c99` |
 | `GCN_AXSTATS` also prints command counts, bus peaks, the samples the output clamp changed, what the running voices ask for, a hash of the output and each ring cut | `8fabc65`, `3056588`, `3f5da1e` |
 | `GCN_AUDIOSTATS` prints the device it opened and each late callback and underrun. It also says where the device's output lines up with the DMA's stream | `3c71be8` |
-| `ninja test_ax`, `test_aid`, `test_clock` and `test_audio_ring` check the mixer, the DMA's hold, the clock's jumps and the sound ring with no disc or device | `3056588`, `a87ab06`, `250ebda`, `3ae8463` |
+| `ninja test_ax`, `test_aid`, `test_clock` and `test_audio_ring` check the mixer, the DMA's hold, the clock's jumps and the sound ring with no disc or device. `test_audio_ring` also checks the held DVD music and the `GCN_AUDIOSTATS` accounting | `3056588`, `a87ab06`, `250ebda`, `3ae8463`, `3c71be8`, `6e361ba`, `26db0da`, `c0a12ea`, `244fa9e`, `84698f6`, `b0dcc2e` |
 
-A GameCube racing game on a later AX build measured the sound by program, with nobody
+The sound of a GameCube racing game on a later AX build was measured by program, with nobody
 listening. The method, the routes and every figure below are in
 [the game project's scorecard](https://github.com/lunchbox-recomp/dragoon/blob/ffa002217b804735ae5bf9c644ec226c04f5ce4a/docs/dev/scorecard.md).
 
@@ -139,7 +139,7 @@ digital silence before `fd1f6a8`.
 In pass 5 every route made fewer mixer clicks at `b97c019`, and the scorecard doesn't say
 which commit took them away. Pass 6 played `3a8d154` and `dac449e` four times each, and
 their unpaced mixer stage scored the same as pass 5's `b97c019` on every figure. Their
-real-time mixer and device clicks overlapped across the plays, so no row comes from pass 6.
+real-time mixer and device clicks overlapped across the plays.
 
 In passes 1 and 2 the before build's device stage ran at the pace of SDL's dummy driver,
 which took 92.7% and 92.8% of the sound the DMA delivered. That build doesn't log the
