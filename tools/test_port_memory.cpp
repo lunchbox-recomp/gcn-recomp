@@ -13,7 +13,10 @@
 // every check passes.
 #include "port_memory.h"
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
+#include <functional>
 #include <initializer_list>
 #include <string>
 #include <sys/stat.h>
@@ -58,6 +61,23 @@ bool exists(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0;
 }
+
+// What `f` writes to stderr.
+std::string stderr_of(const std::function<void()>& f) {
+    const std::string file = path_of("stderr.txt");
+    fflush(stderr);
+    const int saved = dup(2);
+    FILE* out = fopen(file.c_str(), "w");
+    if (out) dup2(fileno(out), 2);
+    f();
+    fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+    if (out) fclose(out);
+    return read_file(file);
+}
+
+bool contains(const std::string& text, const std::string& what) { return text.find(what) != std::string::npos; }
 
 // A GUID of 32 hex digits, all `c`.
 std::string guid(char c) { return std::string(32, c); }
@@ -313,6 +333,24 @@ void failed_save_leaves_old_file() {
     check(!ports_save(path_of("plain/ports.txt"), old), "a save whose directory can't be made fails");
 }
 
+// The file is a directory, so the new file is written whole and then can't be renamed over it.
+void failed_save_says_why() {
+    const std::string p = path_of("is-a-directory.txt");
+    mkdir(p.c_str(), 0755);
+    bool saved = true;
+    const std::string said = stderr_of([&] { saved = ports_save(p, saved_of({{0, device('a')}})); });
+    check(!saved && contains(said, "the save failed (" + std::string(strerror(EISDIR)) + ")") && !exists(p + ".tmp"),
+          "a save that can't rename its new file over the old says why, and leaves no temp file");
+    rmdir(p.c_str());
+
+    const std::string open_fails = path_of("open-fails.txt");
+    mkdir((open_fails + ".tmp").c_str(), 0755);
+    const std::string said_open = stderr_of([&] { ports_save(open_fails, saved_of({{0, device('a')}})); });
+    check(contains(said_open, "can't write it (" + std::string(strerror(EISDIR)) + ")"),
+          "and one that can't open its new file says why too");
+    rmdir((open_fails + ".tmp").c_str());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -342,6 +380,7 @@ int main(int argc, char** argv) {
     load_unreadable();
     save_and_load();
     failed_save_leaves_old_file();
+    failed_save_says_why();
     printf("test_port_memory: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
 }
