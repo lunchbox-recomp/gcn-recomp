@@ -4,9 +4,9 @@
 // match_ports is checked on gamepads made up here, so the serial cases that SDL's virtual
 // joysticks can't carry (they have no serial) are checked in this file. Each case builds the
 // saved ports and the gamepads that are present, and compares the ports match_ports gives.
-// The file half writes into the work dir, loads and saves, and checks the bytes. A save that
-// fails must leave the old file whole, which one case makes happen with a directory where
-// the save writes its new file.
+// The file half saves and loads in the work dir and checks the bytes. A save that fails must
+// leave the old file whole. One case makes that happen with a directory where the save
+// writes its new file, and another with a directory where it renames it.
 //
 // usage: test_port_memory <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if

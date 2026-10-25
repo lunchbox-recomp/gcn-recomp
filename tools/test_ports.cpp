@@ -811,23 +811,23 @@ bool exists_path(const std::string& path) { return file_id(path) != 0; }
 
 bool has(const std::string& text, const std::string& what) { return text.find(what) != std::string::npos; }
 
-// The line the file has for `v` on `port` (1 to 4): none of its serial, none of its IDs.
+// The line the file has for `v` on `port` (1 to 4). The virtual pads have no serial and no USB IDs.
 std::string line_for(int port, const Virtual& v) { return "\n" + std::to_string(port) + " " + guid_of(v) + " - 0000:0000\n"; }
 
-// A launch from nothing: the file gone, and read again at the first gamepad.
+// A launch from nothing. The file is gone, and it's read again at the first gamepad.
 void fresh_file(const std::string& file) {
     remove(file.c_str());
     gamepads_remember(file.c_str());
 }
 
-// A new launch: the gamepads let go, and the file read again at the first gamepad.
+// A new launch. The gamepads are let go, and the file is read again at the first gamepad.
 void relaunch() {
     gamepads_shutdown();
     power_on(1);
 }
 
-// Gamepads pulled out and plugged in the other order get their saved ports back. Pulled
-// out, nothing is written; plugged back in as they were, nothing is written either.
+// Gamepads pulled out and plugged in the other order get their saved ports back. Pulling
+// them out writes nothing, and neither does plugging them back in.
 void memory_order(const std::string& file) {
     fresh_file(file);
     power_on(1);
@@ -894,8 +894,8 @@ void memory_reversed(const std::string& file) {
     gamepads_shutdown();
 }
 
-// Two gamepads of one model, which have the same GUID and no serial, can't be told apart:
-// they fill their ports in the order they connect.
+// Two gamepads of one model have the same GUID and no serial, so they can't be told apart.
+// They fill their ports in the order they connect.
 void memory_twins(const std::string& file) {
     fresh_file(file);
     power_on(1);
@@ -920,7 +920,7 @@ void memory_twins(const std::string& file) {
     gamepads_shutdown();
 }
 
-// A saved port isn't a reservation: its gamepad is away, and another takes it. The
+// A saved port isn't a reservation. Its gamepad is away, and another takes it. The
 // gamepad that comes back holding port 1's player index doesn't move the one on port 1.
 void memory_missing(const std::string& file) {
     fresh_file(file);
@@ -1032,8 +1032,8 @@ void memory_file(const std::string& dir, const std::string& file) {
     gamepads_shutdown();
 }
 
-// A launch with no gamepad reads nothing and writes nothing, as a hidden or headless run
-// has none. Each port reads as it does with no memory at all.
+// A launch with no gamepad connected reads nothing and writes nothing. Each port reads as
+// it does with no memory at all.
 void memory_no_pads(const std::string& dir, const std::string& file) {
     // The ports as the guest reads them over a few frames.
     auto ports_seen = [] {
@@ -1051,7 +1051,7 @@ void memory_no_pads(const std::string& dir, const std::string& file) {
     const std::string plain = ports_seen();
     gamepads_shutdown();
 
-    // No file: none is made, and neither is its directory.
+    // With no file, nothing is made. That includes its directory.
     fresh_file(file);
     rmdir((dir + "/saves").c_str());
     const std::string quiet = dir + "/memory-none-stderr.txt";
@@ -1065,7 +1065,7 @@ void memory_no_pads(const std::string& dir, const std::string& file) {
           "no gamepad and no ports.txt: the ports read as with no memory, and no file or directory is made");
     gamepads_shutdown();
 
-    // A file with ports in it that can't even be opened: if the launch tried to read it, it would say so.
+    // A file with ports in it that can't even be opened. A launch that tried to read it would say so.
     plat_make_dirs(dir + "/saves");
     write_file(file, "1 " + std::string(32, 'a') + " - 0000:0000\n");
     const uint64_t before = file_id(file);

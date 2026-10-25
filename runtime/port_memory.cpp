@@ -33,8 +33,9 @@ bool is_saved(const SavedPorts& saved, const PortDevice& d) {
 
 bool plain(unsigned char c) { return c > 0x20 && c != 0x7F && c != '%'; }
 
-// A serial as one token: `-` for none, and a percent escape for any byte a token can't hold.
-// A serial that is only `-` is escaped too, so that it can't be taken for none.
+// A serial as one token. `-` stands for none, and a percent escape stands for any byte a
+// token can't hold. A serial that's only `-` is escaped too, so that it can't be taken for
+// none.
 std::string encode_serial(const std::string& serial) {
     if (serial.empty()) return "-";
     if (serial == "-") return "%2D";

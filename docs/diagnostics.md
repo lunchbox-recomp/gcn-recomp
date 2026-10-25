@@ -126,13 +126,16 @@ press on a port that is not plugged in does nothing.
 
 `saves/ports.txt` remembers which gamepad was last on each port (`runtime/port_memory.h`),
 by its GUID, serial and USB IDs, so a gamepad finds its port again whatever order the
-controllers connect in. It is written when a gamepad lands on a port the file didn't have
+controllers connect in. It's written when a gamepad lands on a port the file didn't have
 it on, and not when one is pulled out.
 
-A saved port is only a preference. Another gamepad can take it while its own is away, a
+A saved port is only a preference. Another gamepad can take it while its own is away. A
 gamepad that finds its port taken goes to the lowest free port, and a port `controls.txt`
-pins beats the file. A launch with no gamepad connected never opens the file, and
-`--headless` never gets as far as looking for one.
+pins beats the file.
+
+A launch with no gamepad connected never opens the file. `--headless` stays in its own
+loop before SDL starts, so it never looks for one. A file that exists and can't be read is
+said once and never written over.
 
 `ninja test_ports` in a build directory (the build allows Linux, but it has only been run
 on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without
@@ -143,10 +146,11 @@ recording of two gamepads and its replay with none. Each check prints `ok` or `F
 the exit code is 0 only if all pass. It refuses to run while any joystick is connected.
 
 `ninja test_port_memory` builds `tools/test_port_memory.cpp`, which checks which port each
-gamepad gets from what `ports.txt` remembers, serials included, which SDL's virtual
-joysticks can't carry, and loads and saves the file. It needs no disc image, device or
-SDL. `test_port_memory <new dir>` makes that directory and writes its files there, and
-the exit code is 0 only if all pass.
+gamepad gets from what `ports.txt` remembers. It covers serials, which SDL's virtual
+joysticks can't carry. It also loads and saves the file.
+
+The test needs no disc image, device or SDL. `test_port_memory <new dir>` makes that
+directory and writes its files there, and the exit code is 0 only if all pass.
 
 `ninja test_settings` builds `tools/test_settings.cpp`, which loads and saves `settings.txt`
 files, including saves that are made to fail. It needs no disc image, device or SDL.

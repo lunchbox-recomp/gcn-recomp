@@ -87,14 +87,16 @@ default.
 - `runtime/`: the GameCube in software. `recomp.h` is the contract with generated code.
   `cpu.cpp`, `threads.cpp` and `hle_os.cpp` are the CPU and OS; `hw/` the hardware
   registers; `gx/` the graphics pipeline; `main.cpp` the SDL frontend and `bench_main.cpp`
-  the benchmark. `gamepads.*` gives each gamepad a port of its own as it connects: its
-  saved port if that is free, else the port of its player number if that port is free
-  (Steam Input's order, or the XInput slot on Windows), else the lowest free port. Its
-  player light then shows that port, except an XInput controller's ring, which shows the
-  slot Windows gave it. A gamepad pulled out frees its port, which the game then sees unplugged unless the
+  the benchmark. `gamepads.*` gives each gamepad a port of its own as it connects. It
+  takes its saved port if that's free. A gamepad the file doesn't name takes the port of
+  its player number if that's free (Steam Input's order, or the XInput slot on Windows),
+  else the lowest free port, and a saved one that finds its port taken takes the lowest
+  free port too. Its player light then shows that port, except an XInput controller's
+  ring, which shows the slot Windows gave it.
+  A gamepad pulled out frees its port, which the game then sees unplugged unless the
   keyboard (port 1), `--pads` or a `controls.txt` line keeps it plugged in. A gamepad gets
   no port when none is free, and gets one only after it is unplugged and plugged in again.
-  A gamepad plugged back in takes its saved port if that is free, so two gamepads pulled
+  A gamepad plugged back in takes its saved port if that's free, so two gamepads pulled
   out and plugged back in the other order keep their ports. A controller SDL has no
   mapping for is a gamepad once a `gamecontrollerdb.txt` beside the executable maps it; for
   a file elsewhere, SDL reads the path in `SDL_GAMECONTROLLERCONFIG_FILE`.
@@ -105,11 +107,9 @@ default.
   `ffb.*` is the wheel's force feedback, from the game's `telemetry::Motion` and the pad's
   rumble motor.
 - `runtime/port_memory.*`: `saves/ports.txt`, one line a port, naming the gamepad last put
-  there by its GUID, serial and USB IDs. A saved port is only a preference, so another
-  gamepad can take it while its own is away, and one that finds its port taken goes to the
-  lowest free port. The file is written when a gamepad lands on a port it didn't have it
-  on, so a launch with no gamepad reads and writes nothing, and a port `controls.txt` pins
-  beats it.
+  there by its GUID, serial and USB IDs. A saved port is only a preference. Another gamepad
+  can take it while its own is away. The file is written only when a gamepad lands on a
+  port the file didn't name it on.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
   `fullscreen` and `scale`, though this build applies only `scale`. A flag beats the file
