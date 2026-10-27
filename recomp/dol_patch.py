@@ -135,8 +135,10 @@ class Patcher:
 
     def apply(self, path: str) -> None:
         try:
-            with open(path, encoding='utf-8') as f:
-                lines = f.read().splitlines()
+            # A byte order mark is dropped, and only a newline ends a line, so a separator
+            # inside a comment doesn't start a new one. `newline=''` keeps a lone CR as it is.
+            with open(path, encoding='utf-8-sig', newline='') as f:
+                lines = f.read().split('\n')
         except (OSError, ValueError):
             raise PatchError(f"{path}: can't read the patch list")
         base = os.path.dirname(os.path.abspath(path))

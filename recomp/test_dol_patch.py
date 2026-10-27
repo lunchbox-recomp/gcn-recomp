@@ -603,6 +603,23 @@ class Syntax(Base):
         path = self.write('a.txt', text)
         self.assertEqual(word_at(self.ok(path), H), LI_R3_1)
 
+    def test_a_utf8_byte_order_mark_before_the_dol_line_is_fine(self) -> None:
+        path = self.write('a.txt', b'\xef\xbb\xbf' + f'dol {self.sha}\n'.encode('ascii'))
+        self.assertEqual(self.ok(path), self.dol)
+
+    def test_only_a_newline_ends_a_line(self) -> None:
+        hook = f'word {A + 4:08X} {B_A4_TO_H:08X} {LI_R3_1:08X}'
+        for sep in (' ', ' ', '\x85', '\x0b', '\x0c', '\x1c', '\x1d', '\x1e', '\r'):
+            out = self.ok(self.plist('a.txt', f'# note{sep}more words', hook))
+            self.assertEqual(word_at(out, A + 4), B_A4_TO_H, repr(sep))
+            path = self.plist('b.txt', f'# note{sep}more words', 'patch 1')
+            self.refused([path], [(path, 3)], 'unknown line patch')
+
+    def test_lines_may_end_in_a_carriage_return_and_a_newline(self) -> None:
+        text = f'dol {self.sha}\r\n# note\r\nword {A + 4:08X} {B_A4_TO_H:08X} {LI_R3_1:08X}\r\n'
+        out = self.ok(self.write('a.txt', text))
+        self.assertEqual(word_at(out, A + 4), B_A4_TO_H)
+
     def test_a_hash_inside_a_file_name_is_not_a_comment(self) -> None:
         self.write('code#1.bin', bytes(4))
         self.ok(self.plist('a.txt', f'section text {H:08X} 20 code#1.bin'))
