@@ -375,7 +375,7 @@ void path_choice() {
     g_disc_overlay_flag = "from flag.txt";
     check(std::string(disc_overlay_path()) == "from flag.txt", "--disc-overlay beats the variable");
     g_disc_overlay_flag = "";
-    check(disc_overlay_path() != nullptr && *disc_overlay_path() == 0, "and an empty flag still wins, so the load names it");
+    check(disc_overlay_path() != nullptr && *disc_overlay_path() == 0, "and an empty flag still wins, so the load can refuse it");
     g_disc_overlay_flag = nullptr;
     setenv("GCN_DISC_OVERLAY", "", 1);
     check(disc_overlay_path() == nullptr, "an empty variable counts as unset");
@@ -690,6 +690,8 @@ void refusals() {
 
     // The manifest itself.
     std::string err;
+    check(!disc_overlay_load("", plain_base, &err) && err.find("--disc-overlay=") == 0 && err.find("no manifest path") != std::string::npos,
+          "an empty manifest name is refused as the flag with nothing after it");
     const std::string none = g_out + "/none.txt";
     check(!disc_overlay_load(none.c_str(), plain_base, &err) && err.find(none) == 0, "a manifest that isn't there is refused naming it");
     check(!disc_overlay_load(g_out.c_str(), plain_base, &err) && err.find(g_out) == 0, "and so is a folder");

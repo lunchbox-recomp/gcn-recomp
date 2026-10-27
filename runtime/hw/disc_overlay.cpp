@@ -262,6 +262,10 @@ void disc_overlay_unload() {
 
 bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error) {
     disc_overlay_unload();
+    if (!*manifest) {
+        if (error) *error = "--disc-overlay= has no manifest path after it";
+        return false;
+    }
     const Failure fail{manifest, error};
 
     // The whole file, since a manifest is small and a line cut short must not be taken for a shorter one.

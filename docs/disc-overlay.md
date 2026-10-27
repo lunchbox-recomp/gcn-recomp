@@ -61,7 +61,9 @@ Dolphin does the same when it builds a virtual disc for a folder of files. It wr
 
 ## Running with one
 
-`--disc-overlay=FILE` or `GCN_DISC_OVERLAY=FILE` names the manifest, and the flag wins when both are set. The runtime loads it before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
+`--disc-overlay=FILE` or `GCN_DISC_OVERLAY=FILE` names the manifest, and the flag wins when both are set. An empty variable counts as unset, but an empty `--disc-overlay=` stops the run and says so.
+
+The runtime loads the manifest before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
 
 Load stops the run, with a message that names the manifest and the line, when anything is wrong. The image's disc ID and its FST's offset, size and hash have to match the `base` line, and the message names both hashes when they don't. A line that isn't in the format above stops it too, and so does a range file that's missing, is a folder or is shorter than its range.
 
