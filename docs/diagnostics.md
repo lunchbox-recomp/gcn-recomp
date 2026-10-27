@@ -586,6 +586,12 @@ resume. Each pause prints `[pause] held at frame N, output frame F` and `[pause]
 frame N after T ms, output frame F`, where F is how far a `GCN_WAV` recording had got. With
 `GCN_FRAMETIME=1` the `[ft]` line of the first frame after a resume is timed from the resume.
 
+`GCN_OVERLAY_AT=<frame>:<host frames>` opens the menu over the game (`runtime/overlay/overlay.h`)
+once `<frame>` frames have been presented, and closes it after it's been drawn over the held
+frame `<host frames>` times. With `--dump-output` its first draw over the held frame goes to
+`overlay_NNNNN.png` too, which is how a hidden run shows the menu. Frame and output dumps never
+include it, so a run that opened it writes the same frame dumps as one that didn't.
+
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under
 `GCN_AUDIOSTATS` a pause shows as a run of `[audio] underrun` lines from where the ring ran

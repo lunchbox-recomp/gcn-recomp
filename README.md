@@ -79,6 +79,12 @@ wider to match. A headset's view stays 4:3, so `--eye` and `GCN_THEATER_STEREO` 
 Control-Command-F on a Mac, from the Window menu SDL adds, where F11 is Show Desktop by
 default.
 
+F1 or a gamepad's Back opens a menu over the game and pauses it until F1, Back or B closes it.
+Escape closes the menu too, and quits the game when the menu is closed.
+
+The menu's Display page sets the aspect and the internal scale and turns fullscreen on or off.
+Each change applies at once and is saved to `settings.txt`, which the window reads at start.
+
 ## Audio
 
 This fork changes the audio path from upstream `9b0a2fe` in the commits below. Nothing in it
@@ -181,9 +187,11 @@ nothing was compared with a real console. Every run was on one machine.
   port the file didn't name it on.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
-  `fullscreen` and `scale`, though this build applies only `scale`. A flag beats the file
-  for that run and isn't written back, and a save rewrites only the owned keys' lines and
-  adds any that are missing.
+  `fullscreen` and `scale`. A flag beats the file for that run and isn't written back, and
+  a save rewrites only the owned keys' lines and adds any that are missing.
+- `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. It pauses the game and
+  holds the game's input back while it's open. Its Display page sets the picture and saves
+  the setting it changes to `settings.txt`.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;
   `xr_desktop.cpp` puts it on the desktop's GL context for PC VR (`--vr`, Windows).
@@ -203,3 +211,7 @@ CMake 3.20+, Ninja, Python 3 and a C++20 compiler. The first configure downloads
 library is installed when SDL is configured, SDL also reaches controllers over libusb,
 loading libusb at run time rather than linking it. On macOS that is
 `brew install cmake ninja python`, plus `libusb`.
+
+The menu over the game needs Dear ImGui 1.92.9b, whose source archive the first configure
+downloads and checks by its SHA-256. `-DGCN_OVERLAY=OFF` builds without the menu, and Android
+builds and the benchmark leave it out.
