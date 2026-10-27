@@ -42,14 +42,17 @@ def raw(entries, names):
     return b''.join(struct.pack('>III', t << 24 | n, a, b) for t, n, a, b in entries) + names
 
 
-# The fixture's files with their sizes, in FST order. Compared in lowercase, '_' sorts before
-# letters and 'Data' lands between 'audio' and 'opening.bnr'.
+# The fixture's files with their sizes, in FST order. Names compare in uppercase, so '_' sorts
+# after the letters. That puts '_notes.txt' last in its directory, and 'ground_lit.tex' after
+# 'groundMap.tex', where a lowercase compare would put each one before.
 FILES = [
-    ('audio/_notes.txt', 12),
     ('audio/bgm/theme.hps', 5000),
     ('audio/sfx.dat', 0x800),
+    ('audio/_notes.txt', 12),
     ('Data/empty.bin', 0),
-    ('Data/maps/level1.bin', 70),
+    ('Data/maps/ground.tex', 70),
+    ('Data/maps/groundMap.tex', 9),
+    ('Data/maps/ground_lit.tex', 21),
     ('Data/readme text.txt', 33),
     ('opening.bnr', 1),
     ('Zeta.bin', 4100),
@@ -151,11 +154,16 @@ class TestLayout(unittest.TestCase):
             '6100 6200'))
         self.assertEqual(fst.build(fst.parse(data)), data)
 
-    def test_build_orders_each_directory_by_lowercase_name(self):
+    def test_build_orders_each_directory_by_uppercase_name_then_raw_name(self):
         names = ['Zed', 'alpha', '_under', 'Beta.bin', 'beta2', '10', 'Alpha']
         tree = fst.Entry('', children=[fst.Entry(n, 0, 0) for n in names])
         order = [e.name for e in fst.parse(fst.build(tree)).children]
-        self.assertEqual(order, ['10', '_under', 'alpha', 'Alpha', 'Beta.bin', 'beta2', 'Zed'])
+        self.assertEqual(order, ['10', 'Alpha', 'alpha', 'Beta.bin', 'beta2', 'Zed', '_under'])
+
+    def test_a_layout_in_uppercase_order_round_trips(self):
+        # 'bc.bin' before 'b_c.bin', as a disc written in uppercase order has them.
+        data = raw([(1, 0, 0, 3), (0, 0, 0x1000, 1), (0, 7, 0x2000, 1)], b'bc.bin\0b_c.bin\0')
+        self.assertEqual(fst.build(fst.parse(data)), data)
 
     def test_build_leaves_its_input_in_order(self):
         tree = small_tree()
@@ -254,11 +262,15 @@ class TestImages(TmpCase):
             self.assertEqual(tree, fst.parse(disc.fst))
 
     def test_directories_come_out_in_build_order(self):
-        names = [c.name for c in fst.parse(Disc().fst).children]
-        self.assertEqual(names, ['audio', 'Data', 'opening.bnr', 'Zeta.bin'])
-        audio = fst.parse(Disc().fst).children[0]
+        root = fst.parse(Disc().fst)
+        self.assertEqual([c.name for c in root.children],
+                         ['audio', 'Data', 'opening.bnr', 'Zeta.bin'])
+        audio, data = root.children[:2]
         self.assertEqual([c.name for c in audio.children],
-                         ['_notes.txt', 'bgm', 'empty_dir', 'sfx.dat'])
+                         ['bgm', 'empty_dir', 'sfx.dat', '_notes.txt'])
+        maps = data.children[1]
+        self.assertEqual([c.name for c in maps.children],
+                         ['ground.tex', 'groundMap.tex', 'ground_lit.tex'])
 
     def test_read_refuses_an_image_with_no_header(self):
         path = os.path.join(self.tmp, 'short.iso')

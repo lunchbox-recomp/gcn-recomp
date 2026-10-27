@@ -53,9 +53,13 @@ class Entry:
     children: Optional[List['Entry']] = None
 
 
-def sort_key(name: str) -> str:
-    """How build orders the names in a directory."""
-    return name.lower()
+def sort_key(name: str) -> Tuple[str, str]:
+    """How build orders the names in a directory, as Dolphin's FST writer and retail discs do.
+
+    Names compare in uppercase, so '_' sorts after the letters. Names that match that way
+    compare as they're spelled.
+    """
+    return name.upper(), name
 
 
 def _check_name(index: int, name: str) -> None:
