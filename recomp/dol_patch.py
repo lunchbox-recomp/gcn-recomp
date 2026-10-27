@@ -34,6 +34,7 @@ ALIGN = 0x20
 RAM_START = 0x80000000
 RAM_END = 0x81800000
 MAX_U32 = 0xFFFFFFFF
+LIST_MAX = 1 << 20  # a patch list is a page or two of text, so a bigger file is a mistake
 # What runtime/boot.cpp writes after it copies the DOL's sections to RAM, as half-open ranges. A
 # section there would hold something else once the game starts. The first range is the disc
 # header and the boot info words (:30-35) with the arena words (:51-53). The next is the words at
@@ -147,6 +148,32 @@ def read_modules(path: str) -> Optional[bytes]:
         raise PatchError(f"{path}: can't read the modules file")
 
 
+def read_list(path: str) -> str:
+    """The text of a patch list, without a byte order mark and with its line ends as they are.
+
+    The list has to be a regular file or a link to one, so a pipe or a device is refused before
+    it's opened, since opening one can block. The read stops one byte past LIST_MAX, so a file
+    that never ends can't grow without bound.
+    """
+    try:
+        regular = stat.S_ISREG(os.stat(path).st_mode)
+    except OSError:
+        raise PatchError(f"{path}: can't read the patch list")
+    if not regular:
+        raise PatchError(f'{path}: the patch list is not a regular file')
+    try:
+        with open(path, 'rb') as f:
+            raw = f.read(LIST_MAX + 1)
+    except OSError:
+        raise PatchError(f"{path}: can't read the patch list")
+    if len(raw) > LIST_MAX:
+        raise PatchError(f'{path}: the patch list is more than 1 MiB')
+    try:
+        return raw.decode('utf-8-sig')
+    except ValueError:
+        raise PatchError(f"{path}: can't read the patch list")
+
+
 def section_file(where: str, base: str, name: str, size: int) -> bytes:
     """The bytes of a section's file, which has to be a regular file inside the list's folder.
 
@@ -209,13 +236,8 @@ class Patcher:
 
     def apply(self, path: str) -> None:
         self.owner += 1
-        try:
-            # A byte order mark is dropped, and only a newline ends a line, so a separator
-            # inside a comment doesn't start a new one. `newline=''` keeps a lone CR as it is.
-            with open(path, encoding='utf-8-sig', newline='') as f:
-                lines = f.read().split('\n')
-        except (OSError, ValueError):
-            raise PatchError(f"{path}: can't read the patch list")
+        # Only a newline ends a line, so a separator inside a comment doesn't start a new one.
+        lines = read_list(path).split('\n')
         base = os.path.dirname(os.path.abspath(path))
         seen_dol = False
         for n, raw in enumerate(lines, 1):

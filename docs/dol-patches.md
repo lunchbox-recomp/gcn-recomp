@@ -26,6 +26,8 @@ Numbers are hex and fit in 32 bits, and a `0x` prefix is optional. A `#` starts 
 
 A list is UTF-8, with or without a byte order mark. Only a newline ends a line, so a comment can hold any other separator.
 
+A list is a regular file or a link to one, and it's no bigger than 1 MiB. A pipe or a device is refused before it's opened.
+
 - `dol` comes first in every list, and its SHA-1 has to match `IN`. Patches apply to a copy, so the check that the build starts from the supported DOL never relaxes.
 - `section` adds a section. It's zero-filled, or it starts with the bytes of `<file>`. The file's path is the rest of the line, so it can hold spaces.
 - `word` replaces one word, and `expect` is the word it replaces.

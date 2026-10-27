@@ -742,6 +742,47 @@ class SectionFiles(Base):
         self.assertFalse(os.path.exists(self.out))
 
 
+class PatchListFiles(Base):
+    """The list itself is a regular file, or a link to one, of at most 1 MiB."""
+
+    def test_a_fifo_is_refused_without_being_opened(self) -> None:
+        path = os.path.join(self.dir, 'pipe.txt')
+        os.mkfifo(path)
+        self.refused([path], [(path, None)], f'{path}: the patch list is not a regular file')
+
+    def test_a_link_to_a_device_is_refused(self) -> None:
+        path = os.path.join(self.dir, 'null.txt')
+        os.symlink(os.devnull, path)
+        self.refused([path], [(path, None)], f'{path}: the patch list is not a regular file')
+
+    def test_a_link_to_a_regular_file_is_fine(self) -> None:
+        real = self.plist('real/a.txt', f'word {A + 4:08X} {B_A4_TO_H:08X} {LI_R3_1:08X}')
+        link = os.path.join(self.dir, 'link.txt')
+        os.symlink(real, link)
+        self.assertEqual(word_at(self.ok(link), A + 4), B_A4_TO_H)
+
+    def test_a_list_may_be_a_mebibyte_and_no_more(self) -> None:
+        head = f'dol {self.sha}\n'
+        self.ok(self.write('big.txt', head + '#' * (0x100000 - len(head))))
+        path = self.write('big.txt', head + '#' * (0x100001 - len(head)))
+        self.refused([path], [(path, None)], f'{path}: the patch list is more than 1 MiB')
+
+    def test_a_list_is_read_up_to_one_byte_past_a_mebibyte(self) -> None:
+        path = self.plist('a.txt')
+        real_open = builtins.open
+        asked = []
+
+        def spy(file, mode='r', *args, **kwargs):
+            handle = real_open(file, mode, *args, **kwargs)
+            return Reads(handle, asked) if str(file).endswith('a.txt') else handle
+
+        with mock.patch.object(dol_patch, 'open', spy, create=True), \
+                contextlib.redirect_stderr(io.StringIO()):
+            code = dol_patch.main([self.inp, self.out, path])
+        self.assertEqual(code, 0)
+        self.assertEqual(asked, [0x100001])
+
+
 class Functions(Base):
     def lists(self, *lines) -> str:
         return self.plist('a.txt', f'section text {H:08X} 20', *lines)
