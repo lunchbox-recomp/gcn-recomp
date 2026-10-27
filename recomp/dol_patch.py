@@ -15,6 +15,7 @@ import argparse
 import hashlib
 import os
 import re
+import stat
 import struct
 import sys
 from dataclasses import dataclass
@@ -79,6 +80,35 @@ def arity(where: str, op: str, args: Sequence[str], *counts: int) -> None:
     if len(args) not in counts:
         wanted = ' or '.join(str(c) for c in counts)
         raise PatchError(f'{where}: {op} takes {wanted} arguments, not {len(args)}')
+
+
+def section_file(where: str, base: str, name: str, size: int) -> bytes:
+    """The bytes of a section's file, which has to be a regular file inside the list's folder.
+
+    The name is resolved first, so a `..` or a symlink can't leave the folder. A pipe or a device
+    is refused before it's opened, since opening one can block, and the read stops one byte past
+    the section so a file that never ends can't grow without bound.
+    """
+    if os.path.isabs(name):
+        raise PatchError(f'{where}: {name} is an absolute path')
+    root = os.path.realpath(base)
+    real = os.path.realpath(os.path.join(root, name))
+    if os.path.commonpath([root, real]) != root:
+        raise PatchError(f'{where}: {name} is outside the folder that holds the list')
+    try:
+        regular = stat.S_ISREG(os.stat(real).st_mode)
+    except OSError:
+        raise PatchError(f"{where}: can't read {name}")
+    if not regular:
+        raise PatchError(f'{where}: {name} is not a regular file')
+    try:
+        with open(real, 'rb') as f:
+            payload = f.read(size + 1)
+    except OSError:
+        raise PatchError(f"{where}: can't read {name}")
+    if len(payload) > size:
+        raise PatchError(f"{where}: {name} is more than the section's {size:X} bytes")
+    return payload
 
 
 class Patcher:
@@ -167,16 +197,7 @@ class Patcher:
         free = [slot for slot in range(first, stop) if self.slots[slot] is None]
         if not free:
             raise PatchError(f'{where}: all {stop - first} {kind} slots are in use')
-        payload = b''
-        if len(args) == 4:
-            try:
-                with open(os.path.join(base, args[3]), 'rb') as f:
-                    payload = f.read()
-            except OSError:
-                raise PatchError(f"{where}: can't read {args[3]}")
-            if len(payload) > size:
-                raise PatchError(f'{where}: {args[3]} is {len(payload):X} bytes, more than the '
-                                 f'section\'s {size:X}')
+        payload = section_file(where, base, args[3], size) if len(args) == 4 else b''
         slot = free[0]
         self.out += bytes(-len(self.out) % ALIGN)
         offset = len(self.out)

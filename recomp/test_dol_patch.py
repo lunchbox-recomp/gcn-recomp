@@ -5,7 +5,10 @@ The DOLs are assembled here from hand-encoded words, so no game is needed. Every
 and word in the fixture is made up. The last class runs recomp.py on a patched fixture to see
 that a hook from the middle of a function into new code and back compiles.
 """
+import builtins
+import contextlib
 import hashlib
+import io
 import os
 import struct
 import subprocess
@@ -13,9 +16,11 @@ import sys
 import tempfile
 import unittest
 import warnings
+from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import dol_patch  # noqa: E402
 from dol import Dol, load_symbols  # noqa: E402
 
 TOOL = os.path.join(HERE, 'dol_patch.py')
@@ -100,8 +105,9 @@ class Base(unittest.TestCase):
         return self.write(name, '\n'.join([f'dol {self.sha}'] + list(lines)) + '\n')
 
     def run_tool(self, *lists, cwd=None):
+        # A run that opens a pipe it shouldn't would block, so a hang is an error here.
         return subprocess.run([sys.executable, '-B', TOOL, self.inp, self.out, *lists],
-                              capture_output=True, text=True, cwd=cwd)
+                              capture_output=True, text=True, cwd=cwd, timeout=30)
 
     def ok(self, *lists) -> bytes:
         r = self.run_tool(*lists)
@@ -410,6 +416,96 @@ class Sections(Base):
                           (f'section text {H:08X} 100000000', 'more than 32 bits')):
             path = self.plist('a.txt', line)
             self.refused([path], [(path, 2)], why)
+
+
+class Reads:
+    """Stands in for a section file's handle and records how many bytes each read asked for."""
+
+    def __init__(self, real, asked) -> None:
+        self.real, self.asked = real, asked
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.real.close()
+
+    def read(self, n=-1) -> bytes:
+        self.asked.append(n)
+        return self.real.read(n)
+
+
+class SectionFiles(Base):
+    """The file a section line names is a regular file inside the folder that holds the list."""
+
+    def line(self, name) -> str:
+        return f'section text {H:08X} 20 {name}'
+
+    def test_a_name_that_climbs_out_of_the_folder_is_refused(self) -> None:
+        self.write('secret.bin', bytes(8))
+        path = self.plist('mod/dol.txt', self.line('../secret.bin'))
+        self.refused([path], [(path, 2)], f'{path}:2: ../secret.bin is outside the folder that holds the list')
+
+    def test_a_sibling_folder_with_the_same_prefix_is_outside(self) -> None:
+        self.write('mod2/x.bin', bytes(8))
+        path = self.plist('mod/dol.txt', self.line('../mod2/x.bin'))
+        self.refused([path], [(path, 2)], 'is outside the folder that holds the list')
+
+    def test_a_name_that_leaves_and_comes_back_is_fine(self) -> None:
+        self.write('mod/x.bin', struct.pack('>I', LI_R3_1))
+        out = self.ok(self.plist('mod/dol.txt', self.line('../mod/./x.bin')))
+        self.assertEqual(word_at(out, H), LI_R3_1)
+
+    def test_an_absolute_path_is_refused_even_when_it_points_inside(self) -> None:
+        outside = self.write('secret.bin', bytes(8))
+        inside = self.write('mod/x.bin', bytes(8))
+        for name in (outside, inside):
+            path = self.plist('mod/dol.txt', self.line(name))
+            self.refused([path], [(path, 2)], f'{path}:2: {name} is an absolute path')
+
+    def test_a_symlink_out_of_the_folder_is_refused(self) -> None:
+        outside = self.write('secret.bin', bytes(8))
+        self.write('mod/.keep', b'')
+        os.symlink(outside, os.path.join(self.dir, 'mod', 'link.bin'))
+        os.symlink(self.dir, os.path.join(self.dir, 'mod', 'linkdir'))
+        for name in ('link.bin', 'linkdir/secret.bin'):
+            path = self.plist('mod/dol.txt', self.line(name))
+            self.refused([path], [(path, 2)], 'is outside the folder that holds the list')
+
+    def test_a_symlink_that_stays_inside_is_fine(self) -> None:
+        self.write('mod/real.bin', struct.pack('>I', LI_R3_1))
+        os.symlink('real.bin', os.path.join(self.dir, 'mod', 'alias.bin'))
+        out = self.ok(self.plist('mod/dol.txt', self.line('alias.bin')))
+        self.assertEqual(word_at(out, H), LI_R3_1)
+
+    def test_a_fifo_is_refused_without_being_opened(self) -> None:
+        self.write('mod/.keep', b'')
+        os.mkfifo(os.path.join(self.dir, 'mod', 'pipe.bin'))
+        path = self.plist('mod/dol.txt', self.line('pipe.bin'))
+        self.refused([path], [(path, 2)], f'{path}:2: pipe.bin is not a regular file')
+
+    def test_a_folder_is_refused(self) -> None:
+        self.write('mod/sub/x.bin', bytes(4))
+        path = self.plist('mod/dol.txt', self.line('sub'))
+        self.refused([path], [(path, 2)], 'sub is not a regular file')
+
+    def test_a_file_is_read_up_to_one_byte_past_the_section(self) -> None:
+        self.write('mod/code.bin', bytes(0x24))
+        path = self.plist('mod/dol.txt', self.line('code.bin'))
+        real_open = builtins.open
+        asked = []
+
+        def spy(file, mode='r', *args, **kwargs):
+            handle = real_open(file, mode, *args, **kwargs)
+            return Reads(handle, asked) if str(file).endswith('code.bin') else handle
+
+        with mock.patch.object(dol_patch, 'open', spy, create=True), \
+                contextlib.redirect_stderr(io.StringIO()) as err:
+            code = dol_patch.main([self.inp, self.out, path])
+        self.assertEqual(code, 1)
+        self.assertIn('is more than the section', err.getvalue())
+        self.assertEqual(asked, [0x21])
+        self.assertFalse(os.path.exists(self.out))
 
 
 class Functions(Base):
