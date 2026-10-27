@@ -116,45 +116,52 @@ def place(start: int, items: Sequence[Tuple[str, int]]) -> List[int]:
 def merge(root: fst.Entry, items: Sequence[Item]) -> None:
     """Put each item in the tree, replacing the file it matches or adding it.
 
-    A name matches ignoring case. A replaced file or a directory that exists keeps the disc's
-    spelling. Two items that spell one name two ways in one directory are refused.
+    A name matches the disc's spelling exactly when it can, and otherwise ignoring case. A name
+    that matches several disc names only by case is refused, since the disc holds case twins. A
+    replaced file or a directory that exists keeps the disc's spelling. Two items that reach one
+    entry with two spellings are refused.
     """
-    kids: Dict[int, Dict[str, fst.Entry]] = {}  # each directory's children by lowercase name
-    spelled: Dict[Tuple[int, str], str] = {}  # each name an item used in a directory, as spelled
+    folded: Dict[int, Dict[str, List[fst.Entry]]] = {}  # a directory's children by lowercase name
+    claimed: Dict[int, str] = {}  # each entry an item reached, as the first item spelled it
     for item in items:
         node = root
         disc = []
         for depth, name in enumerate(item.parts):
+            last = depth + 1 == len(item.parts)
             shown = '/'.join(item.parts[:depth + 1])
-            key = name.lower()
-            first = spelled.setdefault((id(node), key), name)
-            if first != name:
-                where = '/'.join(item.parts[:depth]) or 'the files folder'
-                raise OverlayError(f'{first!r} and {name!r} in {where} are one name on the disc')
-            if id(node) not in kids:
-                kids[id(node)] = {c.name.lower(): c for c in node.children}
-            names = kids[id(node)]
-            child = names.get(key)
-            if depth + 1 < len(item.parts):
-                if child is None:
-                    child = fst.Entry(name, children=[])
-                    node.children.append(child)
-                    names[key] = child
-                elif child.children is None:
-                    raise OverlayError(f'{shown} is a file on the disc, not a directory')
-                node = child
-            elif child is None:
-                child = fst.Entry(name, 0, item.size)
+            if id(node) not in folded:
+                table: Dict[str, List[fst.Entry]] = {}
+                for c in node.children:
+                    table.setdefault(c.name.lower(), []).append(c)
+                folded[id(node)] = table
+            same = folded[id(node)].setdefault(name.lower(), [])
+            exact = [c for c in same if c.name == name]
+            if len(same) > 1 and not exact:
+                twins = ', '.join(repr(c.name) for c in same)
+                raise OverlayError(f'{shown} matches {twins} on the disc by case alone')
+            child = exact[0] if exact else same[0] if same else None
+            if child is None:
+                child = fst.Entry(name, 0, item.size) if last else fst.Entry(name, children=[])
                 node.children.append(child)
-                names[key] = child
-            elif child.children is not None:
-                raise OverlayError(f'{shown} is a directory on the disc, not a file')
+                same.append(child)
+                claimed[id(child)] = name
             else:
-                child.size = item.size
-                item.replaced = True
+                first = claimed.setdefault(id(child), name)
+                if first != name:
+                    where = '/'.join(item.parts[:depth]) or 'the files folder'
+                    raise OverlayError(
+                        f'{first!r} and {name!r} in {where} are one name on the disc')
+                if last and child.children is not None:
+                    raise OverlayError(f'{shown} is a directory on the disc, not a file')
+                if not last and child.children is None:
+                    raise OverlayError(f'{shown} is a file on the disc, not a directory')
+                if last:
+                    child.size = item.size
+                    item.replaced = True
             disc.append(child.name)
+            node = child
         item.disc = tuple(disc)
-        item.entry = child
+        item.entry = node
 
 
 def make_overlay(img: DiscImage, items: Sequence[Item], dol: Optional[Item] = None) -> Overlay:

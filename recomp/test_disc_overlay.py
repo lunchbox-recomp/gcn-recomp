@@ -123,6 +123,16 @@ class OverlayCase(unittest.TestCase):
     def tree(self, out=None):
         return fst.parse(self.table(out))
 
+    def twin_image(self):
+        """The fixture with a 4-byte 'zeta.bin' at a made-up offset beside 'Zeta.bin'."""
+        tree = fst.parse(self.disc.fst)
+        tree.children.append(fst.Entry('zeta.bin', 0x6000, 4))
+        table = fst.build(tree)
+        data = bytearray(self.disc.iso)
+        struct.pack_into('>2I', data, 0x428, len(table), len(table) + 0x40)
+        data[FST_AT:FST_AT + len(table)] = table
+        return self.write('twins.iso', bytes(data))
+
 
 class TestReplace(OverlayCase):
     def test_a_same_size_replacement_keeps_the_size_words_and_the_heap(self):
@@ -398,7 +408,53 @@ class TestRefusals(OverlayCase):
         self.refuses(r"b caf.* has a name that isn't ASCII")
 
 
+class TestCaseTwins(OverlayCase):
+    """A disc directory that holds two names differing only by case."""
+
+    def test_an_exact_spelling_replaces_that_twin_and_leaves_the_other(self):
+        image = self.twin_image()
+        upper = self.disc.offsets['Zeta.bin']
+        for host, moved, kept, kept_at, kept_size in (
+                ('Zeta.bin', 'Zeta.bin', 'zeta.bin', 0x6000, 4),
+                ('zeta.bin', 'zeta.bin', 'Zeta.bin', upper, SIZES['Zeta.bin'])):
+            shutil.rmtree(self.mod)
+            self.put(host, b'n' * 9)
+            summary = self.main(image=image)
+            self.assertEqual((summary['added_files'], summary['replaced_files']), (0, 1))
+            found = listing(self.tree())
+            self.assertEqual(len(found), len(FILES) + 1)
+            self.assertEqual(found[moved], (START + SLOT, 9))
+            self.assertEqual(found[kept], (kept_at, kept_size))
+
+    def test_a_name_that_matches_the_twins_only_by_case_is_refused_naming_both(self):
+        self.put('ZETA.BIN')
+        self.refuses(r"ZETA\.BIN matches 'Zeta\.bin', 'zeta\.bin' on the disc by case alone",
+                     image=self.twin_image())
+
+
 class TestMerge(unittest.TestCase):
+    def twins(self):
+        root = fst.parse(Disc().fst)
+        root.children.append(fst.Entry('zeta.bin', 0x6000, 4))
+        root.children.append(fst.Entry('data', children=[fst.Entry('x.cfg', 0x6100, 1)]))
+        return root
+
+    def test_each_exact_spelling_reaches_its_own_twin(self):
+        root = self.twins()
+        items = [ov.Item('a', 9, ('Zeta.bin',)), ov.Item('b', 8, ('zeta.bin',)),
+                 ov.Item('c', 7, ('data', 'x.cfg')), ov.Item('d', 6, ('Data', 'new.cfg'))]
+        ov.merge(root, items)
+        self.assertEqual([i.disc for i in items], [
+            ('Zeta.bin',), ('zeta.bin',), ('data', 'x.cfg'), ('Data', 'new.cfg')])
+        self.assertEqual([i.replaced for i in items], [True, True, True, False])
+        sizes = {c.name: c.size for c in root.children if c.children is None}
+        self.assertEqual((sizes['Zeta.bin'], sizes['zeta.bin']), (9, 8))
+
+    def test_a_directory_that_matches_twins_only_by_case_is_refused(self):
+        with self.assertRaisesRegex(ov.OverlayError,
+                                    r"DATA matches 'Data', 'data' on the disc by case alone"):
+            ov.merge(self.twins(), [ov.Item('a', 1, ('DATA', 'x.cfg'))])
+
     def test_two_spellings_of_a_directory_are_refused(self):
         items = [ov.Item('a', 1, ('Data', 'x.cfg')), ov.Item('b', 1, ('DATA', 'y.cfg'))]
         with self.assertRaisesRegex(ov.OverlayError,
