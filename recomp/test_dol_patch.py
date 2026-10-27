@@ -120,7 +120,8 @@ class Base(unittest.TestCase):
         """The run exits 1 on its first message, which starts with the first place in `at` (a
         path and a line, or None for the path alone), names every other place in it and holds
         `why`. Nothing is written."""
-        for path in (self.out, self.out + '.syms'):
+        sidecars = [self.out + '.syms', self.out + '.modules']
+        for path in [self.out] + sidecars:
             if os.path.exists(path):
                 os.remove(path)
         r = self.run_tool(*lists)
@@ -130,8 +131,8 @@ class Base(unittest.TestCase):
         for place in places:
             self.assertIn(place, r.stderr)
         self.assertIn(why, r.stderr)
-        self.assertFalse(os.path.exists(self.out))
-        self.assertFalse(os.path.exists(self.out + '.syms'))
+        for path in [self.out] + sidecars:
+            self.assertFalse(os.path.exists(path), path)
 
     def syms(self) -> str:
         return self.read(self.out + '.syms').decode('ascii')
@@ -434,6 +435,105 @@ class Sections(Base):
                           (f'section text {H:08X} 100000000', 'more than 32 bits')):
             path = self.plist('a.txt', line)
             self.refused([path], [(path, 2)], why)
+
+
+class Sidecars(Base):
+    """The files recomp.py reads beside a DOL carry from IN to OUT."""
+
+    def sym(self, name, addr, size=None, kind='function') -> str:
+        extra = f' size:0x{size:X}' if size is not None else ''
+        return f'{name} = .text:0x{addr:08X}; // type:{kind}{extra} scope:global'
+
+    def write_syms(self, *lines) -> str:
+        return self.write('in.dol.syms', '\n'.join(lines) + '\n')
+
+    def hooks(self, *lines) -> str:
+        """A list that adds a text section at H, so its first added line is line 3."""
+        return self.plist('a.txt', f'section text {H:08X} 20', *lines)
+
+    def chain(self, name) -> None:
+        """Make the last run's output the next run's input, and the next output `name`."""
+        self.inp = self.out
+        self.sha = hashlib.sha1(self.read(self.inp)).hexdigest()
+        self.out = os.path.join(self.dir, name)
+
+    def test_ins_symbols_come_first_and_the_new_functions_sort_in(self) -> None:
+        self.write_syms('# a note', self.sym('high', 0x80050000, 8), '',
+                        self.sym('obj', DATA, 0x40, 'object'), self.sym('target', A, 0x14))
+        self.ok(self.hooks(f'function {H:08X} 8 hook_h'))
+        self.assertEqual(self.syms(), '\n'.join([
+            self.sym('target', A, 0x14), self.sym('hook_h', H, 8), self.sym('obj', DATA, 0x40, 'object'),
+            self.sym('high', 0x80050000, 8)]) + '\n')
+
+    def test_a_run_with_no_new_function_still_carries_ins_symbols(self) -> None:
+        self.write_syms(self.sym('target', A, 0x14))
+        self.ok(self.plist('a.txt'))
+        self.assertEqual(self.syms(), self.sym('target', A, 0x14) + '\n')
+
+    def test_two_runs_in_a_row_keep_every_function_and_the_modules_file(self) -> None:
+        self.write_syms(self.sym('target', A, 0x14))
+        self.write('in.dol.modules', b'80100000 20 0 first\n')
+        self.out = os.path.join(self.dir, 'b.dol')
+        self.ok(self.hooks(f'function {H:08X} 8 first_fn'))
+        self.chain('c.dol')
+        self.ok(self.plist('b.txt', f'section text {H + 0x100:08X} 20', f'function {H + 0x100:08X} 8 second_fn'))
+        self.assertEqual(self.syms(), '\n'.join([
+            self.sym('target', A, 0x14), self.sym('first_fn', H, 8), self.sym('second_fn', H + 0x100, 8)]) + '\n')
+        self.assertEqual(self.read(self.out + '.modules'), b'80100000 20 0 first\n')
+
+    def test_a_function_that_overlaps_one_of_ins_is_refused_naming_the_line(self) -> None:
+        syms = self.write_syms('# first', self.sym('taken', H + 8, 8))
+        for addr, size in ((H, 0xC), (H + 0xC, 8), (H + 8, 8), (H + 0xC, 4)):
+            path = self.hooks(f'function {addr:08X} {size:X} other')
+            self.refused([path], [(path, 3)], f'{path}:3: overlaps taken at {syms}:2')
+        self.ok(self.hooks(f'function {H:08X} 8 before', f'function {H + 0x10:08X} 8 after'))
+
+    def test_only_a_function_with_a_size_blocks_a_new_one(self) -> None:
+        self.write_syms(self.sym('obj', H, 0x20, 'object'), self.sym('bare', H + 8), self.sym('lbl', H + 8, kind='label'))
+        self.ok(self.hooks(f'function {H:08X} 10 hook_h'))
+
+    def test_a_name_ins_symbols_already_use_is_refused_naming_the_line(self) -> None:
+        syms = self.write_syms('# first', self.sym('hook_h', 0x80050000, 8), self.sym('shared', 0x80060000, 4, 'object'))
+        for name, line in (('hook_h', 2), ('shared', 3)):
+            path = self.hooks(f'function {H:08X} 8 {name}')
+            self.refused([path], [(path, 3)], f'{path}:3: {name} is already named at {syms}:{line}')
+
+    def test_a_symbols_file_that_cant_be_read_is_refused_by_name(self) -> None:
+        syms = self.write('in.dol.syms', b'\xff\xfe')
+        path = self.hooks()
+        self.refused([path], [(syms, None)], "can't read the symbols file")
+        os.remove(syms)
+        os.mkdir(syms)
+        self.refused([path], [(syms, None)], "can't read the symbols file")
+
+    def test_a_size_that_is_not_hex_is_refused_naming_the_line(self) -> None:
+        syms = self.write_syms('# one', 'x = .text:0x80050000; // type:function size:zz scope:global')
+        path = self.hooks()
+        self.refused([path], [(syms, 2)], 'size zz is not a hex number')
+
+    def test_ins_modules_file_is_copied_byte_for_byte(self) -> None:
+        modules = b'80100000 20 0 first\n\xff\xfe not text\r\n'
+        self.write('in.dol.modules', modules)
+        self.ok(self.plist('a.txt'))
+        self.assertEqual(self.read(self.out + '.modules'), modules)
+
+    def test_no_modules_file_is_written_when_in_has_none(self) -> None:
+        self.ok(self.plist('a.txt'))
+        self.assertFalse(os.path.exists(self.out + '.modules'))
+
+    def test_a_modules_file_that_cant_be_read_is_refused_by_name(self) -> None:
+        modules = os.path.join(self.dir, 'in.dol.modules')
+        os.mkdir(modules)
+        self.refused([self.plist('a.txt')], [(modules, None)], "can't read the modules file")
+
+    def test_a_run_may_overwrite_its_input(self) -> None:
+        self.write_syms(self.sym('target', A, 0x14))
+        self.write('in.dol.modules', b'80100000 20 0 first\n')
+        self.out = self.inp
+        out = self.ok(self.hooks(f'function {H:08X} 8 hook_h', f'word {A + 4:08X} {B_A4_TO_H:08X} {LI_R3_1:08X}'))
+        self.assertEqual(word_at(out, A + 4), B_A4_TO_H)
+        self.assertEqual(self.syms(), '\n'.join([self.sym('target', A, 0x14), self.sym('hook_h', H, 8)]) + '\n')
+        self.assertEqual(self.read(self.out + '.modules'), b'80100000 20 0 first\n')
 
 
 class BootWrites(Base):

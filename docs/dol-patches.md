@@ -47,7 +47,11 @@ Lists apply in the order given. A section belongs to the list that adds it, so a
 
 `OUT` is `IN` with the changed words, and the added sections at the end of the file on 32-byte boundaries. The header's first free slot of each kind points at them, and the rest of `IN` isn't moved.
 
-`OUT.syms` holds the functions in dtk's symbols format, sorted by address. `recomp.py` reads `<dol>.syms` beside any DOL it's given, so the functions compile like the game's own. The file is always written, and it's empty when the lists name no function.
+`OUT.syms` holds the symbol lines of `IN.syms` if it exists, then the new functions in dtk's symbols format, sorted by address. Lines that `recomp.py` skips, such as comments, are dropped. `recomp.py` reads `<dol>.syms` beside any DOL it's given, so the functions compile like the game's own.
+
+A new function can't overlap a function of `IN.syms` or take one of its names, and the message names the line. The file is always written, and it's empty when there's nothing to carry or add.
+
+`IN.modules` is copied to `OUT.modules` unchanged when it exists, since `recomp.py` reads that file beside a DOL too. Both files carry through, so a second run on the first run's output keeps what the first run named. A run may write over its input, because everything is read before anything is written.
 
 ## Hooking from the middle of a function
 

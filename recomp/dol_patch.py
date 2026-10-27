@@ -7,9 +7,11 @@ recompiler compiles them like the game's own. See docs/dol-patches.md for the fo
 Usage:
   dol_patch.py IN OUT PATCH...
       write OUT, the DOL with each patch list applied in the order given, and OUT.syms, the
-      new functions in dtk's symbols format, which recomp.py reads beside any DOL. Exits 0,
-      or 1 with `file:line: reason` on the first refused patch, or 2 on bad arguments.
-      Nothing is written when anything is refused. The same inputs give the same bytes.
+      symbols in dtk's format that recomp.py reads beside any DOL. OUT.syms holds the symbol
+      lines of IN.syms when there is one, then the new functions, sorted by address. IN.modules
+      is copied to OUT.modules when there is one. Exits 0, or 1 with `file:line: reason` on the
+      first refused patch, or 2 on bad arguments. Nothing is written when anything is refused.
+      The same inputs give the same bytes.
 """
 import argparse
 import hashlib
@@ -20,6 +22,9 @@ import struct
 import sys
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Sequence
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from dol import SYM_RE  # noqa: E402
 
 HEADER = 0x100
 SLOTS = 18
@@ -83,6 +88,17 @@ class Function:
     where: str
 
 
+@dataclass
+class Symbol:
+    """A line of IN's symbols file, as recomp.py reads it."""
+    name: str
+    addr: int
+    line: str
+    where: str
+    size: Optional[int]
+    function: bool
+
+
 def number(where: str, what: str, token: str) -> int:
     if not HEX.fullmatch(token):
         raise PatchError(f'{where}: {what} {token} is not a hex number')
@@ -96,6 +112,38 @@ def arity(where: str, op: str, args: Sequence[str], *counts: int) -> None:
     if len(args) not in counts:
         wanted = ' or '.join(str(c) for c in counts)
         raise PatchError(f'{where}: {op} takes {wanted} arguments, not {len(args)}')
+
+
+def read_symbols(path: str) -> List[Symbol]:
+    """The symbol lines of a dtk symbols file. Any other line is one recomp.py skips too."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            lines = f.read().split('\n')
+    except (OSError, ValueError):
+        raise PatchError(f"{path}: can't read the symbols file")
+    out = []
+    for n, raw in enumerate(lines, 1):
+        line = raw.strip()
+        m = SYM_RE.match(line)
+        if not m:
+            continue
+        name, _, addr, rest = m.groups()
+        where = f'{path}:{n}'
+        attrs = dict(tok.split(':', 1) for tok in rest.split() if ':' in tok)
+        size = number(where, 'size', attrs['size']) if 'size' in attrs else None
+        out.append(Symbol(name, int(addr, 16), line, where, size, attrs.get('type') == 'function'))
+    return out
+
+
+def read_modules(path: str) -> Optional[bytes]:
+    """The bytes of IN's modules file, or None when it has none."""
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, 'rb') as f:
+            return f.read()
+    except OSError:
+        raise PatchError(f"{path}: can't read the modules file")
 
 
 def section_file(where: str, base: str, name: str, size: int) -> bytes:
@@ -128,7 +176,7 @@ def section_file(where: str, base: str, name: str, size: int) -> bytes:
 
 
 class Patcher:
-    def __init__(self, name: str, data: bytes) -> None:
+    def __init__(self, name: str, data: bytes, symbols: Sequence[Symbol] = ()) -> None:
         if len(data) < HEADER:
             raise PatchError(f'{name}: too short to be a DOL')
         self.sha1 = hashlib.sha1(data).hexdigest()
@@ -146,6 +194,13 @@ class Patcher:
         self.written: Dict[int, str] = {}
         self.functions: List[Function] = []
         self.owner = -1  # the list being applied
+        # IN's symbols, which go to OUT.syms and which a new function can't overlap or rename.
+        self.symbols = list(symbols)
+        self.names: Dict[str, str] = {}
+        for s in self.symbols:
+            self.names.setdefault(s.name, s.where)
+        self.inherited = [Function(s.addr, s.size, s.name, s.where)
+                          for s in self.symbols if s.function and s.size]
 
     def sections(self) -> List[Section]:
         return [s for s in self.slots if s is not None]
@@ -268,7 +323,9 @@ class Patcher:
                      for s in self.sections())
         if not inside:
             raise PatchError(f'{where}: {addr:08X} to {addr + size:08X} is not inside one added text section')
-        for f in self.functions:
+        if name in self.names:
+            raise PatchError(f'{where}: {name} is already named at {self.names[name]}')
+        for f in self.inherited + self.functions:
             if addr < f.addr + f.size and f.addr < addr + size:
                 raise PatchError(f'{where}: overlaps {f.name} at {f.where}')
         self.functions.append(Function(addr, size, name, where))
@@ -277,15 +334,16 @@ class Patcher:
         return bytes(self.out)
 
     def syms(self) -> bytes:
-        lines = [f'{f.name} = .text:0x{f.addr:08X}; // type:function size:0x{f.size:X} scope:global\n'
-                 for f in sorted(self.functions, key=lambda f: f.addr)]
-        return ''.join(lines).encode('ascii')
+        new = [(f.addr, f'{f.name} = .text:0x{f.addr:08X}; // type:function size:0x{f.size:X} scope:global')
+               for f in self.functions]
+        lines = sorted([(s.addr, s.line) for s in self.symbols] + new, key=lambda pair: pair[0])
+        return ''.join(f'{line}\n' for _, line in lines).encode('utf-8')
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog='dol_patch.py', description=__doc__.split('\n\n')[0])
     ap.add_argument('dol_in', metavar='IN', help='the DOL to patch, which is left alone')
-    ap.add_argument('dol_out', metavar='OUT', help='the patched DOL, with OUT.syms beside it')
+    ap.add_argument('dol_out', metavar='OUT', help='the patched DOL, with OUT.syms and OUT.modules beside it')
     ap.add_argument('patches', metavar='PATCH', nargs='+', help='patch lists, applied in this order')
     args = ap.parse_args(argv)
     try:
@@ -294,13 +352,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 data = f.read()
         except OSError:
             raise PatchError(f"{args.dol_in}: can't read the DOL")
-        patcher = Patcher(args.dol_in, data)
+        # Everything IN brings is read before anything is written, so OUT can be IN.
+        syms_path = args.dol_in + '.syms'
+        symbols = read_symbols(syms_path) if os.path.exists(syms_path) else []
+        modules = read_modules(args.dol_in + '.modules')
+        patcher = Patcher(args.dol_in, data, symbols)
         for path in args.patches:
             patcher.apply(path)
         with open(args.dol_out, 'wb') as f:
             f.write(patcher.dol_bytes())
         with open(args.dol_out + '.syms', 'wb') as f:
             f.write(patcher.syms())
+        if modules is not None:
+            with open(args.dol_out + '.modules', 'wb') as f:
+                f.write(modules)
     except (PatchError, OSError) as e:
         print(e, file=sys.stderr)
         return 1
