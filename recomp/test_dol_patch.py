@@ -620,8 +620,10 @@ class BootWrites(Base):
         def covered(start, size) -> bool:
             return any(lo <= start and start + size <= hi for lo, hi in dol_patch.BOOT_WRITES)
 
-        stores = [(int(a, 16), int(bits) // 8) for bits, a in re.findall(r'mem_w(8|16|32)\((0x[0-9A-Fa-f]+),', text)]
+        stores = [(int(a, 16), int(bits) // 8) for bits, a in re.findall(r'mem_w(8|16|32)\((0x[0-9A-Fa-f]+)u?,', text)]
         self.assertGreater(len(stores), 10, 'boot.cpp no longer writes words the way this reads them')
+        self.assertEqual(len(stores), len(re.findall(r'mem_w(?:8|16|32)\(', text)),
+                         'boot.cpp calls mem_w* with an address that is not a hex literal')
         for addr, n in stores:
             self.assertTrue(covered(addr, n), f'boot.cpp writes {addr:08X}')
         header = re.search(r'memcpy\(mem_ptr\((0x[0-9A-Fa-f]+)\), hdr, (0x[0-9A-Fa-f]+)\)', text)
