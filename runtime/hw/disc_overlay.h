@@ -21,8 +21,8 @@ using BaseRead = bool (*)(uint64_t off, void* dst, uint32_t len);
 // that can't be opened, can't be read or is too big, which has no line, and an empty name.
 //
 // `base_size` is how many bytes the image has as `base` sees it: a plain image's file size,
-// and a CISO's block count times its block size. The overlay never asks `base` for a byte at
-// or past it.
+// and for a CISO the entries in its block map times its block size, stored or not. The
+// overlay never asks `base` for a byte at or past it.
 bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error, uint64_t base_size);
 
 // len bytes of the virtual disc from off. Ranges come from their host files, header words

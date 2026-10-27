@@ -71,9 +71,9 @@ The image's disc ID and its FST's offset, size and hash have to match the `base`
 
 A header word reads as the manifest says wherever a read covers it, even when a range covers the same bytes. A read that starts in the image and ends in a file, or crosses several ranges, is joined from each place it passes. Bytes no range covers read from the image.
 
-The disc interface reads in 32-byte units, so a read of a file whose size isn't one runs on into the gap after it. The runtime knows how many bytes the image has, which is a plain image's file size or a CISO's block count times its block size. A byte at or past that which no range covers reads as zeros, and that includes the gap and anything farther past every range and the image, so a plain image and a CISO give the game the same bytes and the read succeeds.
+The disc interface reads in 32-byte units, so a read of a file whose size isn't one runs on into the gap after it. The runtime knows how many bytes the image has, which is a plain image's file size or, for a CISO, the entries in its block map times its block size, stored or not. A byte at or past that which no range covers reads as zeros, and that includes the gap and anything farther past every range and the image, so a plain image and a CISO give the game the same bytes and the read succeeds.
 
-A byte inside the image's size always comes from the image, so a read the image fails fails here too. The runtime never asks the image for a byte past its size, and a run with no overlay still fails past a plain image's end.
+A byte inside the image's size that no range or header word covers always comes from the image, so a read the image fails fails here too. The runtime never asks the image for a byte past its size, and a run with no overlay still fails past a plain image's end.
 
 The runtime raises its limit on open files when the count needs it, since macOS starts at 256. A load that still runs out of files says where the limit stops.
 

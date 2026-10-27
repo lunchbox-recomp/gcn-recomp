@@ -1108,8 +1108,11 @@ stays.
 
 The manifest loads before boot reads the disc header, and every host file it names opens
 once then. The run stops at boot if the manifest or one of its files is wrong or the image
-isn't the one it was made for. The message names the manifest and the line, or the file
-alone when the manifest can't be opened or read.
+isn't the one it was made for.
+
+The message names the manifest and the line. A manifest that can't be opened, can't be
+read or is over 16 MiB has no line, so the message names the file alone. An empty
+`--disc-overlay=` names the flag.
 
 `--log=dvd` prints the load with its file count and bytes, then each piece of a DVD
 command's read that comes from a host file. The audio stream reads a block at a time, so
