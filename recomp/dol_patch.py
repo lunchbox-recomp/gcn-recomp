@@ -47,6 +47,7 @@ class Section:
     text: bool
     slot: int
     where: Optional[str] = None  # the line that added it, or None for the DOL's own
+    owner: int = -1  # which list added it, counting from 0
 
     @property
     def end(self) -> int:
@@ -129,11 +130,13 @@ class Patcher:
                 self.slots[slot] = Section(addrs[slot], sizes[slot], offsets[slot], slot < TEXT_SLOTS, slot)
         self.written: Dict[int, str] = {}
         self.functions: List[Function] = []
+        self.owner = -1  # the list being applied
 
     def sections(self) -> List[Section]:
         return [s for s in self.slots if s is not None]
 
     def apply(self, path: str) -> None:
+        self.owner += 1
         try:
             # A byte order mark is dropped, and only a newline ends a line, so a separator
             # inside a comment doesn't start a new one. `newline=''` keeps a lone CR as it is.
@@ -204,7 +207,7 @@ class Patcher:
         self.out += bytes(-len(self.out) % ALIGN)
         offset = len(self.out)
         self.out += payload + bytes(size - len(payload))
-        self.slots[slot] = Section(addr, size, offset, kind == 'text', slot, where)
+        self.slots[slot] = Section(addr, size, offset, kind == 'text', slot, where, self.owner)
         struct.pack_into('>I', self.out, 4 * slot, offset)
         struct.pack_into('>I', self.out, 0x48 + 4 * slot, addr)
         struct.pack_into('>I', self.out, 0x90 + 4 * slot, size)
@@ -219,6 +222,9 @@ class Patcher:
         section = next((s for s in self.sections() if s.addr <= addr and addr + 4 <= s.end), None)
         if section is None:
             raise PatchError(f'{where}: {addr:08X} is not inside a section')
+        if section.where is not None and section.owner != self.owner:
+            raise PatchError(f'{where}: {addr:08X} is inside the section added at {section.where}, '
+                             'which belongs to another list')
         if addr in self.written:
             raise PatchError(f'{where}: word {addr:08X} was already written at {self.written[addr]}')
         at = section.offset + addr - section.addr

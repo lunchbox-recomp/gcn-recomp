@@ -39,7 +39,7 @@ A word is 4-aligned and sits inside a section, whether the DOL's or an added one
 
 A function lies inside one added text section and overlaps no other function. Its name is a C identifier, since it ends up in the generated code. The section's line has to come first.
 
-Lists apply in the order given. A later list can write into a section an earlier one added, and the other order is refused. Two lines that write one word are refused, and so are two sections that overlap, with a message that names both lines.
+Lists apply in the order given. A section belongs to the list that adds it, so a `word` from a later list can't land inside. Two lines that write one word are refused, and so are two sections that overlap, each with a message that names both lines.
 
 ## What it writes
 

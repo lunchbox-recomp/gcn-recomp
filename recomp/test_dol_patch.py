@@ -212,11 +212,23 @@ class Words(Base):
 
 
 class Order(Base):
-    def test_a_later_list_can_write_into_an_earlier_lists_section(self) -> None:
+    def test_a_later_list_cannot_write_into_an_earlier_lists_section(self) -> None:
         first = self.plist('a.txt', f'section text {H:08X} 20')
-        second = self.plist('b.txt', f'word {H:08X} {LI_R3_1:08X} 0')
-        self.assertEqual(word_at(self.ok(first, second), H), LI_R3_1)
+        second = self.plist('b.txt', f'word {H + 8:08X} {LI_R3_1:08X} 0')
+        self.refused([first, second], [(second, 2), (first, 2)],
+                     f'{second}:2: {H + 8:08X} is inside the section added at {first}:2, '
+                     'which belongs to another list')
         self.refused([second, first], [(second, 2)], 'not inside a section')
+
+    def test_a_list_may_write_into_its_own_sections_and_the_dols(self) -> None:
+        first = self.plist('a.txt', f'section text {H:08X} 20', f'word {H:08X} {LI_R3_1:08X} 0')
+        second = self.plist('b.txt', f'section text {H + 0x100:08X} 20', f'word {H + 0x100:08X} {NOP:08X} 0',
+                            f'word {A + 4:08X} {B_A4_TO_H:08X} {LI_R3_1:08X}')
+        out = self.ok(first, second)
+        self.assertEqual([word_at(out, H), word_at(out, H + 0x100), word_at(out, A + 4)],
+                         [LI_R3_1, NOP, B_A4_TO_H])
+        again = self.plist('c.txt', f'section data {DATA + 0x1000:08X} 20', f'word {DATA + 0x1000:08X} 1 0')
+        self.assertEqual(word_at(self.ok(first, again), DATA + 0x1000), 1)
 
     def test_sections_take_slots_in_the_order_the_lists_come(self) -> None:
         first = self.plist('a.txt', f'section text {H:08X} 20', f'section data {H + 0x1000:08X} 20')
