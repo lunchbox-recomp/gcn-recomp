@@ -391,6 +391,18 @@ class Sections(Base):
         for addr in (A - 0x20, A + TEXT_SIZE, DATA - 0x20, DATA + DATA_SIZE):
             self.ok(self.plist('b.txt', f'section data {addr:08X} 20'))
 
+    def test_an_overlap_message_names_what_it_overlaps_and_nothing_else(self) -> None:
+        for kind, addr, label in (('data', A, "the DOL's text section 0"), ('text', DATA, "the DOL's data section 7"),
+                                  ('text', BSS, "the DOL's bss")):
+            path = self.plist('a.txt', f'section {kind} {addr:08X} 20')
+            r = self.run_tool(path)
+            self.assertEqual((r.returncode, r.stdout, r.stderr), (1, '', f'{path}:2: overlaps {label}\n'))
+        first = self.plist('b.txt', f'section text {H:08X} 40')
+        second = self.plist('c.txt', f'section data {H + 0x20:08X} 40')
+        r = self.run_tool(first, second)
+        self.assertEqual((r.returncode, r.stdout, r.stderr),
+                         (1, '', f'{second}:2: overlaps the section added at {first}:2\n'))
+
     def test_a_section_may_touch_but_not_overlap_bss(self) -> None:
         for addr, size in ((BSS, 0x20), (BSS + 0x80, 0x20), (BSS - 0x20, 0x40), (BSS + BSS_SIZE - 0x20, 0x40),
                            (BSS - 0x20, 0x200)):
@@ -498,6 +510,11 @@ class Sidecars(Base):
         for name, line in (('hook_h', 2), ('shared', 3)):
             path = self.hooks(f'function {H:08X} 8 {name}')
             self.refused([path], [(path, 3)], f'{path}:3: {name} is already named at {syms}:{line}')
+
+    def test_a_name_ins_symbols_use_twice_is_refused_naming_the_first_line(self) -> None:
+        syms = self.write_syms('# first', self.sym('twice', 0x80050000, 8), self.sym('twice', 0x80060000, 8))
+        path = self.hooks(f'function {H:08X} 8 twice')
+        self.refused([path], [(path, 3)], f'{path}:3: twice is already named at {syms}:2')
 
     def test_a_symbols_file_that_cant_be_read_is_refused_by_name(self) -> None:
         syms = self.write('in.dol.syms', b'\xff\xfe')
@@ -847,6 +864,25 @@ class Command(Base):
         self.assertEqual(r.returncode, 1)
         self.assertEqual(self.read(self.out), b'earlier')
         self.assertEqual(self.syms(), 'earlier')
+
+    def test_an_output_that_cant_be_written_exits_1_with_a_reason_and_no_traceback(self) -> None:
+        path = self.plist('a.txt')
+        self.out = os.path.join(self.dir, 'missing', 'out.dol')
+        r = self.run_tool(path)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn(self.out, r.stderr)
+        self.assertIn('No such file or directory', r.stderr)
+        self.assertNotIn('Traceback', r.stderr)
+        self.out = os.path.join(self.dir, 'out.dol')
+        for sidecar in ('.syms', '.modules'):
+            os.mkdir(self.out + sidecar)
+            self.write('in.dol.modules', b'm\n')
+            r = self.run_tool(path)
+            self.assertEqual(r.returncode, 1, sidecar)
+            self.assertIn(self.out + sidecar, r.stderr)
+            self.assertIn('Is a directory', r.stderr)
+            self.assertNotIn('Traceback', r.stderr)
+            os.rmdir(self.out + sidecar)
 
     def test_the_input_is_left_alone(self) -> None:
         self.ok(self.plist('a.txt', f'section text {H:08X} 20', f'word {A + 4:08X} 0 {LI_R3_1:08X}'))
