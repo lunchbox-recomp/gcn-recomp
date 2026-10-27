@@ -848,15 +848,16 @@ use, which every lookup prolonged.
   layer the eye gave it (`[eyedraw]`: world, sky, the foreground or HUD bands, the HUD
   frame). `GCN_DRAW_SKIP=a-b` then drops a range of them, in the eyes too, to attribute a
   piece of the image to the draws that made it.
-- The draw log also ends each draw with its anchor and its box on the EFB, such as
-  `anchor=R(0..640) scr=160.0..640.0,0.0..480.0`. The anchor is the game's mark
-  (`gx::set_draw_anchor`) with its rect, and S for none. The box is in pixels from the top
+- The draw log also prints each draw's anchor and its box on the EFB, after its tag and
+  before its textures, such as `anchor=R(0..640) scr=160.0..640.0,0.0..480.0`. The anchor
+  is the one in force, which is the game's mark (`gx::set_draw_anchor`) with its rect or
+  `GCN_ANCHOR_ALL`'s when it's set, and S for none. The box is in pixels from the top
   left after the remap, so it shows where the squeeze put the draw, and at 4:3 it's the
   box the game drew.
 - `GCN_ANCHOR_ALL=L`, `C` or `R` anchors every draw over the whole 640-pixel frame in
   place of the game's marks. With `--aspect=16:9` the 4:3 picture comes out at its own
-  shape against that edge of the window, and `--output` writes what the window shows. Any
-  other value is refused with a line on stderr.
+  shape against that edge of the window, and `--dump-output` writes what the window shows.
+  Any other value of `GCN_ANCHOR_ALL` is refused with a line on stderr.
 - `[anchor] copy N made under an anchor` says a texture copy was made while an anchor
   other than Stretch was set. It prints once for each scene, which ends after 60 frames in a
   row with no such copy, with N the copies made under an anchor so far. Copies to the
