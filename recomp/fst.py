@@ -62,11 +62,11 @@ def sort_key(name: str) -> Tuple[str, str]:
     return name.upper(), name
 
 
-def _check_name(index: int, name: str) -> None:
+def _check_name(where: str, name: str) -> None:
     if not name.isascii():
-        raise FstError(f"entry {index} ({name!r}) has a name that isn't ASCII")
+        raise FstError(f"{where} ({name!r}) has a name that isn't ASCII")
     if not name or name in ('.', '..') or '/' in name or '\0' in name:
-        raise FstError(f"entry {index} ({name!r}) has a name that can't be a path part")
+        raise FstError(f"{where} ({name!r}) has a name that can't be a path part")
 
 
 def _read_name(data: bytes, table: int, index: int, offset: int) -> str:
@@ -77,7 +77,7 @@ def _read_name(data: bytes, table: int, index: int, offset: int) -> str:
     if end < 0:
         raise FstError(f"entry {index} has a name that's cut off")
     name = data[start:end].decode('latin-1')
-    _check_name(index, name)
+    _check_name(f'entry {index}', name)
     return name
 
 
@@ -130,7 +130,7 @@ def build(root: Entry) -> bytes:
     for i, (entry, parent) in enumerate(nodes):
         word = 0
         if i:
-            _check_name(i, entry.name)
+            _check_name(f'entry {i}', entry.name)
             word = len(names)
             names += entry.name.encode('ascii') + b'\0'
         if entry.children is not None:
@@ -164,8 +164,24 @@ def walk(root: Entry) -> Iterator[Tuple[str, Entry]]:
                         for c in reversed(entry.children))
 
 
+def _check_tree(root: Entry) -> None:
+    """Refuse a tree that can't be written under a directory, whether or not parse made it."""
+    todo = [('', root)]
+    while todo:
+        path, entry = todo.pop()
+        where = f'an entry in {path!r}' if path else 'an entry in the root'
+        for child in entry.children or ():
+            _check_name(where, child.name)
+            if child.children is not None:
+                todo.append((f'{path}/{child.name}' if path else child.name, child))
+
+
 def extract(img: DiscImage, root: Entry, out: str, paths: Sequence[str] = ()) -> None:
-    """Copy the named files, or every file, into out. Nothing is written if a path is unknown."""
+    """Copy the named files, or every file, into out.
+
+    Nothing is written if a name in the tree can't be a path part or a path is unknown.
+    """
+    _check_tree(root)
     files = dict(walk(root))
     wanted = list(dict.fromkeys(paths)) or list(files)
     for path in wanted:

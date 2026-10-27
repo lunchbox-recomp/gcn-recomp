@@ -397,6 +397,30 @@ class TestCli(TmpCase):
         self.assertRegex(str(cm.exception.code), r'^error: ')
 
 
+class TestExtractTree(TmpCase):
+    """extract on trees that parse didn't make, such as one built from a folder of files."""
+
+    def refuses(self, tree, pattern, *paths):
+        img = next(self.images())[1]
+        out = os.path.join(self.tmp, 'out')
+        with self.assertRaisesRegex(fst.FstError, pattern):
+            fst.extract(img, tree, out, paths)
+        self.assertFalse(os.path.exists(out))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, 'escaped')))
+
+    def test_a_name_that_cant_be_a_path_part_is_refused_before_anything_is_written(self):
+        for name in ('..', '.', '', 'a/b', 'a\0b'):
+            tree = fst.Entry('', children=[
+                fst.Entry(name, children=[fst.Entry('escaped', 0, 1)])])
+            self.refuses(tree, r"an entry in the root \(.*can't be a path part")
+        tree = fst.Entry('', children=[fst.Entry('d', children=[fst.Entry('..', 0, 1)])])
+        self.refuses(tree, r"an entry in 'd' \('\.\.'\)")
+
+    def test_a_bad_name_in_a_file_that_isnt_asked_for_is_still_refused(self):
+        tree = fst.Entry('', children=[fst.Entry('ok', 0, 1), fst.Entry('a/b', 0, 1)])
+        self.refuses(tree, r'a/b', 'ok')
+
+
 class DiscChecks:
     """Checks on a whole disc. They run on the fixture, and on a real disc when one is named."""
 
