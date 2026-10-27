@@ -629,9 +629,9 @@ void refusals() {
     refused("an FST offset in capitals", with(good, 1, "base FIXT01 5A00 100 " + image_hash), 2);
     refused("an FST offset of more than 8 digits", with(good, 1, "base FIXT01 000005a00 100 " + image_hash), 2);
     refused("an FST size that isn't hex", with(good, 1, "base FIXT01 5a00 10g " + image_hash), 2);
-    refused("a hash in capitals", with(good, 1, "base FIXT01 5a00 100 " + upper), 2);
-    refused("a hash of 15 digits", with(good, 1, "base FIXT01 5a00 100 " + image_hash.substr(1)), 2);
-    refused("a hash of 17 digits", with(good, 1, "base FIXT01 5a00 100 0" + image_hash), 2);
+    refused("a hash in capitals", with(good, 1, "base FIXT01 5a00 100 " + upper), 2, "16 lowercase hex digits");
+    refused("a hash of 15 digits", with(good, 1, "base FIXT01 5a00 100 " + image_hash.substr(1)), 2, "16 lowercase hex digits");
+    refused("a hash of 17 digits", with(good, 1, "base FIXT01 5a00 100 0" + image_hash), 2, "16 lowercase hex digits");
     refused("a second base line", inserted(good, 2, good[1]), 3, "more than one base");
 
     // The image has to be the one the manifest was made for, and the message names both hashes.
@@ -678,6 +678,7 @@ void refusals() {
     refused("a range that starts before the one before", {good[0], good[1], good[2], good[3], good[4], good[5], good[7], good[6]}, 8);
     refused("a tab in a path", with(good, 6, "range 2000 100 inner\t.bin"), 7, "control character");
     refused("a CR at the end of a line", with(good, 6, good[6] + "\r"), 7, "control character");
+    refused("a DEL in a path", with(good, 6, "range 2000 100 inner\x7f.bin"), 7, "control character");
     refused("a line that is neither header nor range", inserted(good, 6, "frob 1 2"), 7);
     refused("a blank line", inserted(good, 6, ""), 7);
     refused_text("a last line with no newline, which may be cut short", join(good).substr(0, join(good).size() - 1), 13);
