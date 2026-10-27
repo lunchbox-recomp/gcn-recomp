@@ -740,6 +740,14 @@ class Functions(Base):
             path = self.lists(line)
             self.refused([path], [(path, 3)], 'not inside one added text section')
 
+    def test_two_new_functions_sharing_a_name_are_refused_naming_both_lines(self) -> None:
+        one = self.lists(f'function {H:08X} 8 twin', f'function {H + 0x10:08X} 8 twin')
+        self.refused([one], [(one, 4), (one, 3)], f'twin is already named at {one}:3')
+        first = self.lists(f'function {H:08X} 8 twin')
+        second = self.plist('b.txt', 'section text 8002A000 20', 'function 8002A000 8 twin')
+        self.refused([first, second], [(second, 3), (first, 3)], f'twin is already named at {first}:3')
+        self.ok(self.lists(f'function {H:08X} 8 one', f'function {H + 0x10:08X} 8 two'))
+
     def test_a_function_may_fill_its_section(self) -> None:
         self.ok(self.lists(f'function {H:08X} 20 whole'))
         self.ok(self.lists(f'function {H + 0x1C:08X} 4 last_word'))

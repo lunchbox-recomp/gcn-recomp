@@ -195,6 +195,7 @@ class Patcher:
         self.functions: List[Function] = []
         self.owner = -1  # the list being applied
         # IN's symbols, which go to OUT.syms and which a new function can't overlap or rename.
+        # `names` also takes each new function's, so no two share one.
         self.symbols = list(symbols)
         self.names: Dict[str, str] = {}
         for s in self.symbols:
@@ -329,6 +330,7 @@ class Patcher:
             if addr < f.addr + f.size and f.addr < addr + size:
                 raise PatchError(f'{where}: overlaps {f.name} at {f.where}')
         self.functions.append(Function(addr, size, name, where))
+        self.names[name] = where
 
     def dol_bytes(self) -> bytes:
         return bytes(self.out)

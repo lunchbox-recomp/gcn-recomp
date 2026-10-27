@@ -39,7 +39,7 @@ Boot writes the low-memory words and the top 8 KiB after it loads the sections (
 
 A word is 4-aligned and sits inside a section, whether the DOL's or an added one. `expect` is checked against the DOL as patched so far, so a word in a new zero-filled section expects 0. A refused `expect` prints the word the DOL holds.
 
-A function lies inside one added text section and overlaps no other function. Its name is a C identifier, since it ends up in the generated code. The section's line has to come first.
+A function lies inside one added text section and overlaps no other function. Its name is a C identifier, since it ends up in the generated code. No two new functions share a name, whether they're in one list or two. The section's line has to come first.
 
 A name also has to stay clear of the names in a game's `hle.txt` and of `OSLink`, `OSLinkFixed` and `OSUnlink`. The tool can't see those tables, and `recomp.py` would send the new code to the hook instead of running it.
 
