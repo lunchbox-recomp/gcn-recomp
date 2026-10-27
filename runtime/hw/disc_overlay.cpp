@@ -39,6 +39,7 @@ struct Overlay {
     std::vector<Word> words;
     std::vector<std::string> names;
     std::vector<PlatFile*> files;
+    uint64_t base_size = 0;  // the image's bytes, as the base sees it
 };
 
 Overlay* g_overlay;
@@ -223,22 +224,14 @@ void close_all(Overlay* o) {
     delete o;
 }
 
-// A piece of the disc that no range covers. The image gives what it has, and what it hasn't
-// reads as zeros: a plain image has nothing past its end, and a CISO gives zeros there, so
-// this keeps the two bases giving the game the same bytes.
-bool read_gap(BaseRead base, uint64_t pos, uint8_t* dst, uint32_t len) {
-    if (base(pos, dst, len)) return true;
-    // The base has the first n bytes exactly when it can read the byte at n - 1. `have` is the
-    // most it's known to have and `lack` the least it's known not to.
-    uint32_t have = 0, lack = len;
-    uint8_t probe;
-    while (lack - have > 1) {
-        const uint32_t mid = have + (lack - have) / 2;
-        if (base(pos + mid - 1, &probe, 1)) have = mid;
-        else lack = mid;
-    }
-    if (have && !base(pos, dst, have)) return false;
-    memset(dst + have, 0, len - have);
+// A piece of the disc that no range covers. The part inside the image's size comes from the
+// image, and a failure there is a failure. The part at or past the size reads as zeros without
+// asking the image, which is what a CISO gives there, so the two bases give the game the same
+// bytes.
+bool read_gap(const Overlay* o, BaseRead base, uint64_t pos, uint8_t* dst, uint32_t len) {
+    const uint32_t inside = pos >= o->base_size ? 0 : (uint32_t)std::min<uint64_t>(len, o->base_size - pos);
+    if (inside && !base(pos, dst, inside)) return false;
+    memset(dst + inside, 0, len - inside);
     return true;
 }
 
@@ -263,7 +256,7 @@ bool serve(uint64_t off, void* dst, uint32_t len, BaseRead base, bool run) {
             ++r;
         } else {
             stop = r != o->ranges.end() ? std::min(end, r->off) : end;
-            if (!read_gap(base, pos, out + (pos - off), (uint32_t)(stop - pos))) return false;
+            if (!read_gap(o, base, pos, out + (pos - off), (uint32_t)(stop - pos))) return false;
         }
         pos = stop;
     }
@@ -302,7 +295,7 @@ void disc_overlay_unload() {
     if (o) close_all(o);
 }
 
-bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error) {
+bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error, uint64_t base_size) {
     disc_overlay_unload();
     if (!*manifest) {
         if (error) *error = "--disc-overlay= has no manifest path after it";
@@ -339,6 +332,7 @@ bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error) 
 
     Overlay* o = new Overlay;
     o->words = m.words;
+    o->base_size = base_size;
     std::map<std::string, uint32_t> opened;
     uint64_t bytes = 0;
     for (const RangeLine& r : m.ranges) {

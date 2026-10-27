@@ -61,8 +61,11 @@ void di_init(const char* iso_path) {
     // --disc-overlay=FILE or GCN_DISC_OVERLAY. Loaded here, before boot reads the header.
     if (const char* manifest = disc_overlay_path()) {
         if (g_log_enabled[LOG_DVD]) g_disc_overlay_log = [](const char* line) { LOG(LOG_DVD, "%s", line); };
+        // The image's bytes as base_read sees them: a CISO's map covers its blocks, and a plain image is its file.
+        uint64_t size = (uint64_t)g_ciso_map.size() * g_ciso_block;
+        if (!g_ciso_block && !plat_file_size(g_iso, &size)) fatal("cannot get the size of disc image %s", iso_path);
         std::string error;
-        if (!disc_overlay_load(manifest, base_read, &error)) fatal("%s", error.c_str());
+        if (!disc_overlay_load(manifest, base_read, &error, size)) fatal("%s", error.c_str());
     }
 }
 

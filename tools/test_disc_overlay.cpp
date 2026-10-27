@@ -176,6 +176,25 @@ bool huge_fst_base(uint64_t off, void* dst, uint32_t len) {
 
 BaseRead base_fn(Base b) { return b == Base::Plain ? plain_base : ciso_base; }
 
+// What each base holds, as the loader is told: a plain image is its file, and a CISO's map
+// covers its blocks.
+uint64_t size_of(Base b) { return b == Base::Plain ? kImage : (uint64_t)g_ciso_map.size() * g_ciso_block; }
+
+// A plain base that notes how far it was asked to read.
+uint64_t g_reach;
+int g_calls;
+bool recording_base(uint64_t off, void* dst, uint32_t len) {
+    g_calls++;
+    g_reach = std::max(g_reach, off + len);
+    return plain_base(off, dst, len);
+}
+
+// A plain base with two bad places inside the image, one of them at its very end.
+bool flaky_base(uint64_t off, void* dst, uint32_t len) {
+    const bool bad = (off < 0x1100 && off + len > 0x1000) || (off < kImage && off + len > 0x5F80);
+    return !bad && plain_base(off, dst, len);
+}
+
 // ---- the disc the overlay should give, built without the loader ----
 struct Model {
     std::vector<uint8_t> bytes;  // zeros past the image, where no range or word says otherwise
@@ -275,7 +294,7 @@ std::string join(const std::vector<std::string>& lines) {
 
 bool load_text(const std::string& text, Base b, std::string* err) {
     write_text(manifest_path(), text);
-    return disc_overlay_load(manifest_path().c_str(), base_fn(b), err);
+    return disc_overlay_load(manifest_path().c_str(), base_fn(b), err, size_of(b));
 }
 
 bool load_lines(const std::vector<std::string>& lines, Base b, std::string* err = nullptr) {
@@ -524,7 +543,7 @@ void reads_through() {
     check(disc_overlay_read(0x81F0, got, 0x20, plain_base) && !memcmp(got, want, 0x20), "a read from one range straight into the next works");
     memset(want, 0, 0x20);
     memcpy(want, g_data[3].data(), 0x10);
-    check(disc_overlay_read(0x8200, got, 0x20, plain_base) && !memcmp(got, want, 0x20), "and one running from a range into the gap after it reads zeros there on a plain base");
+    check(disc_overlay_read(0x8200, got, 0x20, ciso_base) && !memcmp(got, want, 0x20), "and one running from a range into the gap after it reads zeros there");
     memset(want, 0, 0x230);
     memcpy(want, &g_data[2][0x1F0], 0x10);
     memcpy(want + 0x10, g_data[3].data(), 0x10);
@@ -612,6 +631,54 @@ void padding_reads() {
     disc_overlay_unload();
 }
 
+// The overlay is told how many bytes the image has. It reads zeros past that without asking the
+// base, and a read the base fails inside it is a failure, never zeros.
+void base_limits() {
+    check(load_lines({"gcn-disc-overlay 1", base_line(), "range 8000 4 dol.bin"}, Base::Plain), "a manifest with one range past the image loads for the size checks");
+    uint8_t got[0x80], want[0x80];
+
+    // Reads wholly past the size never reach the base.
+    g_calls = 0;
+    g_reach = 0;
+    memset(want, 0, sizeof(want));
+    memcpy(want, g_data[2].data(), 4);
+    memset(got, 0xEE, sizeof(got));
+    bool zeros = disc_overlay_read(0x7FF0, got, 0x40, recording_base) && !memcmp(got + 0x10, want, 0x30) && std::all_of(got, got + 0x10, [](uint8_t v) { return v == 0; });
+    zeros = disc_overlay_read(kImage + 0x10, got, 0x20, recording_base) && std::all_of(got, got + 0x20, [](uint8_t v) { return v == 0; }) && zeros;
+    memset(got, 0xEE, sizeof(got));
+    zeros = disc_overlay_read(1ull << 40, got, 0x20, recording_base) && std::all_of(got, got + 0x20, [](uint8_t v) { return v == 0; }) && zeros;
+    check(zeros, "reads past a plain image's end, in a padding gap or far away, give zeros");
+    check(g_calls == 0, "and never call the base");
+
+    // A read that starts inside the size asks for the part inside and no more.
+    memset(got, 0xEE, sizeof(got));
+    memset(want, 0, sizeof(want));
+    memcpy(want, &g_image[kImage - 0x10], 0x10);
+    check(disc_overlay_read(kImage - 0x10, got, 0x40, recording_base) && !memcmp(got, want, 0x40), "a read across the image's end is the image's bytes and then zeros");
+    check(g_calls == 1 && g_reach == kImage, "with one call to the base that stops at the end");
+
+    // A failure inside the size is a failure, wherever the bad place is, even at the very end.
+    check(!disc_overlay_read(0x0FF0, got, 0x40, flaky_base), "a read the base fails inside the image fails");
+    check(!disc_overlay_read(0x1000, got, 0x10, flaky_base), "including one that is only the bad place");
+    check(disc_overlay_read(0x1100, got, 0x40, flaky_base) && disc_overlay_read(0x0FC0, got, 0x40, flaky_base), "while the reads on either side of it work");
+    check(!disc_overlay_read(0x5FF0, got, 0x40, flaky_base), "a read the base fails at the end of the image fails, and the zeros past it don't hide that");
+    check(disc_overlay_read(0x5F00, got, 0x40, flaky_base), "while one that stops just short of the bad place works");
+    disc_overlay_unload();
+
+    // The same disc on a plain image and on a CISO reads the same, all the way through.
+    std::vector<uint8_t> plain, ciso;
+    for (Base b : {Base::Plain, Base::Ciso}) {
+        std::vector<uint8_t>& whole = b == Base::Plain ? plain : ciso;
+        whole.assign(kEnd, 0xEE);
+        bool ok = load_lines(good_lines(), b);
+        for (uint64_t at = 0; at < kEnd; at += 0x3F7)
+            ok = disc_overlay_read(at, &whole[at], (uint32_t)std::min<uint64_t>(0x3F7, kEnd - at), base_fn(b)) && ok;
+        check(ok, b == Base::Plain ? "the whole disc reads through a plain image in odd chunks" : "and through a CISO");
+        disc_overlay_unload();
+    }
+    check(plain == ciso && plain == g_over.bytes, "and the two give the same bytes, which are the model's");
+}
+
 void header_extras() {
     // A word the builder never writes, at the last place one fits.
     uint8_t got[0x40], want[0x20];
@@ -656,24 +723,29 @@ void replacing() {
     check(disc_overlay_read(0x2000, got, 4, ciso_base) && !memcmp(got, &g_image[0x2000], 4), "so reads are the base's again");
 }
 
+// Four threads read at once from the loaded overlay, as the game's threads and the audio callback do.
+bool threads_agree(Base b) {
+    std::atomic<int> bad{0};
+    std::vector<std::thread> threads;
+    for (uint32_t t = 0; t < 4; t++)
+        threads.emplace_back([&bad, b, t]() {
+            if (!random_reads(g_over, b, 2500, 0x777 + t)) bad++;
+        });
+    for (std::thread& th : threads) th.join();
+    return bad == 0;
+}
+
 void whole_disc() {
     check(load_lines(good_lines(), Base::Plain), "the fixture loads on a plain image for the sweeps");
     check(sweep(g_over, Base::Plain), "every start with eight lengths matches the model on a plain base");
     check(random_reads(g_over, Base::Plain, 10000, 0xBEEF), "10,000 random reads with an overlay match the model on a plain base");
+    check(threads_agree(Base::Plain), "four threads reading at once all match the model on a plain base");
     disc_overlay_unload();
 
     check(load_lines(good_lines(), Base::Ciso), "and on a CISO");
     check(sweep(g_over, Base::Ciso), "every start with eight lengths matches the model on a CISO base");
     check(random_reads(g_over, Base::Ciso, 10000, 0xF00D), "10,000 random reads with an overlay match the model on a CISO base");
-
-    std::atomic<int> bad{0};
-    std::vector<std::thread> threads;
-    for (uint32_t t = 0; t < 4; t++)
-        threads.emplace_back([&bad, t]() {
-            if (!random_reads(g_over, t & 1 ? Base::Plain : Base::Ciso, 2500, 0x777 + t)) bad++;
-        });
-    for (std::thread& th : threads) th.join();
-    check(bad == 0, "four threads reading at once, on both bases, all match the model");
+    check(threads_agree(Base::Ciso), "four threads reading at once all match the model on a CISO base");
     disc_overlay_unload();
 }
 
@@ -720,9 +792,9 @@ void refusals() {
         check(ok && open_fds() == fds, "the unmodified manifest still loads after all those refusals");
         write_text(manifest_path(), join(good));
         err.clear();
-        check(!disc_overlay_load(manifest_path().c_str(), failing_base, &err) && err.find(", line 2: ") != std::string::npos, "a base that can't be read is refused at the base line");
+        check(!disc_overlay_load(manifest_path().c_str(), failing_base, &err, kImage) && err.find(", line 2: ") != std::string::npos, "a base that can't be read is refused at the base line");
         err.clear();
-        check(!disc_overlay_load(manifest_path().c_str(), huge_fst_base, &err) && err.find(", line 2: ") != std::string::npos && err.find("2147483648 bytes") != std::string::npos,
+        check(!disc_overlay_load(manifest_path().c_str(), huge_fst_base, &err, kImage) && err.find(", line 2: ") != std::string::npos && err.find("2147483648 bytes") != std::string::npos,
               "and an image that claims a 2 GiB FST is refused before it is read");
     }
 
@@ -761,19 +833,19 @@ void refusals() {
 
     // The manifest itself.
     std::string err;
-    check(!disc_overlay_load("", plain_base, &err) && err.find("--disc-overlay=") == 0 && err.find("no manifest path") != std::string::npos,
+    check(!disc_overlay_load("", plain_base, &err, kImage) && err.find("--disc-overlay=") == 0 && err.find("no manifest path") != std::string::npos,
           "an empty manifest name is refused as the flag with nothing after it");
     const std::string none = g_out + "/none.txt";
-    check(!disc_overlay_load(none.c_str(), plain_base, &err) && err.find(none) == 0 && err.find(", line ") == std::string::npos,
+    check(!disc_overlay_load(none.c_str(), plain_base, &err, kImage) && err.find(none) == 0 && err.find(", line ") == std::string::npos,
           "a manifest that isn't there is refused naming the file and no line");
-    check(!disc_overlay_load(g_out.c_str(), plain_base, &err) && err.find(g_out) == 0 && err.find(", line ") == std::string::npos, "and so is a folder");
+    check(!disc_overlay_load(g_out.c_str(), plain_base, &err, kImage) && err.find(g_out) == 0 && err.find(", line ") == std::string::npos, "and so is a folder");
     const std::string big = g_out + "/big.txt";
     write_text(big, join({good[0], good[1]}));
     check(truncate(big.c_str(), (16 << 20) + 1) == 0, "a manifest of 16 MiB and a byte is made");
-    check(!disc_overlay_load(big.c_str(), plain_base, &err) && err.find(big) == 0 && err.find("16 MiB") != std::string::npos && err.find(", line ") == std::string::npos,
+    check(!disc_overlay_load(big.c_str(), plain_base, &err, kImage) && err.find(big) == 0 && err.find("16 MiB") != std::string::npos && err.find(", line ") == std::string::npos,
           "and refused as too big to be one");
     check(truncate(big.c_str(), 16 << 20) == 0, "one of exactly 16 MiB is made");
-    check(!disc_overlay_load(big.c_str(), plain_base, &err) && err.find(big) == 0 && err.find("16 MiB") == std::string::npos,
+    check(!disc_overlay_load(big.c_str(), plain_base, &err, kImage) && err.find(big) == 0 && err.find("16 MiB") == std::string::npos,
           "and is read, then refused for what it holds");
 }
 
@@ -802,7 +874,7 @@ bool many_child() {
     const int fds = open_fds();
 
     std::string err;
-    const bool loaded = disc_overlay_load(manifest_path().c_str(), ciso_base, &err);
+    const bool loaded = disc_overlay_load(manifest_path().c_str(), ciso_base, &err, size_of(Base::Ciso));
     check(loaded, "300 range files load with only 100 files allowed at the start");
     if (!loaded) {
         printf("      error was: %s\n", err.c_str());
@@ -850,7 +922,7 @@ bool limited_child() {
     check(setrlimit(RLIMIT_NOFILE, &lim) == 0, "the child cuts both open-file limits to 100");
     const int fds = open_fds();
     std::string err;
-    const bool loaded = disc_overlay_load(manifest_path().c_str(), ciso_base, &err);
+    const bool loaded = disc_overlay_load(manifest_path().c_str(), ciso_base, &err, size_of(Base::Ciso));
     check(!loaded && err.find(manifest_path()) == 0 && err.find(", line ") != std::string::npos && err.find("can't be opened") != std::string::npos &&
               err.find("limit on open files stops at 100") != std::string::npos,
           "300 files don't load when the limit can't rise, and the message gives the limit");
@@ -911,6 +983,7 @@ int main(int argc, char** argv) {
     stream_logging();
     reads_through();
     padding_reads();
+    base_limits();
     header_extras();
     shared_and_longer_files();
     replacing();
