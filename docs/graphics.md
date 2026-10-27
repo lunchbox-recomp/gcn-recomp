@@ -624,8 +624,9 @@ nearest draw.
 
 A texture copy reads the EFB as the squeeze left it, so the draws a copy is made from
 should stay unanchored. The front end logs `[anchor] copy N made under an anchor` for a
-copy made while a mark is set. It prints once for each scene, which is a run of frames that
-each make one, and N counts the copies made under an anchor so far.
+copy made while a mark is set. It prints once for each scene, which ends after 60 frames in
+a row with no copy made under an anchor, and N counts the copies made under an anchor so
+far.
 
 `GCN_ANCHOR_ALL=L`, `C` or `R` anchors every draw over the whole 640-pixel frame in place
 of the game's marks, so the effect shows without a game hook. The draw log names each

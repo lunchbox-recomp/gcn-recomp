@@ -86,6 +86,9 @@ class AnchorMark {
 public:
     // The EFB is 640 pixels across.
     static constexpr float kFrameWidth = 640.0f;
+    // A second of frames. A scene of copies under an anchor ends after this many in a row
+    // with none.
+    static constexpr uint32_t kSceneGap = 60;
 
     explicit AnchorMark(Anchor all = Anchor::Stretch) : all_(all) {}
 
@@ -115,12 +118,12 @@ public:
 
     // A texture copy made in `frame`. The EFB it reads holds anchored draws already squeezed,
     // so it is counted when a mark is in force, and `*n` is the count so far. It returns true
-    // for the first copy of a scene, which is a run of frames that each make one, so a game
-    // that does it every frame is told once.
+    // for the first copy of a scene, which ends after kSceneGap frames in a row with none, so
+    // a game that does it every frame, or every other one, is told once.
     bool copy_made(uint32_t frame, uint64_t* n) {
         if (a_ == Anchor::Stretch && all_ == Anchor::Stretch) return false;
         *n = ++copies_;
-        const bool starts = last_frame_ == kNone || frame > last_frame_ + 1;
+        const bool starts = last_frame_ == kNone || frame > last_frame_ + kSceneGap;
         last_frame_ = frame;
         return starts;
     }

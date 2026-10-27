@@ -247,12 +247,19 @@ int main() {
     check(c.copy_made(10, &count) && count == 1, "the first copy made under an anchor is reported");
     const bool same_frame = !c.copy_made(10, &count) && count == 2;
     const bool next_frame = !c.copy_made(11, &count) && count == 3;
-    const bool after_gap = c.copy_made(13, &count) && count == 4;
-    const bool continued = !c.copy_made(14, &count) && count == 5;
     check(same_frame && next_frame, "more of them in that frame and the next belong to the same scene and are counted quietly");
-    check(after_gap && continued, "one after a frame with none starts a new scene, and the frame after it continues it");
+    const bool every_other = !c.copy_made(13, &count) && count == 4 && !c.copy_made(15, &count) && count == 5 &&
+                             !c.copy_made(17, &count) && count == 6;
+    check(every_other, "a game that copies every other frame is told once");
+    // The last copy was in frame 17, and frames 18 to 76 are 59 in a row with none.
+    const bool within_gap = !c.copy_made(77, &count) && count == 7;
+    check(within_gap, "a copy 60 frames after the last, with 59 in a row between them, is the same scene");
+    // Frames 78 to 137 are 60 in a row with none.
+    const bool after_gap = c.copy_made(138, &count) && count == 8;
+    const bool continued = !c.copy_made(139, &count) && count == 9;
+    check(after_gap && continued, "one after 60 frames in a row with none starts a new scene, and the frame after it continues it");
     c.set(Anchor::Stretch, 0.0f, 0.0f);
-    check(!c.copy_made(15, &count) && count == 5, "a copy after the anchor ends is not counted");
+    check(!c.copy_made(140, &count) && count == 9, "a copy after the anchor ends is not counted");
     gx::AnchorMark all_copy(Anchor::Right);
     check(all_copy.copy_made(0, &count) && count == 1, "GCN_ANCHOR_ALL counts every copy as made under an anchor, frame 0 included");
 

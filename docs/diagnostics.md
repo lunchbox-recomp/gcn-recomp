@@ -858,9 +858,9 @@ use, which every lookup prolonged.
   shape against that edge of the window, and `--output` writes what the window shows. Any
   other value is refused with a line on stderr.
 - `[anchor] copy N made under an anchor` says a texture copy was made while an anchor
-  other than Stretch was set. It prints once for each scene, which is a run of frames that
-  each make one, with N the copies made under an anchor so far. Copies to the display are
-  left out.
+  other than Stretch was set. It prints once for each scene, which ends after 60 frames in a
+  row with no such copy, with N the copies made under an anchor so far. Copies to the
+  display are left out.
 - `GCN_PIXEL=x,y[;x,y...]` (EFB pixels) with `GCN_DRAWLOG` reads each listed pixel back
   after every draw of that frame and prints it, colour and 24-bit depth, whenever it
   changed, with the draw's index: which draws touch a pixel and what each leaves there,
