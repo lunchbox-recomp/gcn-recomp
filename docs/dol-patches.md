@@ -45,7 +45,7 @@ A function lies inside one added text section that an earlier line added, and it
 
 A name also has to stay clear of the names in a game's `hle.txt` and of `OSLink`, `OSLinkFixed` and `OSUnlink`. The tool can't see those tables, and `recomp.py` would send the new code to the hook instead of running it.
 
-Lists apply in the order given. A section belongs to the list that adds it, so a `word` from a later list can't land inside. Two lines that write one word are refused, and so are two sections that overlap, each with a message that names both lines.
+Lists apply in the order given. A section belongs to the list that adds it, so a `word` or a `function` from a later list can't land inside. Two lines that write one word are refused, and so are two sections that overlap, each with a message that names both lines.
 
 ## What it writes
 

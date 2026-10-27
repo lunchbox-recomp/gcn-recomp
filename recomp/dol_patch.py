@@ -343,10 +343,13 @@ class Patcher:
             raise PatchError(f'{where}: size {size:X} is not a positive multiple of 4')
         if not NAME.fullmatch(name):
             raise PatchError(f'{where}: {name} is not a C identifier')
-        inside = any(s.where is not None and s.text and s.addr <= addr and addr + size <= s.end
-                     for s in self.sections())
-        if not inside:
+        host = next((s for s in self.sections()
+                     if s.where is not None and s.text and s.addr <= addr and addr + size <= s.end), None)
+        if host is None:
             raise PatchError(f'{where}: {addr:08X} to {addr + size:08X} is not inside one added text section')
+        if host.owner != self.owner:
+            raise PatchError(f'{where}: {addr:08X} to {addr + size:08X} is inside the section added at '
+                             f'{host.where}, which belongs to another list')
         if name in self.names:
             raise PatchError(f'{where}: {name} is already named at {self.names[name]}')
         for f in self.inherited + self.functions:

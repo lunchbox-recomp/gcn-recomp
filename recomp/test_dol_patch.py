@@ -840,11 +840,17 @@ class Functions(Base):
         path = self.plist('a.txt', f'function {H:08X} 8 early', f'section text {H:08X} 20')
         self.refused([path], [(path, 2)], 'not inside one added text section')
 
-    def test_a_function_in_an_earlier_lists_section(self) -> None:
+    def test_a_function_in_an_earlier_lists_section_is_refused_naming_both_lines(self) -> None:
         first = self.plist('a.txt', f'section text {H:08X} 20')
         second = self.plist('b.txt', f'function {H:08X} 8 hook_h')
+        self.refused([first, second], [(second, 2), (first, 2)],
+                     f'{H:08X} to {H + 8:08X} is inside the section added at {first}:2, which belongs to another list')
+
+    def test_a_list_may_name_functions_in_its_own_sections_after_another_list(self) -> None:
+        first = self.plist('a.txt', f'section text {H:08X} 20', f'function {H:08X} 8 hook_h')
+        second = self.plist('b.txt', 'section text 8002A000 20', 'function 8002A000 8 hook_i')
         self.ok(first, second)
-        self.assertIn('hook_h', self.syms())
+        self.assertEqual(self.syms().count('type:function'), 2)
 
     def test_functions_may_touch_but_not_overlap(self) -> None:
         for addr, size in ((H + 4, 8), (H + 0xC, 8), (H + 8, 8), (H + 8, 4), (H, 0x14)):
@@ -852,11 +858,6 @@ class Functions(Base):
             self.refused([path], [(path, 4), (path, 3)], 'overlaps existing')
         self.ok(self.lists(f'function {H + 8:08X} 8 existing', f'function {H:08X} 8 before'))
         self.ok(self.lists(f'function {H + 8:08X} 8 existing', f'function {H + 0x10:08X} 8 after'))
-
-    def test_functions_in_two_lists_that_overlap_name_both_lines(self) -> None:
-        first = self.lists(f'function {H:08X} 10 one')
-        second = self.plist('b.txt', f'function {H + 8:08X} 8 two')
-        self.refused([first, second], [(second, 2), (first, 3)], 'overlaps one')
 
     def test_a_function_that_is_unaligned_or_empty_or_oddly_sized_is_refused(self) -> None:
         for line, why in ((f'function {H + 2:08X} 8 odd', 'not 4-aligned'), (f'function {H:08X} 0 empty', 'multiple of 4'),
