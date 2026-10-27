@@ -27,6 +27,7 @@ from dol import Dol, load_symbols  # noqa: E402
 TOOL = os.path.join(HERE, 'dol_patch.py')
 RECOMP = os.path.join(HERE, 'recomp.py')
 BOOT_CPP = os.path.join(os.path.dirname(HERE), 'runtime', 'boot.cpp')
+DOC = os.path.join(os.path.dirname(HERE), 'docs', 'dol-patches.md')
 
 HEADER = 0x100
 # Function A: mflr r0, li r3,1, addi r3,r3,2, mtlr r0, blr. Three nops pad its section to 0x20.
@@ -867,6 +868,35 @@ class Command(Base):
         self.assertEqual(r.returncode, 1)
         self.assertIn('cut.dol: section 7 runs past the end of the file', r.stderr)
         self.assertFalse(os.path.exists(self.out))
+
+
+class DocExample(Base):
+    """The script in docs/dol-patches.md, run the way gcn_add_game runs a DOL_FIXUP script."""
+
+    def blocks(self, language) -> list:
+        with open(DOC, encoding='utf-8') as f:
+            return re.findall(rf'```{language}\n(.*?)```', f.read(), re.S)
+
+    def test_the_script_runs_as_written_from_another_folder(self) -> None:
+        script = self.blocks('python')
+        self.assertEqual(len(script), 1)
+        self.write('game/dol_fixup.py', script[0])
+        os.symlink(os.path.dirname(HERE), os.path.join(self.dir, 'game', 'gcn-recomp'))
+        self.plist('game/code.txt', f'word {A + 4:08X} {B_A4_TO_H:08X} {LI_R3_1:08X}')
+        elsewhere = tempfile.TemporaryDirectory()
+        self.addCleanup(elsewhere.cleanup)
+        env = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
+        r = subprocess.run([sys.executable, os.path.join(self.dir, 'game', 'dol_fixup.py'), self.inp, self.out,
+                            'game.iso'], capture_output=True, text=True, cwd=elsewhere.name, env=env, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(word_at(self.read(self.out), A + 4), B_A4_TO_H)
+        self.assertEqual(self.syms(), '')
+
+    def test_the_doc_lists_the_patch_files_so_editing_them_rebuilds(self) -> None:
+        listed = self.blocks('cmake')
+        self.assertEqual(len(listed), 1)
+        self.assertIn('CMAKE_CONFIGURE_DEPENDS', listed[0])
+        self.assertIn('code.txt', listed[0])
 
 
 class Hook(Base):

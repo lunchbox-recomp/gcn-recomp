@@ -87,6 +87,13 @@ dol_in, dol_out = sys.argv[1:3]
 sys.exit(subprocess.run([sys.executable, tool, dol_in, dol_out, os.path.join(here, 'code.txt')]).returncode)
 ```
 
+The fixup runs at configure time, and CMake runs it again only when the script changes. Editing `code.txt` or a section's binary won't rebuild by itself. List them as configure dependencies in the `CMakeLists.txt` that calls `gcn_add_game`, with the script and the files beside it.
+
+```cmake
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+             ${CMAKE_CURRENT_SOURCE_DIR}/code.txt ${CMAKE_CURRENT_SOURCE_DIR}/hook.bin)
+```
+
 A game with `RELS` needs `rel.py link` to carry `.syms` through first. It runs after the fixup and writes its own `.syms` from the modules' symbols, so the patch tool's file beside its input doesn't survive. Link also adds a text and a data section of its own, so a patch list for such a game leaves a slot of each kind free.
 
 ## Why the boot DOL has to be the patched one
