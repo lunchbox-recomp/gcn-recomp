@@ -213,6 +213,13 @@ bool plat_read_at(PlatFile* f, uint64_t offset, void* dst, uint32_t len) {
     return true;
 }
 
+bool plat_file_size(PlatFile* f, uint64_t* size) {
+    LARGE_INTEGER li;
+    if (!f || !GetFileSizeEx(f->h, &li)) return false;
+    *size = (uint64_t)li.QuadPart;
+    return true;
+}
+
 void plat_close_read(PlatFile* f) {
     if (!f) return;
     CloseHandle(f->h);
@@ -231,6 +238,7 @@ std::string plat_reserve_open_files(uint32_t) { return {}; }  // handles aren't 
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
 #include <sys/utsname.h>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
@@ -402,6 +410,13 @@ bool plat_read_at(PlatFile* f, uint64_t offset, void* dst, uint32_t len) {
         }
         done += (uint32_t)r;
     }
+    return true;
+}
+
+bool plat_file_size(PlatFile* f, uint64_t* size) {
+    struct stat st;
+    if (!f || fstat(f->fd, &st) != 0) return false;
+    *size = (uint64_t)st.st_size;
     return true;
 }
 

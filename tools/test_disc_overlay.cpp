@@ -374,6 +374,13 @@ void hash_vectors() {
           "and it agrees with the test's own on zeros and on a run of the image");
 }
 
+void file_size() {
+    uint64_t size = 0;
+    check(plat_file_size(g_plain_file, &size) && size == kImage, "a plain image's size is its file's size");
+    size = 5;
+    check(!plat_file_size(nullptr, &size) && size == 5, "and no file at all has none");
+}
+
 void path_choice() {
     unsetenv("GCN_DISC_OVERLAY");
     g_disc_overlay_flag = nullptr;
@@ -897,6 +904,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     hash_vectors();
+    file_size();
     path_choice();
     no_overlay();
     load_and_close();
