@@ -9,7 +9,8 @@ Usage:
       write OUT, the DOL with each patch list applied in the order given, and OUT.syms, the
       symbols in dtk's format that recomp.py reads beside any DOL. OUT.syms holds the symbol
       lines of IN.syms when there is one, then the new functions, sorted by address. IN.modules
-      is copied to OUT.modules when there is one. Exits 0, or 1 with `file:line: reason` on the
+      is copied to OUT.modules when there is one, and an old OUT.modules goes when there isn't.
+      Exits 0, or 1 with `file:line: reason` on the
       first refused patch, or 2 on bad arguments. Nothing is written when anything is refused.
       The same inputs give the same bytes.
 """
@@ -368,6 +369,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if modules is not None:
             with open(args.dol_out + '.modules', 'wb') as f:
                 f.write(modules)
+        elif os.path.exists(args.dol_out + '.modules'):
+            # One left by an earlier run would be loaded beside the new OUT.
+            os.remove(args.dol_out + '.modules')
     except (PatchError, OSError) as e:
         print(e, file=sys.stderr)
         return 1

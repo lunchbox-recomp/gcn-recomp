@@ -53,7 +53,9 @@ Lists apply in the order given. A section belongs to the list that adds it, so a
 
 A new function can't overlap a function of `IN.syms` or take one of its names, and the message names the line. The file is always written, and it's empty when there's nothing to carry or add.
 
-`IN.modules` is copied to `OUT.modules` unchanged when it exists, since `recomp.py` reads that file beside a DOL too. Both files carry through, so a second run on the first run's output keeps what the first run named. A run may write over its input, because everything is read before anything is written.
+`IN.modules` is copied to `OUT.modules` unchanged when it exists, since `recomp.py` reads that file beside a DOL too. If `IN` has none, a run removes an `OUT.modules` left by an earlier run, so `recomp.py` never loads a stale one.
+
+Both files carry through, so a second run on the first run's output keeps what the first run named. A run may write over its input, because everything is read before anything is written.
 
 ## Hooking from the middle of a function
 

@@ -494,6 +494,16 @@ class Sidecars(Base):
             self.sym('target', A, 0x14), self.sym('first_fn', H, 8), self.sym('second_fn', H + 0x100, 8)]) + '\n')
         self.assertEqual(self.read(self.out + '.modules'), b'80100000 20 0 first\n')
 
+    def test_a_stale_out_modules_goes_when_in_has_none(self) -> None:
+        modules = self.write('in.dol.modules', b'80100000 20 0 first\n')
+        self.ok(self.plist('a.txt'))
+        self.assertTrue(os.path.exists(self.out + '.modules'))
+        os.remove(modules)
+        self.assertEqual(self.run_tool(self.plist('bad.txt', 'frob')).returncode, 1)
+        self.assertTrue(os.path.exists(self.out + '.modules'), 'a refused run leaves it alone')
+        self.ok(self.plist('a.txt'))
+        self.assertFalse(os.path.exists(self.out + '.modules'))
+
     def test_a_function_that_overlaps_one_of_ins_is_refused_naming_the_line(self) -> None:
         syms = self.write_syms('# first', self.sym('taken', H + 8, 8))
         for addr, size in ((H, 0xC), (H + 0xC, 8), (H + 8, 8), (H + 0xC, 4)):
