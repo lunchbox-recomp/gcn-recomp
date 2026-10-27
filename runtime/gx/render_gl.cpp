@@ -2045,7 +2045,9 @@ static void apply_state(const PixelState& st, int prim) {
     // Per state, whatever the projection: see g_frame_grad.
     if (frame_screen && g_cur_uvgrad && pr.u_uvgrad >= 0) glUniform4fv(pr.u_uvgrad, 8, g_cur_uvgrad);
     const float* vp = st.viewport;  // sx, sy, sz, ox, oy, oz
-    // The anchor moves the viewport's x terms and the scissor's x edges, and nothing else.
+    // The anchor moves the viewport's x terms and the scissor's x edges, and with the viewport
+    // the z freeze plane (zfreeze_plane), which is exact for a frozen draw under the anchor
+    // of the triangle it came from. It moves nothing else.
     const AnchorMap an = draw_anchor_map(st);
     if (!(held && bp[0x59] == u.scissor_off && memcmp(vp, u.viewport, sizeof(st.viewport)) == 0 && an == u.anchor)) {
         g_astat.viewport++;

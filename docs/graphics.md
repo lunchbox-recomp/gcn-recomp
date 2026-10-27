@@ -604,6 +604,13 @@ moves it to `x1 - (x1 - x) * k`. A centered one scales x by k about `(x0 + x1) /
 holds its edge, so a split view anchors its HUD to its own rect, such as 320 to 640 for a
 view on the right half of the frame, and not to the screen's edge.
 
+The remap moves positions only. A point's size is set in EFB samples and isn't scaled by k,
+so an anchored point comes out 1/k wider than it's tall, a third wider at 16:9.
+
+On an output narrower than 4:3, k is over 1 and anchored draws widen toward the middle, so
+a wide element can reach the far side of the picture. The remap isn't clamped, since that
+would leave the element as squashed as the picture.
+
 At 4:3, k is exactly 1 and the remap returns x bit for bit, so nothing moves and the frame
 hashes hold. An eye of a headset always uses k = 1, the flat pass that feeds its copies
 included, because it shows the picture at the shape the game drew it.
@@ -615,6 +622,9 @@ draw carries it to whichever renderer draws it. The GL path remaps three things 
 - The x terms of the viewport uniform (`u_vp_a`), which needs no new shaders.
 - The scissor's left and right edges.
 - The z freeze plane, which is built from the same viewport.
+
+The plane is exact for a frozen draw under the same anchor as the triangle it came from. A
+frozen draw under another anchor reads the plane at its own moved x.
 
 The mark goes into the command stream as a tag does (`g_turns` in `fifo.cpp`), so the
 front end applies it to the states taken from the draws written after it. It's as exact as
