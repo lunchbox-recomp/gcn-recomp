@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include "anchor.h"
 
 namespace gx {
 
@@ -66,6 +67,12 @@ struct PixelState {
     // The game's tag for the draws (set_draw_tag) where the command stream had got to
     // when this state was taken; 0 for none.
     uint8_t tag;
+    // The game's anchor for the draws (set_draw_anchor) where the command stream had got to
+    // when this state was taken, an Anchor with Stretch (0) for none, and the rect it holds
+    // in EFB pixels, both zero for Stretch. A renderer remaps the draw's x by them and the
+    // output aspect (anchor.h), whatever its API.
+    uint8_t anchor;
+    float anchor_x0, anchor_x1;
 };
 
 // A game's own say over what an eye draws, on top of the eye hook: called once per pixel
@@ -277,6 +284,19 @@ void set_view_turn(const float q[4]);
 // land on the far side of it. A tag is best changed where the game has written a little
 // state (a projection, a viewport) between the change and the nearest draw.
 void set_draw_tag(uint8_t tag);
+
+// A game's anchor for the draws it makes from here on (PixelState::anchor), from the guest
+// thread: Left, Center or Right to have the renderer squeeze them toward that edge of the rect
+// x0..x1, in EFB pixels (anchor.h), and Stretch to end it. A game marks a HUD element this way
+// so that it keeps its 4:3 shape at a wider output aspect, and marks a split view's HUD with
+// that view's rect to anchor it to the view's own edges. At 4:3 nothing moves.
+// It takes its place in the command stream as a tag does, and is as exact as the stream: up
+// to 31 bytes the game wrote before the call can still be in the gather pipe, so a draw that
+// ends just before a change can land on the far side of it. Change it where the game has
+// written some state (a projection, a viewport) between the change and the nearest draw.
+// A texture copy reads the EFB as the squeeze left it, so the draws a copy is made from stay
+// unanchored. The front end logs a copy made while an anchor is set.
+void set_draw_anchor(Anchor a, float x0, float x1);
 
 // The shape the window shows the picture at, width over height: 4/3, the default, is the
 // console's own. Presentation stretches each frame to it (aspect.h), and a game's hooks read

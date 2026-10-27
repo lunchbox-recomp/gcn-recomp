@@ -906,6 +906,7 @@ static uint32_t snapshot_state(bool view_space) {
     st.num_colors = g_state.xf_regs[0x09] & 3;
     st.clip_disable = g_state.xf_regs[0x05] & 1;
     st.tag = g_draw_tag;
+    anchor_stamp(st);
     // Textures referenced by TEV stages and indirect stages.
     uint32_t genmode = g_state.bp[0x00];
     uint32_t nstages = ((genmode >> 10) & 15) + 1;
@@ -1792,7 +1793,10 @@ void renderer_efb_copy(uint32_t dest_addr, bool ends_frame) {
                 "half=%d pe=%06X pixfmt=%u depth=%d draws=%u seq=%u\n", g_frame_counter, cc.to_xfb, dest_addr, cc.dst_w, cc.dst_h,
                 cc.src_w, cc.src_h, cc.src_x, cc.src_y, cc.format, cc.clear, (int)half, v, bp[0x43] & 7, (int)cc.depth, draws, (uint32_t)g_draw_seq);
     }
-    if (!cc.to_xfb) cc.tex_id = texture_register_efb_copy(dest_addr, cc.dst_w, cc.dst_h, cc.format);
+    if (!cc.to_xfb) {
+        cc.tex_id = texture_register_efb_copy(dest_addr, cc.dst_w, cc.dst_h, cc.format);
+        anchor_copy_made(g_frame_counter);
+    }
     // In the GCN_MTXLOG dump, so the draws it lists can be read against the pass
     // boundaries: which were drawn into an off-screen target and which into the scene.
     if (mtxlog_frame())

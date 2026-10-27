@@ -2,8 +2,11 @@
 #pragma once
 #include <cstdint>
 #include <vector>
+#include "anchor.h"
 
 namespace gx {
+
+struct PixelState;
 
 // Primitive types (command byte & 0xF8)
 enum Prim : uint8_t {
@@ -139,5 +142,12 @@ void renderer_draw(const DrawCall& dc);
 // `ends_frame`: a display copy that finishes a frame (xfb_rows.h), where the batch ends.
 void renderer_efb_copy(uint32_t dest_addr, bool ends_frame);
 void renderer_bp_write(uint32_t reg, uint32_t value);
+
+// The front end's half of draw anchors (anchor.cpp). draw_anchor_reached is set_draw_anchor
+// where the command stream has got to it. anchor_stamp puts the mark in force on a pixel
+// state being taken, and anchor_copy_made notes a texture copy made in `frame`.
+void draw_anchor_reached(Anchor a, float x0, float x1);
+void anchor_stamp(PixelState& st);
+void anchor_copy_made(uint32_t frame);
 
 }  // namespace gx

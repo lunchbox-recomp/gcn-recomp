@@ -219,9 +219,16 @@ static std::vector<uint8_t> g_skim_out;
 // thread when it set them, a turn landed on whichever batch the front end, up to a frame
 // behind, was building: in the headset, a frame of the world now and then drawn a frame's
 // turn off. Under g_fe_mutex.
-// The game's draw tags (gx::set_draw_tag) go in the same queue, in order with the turns.
+// The game's draw tags (gx::set_draw_tag) and draw anchors (gx::set_draw_anchor) go in the
+// same queue, in order with the turns.
 namespace gx { void view_turn_reached(const float q[4]); void draw_tag_reached(uint8_t tag); }
-struct PendingTurn { uint64_t at; float q[4]; int tag = -1; };   // a draw tag when tag >= 0
+struct PendingTurn {
+    uint64_t at;
+    float q[4];
+    int tag = -1;      // a draw tag when tag >= 0
+    int anchor = -1;   // a draw anchor, with the rect x0..x1, when anchor >= 0
+    float x0 = 0.0f, x1 = 0.0f;
+};
 static std::deque<PendingTurn> g_turns;
 
 // On the front end, before it processes what starts at `at`: the turns set by then.
@@ -234,7 +241,8 @@ static void turns_reached(uint64_t at) {
             t = g_turns.front();
             g_turns.pop_front();
         }
-        if (t.tag >= 0) gx::draw_tag_reached((uint8_t)t.tag);
+        if (t.anchor >= 0) gx::draw_anchor_reached((gx::Anchor)t.anchor, t.x0, t.x1);
+        else if (t.tag >= 0) gx::draw_tag_reached((uint8_t)t.tag);
         else gx::view_turn_reached(t.q);
     }
 }
@@ -328,6 +336,23 @@ void gx::set_draw_tag(uint8_t tag) {
     PendingTurn t;
     memset(t.q, 0, sizeof(t.q));
     t.tag = tag;
+    std::lock_guard<std::mutex> lk(g_fe_mutex);
+    t.at = g_fe_handed;
+    g_turns.push_back(t);
+}
+
+// See g_turns and set_draw_anchor.
+void gx::set_draw_anchor(Anchor a, float x0, float x1) {
+    if (!fe_threaded()) {
+        draw_anchor_reached(a, x0, x1);
+        return;
+    }
+    fe_submit();
+    PendingTurn t;
+    memset(t.q, 0, sizeof(t.q));
+    t.anchor = (int)a;
+    t.x0 = x0;
+    t.x1 = x1;
     std::lock_guard<std::mutex> lk(g_fe_mutex);
     t.at = g_fe_handed;
     g_turns.push_back(t);
