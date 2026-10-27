@@ -1107,8 +1107,9 @@ the runtime read its disc through the overlay that manifest describes (see
 stays.
 
 The manifest loads before boot reads the disc header, and every host file it names opens
-once then. The run stops at boot, naming the manifest line, if the manifest or one of its
-files is wrong or the image isn't the one it was made for.
+once then. The run stops at boot if the manifest or one of its files is wrong or the image
+isn't the one it was made for. The message names the manifest and the line, or the file
+alone when the manifest can't be opened or read.
 
 `--log=dvd` prints the load with its file count and bytes, then each piece of a DVD
 command's read that comes from a host file. The audio stream reads a block at a time, so
