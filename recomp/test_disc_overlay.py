@@ -296,6 +296,10 @@ class TestDol(OverlayCase):
     def test_a_dol_that_is_too_small_is_refused(self):
         self.refuses(r'the DOL .* under 0x100 bytes', '--dol', self.dol(0xFF))
 
+    def test_a_dol_of_exactly_0x100_bytes_is_accepted(self):
+        self.main('--dol', self.dol(0x100))
+        self.assertIn((START + SLOT, 0x100, 'boot.dol'), read_manifest(self.out)[3])
+
     def test_a_dol_outside_out_is_refused(self):
         path = self.put('boot.dol', bytes(0x200), folder=self.tmp)
         self.refuses(r'the DOL .* has to be inside', '--dol', path)
