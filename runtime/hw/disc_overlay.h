@@ -17,7 +17,8 @@ using BaseRead = bool (*)(uint64_t off, void* dst, uint32_t len);
 // Read the manifest and open every host file it names, replacing any overlay already loaded.
 // The image has to be the one the manifest was made for: its disc ID and its FST's offset,
 // size and FNV-1a hash are read through `base` and compared. On a refusal nothing is loaded
-// and *error (if given) says why, naming the manifest and the line.
+// and *error (if given) says why. It names the manifest and the line, except for a manifest
+// that can't be opened, can't be read or is too big, which has no line, and an empty name.
 bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error);
 
 // len bytes of the virtual disc from off. Ranges come from their host files, header words

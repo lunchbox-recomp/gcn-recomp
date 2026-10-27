@@ -65,7 +65,9 @@ Dolphin does the same when it builds a virtual disc for a folder of files. It wr
 
 The runtime loads the manifest before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
 
-Load stops the run, with a message that names the manifest and the line, when anything is wrong. The image's disc ID and its FST's offset, size and hash have to match the `base` line, and the message names both hashes when they don't. A line that isn't in the format above stops it too, and so does a range file that's missing, is a folder or is shorter than its range.
+Load stops the run with a message when anything is wrong. Most refusals name the manifest and the line. A manifest that can't be opened, can't be read or is over 16 MiB has no line to name, so the message names the file alone.
+
+The image's disc ID and its FST's offset, size and hash have to match the `base` line, and the message names both hashes when they don't. A line that isn't in the format above stops the run too, and so does a range file that's missing, is a folder or is shorter than its range.
 
 A header word reads as the manifest says wherever a read covers it, even when a range covers the same bytes. A read that starts in the image and ends in a file, or crosses several ranges, is joined from each place it passes. Bytes no range covers read from the image.
 

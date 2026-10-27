@@ -693,12 +693,14 @@ void refusals() {
     check(!disc_overlay_load("", plain_base, &err) && err.find("--disc-overlay=") == 0 && err.find("no manifest path") != std::string::npos,
           "an empty manifest name is refused as the flag with nothing after it");
     const std::string none = g_out + "/none.txt";
-    check(!disc_overlay_load(none.c_str(), plain_base, &err) && err.find(none) == 0, "a manifest that isn't there is refused naming it");
-    check(!disc_overlay_load(g_out.c_str(), plain_base, &err) && err.find(g_out) == 0, "and so is a folder");
+    check(!disc_overlay_load(none.c_str(), plain_base, &err) && err.find(none) == 0 && err.find(", line ") == std::string::npos,
+          "a manifest that isn't there is refused naming the file and no line");
+    check(!disc_overlay_load(g_out.c_str(), plain_base, &err) && err.find(g_out) == 0 && err.find(", line ") == std::string::npos, "and so is a folder");
     const std::string big = g_out + "/big.txt";
     write_text(big, join({good[0], good[1]}));
     check(truncate(big.c_str(), (16 << 20) + 1) == 0, "a manifest of 16 MiB and a byte is made");
-    check(!disc_overlay_load(big.c_str(), plain_base, &err) && err.find(big) == 0 && err.find("16 MiB") != std::string::npos, "and refused as too big to be one");
+    check(!disc_overlay_load(big.c_str(), plain_base, &err) && err.find(big) == 0 && err.find("16 MiB") != std::string::npos && err.find(", line ") == std::string::npos,
+          "and refused as too big to be one");
     check(truncate(big.c_str(), 16 << 20) == 0, "one of exactly 16 MiB is made");
     check(!disc_overlay_load(big.c_str(), plain_base, &err) && err.find(big) == 0 && err.find("16 MiB") == std::string::npos,
           "and is read, then refused for what it holds");
