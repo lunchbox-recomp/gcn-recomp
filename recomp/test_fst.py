@@ -191,6 +191,14 @@ class TestLayout(unittest.TestCase):
             with self.assertRaisesRegex(fst.FstError, r"entry 1 \('big'\)"):
                 fst.build(tree)
 
+    def test_a_name_offset_that_isnt_24_bits_is_refused(self):
+        def tree(length):
+            return fst.Entry('', children=[fst.Entry('x' * length, 0, 1), fst.Entry('y', 0, 1)])
+        data = fst.build(tree(0xFFFFFE))  # 'y' lands at 0xFFFFFF, the last offset that fits
+        self.assertEqual(struct.unpack_from('>I', data, 24)[0], 0xFFFFFF)
+        with self.assertRaisesRegex(fst.FstError, r"entry 2 \('y'\).*24 bits"):
+            fst.build(tree(0xFFFFFF))
+
     def test_the_largest_offset_and_size_round_trip(self):
         tree = fst.Entry('', children=[fst.Entry('big', 0xFFFFFFFF, 0xFFFFFFFF)])
         self.assertEqual(fst.parse(fst.build(tree)), tree)

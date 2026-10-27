@@ -137,6 +137,8 @@ def build(root: Entry) -> bytes:
         if i:
             _check_name(f'entry {i}', entry.name)
             word = len(names)
+            if word > 0xFFFFFF:
+                raise FstError(f"entry {i} ({entry.name!r}) has a name offset that isn't 24 bits")
             names += entry.name.encode('ascii') + b'\0'
         if entry.children is not None:
             table += struct.pack('>III', 1 << 24 | word, parent, i + span[i])
