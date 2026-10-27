@@ -68,6 +68,7 @@ struct UniformShadow {
     uint8_t view_space, background, foreground, fg_layer, hud_layer, flat3d, screen, frame_screen, restore, facing;
     float hud_push;
     float viewport[6];
+    AnchorMap anchor;          // what the viewport's x terms were remapped by
     uint32_t scissor_off;      // bp[0x59]
     uint32_t psize_reg;        // bp[0x22]
     uint32_t point_tex;        // point_tex_key(): what u_points and u_point_off were sent for
@@ -99,6 +100,10 @@ static int g_scale = 2;
 // orthographic ones (the 2D HUD) are painted on a frame standing out in front of the
 // game's camera -- see render_hud_frame.
 static bool g_vr_active = false;
+// An eye's frame is being drawn, the flat pass that feeds its copies included, which runs
+// before g_vr_active is set. A headset shows the picture at the shape the game drew it, so
+// draw anchors and the output aspect do not apply (anchor_scale).
+static bool g_eye_frame = false;
 static float g_vr_proj[16], g_vr_view[16];
 // The eye's view as the frontend gave it (render_set_vr_eye). g_vr_view is this times the
 // batch's view turn (Batch::view_turn, set_view_turn), from the camera the game turned to
@@ -1524,6 +1529,7 @@ struct AppliedState {
     uint32_t pal_id[8];       // unit 8+m: the palette map m's EFB copy is read through
     int prim;
     bool hud_depth;
+    AnchorMap anchor;         // what the scissor's x edges were remapped by
 };
 static AppliedState g_applied;
 // What GL's face culling is set to: -1 unknown, 0 off, 1 front, 2 back, 3 both. Kept apart
@@ -1576,17 +1582,35 @@ static void apply_stats_flush(const char* pass, uint32_t frame) {
 // by the flat pass as it goes; an eye keeps its draws' own depth (w = 0).
 static float g_zplane[4];
 
+// What a state's draws are placed by in the flat view: the game's anchor for them and the
+// squeeze the output aspect asks of it, the identity at 4:3 and in an eye.
+static AnchorMap draw_anchor_map(const PixelState& st) {
+    return anchor_map((Anchor)st.anchor, st.anchor_x0, st.anchor_x1, anchor_scale(output_aspect(), g_eye_frame));
+}
+
+// u_vp_a for a state, less the scissor offset, with the anchor's remap of its x terms.
+static void viewport_a(const PixelState& st, const AnchorMap& an, float vpa[4]) {
+    int xoff, yoff;
+    scissor_offset(st.bp, xoff, yoff);
+    const float* vp = st.viewport;
+    vpa[0] = 2.0f * (vp[3] - xoff) / EFB_W - 1.0f;
+    vpa[1] = 2.0f * vp[0] / EFB_W;
+    vpa[2] = 2.0f * (vp[4] - yoff) / EFB_H - 1.0f;
+    vpa[3] = 2.0f * vp[1] / EFB_H;
+    anchor_viewport(an.a, an.x0, an.x1, an.k, EFB_W, vpa);
+}
+
 // The plane of a draw's last triangle, as the flat path's vertex shader places it: the
-// GX projection, then the viewport (less the scissor offset), Y flipped for the EFB blit.
+// GX projection, then the viewport (less the scissor offset, and anchored like the draw),
+// Y flipped for the EFB blit.
 static bool zfreeze_plane(const Batch& b, const Cmd& c, float out[4]) {
     if (c.prim != 0 || c.count < 3) return false;
     const PixelState& st = b.states[c.state];
     const float* p = st.proj;
     const float* vp = st.viewport;
     const bool perspective = (int)p[6] == 0;
-    int xoff, yoff;
-    scissor_offset(st.bp, xoff, yoff);
-    const float vpa[4] = {2.0f * (vp[3] - xoff) / EFB_W - 1.0f, 2.0f * vp[0] / EFB_W, 2.0f * (vp[4] - yoff) / EFB_H - 1.0f, 2.0f * vp[1] / EFB_H};
+    float vpa[4];
+    viewport_a(st, draw_anchor_map(st), vpa);
     const float vpb[2] = {2.0f * vp[5] / 16777215.0f - 1.0f, 2.0f * vp[2] / 16777215.0f};
     double X[3], Y[3], Z[3];
     for (int i = 0; i < 3; i++) {
@@ -1611,6 +1635,36 @@ static bool zfreeze_plane(const Batch& b, const Cmd& c, float out[4]) {
     out[2] = (float)(Z[0] - a * X[0] - bb * Y[0]);
     out[3] = 1.0f;
     return true;
+}
+
+// The box a draw covers on the EFB, after its anchor's remap, for the draw log: x0, x1, y0
+// and y1 in pixels from the top left, the vertices taken through the projection and the
+// viewport as the vertex shader does. False when no vertex is in front of the camera.
+static bool draw_screen_box(const Batch& b, const Cmd& c, float box[4]) {
+    const PixelState& st = b.states[c.state];
+    const float* p = st.proj;
+    const bool perspective = (int)p[6] == 0;
+    float vpa[4];
+    viewport_a(st, draw_anchor_map(st), vpa);
+    bool any = false;
+    for (uint32_t i = 0; i < c.count; i++) {
+        const float* v = b.verts[b.indices[c.first + i]].pos;
+        float cx, cy, cw;
+        if (perspective) { cx = p[0] * v[0] + p[1] * v[2]; cy = p[2] * v[1] + p[3] * v[2]; cw = -v[2]; }
+        else { cx = p[0] * v[0] + p[1]; cy = p[2] * v[1] + p[3]; cw = 1.0f; }
+        if (cw <= 0.0f) continue;
+        const float x = ((vpa[0] * cw + vpa[1] * cx) / cw + 1.0f) * 0.5f * EFB_W;
+        const float y = ((vpa[2] * cw + vpa[3] * cy) / cw + 1.0f) * 0.5f * EFB_H;
+        if (!any) {
+            box[0] = box[1] = x;
+            box[2] = box[3] = y;
+            any = true;
+        } else {
+            box[0] = std::min(box[0], x); box[1] = std::max(box[1], x);
+            box[2] = std::min(box[2], y); box[3] = std::max(box[3], y);
+        }
+    }
+    return any;
 }
 
 // The same plane as an eye sees the triangle: the eye's projection and its view of the
@@ -1991,13 +2045,17 @@ static void apply_state(const PixelState& st, int prim) {
     // Per state, whatever the projection: see g_frame_grad.
     if (frame_screen && g_cur_uvgrad && pr.u_uvgrad >= 0) glUniform4fv(pr.u_uvgrad, 8, g_cur_uvgrad);
     const float* vp = st.viewport;  // sx, sy, sz, ox, oy, oz
-    if (!(held && bp[0x59] == u.scissor_off && memcmp(vp, u.viewport, sizeof(st.viewport)) == 0)) {
+    // The anchor moves the viewport's x terms and the scissor's x edges, and nothing else.
+    const AnchorMap an = draw_anchor_map(st);
+    if (!(held && bp[0x59] == u.scissor_off && memcmp(vp, u.viewport, sizeof(st.viewport)) == 0 && an == u.anchor)) {
         g_astat.viewport++;
-        float vpa[4] = {2.0f * (vp[3] - xoff) / EFB_W - 1.0f, 2.0f * vp[0] / EFB_W, 2.0f * (vp[4] - yoff) / EFB_H - 1.0f, 2.0f * vp[1] / EFB_H};
+        float vpa[4];
+        viewport_a(st, an, vpa);
         float vpb[4] = {2.0f * vp[5] / 16777215.0f - 1.0f, 2.0f * vp[2] / 16777215.0f, 0, 0};
         glUniform4fv(pr.u_vp_a, 1, vpa);
         glUniform4fv(pr.u_vp_b, 1, vpb);
         memcpy(u.viewport, vp, sizeof(st.viewport));
+        u.anchor = an;
         u.scissor_off = bp[0x59];
     }
     // Only points read the point size, and a game that sets a line width per draw changes
@@ -2354,7 +2412,8 @@ static void apply_state(const PixelState& st, int prim) {
     }
     g_applied.prim = prim;
     // Scissor (EFB coords, y down), measured from the same origin as the viewport.
-    const bool same_scissor = g_applied.valid && bp[0x20] == abp[0x20] && bp[0x21] == abp[0x21] && bp[0x59] == abp[0x59];
+    const bool same_scissor = g_applied.valid && bp[0x20] == abp[0x20] && bp[0x21] == abp[0x21] && bp[0x59] == abp[0x59] &&
+                              an == g_applied.anchor;
     if (!same_scissor) {
         g_astat.scissor++;
         int x0 = (int)(bp[0x20] >> 12 & 0x7FF) - xoff, y0 = (int)(bp[0x20] & 0x7FF) - yoff;
@@ -2382,11 +2441,14 @@ static void apply_state(const PixelState& st, int prim) {
             glDisable(GL_SCISSOR_TEST);
         } else {
             glEnable(GL_SCISSOR_TEST);
-            glScissor(x0 * g_scale, (EFB_H - y1) * g_scale, (x1 - x0) * g_scale, (y1 - y0) * g_scale);
+            int left = x0, right = x1;
+            anchor_scissor(an.a, an.x0, an.x1, an.k, g_scale, &left, &right);
+            glScissor(left, (EFB_H - y1) * g_scale, right - left, (y1 - y0) * g_scale);
         }
     }
     // Everything above has now been compared against bp, so it becomes the reference.
     memcpy(g_applied.bp, bp, sizeof(g_applied.bp));
+    g_applied.anchor = an;
     g_applied.valid = true;
 }
 
@@ -3652,6 +3714,7 @@ bool render_execute_eye(Batch& b, unsigned fbo, int w, int h, bool do_copies) {
     // flat into the EFB exactly as the hardware would, minus the scanout, and the eyes
     // then re-project only the main scene on top of correct textures.
     static std::vector<uint8_t> skip, trim;
+    g_eye_frame = true;
     apply_view_turn(b);
     mark_offscreen_passes(b, skip);
     const auto t_start = std::chrono::steady_clock::now();
@@ -3984,6 +4047,7 @@ bool render_execute_eye(Batch& b, unsigned fbo, int w, int h, bool do_copies) {
 #endif
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     g_vr_active = false;
+    g_eye_frame = false;
     // An eye frame presents nothing through the EFB, so the presented count -- which the
     // draw log, the copy dump and the stereo logs key on -- is stepped here instead, once
     // per frame: the frontends number their eye dumps the same way, so GCN_DRAWLOG=<n>
@@ -4246,6 +4310,13 @@ static bool execute_batch(Batch& b, bool do_present, const std::vector<uint8_t>*
                         zlo, zhi, xlo, xhi, ylo, yhi, band_lo, band_hi, st.clip_disable ? " noclip" : "",
                         at_origin, slivers, sliver_text.c_str());
                 if (st.tag) fprintf(stderr, " tag=%u", st.tag);   // set_draw_tag
+                // The game's anchor (S for none, else the letter and the rect) and the draw's
+                // box on the EFB after the remap, in pixels from the top left.
+                fprintf(stderr, " anchor=%c", anchor_letter((Anchor)st.anchor));
+                if (st.anchor) fprintf(stderr, "(%g..%g)", st.anchor_x0, st.anchor_x1);
+                float scr[4];
+                if (draw_screen_box(b, c, scr)) fprintf(stderr, " scr=%.1f..%.1f,%.1f..%.1f", scr[0], scr[1], scr[2], scr[3]);
+                else fprintf(stderr, " scr=none");
                 if (slivers) fprintf(stderr, "\n       ");
                 // Each texture by id and, for a decoded one, by its content hash, which is
                 // the same in every run (TexData::hash); an EFB copy is starred.
