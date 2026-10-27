@@ -190,7 +190,10 @@ void overlay_draw() {
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     if (!paused()) return;
-    if (!g_dumped && gx::g_dump_output && gx::g_dump_dir) dump();
-    g_dumped = true;
+    // A menu's first frame only lays it out and draws nothing, so the dump waits for one that drew.
+    if (!g_dumped && gx::g_dump_output && gx::g_dump_dir && ImGui::GetDrawData()->TotalVtxCount > 0) {
+        g_dumped = true;
+        dump();
+    }
     if (g_at_left > 0 && --g_at_left == 0) set_open(false);
 }

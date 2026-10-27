@@ -588,9 +588,9 @@ frame N after T ms, output frame F`, where F is how far a `GCN_WAV` recording ha
 
 `GCN_OVERLAY_AT=<frame>:<host frames>` opens the menu over the game (`runtime/overlay/overlay.h`)
 once `<frame>` frames have been presented, and closes it after it's been drawn over the held
-frame `<host frames>` times. With `--dump-output` its first draw over the held frame goes to
-`overlay_NNNNN.png` too, which is how a hidden run shows the menu. Frame and output dumps never
-include it, so a run that opened it writes the same frame dumps as one that didn't.
+frame `<host frames>` times. With `--dump-output` the first draw over the held frame that shows
+the menu goes to `overlay_NNNNN.png` too, which is how a hidden run shows it. Frame and output
+dumps never include it, so a run that opened it writes the same frame dumps as one that didn't.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under
