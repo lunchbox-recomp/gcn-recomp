@@ -54,14 +54,16 @@ inline void anchor_viewport(Anchor a, float x0, float x1, float k, float width, 
 }
 
 // A scissor rect's left and right edges (`left` inclusive, `right` exclusive, in EFB pixels)
-// remapped, then taken to `scale` samples to a pixel and rounded to the nearest sample. With
-// no remap they come out as exactly left * scale and right * scale.
+// remapped, then taken to `scale` samples to a pixel and rounded the way GL picks samples. A
+// sample is drawn when its center, i + 0.5, lies from the left edge up to but not at the right
+// one, so an edge on a half sample rounds down: ceil(edge - 0.5). With no remap they come out
+// as exactly left * scale and right * scale.
 inline void anchor_scissor(Anchor a, float x0, float x1, float k, int scale, int* left, int* right) {
     const bool remap = a != Anchor::Stretch && k != 1.0f;
     const float l = remap ? anchor_x(a, (float)*left, x0, x1, k) : (float)*left;
     const float r = remap ? anchor_x(a, (float)*right, x0, x1, k) : (float)*right;
-    *left = (int)std::lround(l * (float)scale);
-    *right = (int)std::lround(r * (float)scale);
+    *left = (int)std::ceil(l * (float)scale - 0.5f);
+    *right = (int)std::ceil(r * (float)scale - 0.5f);
 }
 
 // What a draw is placed by, as a renderer keeps it: the anchor, its rect and k. Stretch, or

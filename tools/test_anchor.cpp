@@ -43,6 +43,13 @@ const Rect kRects[] = {{0, 640}, {0, 320}, {320, 640}, {0, 160}, {160, 320}, {48
 // 4:3 over 16:9, 16:10, 21:9 and 32:9, and one above 1 for a window narrower than 4:3.
 const float kSqueezes[] = {0.75f, 0.8333333f, 0.5714286f, 0.375f, 1.25f};
 
+// The first sample GL draws from an edge: the first whose center, i + 0.5, isn't before it.
+long first_sample(float edge) {
+    long i = (long)std::floor(edge) - 1;
+    while ((float)i + 0.5f < edge) i++;
+    return i;
+}
+
 }  // namespace
 
 int main() {
@@ -170,6 +177,10 @@ int main() {
     const bool view = l == 400 && r == 640;
     check(right1 && left2 && center2 && rounded && view,
           "a full-frame scissor at k = 0.75 is 160 to 640 right, 0 to 960 left at two samples, 160 to 1120 centered, and a 4P view's stays in its view");
+    l = 101, r = 103;
+    gx::anchor_scissor(Anchor::Right, 0.0f, 640.0f, 0.75f, 2, &l, &r);
+    check(l == 471 && r == 474,
+          "an edge on a half sample rounds down as GL's sample rule does, so 471.5 and 474.5 are 471 and 474");
     long off = 0, backwards = 0;
     for (Anchor a : kAnchors)
         for (const Rect& rc : kRects)
@@ -178,13 +189,13 @@ int main() {
                     for (int e = 0; e <= 640; e += 3) {
                         int left = e, right = e + 5;
                         gx::anchor_scissor(a, rc.x0, rc.x1, k, scale, &left, &right);
-                        const long want_l = std::lround(gx::anchor_x(a, (float)e, rc.x0, rc.x1, k) * (float)scale);
-                        const long want_r = std::lround(gx::anchor_x(a, (float)(e + 5), rc.x0, rc.x1, k) * (float)scale);
+                        const long want_l = first_sample(gx::anchor_x(a, (float)e, rc.x0, rc.x1, k) * (float)scale);
+                        const long want_r = first_sample(gx::anchor_x(a, (float)(e + 5), rc.x0, rc.x1, k) * (float)scale);
                         if (left != want_l || right != want_r) off++;
                         if (right < left) backwards++;
                     }
     check(off == 0 && backwards == 0,
-          "a scissor edge is the remapped x times the scale rounded to a sample, and an edge never passes the other");
+          "a scissor edge is the first sample whose center is at or past the remapped x times the scale, and an edge never passes the other");
 
     // The viewport uniform: window x = vpa[0] + vpa[1] * (clip x / w), -1 to 1 across 640.
     // Remapped, it must put every point where anchor_x puts the pixel, which is what remapping
