@@ -156,6 +156,13 @@ bool ciso_base(uint64_t off, void* dst, uint32_t len) {
 
 bool failing_base(uint64_t, void*, uint32_t) { return false; }
 
+// A plain image that gives all of a read or none of it, and leaves the buffer alone if none.
+bool strict_base(uint64_t off, void* dst, uint32_t len) {
+    if (off + len > kImage) return false;
+    memcpy(dst, &g_image[off], len);
+    return true;
+}
+
 // An image whose header claims an FST of 2 GiB, which the loader must refuse before it reads.
 bool huge_fst_base(uint64_t off, void* dst, uint32_t len) {
     memset(dst, 0, len);
@@ -580,13 +587,20 @@ void padding_reads() {
 
     // A gap that starts inside the image and runs past its end, with a range far past it.
     check(load_lines({"gcn-disc-overlay 1", base_line(), "range 8000 4 dol.bin"}, Base::Plain), "a manifest with one range past the image loads");
-    uint8_t got[0x40], want[0x40];
-    memset(want, 0, sizeof(want));
-    memcpy(want, &g_image[kImage - 0x10], 0x10);
-    for (Base b : {Base::Plain, Base::Ciso}) {
-        memset(got, 0xEE, sizeof(got));
-        check(disc_overlay_read(kImage - 0x10, got, 0x40, base_fn(b)) && !memcmp(got, want, 0x40),
-              b == Base::Plain ? "a gap that starts in the image and runs off its end is the image's bytes and zeros on a plain base" : "and on a CISO base");
+    // The read starts n bytes before the image's end, for every n up to 0x41. The third base gives
+    // all of a read or none of it and leaves the buffer alone when it fails.
+    const BaseRead bases[] = {plain_base, ciso_base, strict_base};
+    const char* names[] = {"a plain base", "a CISO base", "a base that gives all or nothing"};
+    for (size_t i = 0; i < std::size(bases); i++) {
+        bool every = true;
+        for (uint32_t n = 1; n <= 0x41; n++) {
+            uint8_t got[0x50], want[0x50];
+            memset(want, 0, sizeof(want));
+            memcpy(want, &g_image[kImage - n], n);
+            memset(got, 0xEE, sizeof(got));
+            every = disc_overlay_read(kImage - n, got, 0x50, bases[i]) && !memcmp(got, want, 0x50) && every;
+        }
+        check(every, (std::string("a gap that starts in the image and runs off its end is the image's bytes and then zeros, wherever the end falls, on ") + names[i]).c_str());
     }
     disc_overlay_unload();
 }
