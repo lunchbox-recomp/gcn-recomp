@@ -1,14 +1,15 @@
 // Disc overlay checks: the `test_disc_overlay` target. Runs with no disc image, device, SDL or
 // game. runtime/hw/disc_overlay.cpp is linked as it is, and platform.cpp for its file reads.
 //
-// Every number here is made up. The test writes a small image, a CISO of it, a dozen range
-// files and the manifests that join them into its work dir, and builds the disc those should
-// make as a plain byte array. Reads through the overlay, on a plain base and on a CISO base,
-// are compared with that array: every start with a few lengths, 10,000 at random, and the same
-// from four threads at once, since the game's threads and the audio callback read together.
-// Each way the loader refuses a manifest is made to happen and has to name its line. 300 range
-// files load in a child process whose open-file limit is cut to 100, so only the loader's own
-// raise of the limit lets them open.
+// Every number here is made up. The test writes a small image, a CISO of it, some range files
+// and the manifests that join them into its work dir, and builds the disc those should make
+// as a plain byte array. Reads through the overlay, on a plain base and on a CISO base,
+// are compared with that array, where a byte past the image is zero on either base: every
+// start with a few lengths, 10,000 at random, and the same from four threads at once, since
+// the game's threads and the audio callback read together. Each way the loader refuses a
+// manifest is made to happen and has to name its line, or the file where it has no line. 300
+// range files load in a child process whose open-file limit is cut to 100, so only the
+// loader's own raise of the limit lets them open.
 //
 // usage: test_disc_overlay <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if every
