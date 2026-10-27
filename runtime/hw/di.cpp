@@ -93,8 +93,11 @@ static void di_execute() {
         LOG(LOG_DVD, "read off=%09llX len=%X -> %08X", (unsigned long long)offset, len, g_dimar);
         const uint32_t fit = dma_fit("DVD", g_dimar, len);
         debug_guest_check("before DVD read");
-        if (fit && !disc_read(offset, phys_ptr(g_dimar), fit, false))
-            LOG(LOG_DVD, "read past end of image");
+        if (fit && !disc_read(offset, phys_ptr(g_dimar), fit, false)) {
+            // With an overlay a read past the end of the image can't fail, so a failure is a bad read inside the image or of a host file.
+            if (disc_overlay_loaded()) LOG(LOG_DVD, "read failed inside the image or in a host file");
+            else LOG(LOG_DVD, "read past end of image");
+        }
         debug_guard_dma("DVD read", g_dimar, len);
         debug_guest_check("after DVD read");
         g_dimar += len;
