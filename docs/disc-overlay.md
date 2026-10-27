@@ -49,12 +49,12 @@ Each item starts on its own 32 KiB boundary, as Dolphin lays out a virtual disc.
 - `0x428` and `0x42C` change only when the FST grows. `0x428` becomes the new size and `0x42C` becomes the larger of the old max and the new size.
 - `0x420` changes with `--dol`.
 
-A table that doesn't grow is padded with zeros to the old size, so `fst.bin` is always as long as the header says. A replacement alone leaves `0x428` and `0x42C` exactly as the disc has them.
+A table that doesn't grow is padded with zeros to the old size, so `fst.bin` is always as long as the header says. A replacement alone leaves `0x428` and `0x42C` as the disc has them, unless the rebuilt table comes out larger.
 
 ## Why fst_max moves and arena hi drops
 
 Boot copies the FST to `(0x817FE000 - fst_max) & ~0x1F` just below the BI2, and that address is also arena hi. The room is fst_max, not the FST's size. An FST that outgrows it would run into the BI2 above.
 
-Raising fst_max by the growth moves the copy down by that much, rounded to 32 bytes. Arena hi drops with it, so the game has less heap. When the new FST still fits inside the old max, nothing moves and `arena_hi_drop` is 0.
+An addition moves nothing while the new FST still fits inside the old max, and `arena_hi_drop` is 0. Once it passes the old max, fst_max becomes the new size, so the copy moves down and arena hi drops with it, which leaves the game less heap. `arena_hi_drop` is the exact figure, a multiple of 32 that can differ from the rise in fst_max by up to 31 bytes.
 
 Dolphin does the same when it builds a virtual disc for a folder of files. It writes the FST's size to both words, where this tool keeps the larger of the old max and the new size.
