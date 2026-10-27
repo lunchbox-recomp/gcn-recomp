@@ -35,6 +35,8 @@ A section starts 32-byte aligned in main RAM and ends below `0x81800000`, where 
 
 A section's file has to be a regular file inside the folder that holds the list, named by a relative path. An absolute path is refused, and so is a `..` or a symlink that leaves the folder. A pipe or a device is refused before it's opened.
 
+Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp`), so a section can't overlap them. RAM from the end of the DOL's bss to arena hi is the game's heap, with the FST just under the top 8 KiB. A section there needs its list to move arena lo past it with `word` lines, which is game-specific and the list's job.
+
 A word is 4-aligned and sits inside a section, whether the DOL's or an added one. `expect` is checked against the DOL as patched so far, so a word in a new zero-filled section expects 0. A refused `expect` prints the word the DOL holds.
 
 A function lies inside one added text section and overlaps no other function. Its name is a C identifier, since it ends up in the generated code. The section's line has to come first.

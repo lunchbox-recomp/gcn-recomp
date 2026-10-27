@@ -28,6 +28,21 @@ ALIGN = 0x20
 RAM_START = 0x80000000
 RAM_END = 0x81800000
 MAX_U32 = 0xFFFFFFFF
+# What runtime/boot.cpp writes after it copies the DOL's sections to RAM, as half-open ranges. A
+# section there would hold something else once the game starts. The first range is the disc
+# header and the boot info words (:30-35) with the arena words (:51-53). The next is the words at
+# :36-37, and then come the words at :38-40 with :48. The three single words are :41-43. The last
+# range is the BI2 (:46-47), with the FST just below it. A test reads boot.cpp to keep these in
+# step.
+BOOT_WRITES = (
+    (0x80000000, 0x80000040),
+    (0x800000CC, 0x800000D4),
+    (0x800000F0, 0x80000100),
+    (0x80000300, 0x80000304),
+    (0x80000800, 0x80000804),
+    (0x80000C00, 0x80000C04),
+    (0x817FE000, 0x81800000),
+)
 
 COMMENT = re.compile(r'(?:^|\s)#.*$')
 HEX = re.compile(r'(?:0[xX])?[0-9A-Fa-f]+')
@@ -193,6 +208,10 @@ class Patcher:
         if addr < RAM_START or addr + size > RAM_END:
             raise PatchError(f'{where}: {addr:08X} to {addr + size:08X} is not inside main RAM '
                              f'below {RAM_END:08X}')
+        for lo, hi in BOOT_WRITES:
+            if addr < hi and lo < addr + size:
+                raise PatchError(f'{where}: {addr:08X} to {addr + size:08X} overlaps {lo:08X} to '
+                                 f'{hi:08X}, which boot writes after it loads the sections')
         for s in self.sections():
             if addr < s.end and s.addr < addr + size:
                 raise PatchError(f'{where}: overlaps {s.label}')

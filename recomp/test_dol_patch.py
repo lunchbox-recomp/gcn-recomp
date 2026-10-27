@@ -10,6 +10,7 @@ import contextlib
 import hashlib
 import io
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -25,6 +26,7 @@ from dol import Dol, load_symbols  # noqa: E402
 
 TOOL = os.path.join(HERE, 'dol_patch.py')
 RECOMP = os.path.join(HERE, 'recomp.py')
+BOOT_CPP = os.path.join(os.path.dirname(HERE), 'runtime', 'boot.cpp')
 
 HEADER = 0x100
 # Function A: mflr r0, li r3,1, addi r3,r3,2, mtlr r0, blr. Three nops pad its section to 0x20.
@@ -371,8 +373,12 @@ class Sections(Base):
                            (0x817FFFE0, 0x40), (0x81800000, 0x20), (0x80100000, 0x01800000)):
             path = self.plist('a.txt', f'section text {addr:08X} {size:X}')
             self.refused([path], [(path, 2)], 'main RAM below 81800000')
-        out = self.ok(self.plist('b.txt', 'section text 80000000 20', 'section data 817FFFE0 20'))
-        self.assertEqual([slots(out)[k][1] for k in (1, 8)], [0x80000000, 0x817FFFE0])
+        out = self.ok(self.plist('b.txt', 'section text 80000100 20', 'section data 817FDFE0 20'))
+        self.assertEqual([slots(out)[k][1] for k in (1, 8)], [0x80000100, 0x817FDFE0])
+        # The two ends of RAM are inside it, so what refuses a section there is boot.
+        for addr in (0x80000000, 0x817FFFE0):
+            path = self.plist('c.txt', f'section text {addr:08X} 20')
+            self.refused([path], [(path, 2)], 'which boot writes after it loads the sections')
 
     def test_a_section_may_touch_but_not_overlap_the_dols_own(self) -> None:
         refused = [(A, 0x20), (A - 0x20, 0x40), (A - 0x40, 0x80), (A, 0x40), (DATA + 0x20, 0x20),
@@ -428,6 +434,70 @@ class Sections(Base):
                           (f'section text {H:08X} 100000000', 'more than 32 bits')):
             path = self.plist('a.txt', line)
             self.refused([path], [(path, 2)], why)
+
+
+class BootWrites(Base):
+    """Boot writes the low-memory words and the top 8 KiB after it copies the DOL's sections."""
+
+    # Hand-copied from runtime/boot.cpp, as (start, size, refused) around each range it writes.
+    # A section starts 32-byte aligned, so only a small size reaches a range's unaligned edge,
+    # and an upper edge that no aligned start can reach has no case.
+    EDGES = (
+        (0x80000000, 4, True), (0x80000020, 0x20, True), (0x80000040, 0x20, False),
+        (0x800000A0, 0x40, True), (0x800000C0, 0x0C, False), (0x800000C0, 0x10, True),
+        (0x800000E0, 0x10, False), (0x800000E0, 0x14, True), (0x800000E0, 0x20, True),
+        (0x80000100, 0x20, False),
+        (0x800002E0, 0x20, False), (0x800002E0, 0x24, True), (0x80000300, 4, True),
+        (0x800007E0, 0x20, False), (0x800007E0, 0x24, True), (0x80000800, 4, True),
+        (0x80000BE0, 0x20, False), (0x80000BE0, 0x24, True), (0x80000C00, 4, True),
+        (0x817FDFE0, 0x20, False), (0x817FDFE0, 0x24, True), (0x817FE000, 4, True),
+        (0x817FFFE0, 0x20, True),
+    )
+
+    def test_a_section_may_touch_but_not_overlap_what_boot_writes(self) -> None:
+        for start, size, refused in self.EDGES:
+            path = self.plist('a.txt', f'section text {start:08X} {size:X}')
+            if refused:
+                self.refused([path], [(path, 2)], 'which boot writes after it loads the sections')
+            else:
+                out = self.ok(path)
+                self.assertEqual(slots(out)[1][1:], (start, size), hex(start))
+
+    def test_the_message_names_the_section_and_the_range(self) -> None:
+        path = self.plist('a.txt', 'section data 800000C0 20')
+        self.refused([path], [(path, 2)], f'{path}:2: 800000C0 to 800000E0 overlaps 800000CC to 800000D4, '
+                     'which boot writes after it loads the sections')
+
+    def test_boot_is_checked_for_data_sections_and_for_a_files_bytes_too(self) -> None:
+        self.write('code.bin', bytes(4))
+        for line in ('section data 80000800 20', 'section text 80000800 20 code.bin'):
+            path = self.plist('a.txt', line)
+            self.refused([path], [(path, 2)], 'which boot writes after it loads the sections')
+
+    def test_the_ranges_cover_every_address_boot_writes(self) -> None:
+        with open(BOOT_CPP, encoding='utf-8') as f:
+            text = f.read()
+
+        def covered(start, size) -> bool:
+            return any(lo <= start and start + size <= hi for lo, hi in dol_patch.BOOT_WRITES)
+
+        words = [int(a, 16) for a in re.findall(r'mem_w32\((0x[0-9A-Fa-f]+),', text)]
+        self.assertGreater(len(words), 10, 'boot.cpp no longer writes words the way this reads them')
+        for addr in words:
+            self.assertTrue(covered(addr, 4), f'boot.cpp writes {addr:08X}')
+        header = re.search(r'memcpy\(mem_ptr\((0x[0-9A-Fa-f]+)\), hdr, (0x[0-9A-Fa-f]+)\)', text)
+        bi2 = re.search(r'bi2_addr = (0x[0-9A-Fa-f]+);', text)
+        bi2_size = re.search(r'iso_read\(0x440, mem_ptr\(bi2_addr\), (0x[0-9A-Fa-f]+)\)', text)
+        self.assertTrue(header and bi2 and bi2_size, 'boot.cpp no longer copies the header and BI2 this way')
+        self.assertTrue(covered(int(header[1], 16), int(header[2], 16)))
+        self.assertTrue(covered(int(bi2[1], 16), int(bi2_size[1], 16)))
+        # And each range starts and ends where a write of boot's does, so none is wider than it cites.
+        writes = [(a, a + 4) for a in words] + [
+            (int(header[1], 16), int(header[1], 16) + int(header[2], 16)),
+            (int(bi2[1], 16), int(bi2[1], 16) + int(bi2_size[1], 16))]
+        for lo, hi in dol_patch.BOOT_WRITES:
+            self.assertIn(lo, [a for a, _ in writes], f'{lo:08X} to {hi:08X}')
+            self.assertIn(hi, [b for _, b in writes], f'{lo:08X} to {hi:08X}')
 
 
 class Reads:
