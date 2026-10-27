@@ -2,6 +2,7 @@
 #include "disc_overlay.h"
 #include "../platform.h"
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cstdarg>
 #include <cstdio>
@@ -41,6 +42,10 @@ struct Overlay {
 };
 
 Overlay* g_overlay;
+
+// Where the last range piece of a run of reads ended, so the next can tell it picks up from there.
+constexpr uint64_t kNoRun = UINT64_MAX;
+std::atomic<uint64_t> g_run_end{kNoRun};
 
 #if defined(__GNUC__)
 __attribute__((format(printf, 1, 2)))
@@ -237,6 +242,42 @@ bool read_gap(BaseRead base, uint64_t pos, uint8_t* dst, uint32_t len) {
     return true;
 }
 
+// `run` is for reads that come one after another, which log only where they start something.
+bool serve(uint64_t off, void* dst, uint32_t len, BaseRead base, bool run) {
+    const Overlay* o = g_overlay;
+    if (!o) return base(off, dst, len);
+    if (len == 0) return true;
+    const uint64_t end = off + len;
+    if (end < off) return false;
+    uint8_t* out = (uint8_t*)dst;
+    uint64_t pos = off;
+    auto r = std::partition_point(o->ranges.begin(), o->ranges.end(), [&](const Range& x) { return x.off + x.len <= pos; });
+    while (pos < end) {
+        uint64_t stop;
+        if (r != o->ranges.end() && r->off <= pos) {
+            stop = std::min(end, r->off + r->len);
+            if (!plat_read_at(o->files[r->file], pos - r->off, out + (pos - off), (uint32_t)(stop - pos))) return false;
+            if (!run || pos != g_run_end.load(std::memory_order_relaxed))
+                say("overlay read %09llX +%X from %s", (unsigned long long)pos, (unsigned)(stop - pos), o->names[r->file].c_str());
+            if (run) g_run_end.store(stop, std::memory_order_relaxed);
+            ++r;
+        } else {
+            stop = r != o->ranges.end() ? std::min(end, r->off) : end;
+            if (!read_gap(base, pos, out + (pos - off), (uint32_t)(stop - pos))) return false;
+        }
+        pos = stop;
+    }
+    if (off < kHeaderEnd) {
+        for (const Word& w : o->words) {
+            const uint64_t from = std::max<uint64_t>(off, w.off), to = std::min<uint64_t>(end, w.off + 4);
+            if (from >= to) continue;
+            for (uint64_t i = from; i < to; i++) out[i - off] = (uint8_t)(w.value >> (8 * (3 - (i - w.off))));
+            say("overlay header word %X is %08X", (unsigned)w.off, (unsigned)w.value);
+        }
+    }
+    return true;
+}
+
 }  // namespace
 
 uint64_t disc_overlay_fnv1a64(const void* data, size_t size) {
@@ -257,6 +298,7 @@ bool disc_overlay_loaded() { return g_overlay != nullptr; }
 void disc_overlay_unload() {
     Overlay* o = g_overlay;
     g_overlay = nullptr;
+    g_run_end.store(kNoRun, std::memory_order_relaxed);
     if (o) close_all(o);
 }
 
@@ -331,35 +373,6 @@ bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error) 
     return true;
 }
 
-bool disc_overlay_read(uint64_t off, void* dst, uint32_t len, BaseRead base) {
-    const Overlay* o = g_overlay;
-    if (!o) return base(off, dst, len);
-    if (len == 0) return true;
-    const uint64_t end = off + len;
-    if (end < off) return false;
-    uint8_t* out = (uint8_t*)dst;
-    uint64_t pos = off;
-    auto r = std::partition_point(o->ranges.begin(), o->ranges.end(), [&](const Range& x) { return x.off + x.len <= pos; });
-    while (pos < end) {
-        uint64_t stop;
-        if (r != o->ranges.end() && r->off <= pos) {
-            stop = std::min(end, r->off + r->len);
-            if (!plat_read_at(o->files[r->file], pos - r->off, out + (pos - off), (uint32_t)(stop - pos))) return false;
-            say("overlay read %09llX +%X from %s", (unsigned long long)pos, (unsigned)(stop - pos), o->names[r->file].c_str());
-            ++r;
-        } else {
-            stop = r != o->ranges.end() ? std::min(end, r->off) : end;
-            if (!read_gap(base, pos, out + (pos - off), (uint32_t)(stop - pos))) return false;
-        }
-        pos = stop;
-    }
-    if (off < kHeaderEnd) {
-        for (const Word& w : o->words) {
-            const uint64_t from = std::max<uint64_t>(off, w.off), to = std::min<uint64_t>(end, w.off + 4);
-            if (from >= to) continue;
-            for (uint64_t i = from; i < to; i++) out[i - off] = (uint8_t)(w.value >> (8 * (3 - (i - w.off))));
-            say("overlay header word %X is %08X", (unsigned)w.off, (unsigned)w.value);
-        }
-    }
-    return true;
-}
+bool disc_overlay_read(uint64_t off, void* dst, uint32_t len, BaseRead base) { return serve(off, dst, len, base, false); }
+
+bool disc_overlay_read_run(uint64_t off, void* dst, uint32_t len, BaseRead base) { return serve(off, dst, len, base, true); }

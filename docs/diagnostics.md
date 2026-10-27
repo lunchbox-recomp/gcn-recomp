@@ -1108,8 +1108,11 @@ stays.
 
 The manifest loads before boot reads the disc header, and every host file it names opens
 once then. The run stops at boot, naming the manifest line, if the manifest or one of its
-files is wrong or the image isn't the one it was made for. `--log=dvd` prints the load
-with its file count and bytes, then each read the overlay serves.
+files is wrong or the image isn't the one it was made for.
+
+`--log=dvd` prints the load with its file count and bytes, then each piece of a DVD
+command's read that comes from a host file. The audio stream reads a block at a time, so
+it logs where it starts and not for each block.
 
 `ninja test_disc_overlay` builds `tools/test_disc_overlay.cpp`, which writes a small
 image, a CISO of it and the files and manifests an overlay names. It compares reads

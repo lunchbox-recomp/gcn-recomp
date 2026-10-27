@@ -434,6 +434,55 @@ void load_and_close() {
     disc_overlay_unload();
 }
 
+// The audio stream reads 32-byte blocks from its callback. --log=dvd names the file where a
+// stream starts and not for each block, while every DVD command's read is named.
+void stream_logging() {
+    check(load_lines(good_lines(), Base::Ciso), "the fixture loads for the stream log checks");
+    g_disc_overlay_log = capture;
+    uint8_t blk[0x20];
+
+    // dol.bin is 0x200 bytes at 0x8000, which is 16 blocks.
+    g_logged.clear();
+    bool bytes = true;
+    for (uint64_t at = 0x8000; at < 0x8200; at += 0x20)
+        bytes = disc_overlay_read_run(at, blk, 0x20, ciso_base) && !memcmp(blk, &g_data[2][at - 0x8000], 0x20) && bytes;
+    check(bytes, "a stream of 16 blocks reads the file's bytes");
+    check(g_logged.size() == 1 && g_logged[0].find("dol.bin") != std::string::npos && g_logged[0].find("000008000") != std::string::npos,
+          "and logs once, where it starts");
+
+    g_logged.clear();
+    disc_overlay_read_run(0x2000, blk, 0x20, ciso_base);
+    disc_overlay_read_run(0x2020, blk, 0x20, ciso_base);
+    disc_overlay_read_run(0x2040, blk, 0x20, ciso_base);
+    check(g_logged.size() == 1 && g_logged[0].find("inner.bin") != std::string::npos, "a stream in another file logs once as well");
+    g_logged.clear();
+    disc_overlay_read_run(0x2080, blk, 0x20, ciso_base);
+    check(g_logged.size() == 1, "and a block that doesn't pick up where the last ended logs again");
+    g_logged.clear();
+    disc_overlay_read_run(0x20A0, blk, 0x20, ciso_base);
+    check(g_logged.empty(), "while the next block after it doesn't");
+
+    g_logged.clear();
+    for (uint64_t at = 0x8000; at < 0x8080; at += 0x20) disc_overlay_read(at, blk, 0x20, ciso_base);
+    check(g_logged.size() == 4, "every one of four DVD command reads in a row is logged");
+    g_logged.clear();
+    disc_overlay_read_run(0x20C0, blk, 0x20, ciso_base);
+    disc_overlay_read(0x8080, blk, 0x20, ciso_base);
+    disc_overlay_read_run(0x20E0, blk, 0x20, ciso_base);
+    check(g_logged.size() == 1 && g_logged[0].find("dol.bin") != std::string::npos,
+          "a command read in the middle of a stream is logged and doesn't break the run");
+
+    // A new load starts with no run, so the first block after it logs.
+    disc_overlay_read_run(0x2000, blk, 0x20, ciso_base);
+    disc_overlay_unload();
+    check(load_lines(good_lines(), Base::Ciso), "the fixture loads again");
+    g_logged.clear();
+    disc_overlay_read_run(0x2020, blk, 0x20, ciso_base);
+    check(g_logged.size() == 1, "and a run that was going before it doesn't carry over");
+    g_disc_overlay_log = nullptr;
+    disc_overlay_unload();
+}
+
 void reads_through() {
     check(load_lines(good_lines(), Base::Ciso), "the fixture loads for the read checks");
     uint8_t got[0x500], want[0x500];
@@ -837,6 +886,7 @@ int main(int argc, char** argv) {
     path_choice();
     no_overlay();
     load_and_close();
+    stream_logging();
     reads_through();
     padding_reads();
     header_extras();

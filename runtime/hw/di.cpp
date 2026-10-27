@@ -36,10 +36,14 @@ static bool base_read(uint64_t offset, void* dst, uint32_t len) {
 }
 
 // The disc as the game sees it. With no disc overlay this is the image, as it always was.
-bool iso_read(uint64_t offset, void* dst, uint32_t len) {
+// --log=dvd names the overlay's file for every piece of a DVD command's read. A `run` read is
+// one of many in a row, as the audio stream's 32-byte blocks are, and is named where it starts.
+static bool disc_read(uint64_t offset, void* dst, uint32_t len, bool run) {
     if (!disc_overlay_loaded()) return base_read(offset, dst, len);
-    return disc_overlay_read(offset, dst, len, base_read);
+    return run ? disc_overlay_read_run(offset, dst, len, base_read) : disc_overlay_read(offset, dst, len, base_read);
 }
+
+bool iso_read(uint64_t offset, void* dst, uint32_t len) { return disc_read(offset, dst, len, true); }
 
 void di_init(const char* iso_path) {
     g_iso = plat_open_read(iso_path);
@@ -86,7 +90,7 @@ static void di_execute() {
         LOG(LOG_DVD, "read off=%09llX len=%X -> %08X", (unsigned long long)offset, len, g_dimar);
         const uint32_t fit = dma_fit("DVD", g_dimar, len);
         debug_guest_check("before DVD read");
-        if (fit && !iso_read(offset, phys_ptr(g_dimar), fit))
+        if (fit && !disc_read(offset, phys_ptr(g_dimar), fit, false))
             LOG(LOG_DVD, "read past end of image");
         debug_guard_dma("DVD read", g_dimar, len);
         debug_guest_check("after DVD read");

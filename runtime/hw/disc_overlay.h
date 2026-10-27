@@ -28,6 +28,11 @@ bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error);
 // end of a file succeeds. With no overlay loaded it is `base`, failures included.
 bool disc_overlay_read(uint64_t off, void* dst, uint32_t len, BaseRead base);
 
+// The same read for a run of them, as the audio stream makes with its 32-byte blocks. It
+// differs only in the log: a range piece that picks up where the last piece of a run ended
+// isn't logged, so a stream logs where it starts and not once per block.
+bool disc_overlay_read_run(uint64_t off, void* dst, uint32_t len, BaseRead base);
+
 bool disc_overlay_loaded();
 // Close the host files and drop the overlay.
 void disc_overlay_unload();

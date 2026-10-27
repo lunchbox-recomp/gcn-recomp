@@ -75,4 +75,4 @@ The disc interface reads in 32-byte units, so a read of a file whose size isn't 
 
 The runtime raises its limit on open files when the count needs it, since macOS starts at 256. A load that still runs out of files says where the limit stops.
 
-Nothing changes after load, so the game's threads and the audio callback read without a lock. `--log=dvd` prints the load with its file count and bytes, then each read the overlay serves.
+Nothing changes after load, so the game's threads and the audio callback read without a lock. `--log=dvd` prints the load with its file count and bytes, then each piece of a DVD command's read that comes from a host file. The audio stream reads a block at a time, so it logs where it starts and not for each block.
