@@ -1,6 +1,7 @@
 // DVD Interface: command execution against the ISO image, incl. audio stream commands.
 #include "../runtime.h"
 #include "../platform.h"
+#include "disc_overlay.h"
 
 static PlatFile* g_iso;
 static uint32_t g_disr, g_dicvr, g_cmd[3], g_dimar, g_dilen, g_dicr, g_diimm, g_dicfg;
@@ -17,7 +18,7 @@ static bool g_busy;
 static uint32_t g_ciso_block;             // 0 for a plain .iso
 static std::vector<int32_t> g_ciso_map;   // disc block -> stored block, -1 if absent
 
-bool iso_read(uint64_t offset, void* dst, uint32_t len) {
+static bool base_read(uint64_t offset, void* dst, uint32_t len) {
     if (!g_ciso_block) return plat_read_at(g_iso, offset, dst, len);
     uint8_t* p = (uint8_t*)dst;
     while (len) {
@@ -34,6 +35,12 @@ bool iso_read(uint64_t offset, void* dst, uint32_t len) {
     return true;
 }
 
+// The disc as the game sees it. With no disc overlay this is the image, as it always was.
+bool iso_read(uint64_t offset, void* dst, uint32_t len) {
+    if (!disc_overlay_loaded()) return base_read(offset, dst, len);
+    return disc_overlay_read(offset, dst, len, base_read);
+}
+
 void di_init(const char* iso_path) {
     g_iso = plat_open_read(iso_path);
     if (!g_iso) fatal("cannot open disc image %s", iso_path);
@@ -46,6 +53,12 @@ void di_init(const char* iso_path) {
         for (size_t i = 0; i < g_ciso_map.size(); i++)
             if (hdr[8 + i] == 1) g_ciso_map[i] = stored++;
         LOG(LOG_DVD, "CISO image: %u-byte blocks, %d stored", g_ciso_block, stored);
+    }
+    // --disc-overlay=FILE or GCN_DISC_OVERLAY. Loaded here, before boot reads the header.
+    if (const char* manifest = disc_overlay_path()) {
+        if (g_log_enabled[LOG_DVD]) g_disc_overlay_log = [](const char* line) { LOG(LOG_DVD, "%s", line); };
+        std::string error;
+        if (!disc_overlay_load(manifest, base_read, &error)) fatal("%s", error.c_str());
     }
 }
 

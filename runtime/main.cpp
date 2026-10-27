@@ -10,6 +10,7 @@
 #include "gx/aspect.h"
 #include "gx/gl.h"
 #include "hw/pad.h"
+#include "hw/disc_overlay.h"
 #include "vr_game.h"
 #include "telemetry.h"
 #include "record.h"
@@ -326,6 +327,9 @@ int main(int argc, char** argv) {
         }
         else if (!strcmp(argv[i], "--telemetry")) telemetry_to = "";
         else if (!strncmp(argv[i], "--telemetry=", 12)) telemetry_to = argv[i] + 12;
+        // --disc-overlay=FILE: read the disc through an overlay (hw/disc_overlay.h). It beats
+        // GCN_DISC_OVERLAY, which di_init checks when there's no flag.
+        else if (!strncmp(argv[i], "--disc-overlay=", 15)) g_disc_overlay_flag = argv[i] + 15;
         else if (!strcmp(argv[i], "--first-person")) first_person = true;
         else if (!strcmp(argv[i], "--no-input-log")) input_log = false;
         else if (!strncmp(argv[i], "--input-log=", 12)) input_log_dir = argv[i] + 12;
