@@ -10,7 +10,7 @@ python3 recomp/disc_overlay.py IMAGE OUT --files DIR [--dol FILE]
 
 IMAGE is a plain image or a CISO. The tool writes `OUT/disc-overlay.txt` and `OUT/fst.bin`, then prints one JSON line. DIR and FILE have to sit inside OUT, so the manifest's paths are relative and OUT can move.
 
-- Each file under DIR replaces the disc file at the same path. Names match ignoring case, and a replaced file keeps the disc's spelling.
+- Each file under DIR replaces the disc file at the same path. Names match ignoring case, and a replaced file keeps the disc's spelling. Given case twins on the disc, an exact spelling wins and a name that matches several only by case is refused.
 - A file with no match is added with DIR's spelling, inside a new directory when it needs one. New names go in their directory in the order the FST keeps, which compares names in uppercase.
 - Dotfiles and dot folders are skipped, so a `.DS_Store` never reaches the disc. An empty folder adds nothing.
 - Symbolic links, names that aren't ASCII and a layout that would end past 4 GiB are refused. Nothing is written when anything is refused.
