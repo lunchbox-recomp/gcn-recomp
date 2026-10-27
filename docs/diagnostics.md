@@ -182,6 +182,13 @@ to 3000 by 3000, and a window opened at one of 14 named shapes is filled with no
 window too big for the display's usable area is scaled down in its own shape, and the test
 checks that none opens past the area.
 
+`ninja test_anchor` builds `tools/test_anchor.cpp`, which checks the draw anchors'
+arithmetic (`runtime/gx/anchor.h`) with no window or GL. At k = 1 every remap returns its
+input bit for bit. A left anchor keeps its rect's left edge, a right one its right edge and
+a centered one its middle, and a remapped viewport uniform lands every point where the
+remapped x does. Stretched to 16:9, 16:10, 21:9 or 32:9, an anchored element sits at its
+4:3 distance from its edge.
+
 `--exit-after=N` quits after the Nth presented frame, the way closing the window does: the
 frame loop ends, the input log and the movie are finished, and the exit status is 0. With
 `--hidden --fast` it makes a bounded unattended run; a dump on that frame is still written.
@@ -841,6 +848,19 @@ use, which every lookup prolonged.
   layer the eye gave it (`[eyedraw]`: world, sky, the foreground or HUD bands, the HUD
   frame). `GCN_DRAW_SKIP=a-b` then drops a range of them, in the eyes too, to attribute a
   piece of the image to the draws that made it.
+- The draw log also ends each draw with its anchor and its box on the EFB, such as
+  `anchor=R(0..640) scr=160.0..640.0,0.0..480.0`. The anchor is the game's mark
+  (`gx::set_draw_anchor`) with its rect, and S for none. The box is in pixels from the top
+  left after the remap, so it shows where the squeeze put the draw, and at 4:3 it's the
+  box the game drew.
+- `GCN_ANCHOR_ALL=L`, `C` or `R` anchors every draw over the whole 640-pixel frame in
+  place of the game's marks. With `--aspect=16:9` the 4:3 picture comes out at its own
+  shape against that edge of the window, and `--output` writes what the window shows. Any
+  other value is refused with a line on stderr.
+- `[anchor] copy N made under an anchor` says a texture copy was made while an anchor
+  other than Stretch was set. It prints once for each scene, which is a run of frames that
+  each make one, with N the copies made under an anchor so far. Copies to the display are
+  left out.
 - `GCN_PIXEL=x,y[;x,y...]` (EFB pixels) with `GCN_DRAWLOG` reads each listed pixel back
   after every draw of that frame and prints it, colour and 24-bit depth, whenever it
   changed, with the draw's index: which draws touch a pixel and what each leaves there,

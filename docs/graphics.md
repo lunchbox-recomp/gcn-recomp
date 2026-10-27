@@ -591,6 +591,46 @@ stretches. Even at 120 Hz only about half the game frames were held for exactly 
 frames, since the guest is paced by its own clock, not by the display's; pacing the guest
 on the display's frame timing is what would make the cadence even.
 
+## Draw anchors
+
+A game marks the draws of a HUD element left, center or right with `gx::set_draw_anchor`
+(`render.h`), giving the rect it anchors to in EFB pixels. The renderer squeezes those
+draws toward that edge by k, which is 4/3 over the output aspect. The picture is stretched
+to the output aspect on its way to the window, so the squeeze gives the element back its
+4:3 shape at its 4:3 distance from the edge.
+
+With a rect from x0 to x1, a left anchor moves x to `x0 + (x - x0) * k` and a right anchor
+moves it to `x1 - (x1 - x) * k`. A centered one scales x by k about `(x0 + x1) / 2`. Each
+holds its edge, so a split view anchors its HUD to its own rect, such as 320 to 640 for a
+view on the right half of the frame, and not to the screen's edge.
+
+At 4:3, k is exactly 1 and the remap returns x bit for bit, so nothing moves and the frame
+hashes hold. An eye of a headset always uses k = 1, the flat pass that feeds its copies
+included, because it shows the picture at the shape the game drew it.
+
+The arithmetic is in `runtime/gx/anchor.h` and has no GL in it, so another backend takes
+the same remap. The mark rides in the pixel state (`PixelState::anchor` and its rect), so a
+draw carries it to whichever renderer draws it. The GL path remaps three things from it.
+
+- The x terms of the viewport uniform (`u_vp_a`), which needs no new shaders.
+- The scissor's left and right edges.
+- The z freeze plane, which is built from the same viewport.
+
+The mark goes into the command stream as a tag does (`g_turns` in `fifo.cpp`), so the
+front end applies it to the states taken from the draws written after it. It's as exact as
+the stream. Up to 31 bytes the game wrote before the call can still be in the gather pipe,
+so a game sets an anchor where it has written some state between the change and the
+nearest draw.
+
+A texture copy reads the EFB as the squeeze left it, so the draws a copy is made from
+should stay unanchored. The front end logs `[anchor] copy N made under an anchor` for a
+copy made while a mark is set. It prints once for each scene, which is a run of frames that
+each make one, and N counts the copies made under an anchor so far.
+
+`GCN_ANCHOR_ALL=L`, `C` or `R` anchors every draw over the whole 640-pixel frame in place
+of the game's marks, so the effect shows without a game hook. The draw log names each
+draw's anchor and its box on the EFB after the remap (`GCN_DRAWLOG` in diagnostics.md).
+
 ## Texture lifetimes and EFB copies
 
 **Who decides a texture is dead.** The front end decodes a texture when the game first
