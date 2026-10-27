@@ -25,7 +25,7 @@ Usage:
       write <out>/disc-overlay.txt and <out>/fst.bin, then print one JSON line with the counts
       and bytes of added and replaced files, the FST's growth and how far arena hi drops. The
       dir and the file have to be inside out, so the manifest's paths are relative and out can
-      move. Dotfiles are skipped, and symbolic links, names that aren't ASCII and layouts past
+      move. The file can't also be under the dir, where it would go on the disc twice. Dotfiles are skipped, and symbolic links, names that aren't ASCII and layouts past
       4 GiB are refused. The same inputs give the same bytes.
 
 The image is a plain image or a CISO.
@@ -264,8 +264,14 @@ def scan(out: str, folder: str) -> List[Item]:
     return items
 
 
-def scan_dol(out: str, path: str) -> Item:
-    item = _item(out, _locate(out, path, 'the DOL', False), ())
+def scan_dol(out: str, path: str, folder: str) -> Item:
+    """The DOL, a file inside out that isn't also under the files folder."""
+    real = _locate(out, path, 'the DOL', False)
+    root = _locate(out, folder, 'the files folder', True)
+    if os.path.commonpath([root, real]) == root:
+        raise OverlayError(f'the DOL {path} is inside the files folder, '
+                           'where it would go on the disc twice')
+    item = _item(out, real, ())
     if item.size < MIN_DOL:
         raise OverlayError(f"the DOL {path} is under {MIN_DOL:#x} bytes, so it isn't a DOL")
     return item
@@ -284,7 +290,7 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
         if not os.path.isdir(out):
             raise OverlayError(f"{args.out} isn't a folder")
         items = scan(out, args.files)
-        dol = scan_dol(out, args.dol) if args.dol else None
+        dol = scan_dol(out, args.dol, args.files) if args.dol else None
         img = DiscImage(args.image)
         try:
             overlay = make_overlay(img, items, dol)

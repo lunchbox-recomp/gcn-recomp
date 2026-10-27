@@ -14,7 +14,7 @@ IMAGE is a plain image or a CISO. The tool writes `OUT/disc-overlay.txt` and `OU
 - A file with no match is added with DIR's spelling, inside a new directory when it needs one. New names go in their directory in the order the FST keeps, which compares names in uppercase.
 - Dotfiles and dot folders are skipped, so a `.DS_Store` never reaches the disc. An empty folder adds nothing.
 - Symbolic links, names that aren't ASCII and a layout that would end past 4 GiB are refused. Nothing is written when anything is refused.
-- `--dol` puts a DOL on the virtual disc and points the header at it.
+- `--dol` puts a DOL on the virtual disc and points the header at it. The DOL can't also sit inside DIR, since it would go on the disc twice.
 
 The JSON line has `added_files`, `added_bytes`, `replaced_files` and `replaced_bytes`. It also has `fst_growth` for the FST's growth in bytes and `arena_hi_drop` for how far arena hi falls. The same inputs give the same bytes.
 

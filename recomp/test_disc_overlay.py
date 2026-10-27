@@ -300,6 +300,17 @@ class TestDol(OverlayCase):
         path = self.put('boot.dol', bytes(0x200), folder=self.tmp)
         self.refuses(r'the DOL .* has to be inside', '--dol', path)
 
+    def test_a_dol_inside_the_files_folder_is_refused(self):
+        path = self.put('boot.dol', bytes(0x200))
+        self.refuses(r'the DOL .*boot\.dol is inside the files folder', '--dol', path)
+        deep = self.put('Data/deeper/boot.dol', bytes(0x200))
+        self.refuses(r'the DOL .*boot\.dol is inside the files folder', '--dol', deep)
+
+    def test_a_dol_in_a_folder_whose_name_starts_like_the_files_folder_is_allowed(self):
+        path = self.put('boot.dol', bytes(0x200), folder=self.mod + ' two')
+        self.main('--dol', path)
+        self.assertEqual(read_manifest(self.out)[2][0x420], START + SLOT)
+
     def test_a_dol_that_is_a_symlink_is_refused(self):
         os.symlink(self.dol(), os.path.join(self.out, 'link.dol'))
         self.refuses(r'the DOL .* is a symbolic link', '--dol', os.path.join(self.out, 'link.dol'))
