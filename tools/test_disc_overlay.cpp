@@ -928,6 +928,15 @@ bool limited_child() {
           "300 files don't load when the limit can't rise, and the message gives the limit");
     if (loaded || err.find("stops at 100") == std::string::npos) printf("      error was: %s\n", err.c_str());
     check(!disc_overlay_loaded() && open_fds() == fds, "and the files it did open are closed");
+
+    // The limit still can't rise, but a file that simply isn't there is blamed on the file.
+    const std::string missing = g_out + "/missing.txt";
+    write_text(missing, join({"gcn-disc-overlay 1", base_line(), "range 6000 160 absent.bin"}));
+    err.clear();
+    check(!disc_overlay_load(missing.c_str(), ciso_base, &err, size_of(Base::Ciso)) && err.find(", line 3: ") != std::string::npos && err.find("absent.bin") != std::string::npos &&
+              err.find("limit on open files") == std::string::npos,
+          "a file that isn't there is blamed on the file and not on a limit that couldn't rise");
+    if (err.find("limit on open files") != std::string::npos) printf("      error was: %s\n", err.c_str());
     return g_failed == before;
 }
 
