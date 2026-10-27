@@ -921,6 +921,15 @@ function(gcn_add_game)
     add_test(NAME test_engine_sha COMMAND ${CMAKE_COMMAND} -DENGINE_SHA=${GCN_RECOMP_DIR}/tools/engine_sha.cmake
              -DBASE=${_unit_work}/test_engine_sha -P ${GCN_RECOMP_DIR}/tools/test_engine_sha.cmake)
     set_tests_properties(test_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
+    # The Python tools' checks (recomp/test_*.py), with the Python this build found and again
+    # with the system's where there is one, since a recipe may run recomp/ on that. They write
+    # their own images. The ones that want a real disc run when GCN_TEST_IMAGE names one.
+    add_test(NAME test_recomp_py COMMAND ${Python3_EXECUTABLE} -B -m unittest discover
+             -s recomp -p test_*.py WORKING_DIRECTORY ${GCN_RECOMP_DIR})
+    if(EXISTS /usr/bin/python3)
+      add_test(NAME test_recomp_py_system COMMAND /usr/bin/python3 -B -m unittest discover
+               -s recomp -p test_*.py WORKING_DIRECTORY ${GCN_RECOMP_DIR})
+    endif()
     # game_cflags.txt's checks (tools/test_game_cflags.cmake): the flags the configure wrote
     # hold the build type's and compile optimized GNU C11 with no fused multiply-add. Needs
     # the C compiler only. NO_BUILD_FLAGS says the build type has none, read from its flags

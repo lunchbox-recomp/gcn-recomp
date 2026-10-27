@@ -162,6 +162,11 @@ or `FAIL` for each check, and the exit code is 0 only if all pass.
 `<build>/unit`. The repository configured on its own (`cmake -S . -B build -G Ninja` at its
 root) defines it too, with placeholders for the game, which is what its CI runs on macOS.
 
+`ninja unit` also runs `recomp/test_*.py` twice, with the Python CMake found and with
+`/usr/bin/python3` where it exists. `test_fst.py` writes its own disc images, plain and CISO.
+With `GCN_TEST_IMAGE` set to a disc image it also checks `fst.py` against that disc, and it
+prints counts but never a name, an offset or a size.
+
 ## Frame dumps
 
 `--hidden --dump-dir=DIR --dump-every=N` runs with the window hidden and writes every Nth
