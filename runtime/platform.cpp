@@ -219,7 +219,7 @@ void plat_close_read(PlatFile* f) {
     delete f;
 }
 
-void plat_reserve_open_files(uint32_t) {}  // handles aren't limited to a small table here
+std::string plat_reserve_open_files(uint32_t) { return {}; }  // handles aren't limited to a small table here
 
 // ===========================================================================
 #else  // POSIX
@@ -411,15 +411,20 @@ void plat_close_read(PlatFile* f) {
     delete f;
 }
 
-void plat_reserve_open_files(uint32_t n) {
+std::string plat_reserve_open_files(uint32_t n) {
     rlimit lim;
-    if (getrlimit(RLIMIT_NOFILE, &lim) != 0 || lim.rlim_cur >= n) return;
+    if (getrlimit(RLIMIT_NOFILE, &lim) != 0) return std::string("the limit on open files can't be read: ") + strerror(errno);
+    if (lim.rlim_cur >= n) return {};
     rlim_t want = n;
 #ifdef __APPLE__
     if (want > OPEN_MAX) want = OPEN_MAX;  // setrlimit refuses more than this, whatever the hard limit says
 #endif
     lim.rlim_cur = lim.rlim_max < want ? lim.rlim_max : want;
-    setrlimit(RLIMIT_NOFILE, &lim);
+    if (setrlimit(RLIMIT_NOFILE, &lim) != 0)
+        return "setrlimit couldn't raise the limit on open files to " + std::to_string((unsigned long long)lim.rlim_cur) + ": " + strerror(errno);
+    if (lim.rlim_cur < n)
+        return "the limit on open files stops at " + std::to_string((unsigned long long)lim.rlim_cur) + ", short of the " + std::to_string(n) + " this needs";
+    return {};
 }
 
 #endif

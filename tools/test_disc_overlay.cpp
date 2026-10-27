@@ -686,7 +686,7 @@ void refusals() {
     // The host files.
     refused("a file that isn't there", with(good, 7, "range 6000 160 absent.bin"), 8, "absent.bin");
     refused("a file one byte short", with(good, 10, "range 8400 2 one.bin"), 11, "one.bin");
-    refused("a path that is a folder", with(good, 6, "range 2000 100 mod files"), 7, "mod files");
+    refused("a path that is a folder", with(good, 6, "range 2000 100 mod files"), 7, "mod files", "folder");
 
     // The manifest itself.
     std::string err;
@@ -766,6 +766,36 @@ bool many_child() {
     return g_failed == before;
 }
 
+// The same files in a child that can't raise its limit past 100. The load fails when the files
+// run out, and its message gives the limit.
+bool limited_child() {
+    const int before = g_failed;
+    rlimit lim;
+    lim.rlim_cur = lim.rlim_max = 100;
+    check(setrlimit(RLIMIT_NOFILE, &lim) == 0, "the child cuts both open-file limits to 100");
+    const int fds = open_fds();
+    std::string err;
+    const bool loaded = disc_overlay_load(manifest_path().c_str(), ciso_base, &err);
+    check(!loaded && err.find(manifest_path()) == 0 && err.find(", line ") != std::string::npos && err.find("can't be opened") != std::string::npos &&
+              err.find("limit on open files stops at 100") != std::string::npos,
+          "300 files don't load when the limit can't rise, and the message gives the limit");
+    if (loaded || err.find("stops at 100") == std::string::npos) printf("      error was: %s\n", err.c_str());
+    check(!disc_overlay_loaded() && open_fds() == fds, "and the files it did open are closed");
+    return g_failed == before;
+}
+
+bool in_child(bool (*fn)()) {
+    fflush(stdout);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        const bool passed = fn();
+        fflush(stdout);
+        _exit(passed ? 0 : 1);
+    }
+    int status = 0;
+    return pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
 void many_files() {
     bool ok = mkdir((g_out + "/many").c_str(), 0755) == 0;
     std::vector<std::string> l = {"gcn-disc-overlay 1", base_line()};
@@ -776,15 +806,8 @@ void many_files() {
     }
     write_text(manifest_path(), join(l));
     check(ok, "300 range files and their manifest are written");
-    fflush(stdout);
-    const pid_t pid = fork();
-    if (pid == 0) {
-        const bool passed = many_child();
-        fflush(stdout);
-        _exit(passed ? 0 : 1);
-    }
-    int status = 0;
-    check(pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0, "the 300-file child passed");
+    check(in_child(many_child), "the 300-file child passed");
+    check(in_child(limited_child), "and so did the one whose limit can't rise");
 }
 
 }  // namespace

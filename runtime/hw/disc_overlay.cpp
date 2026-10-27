@@ -2,10 +2,12 @@
 #include "disc_overlay.h"
 #include "../platform.h"
 #include <algorithm>
+#include <cerrno>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <set>
 #include <vector>
@@ -287,7 +289,7 @@ bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error) 
     dir.erase(dir.find_last_of("/\\") + 1);  // npos + 1 is 0, which leaves "" for a bare name
     std::set<std::string> distinct;
     for (const RangeLine& r : m.ranges) distinct.insert(r.rel);
-    plat_reserve_open_files((uint32_t)distinct.size() + kSpareFiles);
+    const std::string limit = plat_reserve_open_files((uint32_t)distinct.size() + kSpareFiles);
 
     Overlay* o = new Overlay;
     o->words = m.words;
@@ -296,10 +298,17 @@ bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error) 
     for (const RangeLine& r : m.ranges) {
         auto it = opened.find(r.rel);
         if (it == opened.end()) {
+            std::error_code ignored;
+            if (std::filesystem::is_directory(dir + r.rel, ignored)) {
+                close_all(o);
+                return fail.at(r.line, "the path " + r.rel + " is a folder, and a range needs a file");
+            }
             PlatFile* file = plat_open_read((dir + r.rel).c_str());
             if (!file) {
+                // Too many open files is the one failure the limit explains.
+                const bool full = errno == EMFILE || errno == ENFILE;
                 close_all(o);
-                return fail.at(r.line, "the file " + r.rel + " can't be opened");
+                return fail.at(r.line, "the file " + r.rel + " can't be opened" + (full && !limit.empty() ? ", and " + limit : ""));
             }
             it = opened.emplace(r.rel, (uint32_t)o->files.size()).first;
             o->files.push_back(file);
