@@ -39,6 +39,8 @@ A section's file has to be a regular file inside the folder that holds the list,
 
 Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp`), so a section can't overlap them. The SDK's usual layout puts the stacks right after the bss and arena lo after them, so a section there needs its list to raise arena lo past the stacks, not just past the bss, with `word` lines that are game-specific. Boot also copies the FST just under the top 8 KiB, at a place the disc's FST size sets, so the tool can't check that range and a list stays clear of it.
 
+The game's own startup writes its exception vectors and OS globals below the DOL's first section, so a section in low memory has to stay clear of what the game uses there.
+
 A word is 4-aligned and sits inside a section, whether the DOL's or an added one. `expect` is checked against the DOL as patched so far, so a word in a new zero-filled section expects 0. A refused `expect` prints the word the DOL holds.
 
 A function lies inside one added text section that an earlier line added, and it overlaps no other function. Its name is a C identifier, since it ends up in the generated code. No two new functions share a name, whether they're in one list or two.
