@@ -154,6 +154,21 @@ class TestLayout(unittest.TestCase):
             '6100 6200'))
         self.assertEqual(fst.build(fst.parse(data)), data)
 
+    def test_nested_directories_carry_their_parent_index(self):
+        tree = fst.Entry('', children=[fst.Entry('a', children=[
+            fst.Entry('c', children=[fst.Entry('g', 0x10, 2)]),
+            fst.Entry('b', children=[fst.Entry('f', 0, 1)])])])
+        data = bytes.fromhex(
+            '01000000 00000000 00000006'
+            '01000000 00000000 00000006'   # a: parent 0
+            '01000002 00000001 00000004'   # b: parent 1
+            '00000004 00000000 00000001'   # f
+            '01000006 00000001 00000006'   # c: parent 1, not b's index
+            '00000008 00000010 00000002'   # g
+            '6100 6200 6600 6300 6700')
+        self.assertEqual(fst.build(tree), data)
+        self.assertEqual(fst.build(fst.parse(data)), data)
+
     def test_build_orders_each_directory_by_uppercase_name_then_raw_name(self):
         names = ['Zed', 'alpha', '_under', 'Beta.bin', 'beta2', '10', 'Alpha']
         tree = fst.Entry('', children=[fst.Entry(n, 0, 0) for n in names])
