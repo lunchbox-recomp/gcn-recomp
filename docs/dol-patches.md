@@ -35,7 +35,7 @@ A section starts 32-byte aligned in main RAM and ends below `0x81800000`, where 
 
 A section's file has to be a regular file inside the folder that holds the list, named by a relative path. An absolute path is refused, and so is a `..` or a symlink that leaves the folder. A pipe or a device is refused before it's opened.
 
-Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp`), so a section can't overlap them. RAM from the end of the DOL's bss to arena hi is the game's heap, with the FST just under the top 8 KiB. A section there needs its list to move arena lo past it with `word` lines, which is game-specific and the list's job.
+Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp`), so a section can't overlap them. The SDK's usual layout puts the stacks right after the bss and arena lo after them, so a section there needs its list to raise arena lo past the stacks, not just past the bss, with `word` lines that are game-specific. Boot also copies the FST just under the top 8 KiB, at a place the disc's FST size sets, so the tool can't check that range and a list stays clear of it.
 
 A word is 4-aligned and sits inside a section, whether the DOL's or an added one. `expect` is checked against the DOL as patched so far, so a word in a new zero-filled section expects 0. A refused `expect` prints the word the DOL holds.
 
