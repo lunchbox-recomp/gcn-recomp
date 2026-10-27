@@ -213,9 +213,18 @@ bool plat_read_at(PlatFile* f, uint64_t offset, void* dst, uint32_t len) {
     return true;
 }
 
+void plat_close_read(PlatFile* f) {
+    if (!f) return;
+    CloseHandle(f->h);
+    delete f;
+}
+
+void plat_reserve_open_files(uint32_t) {}  // handles aren't limited to a small table here
+
 // ===========================================================================
 #else  // POSIX
 // ===========================================================================
+#include <climits>
 #include <csignal>
 #include <fcntl.h>
 #include <sys/mman.h>
@@ -394,6 +403,23 @@ bool plat_read_at(PlatFile* f, uint64_t offset, void* dst, uint32_t len) {
         done += (uint32_t)r;
     }
     return true;
+}
+
+void plat_close_read(PlatFile* f) {
+    if (!f) return;
+    close(f->fd);
+    delete f;
+}
+
+void plat_reserve_open_files(uint32_t n) {
+    rlimit lim;
+    if (getrlimit(RLIMIT_NOFILE, &lim) != 0 || lim.rlim_cur >= n) return;
+    rlim_t want = n;
+#ifdef __APPLE__
+    if (want > OPEN_MAX) want = OPEN_MAX;  // setrlimit refuses more than this, whatever the hard limit says
+#endif
+    lim.rlim_cur = lim.rlim_max < want ? lim.rlim_max : want;
+    setrlimit(RLIMIT_NOFILE, &lim);
 }
 
 #endif

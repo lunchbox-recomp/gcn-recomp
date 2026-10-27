@@ -90,3 +90,8 @@ std::string plat_find_file(const char* dir, const char* suffix);
 struct PlatFile;
 PlatFile* plat_open_read(const char* path);
 bool plat_read_at(PlatFile* f, uint64_t offset, void* dst, uint32_t len);
+void plat_close_read(PlatFile* f);
+// Raise the soft limit on open files to `n` when it is lower, as far as the hard limit allows.
+// macOS stops at 256 files by default, which a disc overlay of many files passes. Does
+// nothing where the platform has no such limit.
+void plat_reserve_open_files(uint32_t n);

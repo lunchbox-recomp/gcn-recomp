@@ -886,6 +886,16 @@ function(gcn_add_game)
     target_include_directories(test_session PRIVATE ${RT})
     target_compile_options(test_session PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The disc overlay checks (tools/test_disc_overlay.cpp): hw/disc_overlay.cpp over a small
+    # image it writes, plain and as a CISO, with the files and manifests the overlay names.
+    # Several threads read at once. Needs no disc image, device or SDL.
+    add_executable(test_disc_overlay EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_disc_overlay.cpp
+      ${RT}/hw/disc_overlay.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_disc_overlay)
+    target_include_directories(test_disc_overlay PRIVATE ${RT})
+    target_link_libraries(test_disc_overlay PRIVATE Threads::Threads)
+    target_compile_options(test_disc_overlay PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The engine commit script's checks (tools/test_engine_sha.cmake): engine_sha.cmake over
     # repositories it makes in the build directory. Needs git and nothing else.
     add_custom_target(test_engine_sha
@@ -901,7 +911,7 @@ function(gcn_add_game)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_audio_ring test_ax test_aspect test_anchor test_aid test_blend test_clock test_pause)
-    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session)
+    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()
