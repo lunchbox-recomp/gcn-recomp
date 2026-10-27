@@ -254,6 +254,17 @@ class TestRefusals(unittest.TestCase):
         with self.assertRaisesRegex(fst.FstError, r"entry 1 \('a'\).*type 2"):
             fst.parse(data)
 
+    def test_parse_refuses_two_entries_with_one_name_in_a_directory(self):
+        for second in ((0, 0, 0, 1), (1, 0, 0, 3)):
+            data = raw([(1, 0, 0, 3), (0, 0, 0, 1), second], b'a\0')
+            with self.assertRaisesRegex(fst.FstError, r"entry 2 \('a'\) repeats"):
+                fst.parse(data)
+
+    def test_parse_allows_one_name_in_two_directories(self):
+        data = raw([(1, 0, 0, 4), (1, 0, 0, 3), (0, 2, 0, 1), (0, 2, 0, 1)], b'd\0a\0')
+        self.assertEqual(fst.parse(data), fst.Entry('', children=[
+            fst.Entry('d', children=[fst.Entry('a', 0, 1)]), fst.Entry('a', 0, 1)]))
+
     def test_parse_refuses_a_root_that_is_a_file(self):
         with self.assertRaisesRegex(fst.FstError, r'entry 0 '):
             fst.parse(raw([(0, 0, 0, 1)], b''))
@@ -415,6 +426,27 @@ class TestExtractTree(TmpCase):
             self.refuses(tree, r"an entry in the root \(.*can't be a path part")
         tree = fst.Entry('', children=[fst.Entry('d', children=[fst.Entry('..', 0, 1)])])
         self.refuses(tree, r"an entry in 'd' \('\.\.'\)")
+
+    def test_names_that_differ_only_by_case_are_refused_naming_both(self):
+        folder = fst.Entry('d', children=[fst.Entry('A.bin', 0, 1), fst.Entry('a.bin', 0, 1)])
+        self.refuses(fst.Entry('', children=[folder]), r"'d' has 'A.bin' and 'a.bin'")
+        twins = [fst.Entry('Dir', children=[fst.Entry('f', 0, 1)]),
+                 fst.Entry('dir', children=[fst.Entry('g', 0, 1)])]
+        self.refuses(fst.Entry('', children=twins), r"the root has 'Dir' and 'dir'")
+
+    def test_a_name_twice_in_a_directory_is_refused(self):
+        tree = fst.Entry('', children=[fst.Entry('x', 0, 1), fst.Entry('x', 0, 1)])
+        self.refuses(tree, r"the root has 'x' and 'x'")
+
+    def test_one_name_in_two_directories_extracts(self):
+        tree = fst.Entry('', children=[fst.Entry('d', children=[fst.Entry('a', 0, 1)]),
+                                       fst.Entry('e', children=[fst.Entry('a', 0, 1)])])
+        img = next(self.images())[1]
+        out = os.path.join(self.tmp, 'out')
+        fst.extract(img, tree, out)
+        for path in ('d/a', 'e/a'):
+            with open(os.path.join(out, *path.split('/')), 'rb') as f:
+                self.assertEqual(f.read(), b'T')
 
     def test_a_bad_name_in_a_file_that_isnt_asked_for_is_still_refused(self):
         tree = fst.Entry('', children=[fst.Entry('ok', 0, 1), fst.Entry('a/b', 0, 1)])

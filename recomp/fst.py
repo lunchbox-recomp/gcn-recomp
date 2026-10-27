@@ -92,23 +92,28 @@ def parse(data: bytes) -> Entry:
     if len(data) < table:
         raise FstError(f'entry {len(data) // 12} is cut off')
     root = Entry('', children=[])
-    open_dirs = [(root, count)]  # each directory still being read, with where its entries end
+    # each directory still being read, with where its entries end and the names it holds so far
+    open_dirs = [(root, count, set())]
     for i in range(1, count):
         while i >= open_dirs[-1][1]:
             open_dirs.pop()
+        parent, end, names = open_dirs[-1]
         word, a, b = struct.unpack_from('>III', data, i * 12)
         name = _read_name(data, table, i, word & 0xFFFFFF)
         kind = word >> 24
         if kind > 1:
             raise FstError(f'entry {i} ({name!r}) has type {kind}')
+        if name in names:
+            raise FstError(f'entry {i} ({name!r}) repeats a name in its directory')
+        names.add(name)
         if kind:
-            if not i < b <= open_dirs[-1][1]:
+            if not i < b <= end:
                 raise FstError(f'entry {i} ({name!r}) ends at entry {b}, outside its directory')
             entry = Entry(name, children=[])
-            open_dirs[-1][0].children.append(entry)
-            open_dirs.append((entry, b))
+            parent.children.append(entry)
+            open_dirs.append((entry, b, set()))
         else:
-            open_dirs[-1][0].children.append(Entry(name, a, b))
+            parent.children.append(Entry(name, a, b))
     return root
 
 
@@ -165,13 +170,23 @@ def walk(root: Entry) -> Iterator[Tuple[str, Entry]]:
 
 
 def _check_tree(root: Entry) -> None:
-    """Refuse a tree that can't be written under a directory, whether or not parse made it."""
+    """Refuse a tree that can't be written under a directory, whether or not parse made it.
+
+    That means a name that can't be a path part, or two names in one directory that differ only
+    by case, which the disk would treat as one.
+    """
     todo = [('', root)]
     while todo:
         path, entry = todo.pop()
-        where = f'an entry in {path!r}' if path else 'an entry in the root'
+        here = repr(path) if path else 'the root'
+        spelled = {}  # each lowercase name to its first spelling in this directory
         for child in entry.children or ():
-            _check_name(where, child.name)
+            _check_name(f'an entry in {here}', child.name)
+            key = child.name.lower()
+            if key in spelled:
+                raise FstError(f'{here} has {spelled[key]!r} and {child.name!r}, '
+                               'which the disk would treat as one name')
+            spelled[key] = child.name
             if child.children is not None:
                 todo.append((f'{path}/{child.name}' if path else child.name, child))
 
