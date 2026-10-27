@@ -216,7 +216,7 @@ class TestRefusals(unittest.TestCase):
             fst.build(tree)
 
     def test_names_that_cant_be_path_parts_are_refused(self):
-        for name in ('', '.', '..', 'a/b'):
+        for name in ('', '.', '..', 'a/b', 'a\0b'):
             tree = fst.Entry('', children=[fst.Entry(name, 0, 1)])
             with self.assertRaisesRegex(fst.FstError, r'entry 1 .*path'):
                 fst.build(tree)
