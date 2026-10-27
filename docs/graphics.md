@@ -607,8 +607,8 @@ view on the right half of the frame, and not to the screen's edge.
 The remap moves positions only. A point's size is set in EFB samples and isn't scaled by k,
 so an anchored point comes out 1/k wider than it's tall, a third wider at 16:9.
 
-On an output narrower than 4:3, k is over 1 and anchored draws widen toward the middle, so
-a wide element can reach the far side of the picture. The remap isn't clamped, since that
+On an output narrower than 4:3, k is over 1. A left or right anchored draw widens away from
+its edge and a centered one about its middle, so a wide element can reach the far side. The remap isn't clamped, since that
 would leave the element as squashed as the picture.
 
 At 4:3, k is exactly 1 and the remap returns x bit for bit, so nothing moves and the frame
