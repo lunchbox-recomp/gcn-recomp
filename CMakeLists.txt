@@ -792,6 +792,12 @@ function(gcn_add_game)
     target_include_directories(test_aspect PRIVATE ${RT})
     target_compile_options(test_aspect PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The draw anchor checks (tools/test_anchor.cpp): runtime/gx/anchor.h on its own.
+    add_executable(test_anchor EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_anchor.cpp)
+    _gcn_set_standards(test_anchor)
+    target_include_directories(test_anchor PRIVATE ${RT})
+    target_compile_options(test_anchor PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The AI DMA checks (tools/test_aid.cpp): hw/dsp.cpp's audio DMA on a fake clock.
     add_executable(test_aid EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_aid.cpp)
     _gcn_set_standards(test_aid)
@@ -894,7 +900,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_audio_ring test_ax test_aspect test_aid test_blend test_clock test_pause)
+    set(_unit_plain test_audio_ring test_ax test_aspect test_anchor test_aid test_blend test_clock test_pause)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
