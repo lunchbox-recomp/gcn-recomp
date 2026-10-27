@@ -18,9 +18,9 @@
 // A bad value for one of them is reported on stderr and leaves the key as it was. Every
 // other key is left alone: a load skips it and a save keeps its line.
 //
-// The desktop frontend reads the file at start, and a flag beats it for that run without
-// being written back. It applies `scale`. `--aspect` and `--fullscreen` don't read the file
-// yet, so `aspect` and `fullscreen` are only read and kept.
+// The desktop frontend reads the file at start and applies all three, and a flag beats it for
+// that run without being written back. The overlay's Display page saves the key it changes
+// (overlay/overlay.h).
 #pragma once
 #include <string>
 

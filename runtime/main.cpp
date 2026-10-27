@@ -17,6 +17,7 @@
 #include "settings.h"
 #include "session.h"
 #include "pause.h"
+#include "overlay/overlay.h"
 #ifdef GCN_OPENXR
 #include "xr_desktop.h"
 #endif
@@ -218,6 +219,7 @@ static void merge_keyboard(PadState& p) {
 // over only while it is pushed, so that port 1 can be shared with a headset's controllers
 // (xr_desktop.cpp). Then the game's rumble motor for the port goes to its gamepad, and to a
 // wheel's force feedback, except while the guest is held: a pause stops the motor with it.
+// The overlay has the last word on what the game gets (overlay.h).
 static bool g_guest_held;  // the loop's, from paused() (pause.h)
 static void merge_port(int port, PadState& p) {
     const bool motor = pad_motor(port) && !g_guest_held;
@@ -226,6 +228,7 @@ static void merge_port(int port, PadState& p) {
     gamepads_merge(port, p);
     input_map_apply(p, port, motor);
     gamepads_rumble(port, motor);
+    overlay_gate(port, p);
 }
 
 static void merge_desktop_pad(PadState& p) { merge_port(0, p); }
@@ -241,18 +244,21 @@ static void update_pads(int first) {
     }
 }
 
-// The window's events. False once the user has asked to quit.
+// The window's events, the overlay's first (overlay.h). False once the user has asked to quit.
 static bool pump_events() {
     SDL_Event e;
     bool running = true;
     while (SDL_PollEvent(&e)) {
+        if (overlay_event(e)) continue;
         {
             std::lock_guard<std::mutex> lk(g_pads_mutex);
             input_map_event(e);
             gamepads_event(e);
         }
         if (e.type == SDL_EVENT_QUIT) running = false;
-        else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE) running = false;
+        // Not a repeat, which an Escape held after it closed the overlay would make.
+        else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_ESCAPE && !e.key.repeat)
+            running = false;
         // F11 switches fullscreen. On macOS Control-Command-F does too, through the Window menu
         // SDL gives the app, so it isn't handled here as well: that would switch twice.
         else if (e.type == SDL_EVENT_KEY_DOWN && e.key.scancode == SDL_SCANCODE_F11 && !e.key.repeat) {
@@ -263,16 +269,33 @@ static bool pump_events() {
     return running;
 }
 
-// What has been drawn to the window goes to it, and to the movie if one is being made.
+// What has been drawn to the window, with the overlay over it, goes to it, and to the movie if
+// one is being made. Frame and output dumps were written before the overlay was drawn.
 static void show_frame(SDL_Window* win) {
     // macOS (GL on Metal) only presents correctly with the window framebuffer bound.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    overlay_draw();
     if (record::active()) {
         int rw, rh;
         SDL_GetWindowSizeInPixels(win, &rw, &rh);
         record::frame(0, rw, rh);
     }
     SDL_GL_SwapWindow(win);
+}
+
+// The picture as the overlay's Display page changes it, applied at once. The aspect stays 4:3
+// with --eye and GCN_THEATER_STEREO, as it does at start.
+static SDL_Window* g_window;
+static bool g_aspect_window, g_aspect_held;  // --aspect=window, or the page's own
+static void apply_picture(const Settings& s) {
+    float ratio;
+    if (!g_aspect_held && settings_parse_aspect(s.aspect, ratio)) {
+        g_aspect_window = ratio == 0.0f;
+        if (!g_aspect_window) gx::render_set_output_aspect(ratio);
+    }
+    if (((SDL_GetWindowFlags(g_window) & SDL_WINDOW_FULLSCREEN) != 0) != s.fullscreen)
+        SDL_SetWindowFullscreen(g_window, s.fullscreen);
+    gx::render_set_internal_scale(s.scale);
 }
 
 // ---------------------------------------------------------------------------
@@ -308,9 +331,11 @@ int main(int argc, char** argv) {
     int scale = settings.scale;
     int pads = 1;
     // --aspect=W:H, or --aspect=window to follow the window's shape: what the picture is
-    // stretched to (gx::output_aspect). 4:3, the console's own, by default.
+    // stretched to (gx::output_aspect). settings.txt's, which is 4:3, the console's own, by
+    // default.
     int aspect_w = 4, aspect_h = 3;
-    bool aspect_window = false, fullscreen = false;
+    bool aspect_window = settings.aspect == "window", fullscreen = settings.fullscreen;
+    if (!aspect_window) gx::parse_aspect(settings.aspect.c_str(), &aspect_w, &aspect_h);
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--log-all")) for (auto& e : g_log_enabled) e = true;
         else if (!strncmp(argv[i], "--log=", 6)) {
@@ -368,6 +393,7 @@ int main(int argc, char** argv) {
         aspect_h = 3;
         aspect_window = false;
     }
+    g_aspect_held = g_eye_mode || theater_stereo_m > 0.0f;
     if (test_ffb) return input_map_test_ffb(controls);
     plat_install_crash_handlers(on_interrupt, on_fault);
     if (record_to && !record::start(record_to, record_w, record_h, 60)) return 1;
@@ -547,6 +573,14 @@ int main(int argc, char** argv) {
     if (g_eye_mode) eye_init();
     if (first_person) gx::render_set_first_person(true);
     if (gx::g_dump_dir) plat_make_dirs(gx::g_dump_dir);
+    // The overlay's Display page starts from the picture as this run has it.
+    g_window = win;
+    g_aspect_window = aspect_window;
+    OverlayPicture picture{settings, settings, "settings.txt", apply_picture};
+    picture.now.aspect = aspect_window ? "window" : std::to_string(aspect_w) + ":" + std::to_string(aspect_h);
+    picture.now.fullscreen = fullscreen;
+    picture.now.scale = scale;
+    overlay_init(win, GCN_APP_LABEL, picture);
 
     audio_open();
     session_write(display_hz(win), GCN_ENGINE_SHA);
@@ -565,7 +599,7 @@ int main(int argc, char** argv) {
         int dw, dh;
         SDL_GetWindowSizeInPixels(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
-        if (aspect_window && dh > 0) gx::render_set_output_aspect((float)dw / (float)dh);
+        if (g_aspect_window && dh > 0) gx::render_set_output_aspect((float)dw / (float)dh);
         // While the guest is held (pause.h) no batch comes, so each 16 ms wait that ends with
         // nothing draws the newest frame again, and each one drawn is a host frame to the
         // pause. Before any frame there's nothing to draw, and no host frame.
