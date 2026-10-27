@@ -216,6 +216,25 @@ void close_all(Overlay* o) {
     delete o;
 }
 
+// A piece of the disc that no range covers. The image gives what it has, and what it hasn't
+// reads as zeros: a plain image has nothing past its end, and a CISO gives zeros there, so
+// this keeps the two bases giving the game the same bytes.
+bool read_gap(BaseRead base, uint64_t pos, uint8_t* dst, uint32_t len) {
+    if (base(pos, dst, len)) return true;
+    // The base has the first n bytes exactly when it can read the byte at n - 1. `have` is the
+    // most it's known to have and `lack` the least it's known not to.
+    uint32_t have = 0, lack = len;
+    uint8_t probe;
+    while (lack - have > 1) {
+        const uint32_t mid = have + (lack - have) / 2;
+        if (base(pos + mid - 1, &probe, 1)) have = mid;
+        else lack = mid;
+    }
+    if (have && !base(pos, dst, have)) return false;
+    memset(dst + have, 0, len - have);
+    return true;
+}
+
 }  // namespace
 
 uint64_t disc_overlay_fnv1a64(const void* data, size_t size) {
@@ -317,7 +336,7 @@ bool disc_overlay_read(uint64_t off, void* dst, uint32_t len, BaseRead base) {
             ++r;
         } else {
             stop = r != o->ranges.end() ? std::min(end, r->off) : end;
-            if (!base(pos, out + (pos - off), (uint32_t)(stop - pos))) return false;
+            if (!read_gap(base, pos, out + (pos - off), (uint32_t)(stop - pos))) return false;
         }
         pos = stop;
     }

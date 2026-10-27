@@ -21,7 +21,10 @@ using BaseRead = bool (*)(uint64_t off, void* dst, uint32_t len);
 bool disc_overlay_load(const char* manifest, BaseRead base, std::string* error);
 
 // len bytes of the virtual disc from off. Ranges come from their host files, header words
-// from the manifest, and every other byte from `base`. With no overlay loaded it is `base`.
+// from the manifest, and every other byte from `base`, except that what `base` doesn't have,
+// which is a plain image's bytes past its end, reads as zeros. A CISO does that already, so
+// both bases give the game the same bytes, and a read the game rounds up to 32 bytes past the
+// end of a file succeeds. With no overlay loaded it is `base`, failures included.
 bool disc_overlay_read(uint64_t off, void* dst, uint32_t len, BaseRead base);
 
 bool disc_overlay_loaded();

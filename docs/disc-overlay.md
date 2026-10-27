@@ -65,6 +65,8 @@ Dolphin does the same when it builds a virtual disc for a folder of files. It wr
 
 Load stops the run, with a message that names the manifest and the line, when anything is wrong. The image's disc ID and its FST's offset, size and hash have to match the `base` line, and the message names both hashes when they don't. A line that isn't in the format above, a file that's missing and a file shorter than its range stop it too.
 
-A header word reads as the manifest says wherever a read covers it, even when a range covers the same bytes. A read that starts in the image and ends in a file, or crosses several ranges, is joined from each place it passes. Bytes no range covers read from the image, so a plain image fails there past its end, as it does without an overlay.
+A header word reads as the manifest says wherever a read covers it, even when a range covers the same bytes. A read that starts in the image and ends in a file, or crosses several ranges, is joined from each place it passes. Bytes no range covers read from the image.
+
+The disc interface reads in 32-byte units, so a read of a file whose size isn't one runs on into the gap after it. Where the image has no bytes, which is past a plain image's end, that gap and anything farther past every range and the image reads as zeros, and the read succeeds. A CISO gives zeros there already, so both give the game the same bytes, while a run with no overlay still fails past a plain image's end.
 
 The runtime raises its limit on open files when the count needs it, since macOS starts at 256. Nothing changes after load, so the game's threads and the audio callback read without a lock. `--log=dvd` prints the load with its file count and bytes, then each read the overlay serves.

@@ -170,40 +170,34 @@ BaseRead base_fn(Base b) { return b == Base::Plain ? plain_base : ciso_base; }
 
 // ---- the disc the overlay should give, built without the loader ----
 struct Model {
-    std::vector<uint8_t> bytes;
-    std::vector<uint8_t> from_base;  // 1 where the byte comes from the image
+    std::vector<uint8_t> bytes;  // zeros past the image, where no range or word says otherwise
+    bool overlaid = false;
 };
 
 Model bare_model() {
     Model m;
     m.bytes.assign(kEnd, 0);
-    m.from_base.assign(kEnd, 1);
     memcpy(m.bytes.data(), g_image.data(), kImage);
     return m;
 }
 
 Model overlay_model() {
     Model m = bare_model();
-    for (size_t i = 0; i < std::size(kFiles); i++) {
-        memcpy(&m.bytes[kFiles[i].at], g_data[i].data(), kFiles[i].len);
-        memset(&m.from_base[kFiles[i].at], 0, kFiles[i].len);
-    }
+    m.overlaid = true;
+    for (size_t i = 0; i < std::size(kFiles); i++) memcpy(&m.bytes[kFiles[i].at], g_data[i].data(), kFiles[i].len);
     for (const Word& w : kWords) put_be32(&m.bytes[w.at], w.value);
     return m;
 }
 
 Model g_bare, g_over;
 
-// A read through the loaded overlay gives the model's bytes. On a plain base, a read of image
-// bytes past the end of the image fails as it does without an overlay.
+// A read through the loaded overlay gives the model's bytes, on either base. With no overlay a
+// plain image's read past its end fails, as it always did.
 bool matches(const Model& m, uint64_t off, uint32_t len, Base b) {
     uint8_t got[0x400];
     memset(got, 0xEE, len);
     const bool ok = disc_overlay_read(off, got, len, base_fn(b));
-    bool want = true;
-    if (b == Base::Plain)
-        for (uint64_t i = off; i < off + len; i++)
-            if (m.from_base[i] && i >= kImage) want = false;
+    const bool want = m.overlaid || b == Base::Ciso || off + len <= kImage;
     if (ok != want) return false;
     return !ok || memcmp(got, &m.bytes[off], len) == 0;
 }
@@ -464,7 +458,9 @@ void reads_through() {
     memcpy(want, &g_data[2][0x1F0], 0x10);
     memcpy(want + 0x10, g_data[3].data(), 0x10);
     check(disc_overlay_read(0x81F0, got, 0x20, plain_base) && !memcmp(got, want, 0x20), "a read from one range straight into the next works");
-    check(!disc_overlay_read(0x8200, got, 0x20, plain_base), "and one running from a range off a plain image's end fails as a read there does");
+    memset(want, 0, 0x20);
+    memcpy(want, g_data[3].data(), 0x10);
+    check(disc_overlay_read(0x8200, got, 0x20, plain_base) && !memcmp(got, want, 0x20), "and one running from a range into the gap after it reads zeros there on a plain base");
     memset(want, 0, 0x230);
     memcpy(want, &g_data[2][0x1F0], 0x10);
     memcpy(want + 0x10, g_data[3].data(), 0x10);
@@ -491,8 +487,57 @@ void reads_through() {
     // Past the end of the offsets, and far past the disc.
     check(!disc_overlay_read(~0ull - 1, got, 4, ciso_base), "a read that runs past the end of the offsets fails");
     memset(got, 0xEE, 4);
-    check(disc_overlay_read(1ull << 40, got, 4, ciso_base) && !got[0] && !got[3], "while one far past the disc is the base's");
+    check(disc_overlay_read(1ull << 40, got, 4, ciso_base) && !got[0] && !got[3], "while one far past every range and the image reads zeros on a CISO");
+    memset(got, 0xEE, 4);
+    check(disc_overlay_read(1ull << 40, got, 4, plain_base) && !got[0] && !got[3], "and on a plain image");
     check(disc_overlay_read(0x2000, got, 0, failing_base) && disc_overlay_read(0x10, got, 0, failing_base), "a read of no bytes succeeds without touching the base");
+    disc_overlay_unload();
+}
+
+// The game reads in 32-byte units, so a file whose size isn't one is read on into the gap after
+// it, which lies past the end of the image. Both bases give the file, then zeros, and succeed.
+void padding_reads() {
+    check(load_lines(good_lines(), Base::Plain), "the fixture loads for the padding reads");
+    for (Base b : {Base::Plain, Base::Ciso}) {
+        const std::string on = b == Base::Plain ? " on a plain base" : " on a CISO base";
+        auto named = [&on](const char* what) { return std::string(what) + on; };
+        uint8_t got[0x60], want[0x60];
+
+        // one.bin is 1 byte at 0x8400 and nothing follows it until 0x9000.
+        memset(want, 0, sizeof(want));
+        want[0] = g_data[4][0];
+        memset(got, 0xEE, sizeof(got));
+        check(disc_overlay_read(0x8400, got, 0x20, base_fn(b)) && !memcmp(got, want, 0x20), named("a 32-byte read of a 1-byte file is the byte and 31 zeros").c_str());
+        memset(got, 0xEE, sizeof(got));
+        check(disc_overlay_read(0x8400, got, 0x60, base_fn(b)) && !memcmp(got, want, 0x60), named("and a 96-byte one is the byte and 95 zeros").c_str());
+
+        // next.bin is 0x10 bytes at 0x8200.
+        memset(want, 0, sizeof(want));
+        memcpy(want, g_data[3].data(), 0x10);
+        memset(got, 0xEE, sizeof(got));
+        check(disc_overlay_read(0x8200, got, 0x20, base_fn(b)) && !memcmp(got, want, 0x20), named("a 32-byte read of a 16-byte file is its bytes and 16 zeros").c_str());
+        memset(got, 0xEE, sizeof(got));
+        check(disc_overlay_read(0x8210, got, 0x20, base_fn(b)) && std::all_of(got, got + 0x20, [](uint8_t v) { return v == 0; }), named("and one that starts in the gap after it is all zeros").c_str());
+    }
+
+    // The whole stretch from before the image's end to the end of the disc, both bases at once.
+    constexpr uint64_t from = 0x5E00;
+    std::vector<uint8_t> plain(kEnd - from, 0xEE), ciso(kEnd - from, 0xEE);
+    const bool ok = disc_overlay_read(from, plain.data(), (uint32_t)plain.size(), plain_base) && disc_overlay_read(from, ciso.data(), (uint32_t)ciso.size(), ciso_base);
+    check(ok && plain == ciso, "a read from inside the image to the end of the disc gives a plain base and a CISO base the same bytes");
+    check(ok && !memcmp(plain.data(), &g_over.bytes[from], plain.size()), "and they are the model's");
+    disc_overlay_unload();
+
+    // A gap that starts inside the image and runs past its end, with a range far past it.
+    check(load_lines({"gcn-disc-overlay 1", base_line(), "range 8000 4 dol.bin"}, Base::Plain), "a manifest with one range past the image loads");
+    uint8_t got[0x40], want[0x40];
+    memset(want, 0, sizeof(want));
+    memcpy(want, &g_image[kImage - 0x10], 0x10);
+    for (Base b : {Base::Plain, Base::Ciso}) {
+        memset(got, 0xEE, sizeof(got));
+        check(disc_overlay_read(kImage - 0x10, got, 0x40, base_fn(b)) && !memcmp(got, want, 0x40),
+              b == Base::Plain ? "a gap that starts in the image and runs off its end is the image's bytes and zeros on a plain base" : "and on a CISO base");
+    }
     disc_overlay_unload();
 }
 
@@ -764,6 +809,7 @@ int main(int argc, char** argv) {
     no_overlay();
     load_and_close();
     reads_through();
+    padding_reads();
     header_extras();
     shared_and_longer_files();
     replacing();
