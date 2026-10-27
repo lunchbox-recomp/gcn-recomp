@@ -388,8 +388,9 @@ class TestCli(TmpCase):
 
     def test_extract_refuses_an_out_that_is_a_file(self):
         path = next(self.images())[0]
-        with self.assertRaises(SystemExit):
+        with self.assertRaises(SystemExit) as cm:
             self.run_main('extract', path, path)
+        self.assertRegex(str(cm.exception.code), r'^error: .*has to be an empty directory')
 
     def test_extract_writes_nothing_when_a_path_is_missing(self):
         path = next(self.images())[0]
