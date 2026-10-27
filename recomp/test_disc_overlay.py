@@ -116,6 +116,10 @@ class OverlayCase(unittest.TestCase):
         for name in ('fst.bin', 'disc-overlay.txt'):
             self.assertFalse(os.path.exists(os.path.join(self.out, name)), name)
 
+    def base_line(self):
+        """The base fields for the fixture. They name the disc's FST, never the grown one."""
+        return ['TEST00', f'{FST_AT:x}', f'{FST_LEN:x}', f'{ov.fnv1a64(self.disc.fst):016x}']
+
     def table(self, out=None):
         with open(os.path.join(out or self.out, 'fst.bin'), 'rb') as f:
             return f.read()
@@ -223,9 +227,10 @@ class TestAdd(OverlayCase):
         self.assertEqual(summary, {
             'added_files': 1, 'added_bytes': 3, 'replaced_files': 0, 'replaced_bytes': 0,
             'fst_growth': growth, 'arena_hi_drop': 0})
-        headers = read_manifest(self.out)[2]
+        _, base, headers, _ = read_manifest(self.out)
         self.assertEqual(headers, {0x424: START, 0x428: FST_LEN + growth, 0x42C: OLD_MAX})
         self.assertEqual(len(self.table()), FST_LEN + growth)
+        self.assertEqual(base, self.base_line())
 
     def test_growth_past_the_max_raises_fst_max_and_lowers_arena_hi(self):
         for i in range(6):
@@ -233,8 +238,9 @@ class TestAdd(OverlayCase):
         summary = self.main()
         size = len(self.table())
         self.assertGreater(size, OLD_MAX)
-        headers = read_manifest(self.out)[2]
+        _, base, headers, _ = read_manifest(self.out)
         self.assertEqual(headers, {0x424: START, 0x428: size, 0x42C: size})
+        self.assertEqual(base, self.base_line())
         self.assertEqual(summary['fst_growth'], size - FST_LEN)
         self.assertGreater(summary['arena_hi_drop'], 0)
         self.assertEqual(summary['arena_hi_drop'], arena(OLD_MAX) - arena(size))
