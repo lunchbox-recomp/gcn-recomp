@@ -483,6 +483,17 @@ class Sidecars(Base):
         self.ok(self.plist('a.txt'))
         self.assertEqual(self.syms(), self.sym('target', A, 0x14) + '\n')
 
+    def test_an_indented_symbol_line_carries_through_without_its_indent(self) -> None:
+        self.write_syms('  ' + self.sym('target', A, 0x14), '\t' + self.sym('other', 0x80050000, 8) + '  ')
+        self.ok(self.plist('a.txt'))
+        self.assertEqual(self.syms(), self.sym('target', A, 0x14) + '\n' + self.sym('other', 0x80050000, 8) + '\n')
+
+    def test_a_symbol_with_non_ascii_text_carries_through_as_utf_8(self) -> None:
+        line = self.sym('café', 0x80050000, 8)
+        self.write_syms(line)
+        self.ok(self.hooks(f'function {H:08X} 8 hook_h'))
+        self.assertEqual(self.read(self.out + '.syms'), (self.sym('hook_h', H, 8) + '\n' + line + '\n').encode('utf-8'))
+
     def test_two_runs_in_a_row_keep_every_function_and_the_modules_file(self) -> None:
         self.write_syms(self.sym('target', A, 0x14))
         self.write('in.dol.modules', b'80100000 20 0 first\n')
@@ -609,18 +620,21 @@ class BootWrites(Base):
         def covered(start, size) -> bool:
             return any(lo <= start and start + size <= hi for lo, hi in dol_patch.BOOT_WRITES)
 
-        words = [int(a, 16) for a in re.findall(r'mem_w32\((0x[0-9A-Fa-f]+),', text)]
-        self.assertGreater(len(words), 10, 'boot.cpp no longer writes words the way this reads them')
-        for addr in words:
-            self.assertTrue(covered(addr, 4), f'boot.cpp writes {addr:08X}')
+        stores = [(int(a, 16), int(bits) // 8) for bits, a in re.findall(r'mem_w(8|16|32)\((0x[0-9A-Fa-f]+),', text)]
+        self.assertGreater(len(stores), 10, 'boot.cpp no longer writes words the way this reads them')
+        for addr, n in stores:
+            self.assertTrue(covered(addr, n), f'boot.cpp writes {addr:08X}')
         header = re.search(r'memcpy\(mem_ptr\((0x[0-9A-Fa-f]+)\), hdr, (0x[0-9A-Fa-f]+)\)', text)
         bi2 = re.search(r'bi2_addr = (0x[0-9A-Fa-f]+);', text)
         bi2_size = re.search(r'iso_read\(0x440, mem_ptr\(bi2_addr\), (0x[0-9A-Fa-f]+)\)', text)
         self.assertTrue(header and bi2 and bi2_size, 'boot.cpp no longer copies the header and BI2 this way')
         self.assertTrue(covered(int(header[1], 16), int(header[2], 16)))
         self.assertTrue(covered(int(bi2[1], 16), int(bi2_size[1], 16)))
+        # Any other write to a fixed address would go through mem_ptr too, and this doesn't read it.
+        self.assertEqual(re.findall(r'mem_ptr\((0x[0-9A-Fa-f]+)\)', text), [header[1]],
+                         'boot.cpp writes a fixed address in a way this does not read')
         # And each range starts and ends where a write of boot's does, so none is wider than it cites.
-        writes = [(a, a + 4) for a in words] + [
+        writes = [(a, a + n) for a, n in stores] + [
             (int(header[1], 16), int(header[1], 16) + int(header[2], 16)),
             (int(bi2[1], 16), int(bi2[1], 16) + int(bi2_size[1], 16))]
         for lo, hi in dol_patch.BOOT_WRITES:
@@ -687,6 +701,16 @@ class SectionFiles(Base):
         os.symlink('real.bin', os.path.join(self.dir, 'mod', 'alias.bin'))
         out = self.ok(self.plist('mod/dol.txt', self.line('alias.bin')))
         self.assertEqual(word_at(out, H), LI_R3_1)
+
+    def test_a_linked_list_confines_its_files_to_the_folder_the_link_sits_in(self) -> None:
+        real = self.plist('real/dol.txt', self.line('x.bin'))
+        self.write('real/x.bin', struct.pack('>I', LI_R3_1))
+        self.write('mod/.keep', b'')
+        link = os.path.join(self.dir, 'mod', 'dol.txt')
+        os.symlink(real, link)
+        self.refused([link], [(link, 2)], f"{link}:2: can't read x.bin")
+        self.write('mod/x.bin', struct.pack('>I', LI_R3_1))
+        self.assertEqual(word_at(self.ok(link), H), LI_R3_1)
 
     def test_a_fifo_is_refused_without_being_opened(self) -> None:
         self.write('mod/.keep', b'')
