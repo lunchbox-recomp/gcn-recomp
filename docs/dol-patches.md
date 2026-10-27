@@ -37,7 +37,7 @@ A section starts 32-byte aligned in main RAM and ends below `0x81800000`, where 
 
 A section's file has to be a regular file inside the folder that holds the list, named by a relative path. An absolute path is refused, and so is a `..` or a symlink that leaves the folder. A pipe or a device is refused before it's opened.
 
-Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp`), so a section can't overlap them. The SDK's usual layout puts the stacks right after the bss and arena lo after them, so a section there needs its list to raise arena lo past the stacks, not just past the bss, with `word` lines that are game-specific. Boot also copies the FST just under the top 8 KiB, at a place the disc's FST size sets, so the tool can't check that range and a list stays clear of it.
+Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp`), so a section can't overlap them. The SDK's usual layout puts the stacks right after the bss and arena lo after them, so a section past the bss starts above the stacks, and its list raises arena lo past the section with `word` lines that are game-specific. Boot also copies the FST just under the top 8 KiB, at a place the disc's FST size sets, so the tool can't check that range and a list stays clear of it.
 
 The game's own startup writes its exception vectors and OS globals below the DOL's first section, so a section in low memory has to stay clear of what the game uses there.
 
