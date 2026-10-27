@@ -58,3 +58,13 @@ Boot copies the FST to `(0x817FE000 - fst_max) & ~0x1F` just below the BI2, and 
 An addition moves nothing while the new FST still fits inside the old max, and `arena_hi_drop` is 0. Once it passes the old max, fst_max becomes the new size, so the copy moves down and arena hi drops with it, which leaves the game less heap. `arena_hi_drop` is the exact figure, a multiple of 32 that can differ from the rise in fst_max by up to 31 bytes.
 
 Dolphin does the same when it builds a virtual disc for a folder of files. It writes the FST's size to both words, where this tool keeps the larger of the old max and the new size.
+
+## Running with one
+
+`--disc-overlay=FILE` or `GCN_DISC_OVERLAY=FILE` names the manifest, and the flag wins when both are set. The runtime loads it before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
+
+Load stops the run, with a message that names the manifest and the line, when anything is wrong. The image's disc ID and its FST's offset, size and hash have to match the `base` line, and the message names both hashes when they don't. A line that isn't in the format above, a file that's missing and a file shorter than its range stop it too.
+
+A header word reads as the manifest says wherever a read covers it, even when a range covers the same bytes. A read that starts in the image and ends in a file, or crosses several ranges, is joined from each place it passes. Bytes no range covers read from the image, so a plain image fails there past its end, as it does without an overlay.
+
+The runtime raises its limit on open files when the count needs it, since macOS starts at 256. Nothing changes after load, so the game's threads and the audio callback read without a lock. `--log=dvd` prints the load with its file count and bytes, then each read the overlay serves.

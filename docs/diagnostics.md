@@ -1098,6 +1098,24 @@ vertical and longitudinal acceleration, four suspension travels, four wheel terr
 field order is not known, so it is not sent. A listener that decodes with that same format string
 is the way to test without moving a rig, given SRS holds 33001: send to another port.
 
+## The disc overlay
+
+`--disc-overlay=FILE` on the desktop or `GCN_DISC_OVERLAY=FILE` in the environment makes
+the runtime read its disc through the overlay that manifest describes (see
+`docs/disc-overlay.md`). The flag wins when both are set, as `--telemetry` beats
+`GCN_TELEMETRY`. A reset starts the run again with the same arguments, so the overlay
+stays.
+
+The manifest loads before boot reads the disc header, and every host file it names opens
+once then. The run stops at boot, naming the manifest line, if the manifest or one of its
+files is wrong or the image isn't the one it was made for. `--log=dvd` prints the load
+with its file count and bytes, then each read the overlay serves.
+
+`ninja test_disc_overlay` builds `tools/test_disc_overlay.cpp`, which writes a small
+image, a CISO of it and the files and manifests an overlay names. It compares reads
+through the overlay with a disc it builds itself, even from four threads at once. It also
+makes each refusal happen.
+
 ## The command stream
 
 When the GX parser derails -- a draw in a vertex format the game never set, or a partial
