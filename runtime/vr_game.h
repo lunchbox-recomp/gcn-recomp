@@ -14,9 +14,11 @@
 struct PadState;
 
 namespace vr {
-// A gamepad as a platform reads it: its buttons by where they are, not by what they are
-// called (an Xbox pad's A and a Nintendo pad's B are both `south`), its sticks from -1 to 1
-// with up positive, its triggers from 0 to 1.
+// A gamepad as a platform reads it: its face buttons where an Xbox pad has the letters the
+// platform gives them, `south` A, `east` B, `west` X and `north` Y, its sticks from -1 to 1
+// with up positive, its triggers from 0 to 1. Apple's GameController gives a pad's buttons
+// an Xbox pad's letters by place (PlayStation's cross is A) except on Nintendo's own, whose
+// buttons it names by their labels: a Switch Pro's A, on its east, arrives as `south`.
 struct Gamepad {
     enum : uint32_t {
         South = 1u << 0, East = 1u << 1, West = 1u << 2, North = 1u << 3,
@@ -29,8 +31,9 @@ struct Gamepad {
     float lt = 0, rt = 0;
 };
 
-// The GameCube layout a gamepad gets by default, by position: south A, west B, east X,
-// north Y, the right shoulder Z, the triggers L and R, the sticks the main and C sticks.
+// The GameCube layout a gamepad gets by default: south A, east B, west X, north Y, so the
+// button the platform calls A is the GameCube's A, as the desktop's gamepads have it
+// (gamepads.h); the right shoulder Z, the triggers L and R, the sticks the main and C sticks.
 // Buttons are added to `p`, and a stick or trigger taken over only while it is pushed.
 void default_gamepad_layout(const Gamepad& g, PadState& p);
 

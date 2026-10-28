@@ -630,8 +630,10 @@ void merge_gamepad(PadState& p) {
         if (is_spatial(c)) continue;
         GCExtendedGamepad* gp = c.extendedGamepad;
         if (!gp) continue;
-        // GameController names the face buttons by an Xbox pad's places: A south, B east,
-        // X west, Y north.
+        // GameController names the face buttons by an Xbox pad's places, A south, B east, X
+        // west and Y north, except on Nintendo's own pads, which it names by their labels
+        // (SDL's MFi driver maps a Switch Pro's GCInputButtonA to its east button). Either
+        // way buttonA is the GameCube's A (vr::default_gamepad_layout).
         vr::Gamepad g;
         const struct { GCControllerButtonInput* in; uint32_t bit; } kButtons[] = {
             {gp.buttonA, vr::Gamepad::South}, {gp.buttonB, vr::Gamepad::East},

@@ -126,7 +126,7 @@ bool hand_pose(Hand h, HandPose* out) {
 
 void default_gamepad_layout(const Gamepad& g, PadState& p) {
     static const struct { uint32_t from; uint16_t to; } kButtons[] = {
-        {Gamepad::South, PAD_A}, {Gamepad::West, PAD_B}, {Gamepad::East, PAD_X},
+        {Gamepad::South, PAD_A}, {Gamepad::East, PAD_B}, {Gamepad::West, PAD_X},
         {Gamepad::North, PAD_Y}, {Gamepad::Start, PAD_START}, {Gamepad::RightShoulder, PAD_Z},
         {Gamepad::Up, PAD_UP}, {Gamepad::Down, PAD_DOWN}, {Gamepad::Left, PAD_LEFT},
         {Gamepad::Right, PAD_RIGHT},

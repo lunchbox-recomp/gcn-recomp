@@ -6,7 +6,8 @@
 // so each port is read back the way the guest reads it: pad_get, with scripted presses
 // (input_script.cpp) applied and the input log (input_log.cpp) consulted. gamepads.cpp,
 // port_memory.cpp, input_map.cpp, input_defaults.cpp, input_script.cpp, input_log.cpp,
-// platform.cpp and hw/mmio.cpp are linked as they are. Stubbed: force feedback (ffb_configure, ffb_attach,
+// platform.cpp, hw/mmio.cpp and vr_config.cpp (the headset's default gamepad layout) are
+// linked as they are. Stubbed: force feedback (ffb_configure, ffb_attach,
 // ffb_update, ffb_shutdown; ffb_update keeps the motor it was given), the RTC
 // (rtc_set_base), the event queue and interrupt request (event_schedule_in, irq_request),
 // and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a check sets
@@ -33,6 +34,7 @@
 #include "hw/si.cpp"
 #include "ffb.h"
 #include "gx/render.h"
+#include "vr_game.h"
 #include <climits>
 #include <functional>
 #include <initializer_list>
@@ -1305,6 +1307,22 @@ void labels(const std::string& dir) {
     }
 }
 
+// ---- The headset's default layout (vr::default_gamepad_layout) takes GameController's
+// buttons, A south, B east, X west and Y north, to the GameCube's A, B, X and Y, as the
+// desktop's gamepads have them by their labels.
+void headset_layout() {
+    auto sends = [](uint32_t button) {
+        vr::Gamepad g;
+        g.buttons = button;
+        PadState p;
+        vr::default_gamepad_layout(g, p);
+        return p.buttons;
+    };
+    check(sends(vr::Gamepad::South) == PAD_A && sends(vr::Gamepad::East) == PAD_B &&
+              sends(vr::Gamepad::West) == PAD_X && sends(vr::Gamepad::North) == PAD_Y,
+          "the headset's default layout: south is GameCube A, east B, west X and north Y");
+}
+
 int run_ports(const std::string& dir) {
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
@@ -1341,6 +1359,7 @@ int run_ports(const std::string& dir) {
     gamepads_remember(nullptr);
     said(dir);
     labels(dir);
+    headset_layout();
     return finish("ports");
 }
 
