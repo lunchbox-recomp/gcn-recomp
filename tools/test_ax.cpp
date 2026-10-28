@@ -466,6 +466,28 @@ void end_checks() {
     run_list();
     check(pb_word(PB_RUNNING) == 1 && mem_r16(kPB + 2 * PB_CUR_LO) == 0x1008,
           "an ADPCM voice whose end is a frame's last nibble loops there, past the next header");
+
+    // A one-shot from nibble 0x1002 whose end is the next frame's header, 0x1010 or 0x1011,
+    // never reads its end. It wraps to its loop address as the frame ends, and keeps running.
+    // With the end at 0x1010 it wraps one nibble on, so after the first 14 samples it plays 13
+    // a frame: 160 samples are 14, then 11 frames of 13 and 3 more, which leaves it at 0x1006.
+    // With the end at 0x1011 it plays 14 a frame, 11 frames and 6 more, which leaves 0x1008.
+    for (uint32_t at_end : {0x1010u, 0x1011u}) {
+        reset(kHashLater);
+        for (uint32_t i = 0; i < 16; i++) g_aram[0x800 + i] = i % 8 ? 0x11 : 0x0F;
+        pb = pcm_voice(0, 1, 0x8000, 0x8000);
+        pb.w[PB_FORMAT] = 0x00;
+        pb.w[PB_LOOPING] = 0;
+        pb.set32(PB_LOOP_HI, 0x1002);
+        pb.set32(PB_END_HI, at_end);
+        pb.set32(PB_CUR_HI, 0x1002);
+        store_pb(pb);
+        run_list();
+        char what[112];
+        snprintf(what, sizeof what, "an ADPCM one-shot whose end is the header nibble %X wraps to its loop and keeps running",
+                 at_end);
+        check(pb_word(PB_RUNNING) == 1 && mem_r16(kPB + 2 * PB_CUR_LO) == (at_end == 0x1010 ? 0x1006 : 0x1008), what);
+    }
 }
 
 // What `f` writes to stderr.

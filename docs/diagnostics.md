@@ -712,6 +712,10 @@ moves the end there, so a voice that loops above its old end plays on from the l
 the end catches up. It used to loop again on every sample past the end and sit on the
 loop's first sample for a list or two.
 
+An ADPCM end on a frame's header is never read, so the voice neither loops nor stops there.
+As Dolphin found on the DSP, it wraps to its loop address as the frame ends, one nibble on
+when the end is the header's first nibble, and keeps running.
+
 `GCN_AXVOICES` (set to anything) prints a line to stderr for each thing that happens to a
 voice, so a sound that stops can be traced to the game or the mixer. Each line starts
 `[axv] list=N pb=<address>`, with the list being mixed counted as the `[ax]` lines count

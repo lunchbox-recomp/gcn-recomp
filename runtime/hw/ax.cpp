@@ -164,6 +164,17 @@ struct Accel {
             pb.w[PB_YN2] = pb.w[PB_YN1];
             pb.w[PB_YN1] = (uint16_t)val;
             cur++;
+            // An end on a frame's header is never read. The DSP then wraps the voice to its
+            // loop address as the frame ends, one nibble on when the end is the header's first,
+            // and neither stops it nor loads the loop's predictor (Dolphin's hardware tests).
+            if ((end & 15) == 0 && cur == end) {
+                cur = loop + 1;
+                return (int16_t)val;
+            }
+            if ((end & 15) == 1 && cur == end - 1) {
+                cur = loop;
+                return (int16_t)val;
+            }
             break;
         }
         case 0x0A:  // PCM16, addresses in samples
