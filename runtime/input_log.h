@@ -12,6 +12,12 @@
 // Version 1 logs (keyed by presented frame, recorded under the host clock) still load;
 // they replay approximately, as they always did.
 //
+// The game's rumble motor is logged as well, from version 5: a `motor <poll> <frame> <chan>
+// <0|1>` line at each poll that finds a channel's motor (pad_motor) changed, every channel
+// starting off. A replay doesn't read them, since the replayed game sends the same commands,
+// and its own log writes the same lines, so a replay with no controller has the run's
+// rumble. Logs of versions 1 to 4 have none and load as before.
+//
 // A log is a directory:
 //   inputs.txt       one line per change of pad state (see the file's own header)
 //   memcard_a.raw    the memory card as it was when the run started, if there was one

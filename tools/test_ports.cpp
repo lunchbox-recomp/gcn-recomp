@@ -17,6 +17,7 @@
 //        test_ports --record <empty work dir>   two gamepads, played and logged
 //        test_ports --replay <that work dir>    that log replayed with none
 //        test_ports --replay-no-sram <that work dir>   that log again, its SRAM snapshot gone
+//        test_ports --replay-v4 <empty work dir>   a version 4 log written by hand, replayed
 //        test_ports --interrupt <empty work dir>   the interrupt handler run beside the
 //                                                  main loop, which ends the process
 //        test_ports --no-gamepads <empty work dir>   the frontend under --no-gamepads, with
@@ -1177,8 +1178,26 @@ int run_ports(const std::string& dir) {
 }
 
 // ---- Recording and replay: the same reads in both runs. Each step sets what the live
-// gamepads do (when there are any), runs a frame and reads the four ports once.
+// gamepads do (when there are any) and the game's rumble motors, runs a frame and reads the
+// four ports once.
 const int kSteps = 6;
+
+// The motor lines a log of those steps has: port 1's motor on at step 1 and still on at step
+// 2, off at step 3, and port 2's on from step 4 to the end. Each is written at the poll that
+// reads the port (the step's polls are 4 * step to 4 * step + 3), at frame 0.
+const char* const kMotorLines = "motor 4 0 0 1\nmotor 12 0 0 0\nmotor 17 0 1 1\n";
+
+// The lines of the file at `path` that start with `prefix`.
+std::string lines_starting(const std::string& path, const char* prefix) {
+    std::string out;
+    const std::string text = read_file(path);
+    for (size_t at = 0; at < text.size();) {
+        const size_t next = std::min(text.find('\n', at), text.size() - 1) + 1;
+        if (text.compare(at, strlen(prefix), prefix) == 0) out += text.substr(at, next - at);
+        at = next;
+    }
+    return out;
+}
 
 std::string steps(Virtual* a, Virtual* b, std::vector<PadState>& seen) {
     std::string out;
@@ -1188,6 +1207,8 @@ std::string steps(Virtual* a, Virtual* b, std::vector<PadState>& seen) {
         if (jb) SDL_SetJoystickVirtualButton(jb, SDL_GAMEPAD_BUTTON_SOUTH, s == 1 || s == 2);
         if (ja) SDL_SetJoystickVirtualButton(ja, SDL_GAMEPAD_BUTTON_EAST, s == 3);
         if (jb) SDL_SetJoystickVirtualAxis(jb, SDL_GAMEPAD_AXIS_LEFTX, s == 4 ? 32767 : 0);
+        g_outbuf[0] = s == 1 || s == 2 ? 0x00400001 : 0x00400000;
+        g_outbuf[1] = s >= 4 ? 0x00400001 : 0x00400000;
         frame();
         for (int i = 0; i < 4; i++) {
             seen.push_back(read(i));
@@ -1223,6 +1244,13 @@ int run_record(const std::string& dir) {
     check(two && rest && seen[1 * 4 + 1].buttons == PAD_A && seen[2 * 4 + 1].buttons == PAD_A && seen[3 * 4].buttons == PAD_X &&
               seen[4 * 4 + 1].stick_x == 228 && at_rest(seen[5 * 4]) && at_rest(seen[5 * 4 + 1]),
           "recording with --pads=1: port 2's gamepad (A, then the stick) and port 1's (east button, as X) reach the guest; ports 3 and 4 unplugged");
+    const std::string log = dir + "/log/inputs.txt";
+    check(read_file(log).rfind("# gcn-recomp input log v5\n", 0) == 0 &&
+              lines_starting(log, "# motor ") ==
+                  "# motor <poll> <frame> <chan> <0|1>: the game turned that channel's rumble motor on or off there (decimal)\n",
+          "the log is version 5, and its header gives the motor line");
+    check(lines_starting(log, "motor ") == kMotorLines,
+          "the log has a motor line for each change of a port's rumble motor, at the poll that read it, and none where it stayed");
     unplug({&a, &b});
     gamepads_shutdown();
     return finish("--record");
@@ -1240,13 +1268,17 @@ int run_replay(const std::string& dir) {
     check(sram == dir + "/log/sram_replay.raw" && read_file(sram) == "the SRAM the run started with\n",
           "a replay gets a scratch copy of the logged SRAM");
     check(lines_with(said, "(with its SRAM snapshot)") == 1, "and its summary line says the log had an SRAM snapshot");
+    // Logged as the frontend logs a replay, into a log of its own.
+    if (!input_log_start(dir + "/replay-log", dir + "/no-card.raw", sram)) return 1;
     power_on(1);
     gamepads_init();
     frame();
     std::vector<PadState> seen;
     const std::string text = steps(nullptr, nullptr, seen);
     check(text == read_file(dir + "/expected.txt"),
-          "replayed with no gamepad and --pads=1: every read of all four ports is the recording's");
+          "replayed with no gamepad and --pads=1: every read of all four ports is the recording's, its motor lines skipped");
+    check(lines_starting(dir + "/replay-log/inputs.txt", "motor ") == kMotorLines,
+          "the replay's own log has the recording's motor lines, with no gamepad to rumble");
     read(0);  // the log's end marker: the replay holds through this read
     const PadState after2 = read(1);
     check(read(0).connected && after2.connected && at_rest(after2) && !read(2).connected && !read(3).connected,
@@ -1275,6 +1307,29 @@ int run_replay_without_sram(const std::string& dir) {
           "a log with no SRAM snapshot replays from the default SRAM: the scratch copy an earlier replay left is cleared");
     check(lines_with(said, "SRAM snapshot") == 0, "and its summary line doesn't claim a snapshot");
     return finish("--replay-no-sram");
+}
+
+// ---- A version 4 log, from before the motor lines, replays as it always did: three steps
+// of reads of the four ports, each port at its logged state from its line's poll on.
+int run_replay_v4(const std::string& dir) {
+    plat_make_dirs(dir + "/log");
+    write_file(dir + "/log/inputs.txt", "# gcn-recomp input log v4\n# game TEST00  started 2026-10-28T12:00:00\n"
+                                        "# epoch 1792000000\n"
+                                        "0 0 0 1 0000 80 80 80 80 00 00\n0 0 1 0 0000 80 80 80 80 00 00\n"
+                                        "0 0 2 0 0000 80 80 80 80 00 00\n0 0 3 0 0000 80 80 80 80 00 00\n"
+                                        "5 0 1 1 0100 E4 80 80 80 00 00\n8 0 0 1 1000 80 80 80 80 00 00\n# end 12 0\n");
+    std::string card, sram;
+    if (!input_replay_load(dir + "/log", card, sram)) return 1;
+    input_script_init("");
+    power_on(1);
+    std::string text;
+    for (int s = 0; s < 3; s++)
+        for (int i = 0; i < 4; i++) text += describe(read(i));
+    const std::string rest = "1 0000 80 80 80 80 00 00\n", out = "0 0000 80 80 80 80 00 00\n";
+    const std::string with_a = "1 0100 E4 80 80 80 00 00\n", start = "1 1000 80 80 80 80 00 00\n";
+    check(text == rest + out + out + out + rest + with_a + out + out + start + with_a + out + out,
+          "a version 4 log replays: every read of all four ports is its logged state");
+    return finish("--replay-v4");
 }
 
 // ---- An interrupt runs on a thread of its own (plat_install_crash_handlers), so it stops
@@ -1362,8 +1417,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay-no-sram")) return run_replay_without_sram(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "--replay-v4")) return run_replay_v4(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--interrupt")) return run_interrupt(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
-    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--interrupt|--no-gamepads] <work dir>\n");
+    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--interrupt|--no-gamepads] <work dir>\n");
     return 2;
 }

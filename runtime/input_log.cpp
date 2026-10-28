@@ -27,6 +27,7 @@ uint32_t g_poll_seq;  // pad polls so far, all channels
 FILE* g_out;
 PadState g_last[4];
 bool g_have_last[4];
+bool g_motor[4];  // each channel's rumble motor as last logged; every channel starts off
 std::mutex g_mutex;
 
 bool copy_file(const std::string& from, const std::string& to) {
@@ -115,6 +116,18 @@ void record(int chan, const PadState& s) {
     fflush(g_out);
 }
 
+// The game's rumble motor for `chan` (pad_motor), logged at the poll that sees it change. A
+// replay logs it too, from the game's own commands, so its log has the run's rumble with no
+// controller to feel it.
+void record_motor(int chan) {
+    if (!g_out) return;
+    const bool on = pad_motor(chan);
+    if (on == g_motor[chan]) return;
+    g_motor[chan] = on;
+    fprintf(g_out, "motor %u %u %d %d\n", g_poll_seq, gx_frames_submitted(), chan, on ? 1 : 0);
+    fflush(g_out);
+}
+
 }  // namespace
 
 bool input_log_start(const std::string& dir, const std::string& memcard_path, const std::string& sram_path) {
@@ -129,11 +142,12 @@ bool input_log_start(const std::string& dir, const std::string& memcard_path, co
     time_t now = time(nullptr);
     strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%S", localtime(&now));
     rtc_set_base(now);
-    fprintf(g_out, "# gcn-recomp input log v4\n# game %s  started %s\n# epoch %lld\n", GCN_DISC_ID, stamp, (long long)now);
+    fprintf(g_out, "# gcn-recomp input log v5\n# game %s  started %s\n# epoch %lld\n", GCN_DISC_ID, stamp, (long long)now);
     fprintf(g_out, "# poll frame chan connected buttons stick_x stick_y cstick_x cstick_y trig_l trig_r\n");
     fprintf(g_out, "# (hex; each line is that channel's state from that pad poll on)\n");
     fprintf(g_out, "# jump <back-edge count> <edges>: the clock caught up with the host there (decimal)\n");
     fprintf(g_out, "# pose <kind> <read> <valid> <values...>: what the game's Nth read of that pose saw, from there on\n");
+    fprintf(g_out, "# motor <poll> <frame> <chan> <0|1>: the game turned that channel's rumble motor on or off there (decimal)\n");
     fflush(g_out);
     if (plat_readable(memcard_path.c_str())) {
         if (!copy_file(memcard_path, dir + "/memcard_a.raw"))
@@ -214,6 +228,8 @@ bool input_replay_load(const std::string& dir, std::string& memcard_out, std::st
             open_poses.emplace_back(ch.kind, ch.replay.size() - 1);
             continue;
         }
+        // A motor line (version 5) fails the pad line's scan and is skipped: a replay's motor
+        // is the game's own, from the commands it sends as it replays.
         unsigned key, frame, chan, conn, buttons, sx, sy, cx, cy, l, r;
         if (version >= 2) {
             if (sscanf(line, "%u %u %u %u %x %x %x %x %x %x %x", &key, &frame, &chan, &conn, &buttons, &sx, &sy, &cx, &cy, &l, &r) != 11) continue;
@@ -373,6 +389,7 @@ bool input_pad_poll(int chan, PadState& s) {
         }
     }
     record(chan, s);
+    record_motor(chan);
     g_poll_seq++;
     return replayed;
 }

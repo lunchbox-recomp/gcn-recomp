@@ -72,6 +72,12 @@ at the last change, which can be well before where the run stopped, so a log tha
 one (a run killed from outside) can be given one by hand. Lines can be edited or written
 by hand; `frame` is for the reader.
 
+From version 5 the log also says what the game did with each rumble motor. A
+`motor <poll> <frame> <chan> <0|1>` line, in decimal, marks each poll at which a channel's
+motor turned on or off, so a session's log shows whether the game rumbled and when. A
+replay skips these lines and writes its own as the replayed game sends the same commands,
+which rebuilds a session's rumble with no pad switched on.
+
 A headset's poses are input too. A game hook that reads the controllers or the eyes on
 the guest thread (`vr::hand_pose`, `vr::eye_views`) and steers the game by them -- aiming
 a weapon from a hand, culling to where the viewer is looking -- makes the simulation
@@ -151,11 +157,12 @@ said once and never written over.
 on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without
 a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own
 input loop and the SI layer in, so each port is read back as the guest reads it.
+
 `tools/test_ports.sh <test_ports> <work dir>` runs the port checks, a recording of two
-gamepads and its replay with none, an interrupt handled beside the main loop and the
-frontend under `--no-gamepads`. Each check prints `ok` or `FAIL`, and the exit code is 0
-only if all pass. SDL's drivers for real controllers are off before it starts, so a
-controller that's connected is never opened.
+gamepads and its replay with none, a version 4 log's replay, an interrupt handled beside
+the main loop and the frontend under `--no-gamepads`. Each check prints `ok` or `FAIL`,
+and the exit code is 0 only if all pass. SDL's drivers for real controllers are off before
+it starts, so a controller that's connected is never opened.
 
 `ninja test_port_memory` builds `tools/test_port_memory.cpp`, which checks which port each
 gamepad gets from what `ports.txt` remembers. It covers serials, which SDL's virtual
