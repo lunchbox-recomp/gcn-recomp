@@ -2,7 +2,7 @@
 # Runs the gamepad port checks: the port checks, a recording of two gamepads, and that
 # recording replayed with none, and that recording's log replayed again with its SRAM
 # snapshot taken away, then a version 4 log replayed, an interrupt handled beside the main
-# loop, the frontend under --no-gamepads, the game resetting the console, and the game
+# loop, the frontend under --no-gamepads, the game resetting the console and the game
 # shutting it down. The port checks include the ports remembered in saves/ports.txt under
 # the work dir. SDL's virtual joysticks stand in for the controllers. On macOS and Linux
 # test_ports turns off SDL's drivers that find real ones (kRealDriversOff in
