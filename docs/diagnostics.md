@@ -725,7 +725,8 @@ them.
   back. It started or stopped the voice, changed its loop flag, stream flag, format, loop
   address or end address, or moved its current address.
 - `loop` and `end` are what the mixer did. In a millisecond the voice read the sample at
-  its end address and looped, or stopped there.
+  its end address and looped, or stopped there. A `loop` line also comes when an ADPCM voice
+  wraps at an end on a frame's header.
 - These lines go on with `run= looping= stream= fmt= src= loop= end= cur= ratio=`, the PB's
   running flag, loop flag, stream flag, format, source type, three addresses and ratio. A
   `loop` or `end` line gives them as that millisecond left them.
@@ -1137,7 +1138,8 @@ until it holds 1 MiB. Every other command takes 300 us.
 
 Two things differ from Dolphin. The disc's turn is timed at the exact time, where Dolphin's
 code rounds down to a whole second, and a read's DIMAR and DILENGTH move only when it
-completes, where Dolphin moves them a block at a time. The data lands in RAM as the read starts.
+completes, where Dolphin moves them a block at a time. The data lands in RAM as the read
+starts.
 
 Games time things against the disc, so a faster drive changes what they do. The AX library
 drops a voice's loop flag when the game sets the voice's addresses and then its loop, end

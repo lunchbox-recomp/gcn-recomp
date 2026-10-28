@@ -137,7 +137,7 @@ struct Accel {
     uint32_t cur, end, loop;
     uint16_t fmt;
     bool stopped = false;
-    int loops = 0;       // times it reached the end and looped, for GCN_AXVOICES
+    int loops = 0;       // times it looped at its end or wrapped at a header end, for GCN_AXVOICES
     bool ended = false;  // reached the end and stopped
 
     explicit Accel(PB& p) : pb(p), cur(p.get32(PB_CUR_HI)), end(p.get32(PB_END_HI)), loop(p.get32(PB_LOOP_HI)), fmt(p.w[PB_FORMAT]) {}
@@ -169,10 +169,12 @@ struct Accel {
             // and neither stops it nor loads the loop's predictor (Dolphin's hardware tests).
             if ((end & 15) == 0 && cur == end) {
                 cur = loop + 1;
+                loops++;
                 return (int16_t)val;
             }
             if ((end & 15) == 1 && cur == end - 1) {
                 cur = loop;
+                loops++;
                 return (int16_t)val;
             }
             break;

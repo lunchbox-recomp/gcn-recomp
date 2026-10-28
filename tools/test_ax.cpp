@@ -432,6 +432,25 @@ void polyphase_checks() {
     }
 }
 
+// Two ADPCM frames at nibble 0x1000 whose nibbles are all 1, with headers of 0F, so each
+// sample decodes to 32767. A one-shot from 0x1002 whose loop is 0x1002 and whose end is
+// `at_end`, with the predictor already the frame's, 0F. The loop's predictor, 5A, would decode
+// each sample to 1024, and its history to 0x1234. Call it before run_list().
+void header_end_voice(uint32_t at_end) {
+    reset(kHashLater);
+    for (uint32_t i = 0; i < 16; i++) g_aram[0x800 + i] = i % 8 ? 0x11 : 0x0F;
+    PB pb = pcm_voice(0, 1, 0x8000, 0x8000);
+    pb.w[PB_FORMAT] = 0x00;
+    pb.w[PB_LOOPING] = 0;
+    pb.w[PB_PRED_SCALE] = 0x0F;
+    pb.w[PB_LOOP_PRED_SCALE] = 0x5A;
+    pb.w[PB_LOOP_YN1] = 0x1234;
+    pb.set32(PB_LOOP_HI, 0x1002);
+    pb.set32(PB_END_HI, at_end);
+    pb.set32(PB_CUR_HI, 0x1002);
+    store_pb(pb);
+}
+
 // A voice loops or stops only on reading the sample at its end address, as the DSP's
 // accelerator does. A stream moves its loop address to the next slot before it moves its end
 // there, so a voice that loops into a slot above its old end has to play on from the loop.
@@ -474,20 +493,14 @@ void end_checks() {
     // a frame: 160 samples are 14, then 11 frames of 13 and 3 more, which leaves it at 0x1006.
     // With the end at 0x1011 it plays 14 a frame, 11 frames and 6 more, which leaves 0x1008.
     for (uint32_t at_end : {0x1010u, 0x1011u}) {
-        reset(kHashLater);
-        for (uint32_t i = 0; i < 16; i++) g_aram[0x800 + i] = i % 8 ? 0x11 : 0x0F;
-        pb = pcm_voice(0, 1, 0x8000, 0x8000);
-        pb.w[PB_FORMAT] = 0x00;
-        pb.w[PB_LOOPING] = 0;
-        pb.set32(PB_LOOP_HI, 0x1002);
-        pb.set32(PB_END_HI, at_end);
-        pb.set32(PB_CUR_HI, 0x1002);
-        store_pb(pb);
+        header_end_voice(at_end);
         run_list();
         char what[112];
         snprintf(what, sizeof what, "an ADPCM one-shot whose end is the header nibble %X wraps to its loop and keeps running",
                  at_end);
         check(pb_word(PB_RUNNING) == 1 && mem_r16(kPB + 2 * PB_CUR_LO) == (at_end == 0x1010 ? 0x1006 : 0x1008), what);
+        snprintf(what, sizeof what, "and keeps the frame's predictor, 0F, and its last sample, 32767, at %X", at_end);
+        check(pb_word(PB_PRED_SCALE) == 0x0F && pb_word(PB_YN1) == 0x7FFF, what);
     }
 }
 
@@ -539,6 +552,14 @@ void voices_run() {
     g_axvoices = false;
 }
 
+// One list of a one-shot that wraps at a header end, with GCN_AXVOICES on.
+void header_wrap_run() {
+    header_end_voice(0x1010);
+    g_axvoices = true;
+    run_list();
+    g_axvoices = false;
+}
+
 void voice_log_checks() {
     const std::string log = stderr_of(voices_run);
     check(has(log, "[axv] list=99 pb=80003000 run run=1 looping=1 stream=0 fmt=0A src=2 loop=00000800 end=000008FF "
@@ -561,6 +582,10 @@ void voice_log_checks() {
     int lines = 0;
     for (char c : log) lines += c == '\n';
     check(lines == 9, "and nothing else prints, with GCN_AXSTATS off");
+
+    const std::string wrap = stderr_of(header_wrap_run);
+    check(has(wrap, "[axv] list=") && has(wrap, " loop run=1 looping=0 stream=0 fmt=00 "),
+          "an ADPCM one-shot that wraps at a header end prints loop with looping=0");
 }
 
 }  // namespace

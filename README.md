@@ -153,10 +153,13 @@ nothing was compared with a real console. Every run was on one machine.
 ## The disc drive
 
 A DVD read takes as long as a console's drive would take over it, where upstream gave every
-read 100 us and 64 MB/s (`04c025f`, `f19f98d`). The model and its numbers are Dolphin's, measured on
+read 100 us and 64 MB/s (`04c025f`). The model and its numbers are Dolphin's, measured on
 hardware, and [the diagnostics](docs/diagnostics.md#the-disc-drive) give them. At the faster
 rate a music stream could start in one audio frame, so the AX library dropped its loop flag
 and the music stopped after its first buffer.
+
+A read's DIMAR and DILENGTH move when it completes, since a read can now take hundreds of
+milliseconds (`f19f98d`).
 
 ## Layout
 
