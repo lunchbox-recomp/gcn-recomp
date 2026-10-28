@@ -27,7 +27,7 @@ struct Port {
     std::array<int, SDL_GAMEPAD_AXIS_COUNT> lo{}, hi{};  // each axis's extents, raw
     int rumbles = 0;              // times the rumble was turned on
     int calls = 0, failed = 0;    // SDL_RumbleGamepad calls, and those that failed
-    bool failure_said = false;    // a failure was said since the last on or off
+    std::vector<std::string> reasons_said;  // SDL's errors for them said since the pad landed
 };
 
 Port g_ports[4];
@@ -211,11 +211,11 @@ uint8_t axis_to_u8(int v, bool invert) {
     return (uint8_t)std::clamp(r, 0, 255);
 }
 
-// Whether the gamepad `g` is asked for rumble. One SDL says has none isn't, since the call
-// would only fail, and SDL is asked at each call: a PS4 pad over Bluetooth gains rumble if
-// SDL's enhanced reports are turned on after it lands. A GameCube pad is asked whatever SDL
-// says, because SDL's GameCube driver keeps what it said as the pad landed. That driver
-// rumbles a pad whose adapter's second cable came later, and refuses itself without one.
+// Whether the gamepad `g` is asked for rumble: one SDL says has none isn't, unless SDL types
+// it as GameCube, as it does for several adapters and pads across its drivers. Of those only
+// Nintendo's adapter keeps a stale flag, saying no rumble for a pad that landed before the
+// adapter's second cable was in. Asking one of the others costs a refused call at each on
+// and one line (gamepads_rumble).
 bool may_rumble(SDL_Gamepad* g) {
     return SDL_GetGamepadType(g) == SDL_GAMEPAD_TYPE_GAMECUBE ||
            SDL_GetBooleanProperty(SDL_GetGamepadProperties(g), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
@@ -305,17 +305,17 @@ void gamepads_merge(int port, PadState& p) {
 
 void gamepads_rumble(int port, bool motor) {
     Port& g = g_ports[port];
-    if (g.pad && motor != g.rumbling) {
-        if (motor) g.rumbles++;
-        g.failure_said = false;
-    }
+    if (g.pad && motor && !g.rumbling) g.rumbles++;
     if (g.pad && (motor || g.rumbling) && may_rumble(g.pad)) {
         g.calls++;
         if (!SDL_RumbleGamepad(g.pad, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0)) {
             g.failed++;
-            // Once after each on or off, not at every call.
-            if (!g.failure_said) fprintf(stderr, "gamepads: port %d rumble failed: %s\n", port + 1, SDL_GetError());
-            g.failure_said = true;
+            // Each reason once while the pad is on the port, not at every call or every on.
+            const std::string why = SDL_GetError();
+            if (std::find(g.reasons_said.begin(), g.reasons_said.end(), why) == g.reasons_said.end()) {
+                fprintf(stderr, "gamepads: port %d rumble failed: %s\n", port + 1, why.c_str());
+                g.reasons_said.push_back(why);
+            }
         }
     }
     g.rumbling = motor;

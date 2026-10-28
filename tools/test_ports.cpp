@@ -118,6 +118,7 @@ struct Virtual {
     int player = -1;  // the player index SDL last told the device
     bool can_rumble = true;  // false: it has no rumble, as SDL sees it
     bool refuses = false;    // a rumble asked of it fails, saying why
+    const char* why = "virtual pad refuses rumble";
     Uint16 vendor = 0, product = 0;  // its USB IDs, from which SDL takes its type and labels
 };
 
@@ -125,7 +126,7 @@ bool SDLCALL on_rumble(void* u, Uint16 low, Uint16 high) {
     Virtual* v = static_cast<Virtual*>(u);
     if (low || high) v->rumbles++;
     else v->stops++;
-    return v->refuses ? SDL_SetError("virtual pad refuses rumble") : true;
+    return v->refuses ? SDL_SetError("%s", v->why) : true;
 }
 
 void SDLCALL on_player(void* u, int index) { static_cast<Virtual*>(u)->player = index; }
@@ -1181,7 +1182,7 @@ void memory_unreadable(const std::string& dir, const std::string& file) {
 
 // ---- What the run's output says of each gamepad: what SDL knows of it as it lands on a
 // port, what it sent while there when it leaves (pulled out, or still there at shutdown),
-// and why its rumble failed, once after each on or off.
+// and why its rumble failed, each reason once while it's there.
 void said(const std::string& dir) {
     power_on(1);
     gamepads_init();
@@ -1230,8 +1231,9 @@ void said(const std::string& dir) {
           "a gamepad pulled out says, after its pulled-out line, each button it pressed and how often, each axis's extents and "
           "its rumble");
 
-    // A rumble that fails is said once after each on or off, not for each call: on for five
-    // frames and off, on for three and off, then on for two, accepted, and off, refused.
+    // A rumble that fails says each of its reasons once while the gamepad is on its port, not
+    // at each call or each on: on for five frames and off, on for three and off, then on for
+    // two, accepted, and off, refused for another reason.
     Virtual f{"virtual pad refusing"};
     f.refuses = true;
     attach(f);
@@ -1249,15 +1251,27 @@ void said(const std::string& dir) {
         frame();
         frame();
         f.refuses = true;
+        f.why = "virtual pad refuses to stop";
         g_outbuf[0] = 0x00400000;
         frame();
         frame();
     });
     capture(dir + "/said-failing-out.txt", [&] { unplug({&f}); });
-    check(lines_with(failing, "gamepads: port 1 rumble failed: virtual pad refuses rumble\n") == 3 &&
-              lines_with(failing, "rumble failed") == 3 &&
+    check(lines_with(failing, "gamepads: port 1 rumble failed: virtual pad refuses rumble\n") == 1 &&
+              lines_with(failing, "gamepads: port 1 rumble failed: virtual pad refuses to stop\n") == 1 &&
+              lines_with(failing, "rumble failed") == 2 &&
               lines_with(dir + "/said-failing-out.txt", "gamepads: port 1 rumble on 3 times, 9 of 13 calls failed\n") == 1,
-          "a rumble that fails says why once after each on or off, and the pull-out line counts the failed calls");
+          "a rumble that fails says each reason once while the gamepad is on its port, and the pull-out line counts the "
+          "failed calls");
+    // Plugged in again, it lands afresh, so a reason it gave before is said again.
+    f.why = "virtual pad refuses rumble";
+    attach(f);
+    frame();
+    const std::string again = dir + "/said-failing-again.txt";
+    capture(again, [] { motor(0); });
+    capture(dir + "/said-failing-again-out.txt", [&] { unplug({&f}); });
+    check(lines_with(again, "gamepads: port 1 rumble failed: virtual pad refuses rumble\n") == 1,
+          "a gamepad plugged in again says why its rumble fails again");
 
     // The game's motor on port 2 on and off three times, where the gamepad SDL says has no
     // rumble is: it's never asked for one.
@@ -1311,6 +1325,28 @@ void gamecube_rumble(const std::string& dir) {
               v.rumbles == 3 && v.stops == 3 && lines_with(out, "gamepads: port 1 rumble on 3 times, 0 of 6 calls failed\n") == 1,
           "a GameCube pad SDL says has no rumble is still asked for it, and rumbles");
     detach(v);
+
+    // One with no rumble at all, as a WaveBird or an input-only pad SDL types as GameCube is,
+    // is refused at each on, and says so once. SDL takes each off as done without asking the
+    // driver, since the refused on left its rumble at 0 (SDL_RumbleJoystick).
+    power_on(1);
+    gamepads_init();
+    Virtual w{"virtual gamecube no rumble"};
+    w.vendor = 0x057e;
+    w.product = 0x0337;
+    w.can_rumble = false;
+    attach(w);
+    frame();
+    const std::string refused = dir + "/gamecube-refused.txt";
+    capture(refused, [] {
+        for (int k = 0; k < 3; k++) motor(0);
+        gamepads_shutdown();
+    });
+    check(lines_with(refused, "rumble failed") == 1 &&
+              lines_with(refused, "gamepads: port 1 rumble failed: That operation is not supported\n") == 1 &&
+              lines_with(refused, "gamepads: port 1 rumble on 3 times, 3 of 6 calls failed\n") == 1,
+          "a GameCube pad with no rumble says SDL's refusal once, and its line counts each refused call");
+    detach(w);
 }
 
 // ---- GameCube A, B, X and Y are the face buttons labeled A, B, X and Y, as Nintendo's own

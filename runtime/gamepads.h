@@ -46,12 +46,14 @@
 // (`time` and `call` for 1).
 //
 // A gamepad SDL says has no rumble (SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, asked at each call)
-// is never asked for one, so its line counts the game's ons and no calls. A GameCube pad is
-// asked anyway, since SDL never updates what it says of one that landed before its
-// adapter's second cable was in. A rumble that fails is said once after each on or off, not
-// at every call: `port N rumble failed: <SDL's error>`. On a pad SDL drives through HIDAPI a call SDL accepts has only been queued, and a
-// write that fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad
-// shook.
+// is never asked for one, so its line counts the game's ons and no calls. One SDL types as
+// GameCube is asked anyway, since SDL never updates what it says of a pad on Nintendo's
+// adapter that landed before the adapter's second cable was in. A rumble that fails says
+// why once while the gamepad is on its port, each of SDL's reasons once, as `port N rumble
+// failed: <SDL's error>`, and the rumble line counts every failed call. So a GameCube pad
+// with no rumble, such as a WaveBird or a PowerA-style input-only pad, says it once. On a
+// pad SDL drives through HIDAPI a call SDL accepts has only been queued, and a write that
+// fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad shook.
 #pragma once
 #include "hw/pad.h"
 
