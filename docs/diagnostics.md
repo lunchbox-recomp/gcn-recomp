@@ -1098,6 +1098,27 @@ vertical and longitudinal acceleration, four suspension travels, four wheel terr
 field order is not known, so it is not sent. A listener that decodes with that same format string
 is the way to test without moving a rig, given SRS holds 33001: send to another port.
 
+## The disc drive
+
+A DVD read takes as long as a console's drive would take over it (`hw/drive.h`). The model
+and its numbers are Dolphin's, measured on hardware. A read costs 600 us to start, a block
+the drive has read ahead moves at 32 MiB/s and a block under the head costs one 32 KiB
+block at the disc's own rate, from 2.1 MiB/s at the inner edge to 3.325 MiB/s at the outer.
+
+Any other block is a seek, which costs the head's travel and the wait for the block to come
+round. After each read the drive keeps the last block and the one before it, and reads on
+until it holds 1 MiB. Every other command takes 300 us.
+
+Games time things against the disc, so a faster drive changes what they do. The AX library
+drops a voice's loop flag when the game sets the voice's addresses and then its loop, end
+or current address within one 5 ms audio frame. A streaming music player that does both in
+a disc read's callbacks then plays its first buffer and stops, which at the 64 MB/s the
+runtime used to read at it often did.
+
+`--log=dvd` ends each `read off=` line with the read's time, as `in <N> us`.
+`ninja test_drive` builds `tools/test_drive.cpp`, which checks the model's times against
+times worked out from its numbers. It needs no disc image or device.
+
 ## The disc overlay
 
 `--disc-overlay=FILE` on the desktop or `GCN_DISC_OVERLAY=FILE` in the environment makes

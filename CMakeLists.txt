@@ -786,6 +786,12 @@ function(gcn_add_game)
     target_include_directories(test_ax PRIVATE ${RT})
     target_compile_options(test_ax PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The disc drive's timing checks (tools/test_drive.cpp): runtime/hw/drive.h on its own.
+    add_executable(test_drive EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_drive.cpp)
+    _gcn_set_standards(test_drive)
+    target_include_directories(test_drive PRIVATE ${RT})
+    target_compile_options(test_drive PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The output aspect's checks (tools/test_aspect.cpp): runtime/gx/aspect.h on its own.
     add_executable(test_aspect EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_aspect.cpp)
     _gcn_set_standards(test_aspect)
@@ -910,7 +916,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_audio_ring test_ax test_aspect test_anchor test_aid test_blend test_clock test_pause)
+    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_aid test_blend test_clock test_pause)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)

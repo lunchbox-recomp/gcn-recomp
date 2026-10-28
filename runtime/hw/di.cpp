@@ -2,10 +2,12 @@
 #include "../runtime.h"
 #include "../platform.h"
 #include "disc_overlay.h"
+#include "drive.h"
 
 static PlatFile* g_iso;
 static uint32_t g_disr, g_dicvr, g_cmd[3], g_dimar, g_dilen, g_dicr, g_diimm, g_dicfg;
 static bool g_busy;
+static drive::Drive g_drive;  // where the head is and what the drive has read ahead
 
 #include "dtk.h"
 #include <algorithm>
@@ -84,13 +86,14 @@ static void di_complete() {
 
 static void di_execute() {
     uint32_t cmd = g_cmd[0] >> 24;
-    uint64_t delay = TB_FREQ / 10000;  // 100us base latency
+    double seconds = drive::kCommand;
     switch (cmd) {
     case 0xA8: {
         uint32_t sub = (g_cmd[0] >> 16) & 0xFF;
         uint64_t offset = sub == 0x40 ? 0 : (uint64_t)g_cmd[1] << 2;
         uint32_t len = g_dilen;
-        LOG(LOG_DVD, "read off=%09llX len=%X -> %08X", (unsigned long long)offset, len, g_dimar);
+        seconds = g_drive.read((double)now_ticks() / TB_FREQ, offset, len);
+        LOG(LOG_DVD, "read off=%09llX len=%X -> %08X in %.0f us", (unsigned long long)offset, len, g_dimar, seconds * 1e6);
         const uint32_t fit = dma_fit("DVD", g_dimar, len);
         debug_guest_check("before DVD read");
         if (fit && !disc_read(offset, phys_ptr(g_dimar), fit, false)) {
@@ -102,7 +105,6 @@ static void di_execute() {
         debug_guest_check("after DVD read");
         g_dimar += len;
         g_dilen = 0;
-        delay += (uint64_t)len * TB_FREQ / (64 << 20);  // ~64MB/s
         break;
     }
     case 0x12: {  // inquiry
@@ -153,7 +155,7 @@ static void di_execute() {
         break;
     }
     g_busy = true;
-    event_schedule_in(delay, di_complete);
+    event_schedule_in((uint64_t)(seconds * TB_FREQ), di_complete);
 }
 
 uint32_t di_read32(uint32_t off) {
