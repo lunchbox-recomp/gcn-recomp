@@ -1,14 +1,16 @@
 // settings.txt checks: the `test_settings` target. Runs with no disc image, device, SDL or
 // game. runtime/settings.cpp is linked as it is, and platform.cpp for its file replace.
 //
-// Each case writes a file into the work dir, loads or saves it, and checks the struct or
-// the file's bytes. A save that fails must leave the old file whole, so four failures are
-// made to happen. One is a directory where the save writes its new file. Two are a file size
-// limit (RLIMIT_FSIZE) that stops that write partway as a full disk would: on a file that
-// fits in stdio's buffer, where fclose's flush hits the limit, and on one that doesn't,
-// where fwrite does. The last is an old file the save can't read. A save that wrote the
-// file in place fails the directory case, which it gets past, and the limit cases, which
-// leave it a cut-off file.
+// Each case writes a file into the work dir and loads or saves it. Its checks read the
+// struct, the file's bytes or what went to stderr.
+//
+// A save that fails must leave the old file whole, so four failures are made to happen.
+// One is a directory where the save writes its new file. Two are a file size limit
+// (RLIMIT_FSIZE) that stops that write partway as a full disk would: on a file that fits
+// in stdio's buffer, where fclose's flush hits the limit, and on one that doesn't, where
+// fwrite does. The last is an old file the save can't read. A save that wrote the file in
+// place fails the directory case, which it gets past, and the limit cases, which leave it
+// a cut-off file.
 //
 // usage: test_settings <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
@@ -18,6 +20,7 @@
 #include <cmath>
 #include <csignal>
 #include <cstdio>
+#include <fcntl.h>
 #include <string>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -61,10 +64,26 @@ bool exists(const std::string& path) {
     return stat(path.c_str(), &st) == 0;
 }
 
+// What stderr got while `run` ran.
+template <class F>
+std::string stderr_during(F run) {
+    const std::string path = path_of("stderr.txt");
+    fflush(stderr);
+    const int saved = dup(2);
+    const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    dup2(fd, 2);
+    close(fd);
+    run();
+    fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+    return read_file(path);
+}
+
 void missing_file() {
     const Settings s = settings_load(path_of("none.txt"));
-    check(s.aspect == "4:3" && !s.fullscreen && s.scale == 2,
-          "a missing file gives aspect 4:3, fullscreen 0 and scale 2");
+    check(s.aspect == "4:3" && !s.fullscreen && s.scale == 2 && s.fast_disc,
+          "a missing file gives aspect 4:3, fullscreen 0, scale 2 and disc fast");
 }
 
 void parsing() {
@@ -96,25 +115,26 @@ void byte_order_mark() {
     Settings w;
     w.aspect = "21:9";
     w.scale = 3;
-    check(settings_save(p, w) && read_file(p) == mark + "aspect 21:9\nscale 3\nfullscreen 0\n",
+    check(settings_save(p, w) && read_file(p) == mark + "aspect 21:9\nscale 3\nfullscreen 0\ndisc fast\n",
           "and a save rewrites that line and writes the mark back, rather than adding a second line");
 
     // Without the mark an editor shows a UTF-8 comment as mojibake.
     const std::string q = path_of("bom_comment.txt");
     write_file(q, mark + "# caf\xC3\xA9\naspect 16:9\n");
-    check(settings_save(q, w) && read_file(q) == mark + "# caf\xC3\xA9\naspect 21:9\nfullscreen 0\nscale 3\n",
+    check(settings_save(q, w) &&
+              read_file(q) == mark + "# caf\xC3\xA9\naspect 21:9\nfullscreen 0\nscale 3\ndisc fast\n",
           "a save keeps the mark and the UTF-8 comment under it byte for byte");
 
     // A file of the mark alone has no lines, and a save still writes the mark first.
     const std::string r = path_of("bom_only.txt");
     write_file(r, mark);
-    check(settings_save(r, w) && read_file(r) == mark + "aspect 21:9\nfullscreen 0\nscale 3\n",
-          "a save over a file of the mark alone writes the mark and then the three keys");
+    check(settings_save(r, w) && read_file(r) == mark + "aspect 21:9\nfullscreen 0\nscale 3\ndisc fast\n",
+          "a save over a file of the mark alone writes the mark and then the four keys");
 
     // A file without the mark doesn't get one.
     const std::string t = path_of("no_bom.txt");
     write_file(t, "aspect 16:9\n");
-    check(settings_save(t, w) && read_file(t) == "aspect 21:9\nfullscreen 0\nscale 3\n",
+    check(settings_save(t, w) && read_file(t) == "aspect 21:9\nfullscreen 0\nscale 3\ndisc fast\n",
           "and a file without the mark doesn't get one");
 }
 
@@ -161,6 +181,48 @@ void aspects_match_the_flag() {
     check(differ == 0, "the file takes and refuses the same aspects as --aspect, zero-padded ones included");
 }
 
+// disc takes fast and console and nothing else, in the file and in --disc, which reads its
+// value with settings_parse_disc too.
+void discs() {
+    bool fast = false;
+    check(settings_parse_disc("fast", fast) && fast, "disc fast reads every block at the rate of one the drive holds");
+    check(settings_parse_disc("console", fast) && !fast, "disc console times reads as a console's drive does");
+    static const char* kBad[] = {"", "Fast", "CONSOLE", "slow", "fast ", " console", "1", "0", "faster"};
+    int refused = 0;
+    for (const char* text : kBad) {
+        bool on = true, off = false;
+        if (!settings_parse_disc(text, on) && on && !settings_parse_disc(text, off) && !off) refused++;
+        else printf("     \"%s\" was taken\n", text);
+    }
+    check(refused == (int)(sizeof(kBad) / sizeof(kBad[0])),
+          "9 other words, other cases and spaced ones are refused and leave the speed alone");
+
+    const std::string p = path_of("disc.txt");
+    write_file(p, "disc console\n");
+    check(!settings_load(p).fast_disc, "disc console is read from the file");
+    // Fast comes after console here, so a bad value read as console would show.
+    write_file(p, "disc console\ndisc fast\ndisc slow\n");
+    Settings s;
+    stderr_during([&] { s = settings_load(p); });
+    check(s.fast_disc, "a bad disc leaves the one before it, fast after console");
+    write_file(p, "disc console\ndisc slow\ndisc\ndisc Fast\n");
+    const std::string said = stderr_during([&] { s = settings_load(p); });
+    check(said.find(p + ":2: disc takes fast or console, not \"slow\", so the line is skipped\n") != std::string::npos &&
+              said.find(p + ":3: disc takes fast or console, not \"\", so the line is skipped\n") != std::string::npos &&
+              said.find(p + ":4: disc takes fast or console, not \"Fast\", so the line is skipped\n") != std::string::npos,
+          "and each bad one is named on stderr by its line");
+    check(said.find(p + ": aspect 4:3, fullscreen 0, scale 2, disc console\n") != std::string::npos,
+          "and the line that says what the file gave names the disc speed");
+
+    const std::string q = path_of("disc_save.txt");
+    write_file(q, "disc fast\nvsync on\n");
+    Settings w;
+    w.fast_disc = false;
+    check(settings_save(q, w) && read_file(q) == "disc console\nvsync on\naspect 4:3\nfullscreen 0\nscale 2\n",
+          "a save rewrites the disc line in place");
+    check(!settings_load(q).fast_disc, "and a load gives back disc console");
+}
+
 void bad_values() {
     const std::string p = path_of("bad.txt");
     write_file(p,
@@ -198,10 +260,11 @@ void save_keeps_lines() {
               "greeting hello there\n"
               "scale 3\r\n"
               "scale 3\n"
-              "fullscreen 1\n",
-          "it rewrites each owned line in place, keeps every other line and adds the missing key");
+              "fullscreen 1\n"
+              "disc fast\n",
+          "it rewrites each owned line in place, keeps every other line and adds the missing keys");
     const Settings back = settings_load(p);
-    check(back.aspect == "16:9" && back.fullscreen && back.scale == 3, "a load gives back what was saved");
+    check(back.aspect == "16:9" && back.fullscreen && back.scale == 3 && back.fast_disc, "a load gives back what was saved");
     check(!exists(p + ".tmp"), "a save leaves no temp file behind");
 }
 
@@ -247,27 +310,29 @@ void save_adds_keys_in_the_line_ending() {
     write_file(p, "vsync on\r\naspect 16:9\r\n");
     Settings s;
     s.aspect = "16:9";
-    check(settings_save(p, s) && read_file(p) == "vsync on\r\naspect 16:9\r\nfullscreen 0\r\nscale 2\r\n",
+    check(settings_save(p, s) &&
+              read_file(p) == "vsync on\r\naspect 16:9\r\nfullscreen 0\r\nscale 2\r\ndisc fast\r\n",
           "a key added to a file whose last line ends in CR LF ends in CR LF too");
 
     const std::string mark = "\xEF\xBB\xBF";
     const std::string q = path_of("bom_crlf.txt");
     write_file(q, mark + "aspect 16:9\r\nscale 3\r\n");
     s.scale = 3;
-    check(settings_save(q, s) && read_file(q) == mark + "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\n",
+    check(settings_save(q, s) && read_file(q) == mark + "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\ndisc fast\r\n",
           "and so is one added to a file with the mark");
 
     // Windows Notepad ends no file with a newline, so its last line has no CR.
     const std::string r = path_of("crlf_open.txt");
     write_file(r, "aspect 16:9\r\nscale 3");
-    check(settings_save(r, s) && read_file(r) == "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\n",
-          "a CR LF file with no newline after its last line gets CR LF there and on the key added");
+    check(settings_save(r, s) && read_file(r) == "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\ndisc fast\r\n",
+          "a CR LF file with no newline after its last line gets CR LF there and on the keys added");
 }
 
 void save_after_unterminated_line() {
     const std::string p = path_of("unterminated.txt");
     write_file(p, "vsync on");
-    check(settings_save(p, Settings{}) && read_file(p) == "vsync on\naspect 4:3\nfullscreen 0\nscale 2\n",
+    check(settings_save(p, Settings{}) &&
+              read_file(p) == "vsync on\naspect 4:3\nfullscreen 0\nscale 2\ndisc fast\n",
           "a key added after a last line with no newline goes on a line of its own");
 }
 
@@ -275,8 +340,8 @@ void save_creates() {
     const std::string p = path_of("new.txt");
     Settings s;
     s.scale = 4;
-    check(settings_save(p, s) && read_file(p) == "aspect 4:3\nfullscreen 0\nscale 4\n",
-          "a save with no file writes the three owned keys");
+    check(settings_save(p, s) && read_file(p) == "aspect 4:3\nfullscreen 0\nscale 4\ndisc fast\n",
+          "a save with no file writes the four owned keys");
 }
 
 void failed_save_no_temp() {
@@ -368,6 +433,7 @@ int main(int argc, char** argv) {
     byte_order_mark();
     aspects();
     aspects_match_the_flag();
+    discs();
     bad_values();
     save_keeps_lines();
     save_refuses_bad_values();

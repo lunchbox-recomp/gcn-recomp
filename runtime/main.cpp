@@ -346,6 +346,7 @@ int main(int argc, char** argv) {
     // isn't written back.
     const Settings settings = settings_load("settings.txt");
     int scale = settings.scale;
+    g_fast_disc = settings.fast_disc;
     int pads = 1;
     // --aspect=W:H, or --aspect=window to follow the window's shape: what the picture is
     // stretched to (gx::output_aspect). 4:3, the console's own, by default.
@@ -385,6 +386,12 @@ int main(int argc, char** argv) {
         else if (!strncmp(argv[i], "--exit-after=", 13)) exit_after = (uint32_t)strtoul(argv[i] + 13, nullptr, 10);
         else if (!strcmp(argv[i], "--cull-swap")) gx::g_cull_swap = true;
         else if (!strncmp(argv[i], "--scale=", 8)) scale = atoi(argv[i] + 8);
+        else if (!strncmp(argv[i], "--disc=", 7)) {
+            if (!settings_parse_disc(argv[i] + 7, g_fast_disc)) {
+                fprintf(stderr, "--disc: fast or console, not %s\n", argv[i] + 7);
+                return 1;
+            }
+        }
         else if (!strcmp(argv[i], "--aspect=window")) aspect_window = true;
         else if (!strncmp(argv[i], "--aspect=", 9)) {
             if (!gx::parse_aspect(argv[i] + 9, &aspect_w, &aspect_h)) {

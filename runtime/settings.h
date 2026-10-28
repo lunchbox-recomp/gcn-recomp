@@ -8,19 +8,24 @@
 //   aspect 16:9
 //   fullscreen 1
 //   scale 3
+//   disc console
 //
-// The runtime owns three keys:
+// The runtime owns four keys:
 //   aspect       the output's shape, "W:H" with two whole numbers from 1 to 9999, or
 //                "window" for the window's own shape (settings_parse_aspect). Default 4:3
 //   fullscreen   1 for fullscreen, 0 for a window. Default 0
 //   scale        the internal resolution, N times 640x480, N a whole number from 1 up.
 //                Default 2. The renderer caps it (gx::kMaxInternalScale)
+//   disc         how long a disc read takes (hw/drive.h). "fast" reads every block at the
+//                32 MiB/s of one the drive has read ahead, and "console" times reads as a
+//                console's drive does, seeks and all. Default fast
 // A bad value for one of them is reported on stderr and leaves the key as it was. Every
 // other key is left alone: a load skips it and a save keeps its line.
 //
 // The desktop frontend reads the file at start, and a flag beats it for that run without
-// being written back. It applies `scale`. `--aspect` and `--fullscreen` don't read the file
-// yet, so `aspect` and `fullscreen` are only read and kept.
+// being written back. It applies `scale` and `disc` (--disc=fast or --disc=console).
+// `--aspect` and `--fullscreen` don't read the file yet, so `aspect` and `fullscreen` are
+// only read and kept.
 #pragma once
 #include <string>
 
@@ -28,6 +33,7 @@ struct Settings {
     std::string aspect = "4:3";
     bool fullscreen = false;
     int scale = 2;
+    bool fast_disc = true;  // disc fast, or disc console when false
 };
 
 // The settings in the file at `path`, over the defaults. A missing file gives the defaults,
@@ -50,3 +56,7 @@ bool settings_save(const std::string& path, const Settings& s);
 // "window". Sets `ratio` to W/H, or to 0 for "window". False, leaving `ratio` alone, for
 // anything else.
 bool settings_parse_aspect(const std::string& text, float& ratio);
+
+// Reads a disc speed as the file and --disc write it. "fast" sets `fast`, and "console"
+// clears it. False, leaving `fast` alone, for anything else.
+bool settings_parse_disc(const std::string& text, bool& fast);

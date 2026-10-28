@@ -9,6 +9,7 @@ static uint32_t g_disr, g_dicvr, g_cmd[3], g_dimar, g_dilen, g_dicr, g_diimm, g_
 static bool g_busy;
 static uint32_t g_moved;  // the bytes the running read moves, which DIMAR and DILENGTH show at its end
 static drive::Drive g_drive;  // where the head is and what the drive has read ahead
+bool g_fast_disc = true;
 
 #include "dtk.h"
 #include <algorithm>
@@ -49,6 +50,7 @@ static bool disc_read(uint64_t offset, void* dst, uint32_t len, bool run) {
 bool iso_read(uint64_t offset, void* dst, uint32_t len) { return disc_read(offset, dst, len, true); }
 
 void di_init(const char* iso_path) {
+    g_drive.fast = g_fast_disc;
     g_iso = plat_open_read(iso_path);
     if (!g_iso) fatal("cannot open disc image %s", iso_path);
     uint8_t hdr[0x8000];

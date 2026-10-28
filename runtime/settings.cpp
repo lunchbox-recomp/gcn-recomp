@@ -97,6 +97,12 @@ bool settings_parse_aspect(const std::string& text, float& ratio) {
     return true;
 }
 
+bool settings_parse_disc(const std::string& text, bool& fast) {
+    if (text != "fast" && text != "console") return false;
+    fast = text == "fast";
+    return true;
+}
+
 Settings settings_load(const std::string& path) {
     Settings s;
     std::vector<std::string> lines;
@@ -120,14 +126,16 @@ Settings settings_load(const std::string& path) {
             else takes = "0 or 1";
         } else if (key == "scale") {
             if (!parse_positive(value, kMaxScale, s.scale)) takes = "a whole number from 1 up";
+        } else if (key == "disc") {
+            if (!settings_parse_disc(value, s.fast_disc)) takes = "fast or console";
         }
         if (takes)
             fprintf(stderr, "%s:%d: %s takes %s, not \"%s\", so the line is skipped\n", path.c_str(), n,
                     key.c_str(), takes, value.c_str());
     }
     if (found)
-        fprintf(stderr, "%s: aspect %s, fullscreen %d, scale %d\n", path.c_str(), s.aspect.c_str(),
-                (int)s.fullscreen, s.scale);
+        fprintf(stderr, "%s: aspect %s, fullscreen %d, scale %d, disc %s\n", path.c_str(), s.aspect.c_str(),
+                (int)s.fullscreen, s.scale, s.fast_disc ? "fast" : "console");
     return s;
 }
 
@@ -150,9 +158,12 @@ bool settings_save(const std::string& path, const Settings& s) {
         fprintf(stderr, "%s: can't read it, so it isn't saved over\n", path.c_str());
         return false;
     }
-    const std::pair<const char*, std::string> owned[] = {
-        {"aspect", s.aspect}, {"fullscreen", s.fullscreen ? "1" : "0"}, {"scale", std::to_string(s.scale)}};
-    bool written[3] = {};
+    const std::pair<const char*, std::string> owned[] = {{"aspect", s.aspect},
+                                                         {"fullscreen", s.fullscreen ? "1" : "0"},
+                                                         {"scale", std::to_string(s.scale)},
+                                                         {"disc", s.fast_disc ? "fast" : "console"}};
+    constexpr int kOwned = (int)(sizeof(owned) / sizeof(owned[0]));
+    bool written[kOwned] = {};
     std::string text = bom ? kByteOrderMark : "";
     // A key added to the file, and a last line it left without a newline, take the line
     // ending of its first newline. Windows Notepad writes CR LF with none after the last line.
@@ -161,7 +172,7 @@ bool settings_save(const std::string& path, const Settings& s) {
         const std::string& line = lines[n];
         std::string key, value, out = line;
         if (split(line, key, value)) {
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < kOwned; i++) {
                 if (key != owned[i].first) continue;
                 out = key + " " + owned[i].second + (line.back() == '\r' ? "\r" : "");
                 written[i] = true;
@@ -169,7 +180,7 @@ bool settings_save(const std::string& path, const Settings& s) {
         }
         text += out + (open && n + 1 == lines.size() && line.back() != '\r' ? newline : "\n");
     }
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < kOwned; i++)
         if (!written[i]) text += std::string(owned[i].first) + " " + owned[i].second + newline;
 
     const std::string tmp = path + ".tmp";
