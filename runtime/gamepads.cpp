@@ -18,6 +18,7 @@ struct Port {
     SDL_Gamepad* pad = nullptr;
     SDL_JoystickID which = 0;  // the pad's instance ID
     bool rumbling = false;
+    std::array<SDL_GamepadButton, 4> face{};  // the GameCube's A, B, X and Y on this gamepad (faces)
     // What the gamepad sent while on the port (gamepads_merge) and how its rumble went
     // (gamepads_rumble), said when it leaves the port (say_sent).
     bool read = false;  // merged at least once, so that lo and hi hold values
@@ -48,6 +49,26 @@ int port_of(SDL_JoystickID which) {
 const char* label_name(SDL_GamepadButtonLabel l) {
     static const char* const kNames[] = {"unknown", "A", "B", "X", "Y", "cross", "circle", "square", "triangle"};
     return l >= 0 && l < (int)std::size(kNames) ? kNames[l] : "unknown";
+}
+
+// The SDL buttons that are the GameCube's A, B, X and Y on `g`: its face buttons labeled A,
+// B, X and Y, wherever the gamepad has them (south B and east A on Nintendo's own). A
+// gamepad whose faces carry no letters, as PlayStation's don't, has them by Xbox position.
+std::array<SDL_GamepadButton, 4> faces(SDL_Gamepad* g) {
+    static constexpr std::array<SDL_GamepadButton, 4> kXbox = {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST,
+                                                               SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH};
+    static constexpr SDL_GamepadButtonLabel kLetters[] = {SDL_GAMEPAD_BUTTON_LABEL_A, SDL_GAMEPAD_BUTTON_LABEL_B,
+                                                          SDL_GAMEPAD_BUTTON_LABEL_X, SDL_GAMEPAD_BUTTON_LABEL_Y};
+    std::array<SDL_GamepadButton, 4> got{};
+    int found = 0;
+    for (int k = 0; k < 4; k++)
+        for (const SDL_GamepadButton f : kXbox)
+            if (SDL_GetGamepadButtonLabel(g, f) == kLetters[k]) {
+                got[k] = f;
+                found++;
+                break;
+            }
+    return found == 4 ? got : kXbox;
 }
 
 // What SDL knows of the gamepad on port `i`, said as it lands there: its type, how it's
@@ -172,7 +193,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
                 g_left_out.push_back(a.which);
                 continue;
             }
-            g_ports[i] = {a.pad, a.which, false};
+            g_ports[i] = {a.pad, a.which, false, faces(a.pad)};
             if (!g_memory_path.empty() && ports_assign(g_saved, i, present[first + k].id)) moved = true;
             fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(a.pad), i + 1);
             say_landed(i);
@@ -249,10 +270,10 @@ void gamepads_merge(int port, PadState& p) {
     g.read = true;
     p.connected = true;
     auto b = [&](SDL_GamepadButton btn) { return SDL_GetGamepadButton(c, btn); };
-    if (b(SDL_GAMEPAD_BUTTON_SOUTH)) p.buttons |= PAD_A;
-    if (b(SDL_GAMEPAD_BUTTON_WEST)) p.buttons |= PAD_B;
-    if (b(SDL_GAMEPAD_BUTTON_EAST)) p.buttons |= PAD_X;
-    if (b(SDL_GAMEPAD_BUTTON_NORTH)) p.buttons |= PAD_Y;
+    if (b(g.face[0])) p.buttons |= PAD_A;
+    if (b(g.face[1])) p.buttons |= PAD_B;
+    if (b(g.face[2])) p.buttons |= PAD_X;
+    if (b(g.face[3])) p.buttons |= PAD_Y;
     if (b(SDL_GAMEPAD_BUTTON_START)) p.buttons |= PAD_START;
     if (b(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) p.buttons |= PAD_Z;
     if (b(SDL_GAMEPAD_BUTTON_DPAD_UP)) p.buttons |= PAD_UP;

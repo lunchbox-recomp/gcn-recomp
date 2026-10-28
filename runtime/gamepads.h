@@ -26,6 +26,12 @@
 // A port a controls.txt line names with `port <n>`, `port 1` too, is pinned to the device
 // on that line, and no gamepad takes it (input_map.h). That beats a saved port.
 //
+// The GameCube's A, B, X and Y are the face buttons labeled A, B, X and Y, as Nintendo's own
+// GameCube games have them on its consoles: east A and south B on a Switch Pro, south A and
+// east B on an Xbox pad. A gamepad whose faces carry no letters (PlayStation's symbols) has
+// them where an Xbox pad does. Which is which is worked out as the gamepad lands on its
+// port. Z is the right shoulder, and L and R are the triggers.
+//
 // What each gamepad did goes to stderr as `gamepads: ` lines. After `"<name>" on port N`,
 // what SDL knows of it: `port N is <type>, <wired|wireless|unknown>, <vendor>:<product>,
 // rumble <yes|no>, south label <label>, east label <label>`. After `"<name>" pulled out of

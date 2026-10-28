@@ -91,6 +91,7 @@ struct Virtual {
     int player = -1;  // the player index SDL last told the device
     bool can_rumble = true;  // false: it has no rumble, as SDL sees it
     bool refuses = false;    // a rumble asked of it fails, saying why
+    Uint16 vendor = 0, product = 0;  // its USB IDs, from which SDL takes its type and labels
 };
 
 bool SDLCALL on_rumble(void* u, Uint16 low, Uint16 high) {
@@ -116,6 +117,8 @@ void attach(Virtual& v, int index = kSdlIndex) {
     d.naxes = v.gamepad ? SDL_GAMEPAD_AXIS_COUNT : 2;
     d.nbuttons = v.gamepad ? SDL_GAMEPAD_BUTTON_COUNT : 4;
     d.name = v.name;
+    d.vendor_id = v.vendor;
+    d.product_id = v.product;
     d.userdata = &v;
     d.Rumble = v.can_rumble ? on_rumble : nullptr;
     d.SetPlayerIndex = on_player;
@@ -1243,6 +1246,52 @@ void said(const std::string& dir) {
     unplug({&b, &quiet});
 }
 
+// ---- GameCube A, B, X and Y are the face buttons labeled A, B, X and Y, as Nintendo's own
+// GameCube games on its consoles have them, and a pad whose faces carry no letters has them
+// by Xbox position. Each pad lands on port 1, and each of its face buttons is pressed alone.
+void labels(const std::string& dir) {
+    struct Case {
+        const char* name;
+        Uint16 vendor, product;
+        const char* line;            // the placement line
+        uint16_t south, east, west, north;  // what each face button is to the game
+    };
+    static const Case kCases[] = {
+        {"virtual switch pro", 0x057e, 0x2009, "gamepads: port 1 is switchpro, unknown, 057e:2009, rumble yes, south label B, east label A\n",
+         PAD_B, PAD_A, PAD_Y, PAD_X},
+        {"virtual xbox one", 0x045e, 0x02ea, "gamepads: port 1 is xboxone, unknown, 045e:02ea, rumble yes, south label A, east label B\n",
+         PAD_A, PAD_B, PAD_X, PAD_Y},
+        {"virtual dualsense", 0x054c, 0x0ce6, "gamepads: port 1 is ps5, unknown, 054c:0ce6, rumble yes, south label cross, east label circle\n",
+         PAD_A, PAD_B, PAD_X, PAD_Y},
+    };
+    for (const Case& c : kCases) {
+        power_on(1);
+        gamepads_init();
+        Virtual v{c.name};
+        v.vendor = c.vendor;
+        v.product = c.product;
+        const std::string landed = dir + "/labels-landed.txt";
+        capture(landed, [&] {
+            attach(v);
+            frame();
+        });
+        // What port 1 reads while `button` alone is held.
+        auto sends = [&](int button) {
+            press(v, button, true);
+            const uint16_t got = read(0).buttons;
+            press(v, button, false);
+            return got;
+        };
+        const bool faces = sends(SDL_GAMEPAD_BUTTON_SOUTH) == c.south && sends(SDL_GAMEPAD_BUTTON_EAST) == c.east &&
+                           sends(SDL_GAMEPAD_BUTTON_WEST) == c.west && sends(SDL_GAMEPAD_BUTTON_NORTH) == c.north;
+        check(lines_with(landed, c.line) == 1 && faces,
+              (std::string(c.name) + ": its face buttons reach the game by their labels, or by Xbox position for "
+                                     "symbols, as its placement line's labels say").c_str());
+        unplug({&v});
+        gamepads_shutdown();
+    }
+}
+
 int run_ports(const std::string& dir) {
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
@@ -1278,6 +1327,7 @@ int run_ports(const std::string& dir) {
     memory_unreadable(dir, file);
     gamepads_remember(nullptr);
     said(dir);
+    labels(dir);
     return finish("ports");
 }
 
@@ -1345,9 +1395,9 @@ int run_record(const std::string& dir) {
         two = two && seen[s * 4 + 1].connected;
         rest = rest && !seen[s * 4 + 2].connected && !seen[s * 4 + 3].connected;
     }
-    check(two && rest && seen[1 * 4 + 1].buttons == PAD_A && seen[2 * 4 + 1].buttons == PAD_A && seen[3 * 4].buttons == PAD_X &&
+    check(two && rest && seen[1 * 4 + 1].buttons == PAD_A && seen[2 * 4 + 1].buttons == PAD_A && seen[3 * 4].buttons == PAD_B &&
               seen[4 * 4 + 1].stick_x == 228 && at_rest(seen[5 * 4]) && at_rest(seen[5 * 4 + 1]),
-          "recording with --pads=1: port 2's gamepad (A, then the stick) and port 1's (east button, as X) reach the guest; ports 3 and 4 unplugged");
+          "recording with --pads=1: port 2's gamepad (A, then the stick) and port 1's (east button, labeled B) reach the guest; ports 3 and 4 unplugged");
     const std::string log = dir + "/log/inputs.txt";
     check(read_file(log).rfind("# gcn-recomp input log v5\n", 0) == 0 &&
               lines_starting(log, "# motor ") ==

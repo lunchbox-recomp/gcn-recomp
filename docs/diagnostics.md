@@ -156,7 +156,8 @@ said once and never written over.
 The run's output says what each gamepad did, on `gamepads:` lines (`runtime/gamepads.h`).
 One that lands on a port gets a second line with what SDL knows of it, such as
 `port 1 is switchpro, wireless, 057e:2009, rumble yes, south label B, east label A`. The
-labels say whose layout its face buttons have.
+labels say whose layout its face buttons have, and the GameCube's A, B, X and Y follow
+them (`runtime/gamepads.h`).
 
 When it's pulled out, or when the run ends with it still on its port, a `port N sent` line
 gives each SDL button's presses and each axis's lowest and highest raw value, whether the
