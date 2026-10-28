@@ -4,9 +4,10 @@
 Usage: python3 tools/ci.py [JOB ...]
 
 Run it from the repository's root. With no JOB it runs every job. A job's steps run in
-order, and the first one that fails stops the run with its exit code.
-.github/workflows/ci.yml installs what a runner lacks and then runs each job by name, so a
-step changes here and nowhere else.
+order, and the first one that fails stops the run. .github/workflows/ci.yml installs what
+a runner lacks and then runs each job by name, so a step changes here and nowhere else.
+
+Exits 0 when every step passed, 1 when a step failed and 2 on an unknown job.
 """
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ def main(jobs: list[str]) -> int:
             code = subprocess.run(cmd).returncode
             if code:
                 print(f"== {job}: {name} exited {code}", flush=True)
-                return code
+                return 1
     return 0
 
 
