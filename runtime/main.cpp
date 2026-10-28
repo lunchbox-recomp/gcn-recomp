@@ -137,6 +137,14 @@ static void* gl_proc(const char* name) { return reinterpret_cast<void*>(SDL_GL_G
 // use of them holds this.
 static std::mutex g_pads_mutex;
 
+// The gamepads and a wheel shut down: none is left rumbling or pushing, and each gamepad
+// says what it sent.
+static void pads_down() {
+    std::lock_guard<std::mutex> lk(g_pads_mutex);
+    input_map_shutdown();
+    gamepads_shutdown();
+}
+
 static void on_interrupt() {
     // GCN_RAM_DUMP=<path>: the guest RAM at the interrupt, for reading the game's state offline.
     if (const char* path = getenv("GCN_RAM_DUMP")) {
@@ -146,11 +154,7 @@ static void on_interrupt() {
     }
     plat_watchdog(2, 2);  // never hang in here (stdio locks may be held by other threads)
     input_log_end();
-    {
-        std::lock_guard<std::mutex> lk(g_pads_mutex);
-        input_map_shutdown();  // a wheel left pushing is a wheel pushing at nobody
-        gamepads_shutdown();   // and a gamepad left rumbling, at nobody
-    }
+    pads_down();  // a wheel left pushing, or a gamepad left rumbling, is one at nobody
     debug_dump_threads();
     plat_exit_now(1);
 }
@@ -273,14 +277,6 @@ static bool pump_events() {
 // What main() starts SDL with: no joystick, gamepad or haptic subsystem, which
 // open_controllers starts unless --no-gamepads.
 static constexpr SDL_InitFlags kSdlInit = SDL_INIT_VIDEO | SDL_INIT_AUDIO;
-
-// The gamepads and a wheel shut down: none is left rumbling or pushing, and each gamepad
-// says what it sent.
-static void pads_down() {
-    std::lock_guard<std::mutex> lk(g_pads_mutex);
-    input_map_shutdown();
-    gamepads_shutdown();
-}
 
 // controls.txt, and unless --no-gamepads the joystick and haptic subsystems and the
 // gamepads, after SDL_Init. They're shut down at any exit, which covers a way out that
@@ -573,11 +569,7 @@ int main(int argc, char** argv) {
                                        iso);
         record::finish();
         input_log_end();
-        {
-            std::lock_guard<std::mutex> lk(g_pads_mutex);
-            input_map_shutdown();
-            gamepads_shutdown();
-        }
+        pads_down();
         threads_request_quit();
         plat_exit_now(rc);
     }
@@ -678,11 +670,7 @@ int main(int argc, char** argv) {
     }
     record::finish();
     input_log_end();
-    {
-        std::lock_guard<std::mutex> lk(g_pads_mutex);
-        input_map_shutdown();
-        gamepads_shutdown();
-    }
+    pads_down();
     threads_request_quit();
     plat_exit_now(0);
 }
