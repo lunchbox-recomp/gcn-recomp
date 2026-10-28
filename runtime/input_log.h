@@ -18,6 +18,13 @@
 // and its own log writes the same lines, so a replay with no controller has the run's
 // rumble. Logs of versions 1 to 4 have none and load as before.
 //
+// The header gives the speed the run read the disc at, which the game's timeline runs on,
+// as `# disc fast` or `# disc console` (g_fast_disc), and the version stays 5 since every
+// reader skips a `#` line it doesn't know. A replay reads at the log's speed whatever
+// settings.txt or --disc ask for, and says so on stderr when they ask for the other. A log
+// without the line, or with one that names neither speed, replays at console, since every
+// log from before the line was recorded on the console-timed drive or an earlier one.
+//
 // A log is a directory:
 //   inputs.txt       one line per change of pad state (see the file's own header)
 //   memcard_a.raw    the memory card as it was when the run started, if there was one
@@ -31,8 +38,9 @@
 #include <string>
 
 // Start recording into `dir` (created). `memcard_path` and `sram_path` are copied in as the
-// snapshots when they exist. Returns false, and records nothing, if the directory cannot
-// be made.
+// snapshots when they exist, and the header records what g_fast_disc holds then, so a
+// frontend calls this after it sets that and after any replay has loaded. Returns false, and
+// records nothing, if the directory can't be made.
 bool input_log_start(const std::string& dir, const std::string& memcard_path, const std::string& sram_path);
 
 
@@ -40,6 +48,8 @@ bool input_log_start(const std::string& dir, const std::string& memcard_path, co
 // and `memcard_out` receives that path; the frontend points the EXI card at it before
 // boot. `sram_out` receives `dir`/sram_replay.raw, which starts as a copy of the SRAM
 // snapshot, or as no file when the log has none; the frontend points the SRAM at it.
+// g_fast_disc is set to the log's disc speed, with a line on stderr when that changes it, so
+// a frontend calls this after it sets that from its own setting and before the guest boots.
 // Returns false if there is no inputs.txt.
 bool input_replay_load(const std::string& dir, std::string& memcard_out, std::string& sram_out);
 

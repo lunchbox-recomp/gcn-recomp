@@ -13,13 +13,18 @@
 // and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a check sets
 // by hand. The interrupt handler's thread dump (debug_dump_threads) and guest memory
 // (g_mem) are stubbed too, and fatal, which says why and exits 1, and the session's note
-// that the game is starting again (session_relaunching), which no check reaches.
+// that the game is starting again (session_relaunching), which no check reaches. The disc
+// speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
+// and a check sets it as settings.txt or --disc would and reads back what a replay left.
 //
 // usage: test_ports <empty work dir>            the port checks
 //        test_ports --record <empty work dir>   two gamepads, played and logged
 //        test_ports --replay <that work dir>    that log replayed with none
 //        test_ports --replay-no-sram <that work dir>   that log again, its SRAM snapshot gone
 //        test_ports --replay-v4 <empty work dir>   a version 4 log written by hand, replayed
+//        test_ports --replay-console <empty work dir>   logs recorded at disc console and at
+//                                                       a speed it doesn't know, replayed
+//                                                       with disc fast asked for
 //        test_ports --interrupt <empty work dir>   the interrupt handler run beside the
 //                                                  main loop, which ends the process
 //        test_ports --no-gamepads <empty work dir>   the frontend under --no-gamepads, with
@@ -72,6 +77,7 @@ void fatal(const char* fmt, ...) {
     exit(1);
 }
 void session_relaunching() {}
+bool g_fast_disc = true;
 
 namespace {
 
@@ -1547,6 +1553,8 @@ int run_record(const std::string& dir) {
               lines_starting(log, "# motor ") ==
                   "# motor <poll> <frame> <chan> <0|1>: the game turned that channel's rumble motor on or off there (decimal)\n",
           "the log is version 5, and its header gives the motor line");
+    check(lines_starting(log, "# disc ") == "# disc fast\n",
+          "the log's header says the run read the disc at disc fast, the speed the drive is left at");
     check(lines_starting(log, "motor ") == kMotorLines,
           "the log has a motor line for each change of a port's rumble motor, at the poll that read it, and none where it stayed");
     unplug({&a, &b});
@@ -1561,13 +1569,19 @@ int run_replay(const std::string& dir) {
     std::string card, sram;
     bool loaded = false;
     const std::string said = dir + "/replay-stderr.txt";
+    g_fast_disc = false;  // as settings.txt's disc console or --disc=console leave it
     capture(said, [&] { loaded = input_replay_load(dir + "/log", card, sram); });
     if (!loaded) return 1;
     check(sram == dir + "/log/sram_replay.raw" && read_file(sram) == "the SRAM the run started with\n",
           "a replay gets a scratch copy of the logged SRAM");
     check(lines_with(said, "(with its SRAM snapshot)") == 1, "and its summary line says the log had an SRAM snapshot");
+    check(g_fast_disc && lines_with(said, "[input] the log was recorded at disc fast, so the replay reads at that and not "
+                                          "at disc console\n") == 1,
+          "a log recorded at disc fast replays at disc fast with disc console asked for, and says so");
     // Logged as the frontend logs a replay, into a log of its own.
     if (!input_log_start(dir + "/replay-log", dir + "/no-card.raw", sram)) return 1;
+    check(lines_starting(dir + "/replay-log/inputs.txt", "# disc ") == "# disc fast\n",
+          "and the replay's own log says disc fast");
     power_on(1);
     gamepads_init();
     frame();
@@ -1604,11 +1618,14 @@ int run_replay_without_sram(const std::string& dir) {
     check(sram == dir + "/log/sram_replay.raw" && !plat_readable(sram.c_str()),
           "a log with no SRAM snapshot replays from the default SRAM: the scratch copy an earlier replay left is cleared");
     check(lines_with(said, "SRAM snapshot") == 0, "and its summary line doesn't claim a snapshot");
+    check(g_fast_disc && lines_with(said, "so the replay reads at") == 0,
+          "a replay asked for the disc speed its log was recorded at reads at it and says nothing of it");
     return finish("--replay-no-sram");
 }
 
 // ---- A version 4 log, from before the motor lines, replays as it always did: three steps
-// of reads of the four ports, each port at its logged state from its line's poll on.
+// of reads of the four ports, each port at its logged state from its line's poll on. It has
+// no disc line either, so it replays at disc console.
 int run_replay_v4(const std::string& dir) {
     plat_make_dirs(dir + "/log");
     write_file(dir + "/log/inputs.txt", "# gcn-recomp input log v4\n# game TEST00  started 2026-10-28T12:00:00\n"
@@ -1617,7 +1634,10 @@ int run_replay_v4(const std::string& dir) {
                                         "0 0 2 0 0000 80 80 80 80 00 00\n0 0 3 0 0000 80 80 80 80 00 00\n"
                                         "5 0 1 1 0100 E4 80 80 80 00 00\n8 0 0 1 1000 80 80 80 80 00 00\n# end 12 0\n");
     std::string card, sram;
-    if (!input_replay_load(dir + "/log", card, sram)) return 1;
+    bool loaded = false;
+    const std::string said = dir + "/replay-stderr.txt";
+    capture(said, [&] { loaded = input_replay_load(dir + "/log", card, sram); });
+    if (!loaded) return 1;
     input_script_init("");
     power_on(1);
     std::string text;
@@ -1627,7 +1647,49 @@ int run_replay_v4(const std::string& dir) {
     const std::string with_a = "1 0100 E4 80 80 80 00 00\n", start = "1 1000 80 80 80 80 00 00\n";
     check(text == rest + out + out + out + rest + with_a + out + out + start + with_a + out + out,
           "a version 4 log replays: every read of all four ports is its logged state");
+    check(!g_fast_disc && lines_with(said, "[input] the log has no disc line, so the replay reads at disc console and "
+                                           "not at disc fast\n") == 1,
+          "a log with no disc line replays at disc console with disc fast asked for, and says so");
     return finish("--replay-v4");
+}
+
+// ---- A log recorded at disc console, written by hand, replays at disc console with disc
+// fast asked for, and the replay's own log says disc console. One whose disc line names a
+// speed the runtime doesn't know replays at disc console too, and says that rather than
+// that the line is missing.
+int run_replay_console(const std::string& dir) {
+    plat_make_dirs(dir + "/log");
+    write_file(dir + "/log/inputs.txt", "# gcn-recomp input log v5\n# game TEST00  started 2026-10-28T12:00:00\n"
+                                        "# epoch 1792000000\n# disc console\n0 0 0 1 0000 80 80 80 80 00 00\n"
+                                        "# end 4 0\n");
+    std::string card, sram;
+    bool loaded = false;
+    const std::string said = dir + "/replay-stderr.txt";
+    capture(said, [&] { loaded = input_replay_load(dir + "/log", card, sram); });
+    if (!loaded) return 1;
+    check(!g_fast_disc && lines_with(said, "[input] the log was recorded at disc console, so the replay reads at that "
+                                           "and not at disc fast\n") == 1,
+          "a log recorded at disc console replays at disc console with disc fast asked for, and says so");
+    if (!input_log_start(dir + "/replay-log", dir + "/no-card.raw", sram)) return 1;
+    check(lines_starting(dir + "/replay-log/inputs.txt", "# disc ") == "# disc console\n",
+          "and the replay's own log says disc console");
+
+    // A log whose disc line names a speed this runtime doesn't know. Its changes join the
+    // first log's, which nothing reads from here on.
+    plat_make_dirs(dir + "/turbo");
+    write_file(dir + "/turbo/inputs.txt", "# gcn-recomp input log v5\n# game TEST00  started 2026-10-28T12:00:00\n"
+                                          "# epoch 1792000000\n# disc turbo\n0 0 0 1 0000 80 80 80 80 00 00\n"
+                                          "# end 4 0\n");
+    g_fast_disc = true;  // as settings.txt's disc fast or --disc=fast leave it
+    const std::string said_turbo = dir + "/turbo-stderr.txt";
+    capture(said_turbo, [&] { loaded = input_replay_load(dir + "/turbo", card, sram); });
+    if (!loaded) return 1;
+    check(!g_fast_disc &&
+              lines_with(said_turbo, "[input] the log's disc line names neither fast nor console, so the replay reads at "
+                                     "disc console and not at disc fast\n") == 1 &&
+              lines_with(said_turbo, "no disc line") == 0,
+          "a log whose disc line names neither speed replays at disc console with disc fast asked for, and says that");
+    return finish("--replay-console");
 }
 
 // ---- An interrupt runs on a thread of its own (plat_install_crash_handlers), so it stops
@@ -1781,11 +1843,12 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay-no-sram")) return run_replay_without_sram(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay-v4")) return run_replay_v4(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "--replay-console")) return run_replay_console(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--interrupt")) return run_interrupt(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
-    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--interrupt|--no-gamepads|--reset|"
-                    "--shutdown] <work dir>\n");
+    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
+                    "--no-gamepads|--reset|--shutdown] <work dir>\n");
     return 2;
 }

@@ -143,6 +143,7 @@ bool input_log_start(const std::string& dir, const std::string& memcard_path, co
     strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%S", localtime(&now));
     rtc_set_base(now);
     fprintf(g_out, "# gcn-recomp input log v5\n# game %s  started %s\n# epoch %lld\n", GCN_DISC_ID, stamp, (long long)now);
+    fprintf(g_out, "# disc %s\n", g_fast_disc ? "fast" : "console");
     fprintf(g_out, "# poll frame chan connected buttons stick_x stick_y cstick_x cstick_y trig_l trig_r\n");
     fprintf(g_out, "# (hex; each line is that channel's state from that pad poll on)\n");
     fprintf(g_out, "# jump <back-edge count> <edges>: the clock caught up with the host there (decimal)\n");
@@ -180,6 +181,11 @@ bool input_replay_load(const std::string& dir, std::string& memcard_out, std::st
     char line[2048];
     int version = 1;
     uint32_t end_key = 0;
+    // The disc speed the log was recorded at (`# disc`), which the replay reads at. 1 is fast
+    // and 0 console. -1 is a log without the line and -2 one whose line names neither. Both
+    // replay at console speed, since a log from before the line was recorded on the
+    // console-timed drive or an earlier one.
+    int fast_disc = -1;
     // The poll of the last pad line read, and the jumps and pose records since it, which
     // take the next pad line's poll as the end of their bracket (Jump).
     uint32_t last_key = 0;
@@ -198,6 +204,9 @@ bool input_replay_load(const std::string& dir, std::string& memcard_out, std::st
             if (sscanf(line, "# gcn-recomp input log v%d", &version) == 1) continue;
             if (sscanf(line, "# epoch %lld", &epoch) == 1) rtc_set_base((time_t)epoch);
             if (sscanf(line, "# end %u %u", &end_poll, &end_frame) == 2) end_key = version >= 2 ? end_poll : end_frame;
+            char disc[16];
+            if (sscanf(line, "# disc %15s", disc) == 1)
+                fast_disc = !strcmp(disc, "fast") ? 1 : !strcmp(disc, "console") ? 0 : -2;
             continue;
         }
         if (line[0] == '\n') continue;
@@ -291,6 +300,20 @@ bool input_replay_load(const std::string& dir, std::string& memcard_out, std::st
             g_replay_last_key, g_replay_by_frame ? "frames" : "polls", g_jumps.size(), poses, path.c_str(),
             snapshots,
             g_replay_by_frame ? " (v1 log: keyed by frame, so only approximate)" : "");
+    // The guest's timeline runs on the disc's timing, so the replay reads at the log's speed
+    // whatever settings.txt or --disc asked for.
+    const bool fast = fast_disc == 1;
+    if (fast != g_fast_disc) {
+        if (fast_disc == -1)
+            fprintf(stderr, "[input] the log has no disc line, so the replay reads at disc console and not at disc fast\n");
+        else if (fast_disc == -2)
+            fprintf(stderr, "[input] the log's disc line names neither fast nor console, so the replay reads at disc "
+                            "console and not at disc fast\n");
+        else
+            fprintf(stderr, "[input] the log was recorded at disc %s, so the replay reads at that and not at disc %s\n",
+                    fast ? "fast" : "console", fast ? "console" : "fast");
+        g_fast_disc = fast;
+    }
     return true;
 }
 

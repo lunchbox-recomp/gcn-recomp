@@ -26,6 +26,9 @@
 // being written back. It applies `scale` and `disc` (--disc=fast or --disc=console).
 // `--aspect` and `--fullscreen` don't read the file yet, so `aspect` and `fullscreen` are
 // only read and kept.
+//
+// A replay reads the disc at the speed its log was recorded at, whatever the file or --disc
+// says (input_log.h).
 #pragma once
 #include <string>
 

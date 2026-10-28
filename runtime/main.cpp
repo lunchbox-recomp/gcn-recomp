@@ -451,7 +451,9 @@ int main(int argc, char** argv) {
     // input_log.h. --no-input-log turns it off; --input-log=<dir> names the directory, and
     // without it a session (GCN_SESSION) puts the log in its own.
     // The memory card and the SRAM are snapshotted into the log, and a replay runs on
-    // scratch copies of those snapshots rather than the real ones.
+    // scratch copies of those snapshots rather than the real ones. A replay reads the disc at
+    // its log's speed over the one asked for above, and the log records the speed this run
+    // reads at.
     std::string replay_card, replay_sram;
     if (!replay_dir.empty()) {
         if (!input_replay_load(replay_dir, replay_card, replay_sram)) return 1;
