@@ -211,6 +211,16 @@ uint8_t axis_to_u8(int v, bool invert) {
     return (uint8_t)std::clamp(r, 0, 255);
 }
 
+// Whether the gamepad `g` is asked for rumble. One SDL says has none isn't, since the call
+// would only fail, and SDL is asked at each call: a PS4 pad over Bluetooth gains rumble if
+// SDL's enhanced reports are turned on after it lands. A GameCube pad is asked whatever SDL
+// says, because SDL's GameCube driver keeps what it said as the pad landed. That driver
+// rumbles a pad whose adapter's second cable came later, and refuses itself without one.
+bool may_rumble(SDL_Gamepad* g) {
+    return SDL_GetGamepadType(g) == SDL_GAMEPAD_TYPE_GAMECUBE ||
+           SDL_GetBooleanProperty(SDL_GetGamepadProperties(g), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
+}
+
 }  // namespace
 
 void gamepads_load_mappings() {
@@ -299,11 +309,7 @@ void gamepads_rumble(int port, bool motor) {
         if (motor) g.rumbles++;
         g.failure_said = false;
     }
-    // A gamepad SDL says has no rumble isn't asked for one, which would only fail. It's
-    // asked each time, since a pad can gain rumble after it lands (a GameCube adapter's
-    // second cable plugged in).
-    if (g.pad && (motor || g.rumbling) &&
-        SDL_GetBooleanProperty(SDL_GetGamepadProperties(g.pad), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false)) {
+    if (g.pad && (motor || g.rumbling) && may_rumble(g.pad)) {
         g.calls++;
         if (!SDL_RumbleGamepad(g.pad, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0)) {
             g.failed++;

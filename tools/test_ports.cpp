@@ -1279,6 +1279,33 @@ void said(const std::string& dir) {
     unplug({&b, &quiet});
 }
 
+// ---- A GameCube pad is asked for rumble whatever SDL says of it. SDL's GameCube driver
+// says a pad has none if it lands before the adapter's second cable is plugged in, and never
+// says otherwise, though it rumbles the pad once the cable is in.
+void gamecube_rumble(const std::string& dir) {
+    power_on(1);
+    gamepads_init();
+    Virtual v{"virtual gamecube adapter"};
+    v.vendor = 0x057e;
+    v.product = 0x0337;
+    attach(v);
+    // The test's own hold on the device, so the capability it clears is still there when the
+    // frontend opens it.
+    SDL_Joystick* j = SDL_OpenJoystick(v.id);
+    SDL_SetBooleanProperty(SDL_GetJoystickProperties(j), SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN, false);
+    const std::string landed = dir + "/gamecube-landed.txt", out = dir + "/gamecube-out.txt";
+    capture(landed, [] { frame(); });
+    SDL_CloseJoystick(j);
+    capture(out, [] {
+        for (int k = 0; k < 3; k++) motor(0);
+        gamepads_shutdown();
+    });
+    check(lines_with(landed, "gamepads: port 1 is gamecube, unknown, 057e:0337, rumble no, south label A, east label X\n") == 1 &&
+              v.rumbles == 3 && v.stops == 3 && lines_with(out, "gamepads: port 1 rumble on 3 times, 0 of 6 calls failed\n") == 1,
+          "a GameCube pad SDL says has no rumble is still asked for it, and rumbles");
+    detach(v);
+}
+
 // ---- GameCube A, B, X and Y are the face buttons labeled A, B, X and Y, as Nintendo's own
 // GameCube games on its consoles have them, and a pad whose faces carry no letters has them
 // by Xbox position. Each pad lands on port 1, and each of its face buttons is pressed alone.
@@ -1391,6 +1418,7 @@ int run_ports(const std::string& dir) {
     memory_unreadable(dir, file);
     gamepads_remember(nullptr);
     said(dir);
+    gamecube_rumble(dir);
     labels(dir);
     headset_layout();
     return finish("ports");

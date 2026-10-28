@@ -172,9 +172,13 @@ A gamepad that leaves before a frame reads it says `port N was never read` in pl
 `sent` line. The rumble line says `time` and `call` where the count is 1.
 
 A gamepad SDL says has no rumble, whose second line says `rumble no`, is never asked for
-one, so its rumble line counts the game's ons with no calls. A rumble call that fails says
-why once after each on or off, as `port N rumble failed: <SDL's error>`, rather than once
-every few milliseconds.
+one, so its rumble line counts the game's ons with no calls. A GameCube pad is asked
+anyway, since SDL never updates what it says of one that landed before its adapter's
+second cable was in.
+
+A rumble call that fails says why once after each on or off, as `port N rumble failed:
+<SDL's error>`, rather than once every few milliseconds. On Nintendo's own adapter a
+WaveBird says it after each on, as does any pad while the second cable is out.
 
 On a pad SDL drives through HIDAPI, a call SDL accepts has only been queued. A write that
 fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad shook.
