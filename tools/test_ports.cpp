@@ -89,12 +89,15 @@ struct Virtual {
     int rumbles = 0;  // rumbles started on it
     int stops = 0;    // rumbles stopped on it
     int player = -1;  // the player index SDL last told the device
+    bool can_rumble = true;  // false: it has no rumble, as SDL sees it
+    bool refuses = false;    // a rumble asked of it fails, saying why
 };
 
 bool SDLCALL on_rumble(void* u, Uint16 low, Uint16 high) {
-    if (low || high) static_cast<Virtual*>(u)->rumbles++;
-    else static_cast<Virtual*>(u)->stops++;
-    return true;
+    Virtual* v = static_cast<Virtual*>(u);
+    if (low || high) v->rumbles++;
+    else v->stops++;
+    return v->refuses ? SDL_SetError("virtual pad refuses rumble") : true;
 }
 
 void SDLCALL on_player(void* u, int index) { static_cast<Virtual*>(u)->player = index; }
@@ -114,7 +117,7 @@ void attach(Virtual& v, int index = kSdlIndex) {
     d.nbuttons = v.gamepad ? SDL_GAMEPAD_BUTTON_COUNT : 4;
     d.name = v.name;
     d.userdata = &v;
-    d.Rumble = on_rumble;
+    d.Rumble = v.can_rumble ? on_rumble : nullptr;
     d.SetPlayerIndex = on_player;
     v.id = SDL_AttachVirtualJoystick(&d);
     if (!v.id) fprintf(stderr, "SDL_AttachVirtualJoystick: %s\n", SDL_GetError());
@@ -157,6 +160,11 @@ bool at_rest(const PadState& p) {
 
 void press(const Virtual& v, int button, bool down) {
     if (SDL_Joystick* j = v.id ? SDL_GetJoystickFromID(v.id) : nullptr) SDL_SetJoystickVirtualButton(j, button, down);
+    frame();
+}
+
+void push(const Virtual& v, int axis, Sint16 value) {
+    if (SDL_Joystick* j = v.id ? SDL_GetJoystickFromID(v.id) : nullptr) SDL_SetJoystickVirtualAxis(j, axis, value);
     frame();
 }
 
@@ -1141,6 +1149,100 @@ void memory_unreadable(const std::string& dir, const std::string& file) {
     remove(file.c_str());
 }
 
+// ---- What the run's output says of each gamepad: what SDL knows of it as it lands on a
+// port, what it sent while there when it leaves (pulled out, or still there at shutdown),
+// and why its rumble failed, once after each on or off.
+void said(const std::string& dir) {
+    power_on(1);
+    gamepads_init();
+    Virtual a{"virtual pad said"}, quiet{"virtual pad quiet"};
+    quiet.can_rumble = false;
+    const std::string landed = dir + "/said-landed.txt";
+    capture(landed, [&] {
+        attach(a);
+        frame();
+        attach(quiet);
+        frame();
+    });
+    check(lines_with(landed, "gamepads: \"virtual pad said\" on port 1\n"
+                             "gamepads: port 1 is standard, unknown, 0000:0000, rumble yes, south label A, east label B\n") == 1 &&
+              lines_with(landed, "gamepads: \"virtual pad quiet\" on port 2\n"
+                                 "gamepads: port 2 is standard, unknown, 0000:0000, rumble no, south label A, east label B\n") == 1,
+          "a gamepad that lands on a port is said, after its port line, with its type, connection, USB IDs, rumble and face labels");
+
+    // Three presses of south and one each of east and misc6, which no port takes; the left
+    // stick to both ends, the right stick down a little and the left trigger all the way.
+    for (int k = 0; k < 3; k++) {
+        press(a, SDL_GAMEPAD_BUTTON_SOUTH, true);
+        press(a, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    }
+    for (const int b : {SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_MISC6}) {
+        press(a, b, true);
+        press(a, b, false);
+    }
+    for (const Sint16 x : {-32768, 32767, 0}) push(a, SDL_GAMEPAD_AXIS_LEFTX, x);
+    push(a, SDL_GAMEPAD_AXIS_RIGHTY, 1000);
+    push(a, SDL_GAMEPAD_AXIS_RIGHTY, 0);
+    // A virtual trigger's axis runs from -32768, released, to 32767, as the gamepad's 0 to 32767.
+    push(a, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 32767);
+    push(a, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, -32768);
+    motor(0);
+    motor(0);
+    const std::string out = dir + "/said-out.txt";
+    capture(out, [&] { unplug({&a}); });
+    check(lines_with(out, "gamepads: \"virtual pad said\" pulled out of port 1\n"
+                          "gamepads: port 1 sent south 3, east 1, misc6 1, left stick x -32768 to 32767 y 0 to 0, right stick "
+                          "x 0 to 0 y 0 to 1000, triggers left 0 to 32767 right 0 to 0\n"
+                          "gamepads: port 1 rumble on 2 times, 0 of 4 calls failed\n") == 1,
+          "a gamepad pulled out says, after its pulled-out line, each button it pressed and how often, each axis's extents and "
+          "its rumble");
+
+    // A rumble that fails is said once after each on or off, not for each call: on for five
+    // frames and off, on for three and off, then on for two, accepted, and off, refused.
+    Virtual f{"virtual pad refusing"};
+    f.refuses = true;
+    attach(f);
+    frame();
+    const std::string failing = dir + "/said-failing.txt";
+    capture(failing, [&] {
+        for (const int on : {5, 3}) {
+            g_outbuf[0] = 0x00400001;
+            for (int k = 0; k < on; k++) frame();
+            g_outbuf[0] = 0x00400000;
+            frame();
+        }
+        f.refuses = false;
+        g_outbuf[0] = 0x00400001;
+        frame();
+        frame();
+        f.refuses = true;
+        g_outbuf[0] = 0x00400000;
+        frame();
+        frame();
+    });
+    capture(dir + "/said-failing-out.txt", [&] { unplug({&f}); });
+    check(lines_with(failing, "gamepads: port 1 rumble failed: virtual pad refuses rumble\n") == 3 &&
+              lines_with(failing, "rumble failed") == 3 &&
+              lines_with(dir + "/said-failing-out.txt", "gamepads: port 1 rumble on 3 times, 9 of 13 calls failed\n") == 1,
+          "a rumble that fails says why once after each on or off, and the pull-out line counts the failed calls");
+
+    // At shutdown each gamepad still on a port says what it sent: one with a press, one with none.
+    Virtual b{"virtual pad shut"};
+    attach(b);
+    frame();
+    press(b, SDL_GAMEPAD_BUTTON_WEST, true);
+    press(b, SDL_GAMEPAD_BUTTON_WEST, false);
+    const std::string shut = dir + "/said-shutdown.txt";
+    capture(shut, [] { gamepads_shutdown(); });
+    const char* const still = "left stick x 0 to 0 y 0 to 0, right stick x 0 to 0 y 0 to 0, triggers left 0 to 0 right 0 to 0\n";
+    check(lines_with(shut, (std::string("gamepads: port 1 sent west 1, ") + still).c_str()) == 1 &&
+              lines_with(shut, (std::string("gamepads: port 2 sent ") + still).c_str()) == 1 &&
+              lines_with(shut, "gamepads: port 1 rumble on 0 times, 0 of 0 calls failed\n") == 1 &&
+              lines_with(shut, "gamepads: port 2 rumble on 0 times, 0 of 0 calls failed\n") == 1,
+          "at shutdown each gamepad still on a port says what it sent, a press or none, and its rumble");
+    unplug({&b, &quiet});
+}
+
 int run_ports(const std::string& dir) {
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
@@ -1174,6 +1276,8 @@ int run_ports(const std::string& dir) {
     memory_file(dir, file);
     memory_no_pads(dir, file);
     memory_unreadable(dir, file);
+    gamepads_remember(nullptr);
+    said(dir);
     return finish("ports");
 }
 

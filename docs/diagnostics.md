@@ -153,6 +153,21 @@ A launch with no gamepad connected never opens the file. `--headless` stays in i
 loop before SDL starts, so it never looks for one. A file that exists and can't be read is
 said once and never written over.
 
+The run's output says what each gamepad did, on `gamepads:` lines (`runtime/gamepads.h`).
+One that lands on a port gets a second line with what SDL knows of it, such as
+`port 1 is switchpro, wireless, 057e:2009, rumble yes, south label B, east label A`. The
+labels say whose layout its face buttons have.
+
+When it's pulled out, or when the run ends with it still on its port, a `port N sent` line
+gives each SDL button's presses and each axis's lowest and highest raw value, whether the
+frontend maps them or not. A stick that this line shows reaching its ends while the input
+log shows no push was sent by the pad and lost after SDL. A `port N rumble` line follows
+with how often the rumble went on and how many of SDL's rumble calls failed.
+
+A rumble call that fails says why once after each on or off, as
+`port N rumble failed: <SDL's error>`, so a pad that never rumbles gets one line rather
+than one every few milliseconds.
+
 `ninja test_ports` in a build directory (the build allows Linux, but it has only been run
 on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without
 a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own

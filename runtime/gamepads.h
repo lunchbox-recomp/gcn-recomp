@@ -25,6 +25,16 @@
 //
 // A port a controls.txt line names with `port <n>`, `port 1` too, is pinned to the device
 // on that line, and no gamepad takes it (input_map.h). That beats a saved port.
+//
+// What each gamepad did goes to stderr as `gamepads: ` lines. After `"<name>" on port N`,
+// what SDL knows of it: `port N is <type>, <wired|wireless|unknown>, <vendor>:<product>,
+// rumble <yes|no>, south label <label>, east label <label>`. After `"<name>" pulled out of
+// port N`, and at gamepads_shutdown for each gamepad still on a port, what it sent while
+// there: `port N sent <button> <presses>, ..., left stick x <lowest> to <highest> y ...,
+// right stick x ... y ..., triggers left ... right ...`, naming only the buttons pressed,
+// raw values before any dead zone, then `port N rumble on <ons> times, <failed> of <calls>
+// calls failed`. A rumble that fails is said once after each on or off, not at every call:
+// `port N rumble failed: <SDL's error>`.
 #pragma once
 #include "hw/pad.h"
 
@@ -52,9 +62,10 @@ void gamepads_init();
 void gamepads_event(const SDL_Event& e);
 // The gamepad on `port` (0 is port 1) merged into `p`: buttons are added, and a stick or
 // trigger is taken over only while it is pushed. `p.connected` is set while a gamepad is
-// on the port.
+// on the port. Each of SDL's buttons and axes is also counted here, for the line said when
+// the gamepad leaves.
 void gamepads_merge(int port, PadState& p);
 // The pad's rumble motor on the gamepad on `port`, renewed while it runs.
 void gamepads_rumble(int port, bool motor);
-// Stops any rumble and closes the gamepads.
+// Stops any rumble, says what each gamepad on a port sent, and closes the gamepads.
 void gamepads_shutdown();

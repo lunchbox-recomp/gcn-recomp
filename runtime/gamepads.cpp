@@ -18,6 +18,15 @@ struct Port {
     SDL_Gamepad* pad = nullptr;
     SDL_JoystickID which = 0;  // the pad's instance ID
     bool rumbling = false;
+    // What the gamepad sent while on the port (gamepads_merge) and how its rumble went
+    // (gamepads_rumble), said when it leaves the port (say_sent).
+    bool read = false;  // merged at least once, so that lo and hi hold values
+    std::array<bool, SDL_GAMEPAD_BUTTON_COUNT> down{};
+    std::array<int, SDL_GAMEPAD_BUTTON_COUNT> presses{};
+    std::array<int, SDL_GAMEPAD_AXIS_COUNT> lo{}, hi{};  // each axis's extents, raw
+    int rumbles = 0;              // times the rumble was turned on
+    int calls = 0, failed = 0;    // SDL_RumbleGamepad calls, and those that failed
+    bool failure_said = false;    // a failure was said since the last on or off
 };
 
 Port g_ports[4];
@@ -34,6 +43,55 @@ int port_of(SDL_JoystickID which) {
     for (int i = 0; i < 4; i++)
         if (g_ports[i].pad && g_ports[i].which == which) return i;
     return -1;
+}
+
+const char* label_name(SDL_GamepadButtonLabel l) {
+    static const char* const kNames[] = {"unknown", "A", "B", "X", "Y", "cross", "circle", "square", "triangle"};
+    return l >= 0 && l < (int)std::size(kNames) ? kNames[l] : "unknown";
+}
+
+// What SDL knows of the gamepad on port `i`, said as it lands there: its type, how it's
+// connected, its USB IDs, whether it has rumble, and the labels on its south and east
+// buttons, which say whose layout it has.
+void say_landed(int i) {
+    SDL_Gamepad* g = g_ports[i].pad;
+    const char* type = SDL_GetGamepadStringForType(SDL_GetGamepadType(g));
+    const SDL_JoystickConnectionState c = SDL_GetGamepadConnectionState(g);
+    const bool rumble = SDL_GetBooleanProperty(SDL_GetGamepadProperties(g), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
+    fprintf(stderr, "gamepads: port %d is %s, %s, %04x:%04x, rumble %s, south label %s, east label %s\n", i + 1,
+            type ? type : "unknown",
+            c == SDL_JOYSTICK_CONNECTION_WIRED ? "wired" : c == SDL_JOYSTICK_CONNECTION_WIRELESS ? "wireless" : "unknown",
+            SDL_GetGamepadVendor(g), SDL_GetGamepadProduct(g), rumble ? "yes" : "no",
+            label_name(SDL_GetGamepadButtonLabel(g, SDL_GAMEPAD_BUTTON_SOUTH)),
+            label_name(SDL_GetGamepadButtonLabel(g, SDL_GAMEPAD_BUTTON_EAST)));
+}
+
+// What the gamepad on port `i` sent while there, said as it leaves: each SDL button it
+// pressed and how many times, each axis's lowest and highest raw value, then how often its
+// rumble was turned on and how many calls for it failed.
+void say_sent(int i) {
+    static const char* const kButtons[] = {
+        "south", "east", "west", "north", "back", "guide", "start", "leftstick", "rightstick",
+        "leftshoulder", "rightshoulder", "up", "down", "left", "right", "misc1", "rightpaddle1",
+        "leftpaddle1", "rightpaddle2", "leftpaddle2", "touchpad", "misc2", "misc3", "misc4", "misc5", "misc6"};
+    static_assert(std::size(kButtons) == SDL_GAMEPAD_BUTTON_COUNT, "a name for each of SDL's buttons");
+    const Port& g = g_ports[i];
+    if (!g.read) {
+        fprintf(stderr, "gamepads: port %d was never read\n", i + 1);
+    } else {
+        std::string s;
+        for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; k++)
+            if (g.presses[k]) s += std::string(" ") + kButtons[k] + " " + std::to_string(g.presses[k]) + ",";
+        fprintf(stderr,
+                "gamepads: port %d sent%s left stick x %d to %d y %d to %d, right stick x %d to %d y %d to %d, "
+                "triggers left %d to %d right %d to %d\n",
+                i + 1, s.c_str(), g.lo[SDL_GAMEPAD_AXIS_LEFTX], g.hi[SDL_GAMEPAD_AXIS_LEFTX], g.lo[SDL_GAMEPAD_AXIS_LEFTY],
+                g.hi[SDL_GAMEPAD_AXIS_LEFTY], g.lo[SDL_GAMEPAD_AXIS_RIGHTX], g.hi[SDL_GAMEPAD_AXIS_RIGHTX],
+                g.lo[SDL_GAMEPAD_AXIS_RIGHTY], g.hi[SDL_GAMEPAD_AXIS_RIGHTY], g.lo[SDL_GAMEPAD_AXIS_LEFT_TRIGGER],
+                g.hi[SDL_GAMEPAD_AXIS_LEFT_TRIGGER], g.lo[SDL_GAMEPAD_AXIS_RIGHT_TRIGGER], g.hi[SDL_GAMEPAD_AXIS_RIGHT_TRIGGER]);
+    }
+    fprintf(stderr, "gamepads: port %d rumble on %d time%s, %d of %d call%s failed\n", i + 1, g.rumbles,
+            g.rumbles == 1 ? "" : "s", g.failed, g.calls, g.calls == 1 ? "" : "s");
 }
 
 std::string g_memory_path;  // where the saved ports are kept, empty for nowhere
@@ -117,6 +175,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
             g_ports[i] = {a.pad, a.which, false};
             if (!g_memory_path.empty() && ports_assign(g_saved, i, present[first + k].id)) moved = true;
             fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(a.pad), i + 1);
+            say_landed(i);
         }
         if (moved && g_may_save) ports_save(g_memory_path, g_saved);
     }
@@ -166,14 +225,28 @@ void gamepads_event(const SDL_Event& e) {
         const int i = port_of(e.gdevice.which);
         if (i < 0) return;
         fprintf(stderr, "gamepads: \"%s\" pulled out of port %d\n", pad_name(g_ports[i].pad), i + 1);
+        say_sent(i);
         SDL_CloseGamepad(g_ports[i].pad);
         g_ports[i] = Port();
     }
 }
 
 void gamepads_merge(int port, PadState& p) {
-    SDL_Gamepad* c = g_ports[port].pad;
+    Port& g = g_ports[port];
+    SDL_Gamepad* c = g.pad;
     if (!c) return;
+    // Every button, the frontend's or not, and every axis before any dead zone.
+    for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; k++) {
+        const bool down = SDL_GetGamepadButton(c, (SDL_GamepadButton)k);
+        if (down && !g.down[k]) g.presses[k]++;
+        g.down[k] = down;
+    }
+    for (int k = 0; k < SDL_GAMEPAD_AXIS_COUNT; k++) {
+        const int v = SDL_GetGamepadAxis(c, (SDL_GamepadAxis)k);
+        g.lo[k] = g.read ? std::min(g.lo[k], v) : v;
+        g.hi[k] = g.read ? std::max(g.hi[k], v) : v;
+    }
+    g.read = true;
     p.connected = true;
     auto b = [&](SDL_GamepadButton btn) { return SDL_GetGamepadButton(c, btn); };
     if (b(SDL_GAMEPAD_BUTTON_SOUTH)) p.buttons |= PAD_A;
@@ -200,17 +273,30 @@ void gamepads_merge(int port, PadState& p) {
 
 void gamepads_rumble(int port, bool motor) {
     Port& g = g_ports[port];
-    if (g.pad && (motor || g.rumbling)) SDL_RumbleGamepad(g.pad, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0);
+    if (g.pad && motor != g.rumbling) {
+        if (motor) g.rumbles++;
+        g.failure_said = false;
+    }
+    if (g.pad && (motor || g.rumbling)) {
+        g.calls++;
+        if (!SDL_RumbleGamepad(g.pad, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0)) {
+            g.failed++;
+            // Once after each on or off, not at every call.
+            if (!g.failure_said) fprintf(stderr, "gamepads: port %d rumble failed: %s\n", port + 1, SDL_GetError());
+            g.failure_said = true;
+        }
+    }
     g.rumbling = motor;
 }
 
 void gamepads_shutdown() {
-    for (Port& g : g_ports) {
-        if (g.pad) {
-            if (g.rumbling) SDL_RumbleGamepad(g.pad, 0, 0, 0);
-            SDL_CloseGamepad(g.pad);
+    for (int i = 0; i < 4; i++) {
+        if (g_ports[i].pad) {
+            if (g_ports[i].rumbling) gamepads_rumble(i, false);
+            say_sent(i);
+            SDL_CloseGamepad(g_ports[i].pad);
         }
-        g = Port();
+        g_ports[i] = Port();
     }
     g_left_out.clear();
     // The next launch in this process reads the file again.
