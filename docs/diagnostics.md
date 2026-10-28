@@ -706,6 +706,12 @@ tried, those came closest to the few ROM words that are publicly known. Its outp
 from a console's by however much the ROM's coefficients differ from these. A set past 2
 falls back to the linear interpolation type 1 runs.
 
+A voice loops or stops only when it reads the sample at its end address, as the DSP's
+accelerator does. A streaming player can move the loop address to its next buffer before it
+moves the end there, so a voice that loops above its old end plays on from the loop until
+the end catches up. It used to loop again on every sample past the end and sit on the
+loop's first sample for a list or two.
+
 `ninja test_ax` builds `tools/test_ax.cpp`, which runs `hw/ax.cpp` over a fake main memory
 and ARAM. Each check writes parameter blocks, samples and a command list by hand, runs the
 list and compares what the mixer wrote or counted with numbers worked out by hand. Each

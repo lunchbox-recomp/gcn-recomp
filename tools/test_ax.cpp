@@ -430,6 +430,42 @@ void polyphase_checks() {
     }
 }
 
+// A voice loops or stops only on reading the sample at its end address, as the DSP's
+// accelerator does. A stream moves its loop address to the next slot before it moves its end
+// there, so a voice that loops into a slot above its old end has to play on from the loop.
+void end_checks() {
+    // 1000 for 32 samples, then 2000 for 0x200 samples from 0x100 on. The voice starts two
+    // before its end, so it plays two of 1000, loops to 0x100 and plays 158 of 2000.
+    reset(kHashLater);
+    PB pb = pcm_voice(1000, 32, 0x8000, 0x8000);
+    for (int i = 0; i < 0x200; i++) {
+        g_aram[2 * (kSampleAt + 0x100 + i)] = 2000 >> 8;
+        g_aram[2 * (kSampleAt + 0x100 + i) + 1] = 2000 & 0xFF;
+    }
+    pb.set32(PB_LOOP_HI, kSampleAt + 0x100);
+    pb.set32(PB_CUR_HI, kSampleAt + 30);
+    store_pb(pb);
+    run_list();
+    check(out_l(1) == 1000 && out_l(2) == 2000 && out_l(159) == 2000 && pb_word(PB_RUNNING) == 1,
+          "a voice that loops above its end plays its last sample, then the loop on");
+    check(mem_r16(kPB + 2 * PB_CUR_LO) == (uint16_t)(kSampleAt + 0x100 + 158),
+          "and is 158 samples past the loop after the list, not stuck on the loop's first sample");
+
+    // One ADPCM frame at nibble 0x1000 that loops to its own header: 14 samples a frame, so
+    // 160 samples are 11 frames and 6 more, which leaves the voice at nibble 0x1000 + 2 + 6.
+    reset(kHashLater);
+    for (uint32_t i = 0; i < 8; i++) g_aram[0x800 + i] = i ? 0x11 : 0x0F;
+    pb = pcm_voice(0, 1, 0x8000, 0x8000);
+    pb.w[PB_FORMAT] = 0x00;
+    pb.set32(PB_LOOP_HI, 0x1000);
+    pb.set32(PB_END_HI, 0x100F);
+    pb.set32(PB_CUR_HI, 0x1000);
+    store_pb(pb);
+    run_list();
+    check(pb_word(PB_RUNNING) == 1 && mem_r16(kPB + 2 * PB_CUR_LO) == 0x1008,
+          "an ADPCM voice whose end is a frame's last nibble loops there, past the next header");
+}
+
 }  // namespace
 
 int main() {
@@ -440,6 +476,7 @@ int main() {
     depop_checks();
     adpcm_checks();
     polyphase_checks();
+    end_checks();
     printf("%s: %d failed\n", g_failed ? "FAIL" : "ok", g_failed);
     return g_failed ? 1 : 0;
 }

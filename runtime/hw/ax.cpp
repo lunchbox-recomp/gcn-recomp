@@ -180,7 +180,10 @@ struct Accel {
             stopped = true;
             return 0;
         }
-        if (cur > end) {
+        // Only the sample at the end address loops or stops the voice, as on the DSP. A
+        // stream that loops to a slot above its old end plays on from there until the game
+        // moves the end, rather than looping again on every sample.
+        if (cur == end + 1) {
             if (pb.w[PB_LOOPING]) {
                 cur = loop;
                 pb.w[PB_PRED_SCALE] = pb.w[PB_LOOP_PRED_SCALE];
