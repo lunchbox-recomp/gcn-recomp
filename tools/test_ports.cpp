@@ -1173,14 +1173,17 @@ void said(const std::string& dir) {
                                  "gamepads: port 2 is standard, unknown, 0000:0000, rumble no, south label A, east label B\n") == 1,
           "a gamepad that lands on a port is said, after its port line, with its type, connection, USB IDs, rumble and face labels");
 
-    // Three presses of south and one each of east and misc6, which no port takes; the left
+    // Three presses of south and one each of east and misc6, which no port takes, each held
+    // for two frames so that a count of frames held would be twice the presses; the left
     // stick to both ends, the right stick down a little and the left trigger all the way.
     for (int k = 0; k < 3; k++) {
         press(a, SDL_GAMEPAD_BUTTON_SOUTH, true);
+        frame();
         press(a, SDL_GAMEPAD_BUTTON_SOUTH, false);
     }
     for (const int b : {SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_MISC6}) {
         press(a, b, true);
+        frame();
         press(a, b, false);
     }
     for (const Sint16 x : {-32768, 32767, 0}) push(a, SDL_GAMEPAD_AXIS_LEFTX, x);
@@ -1241,6 +1244,7 @@ void said(const std::string& dir) {
     attach(b);
     frame();
     press(b, SDL_GAMEPAD_BUTTON_WEST, true);
+    frame();
     press(b, SDL_GAMEPAD_BUTTON_WEST, false);
     const std::string shut = dir + "/said-shutdown.txt";
     capture(shut, [] { gamepads_shutdown(); });
@@ -1342,13 +1346,13 @@ int run_ports(const std::string& dir) {
 
 // ---- Recording and replay: the same reads in both runs. Each step sets what the live
 // gamepads do (when there are any) and the game's rumble motors, runs a frame and reads the
-// four ports once.
+// four ports once, at presented frame 100 + step.
 const int kSteps = 6;
 
 // The motor lines a log of those steps has: port 1's motor on at step 1 and still on at step
 // 2, off at step 3, and port 2's on from step 4 to the end. Each is written at the poll that
-// reads the port (the step's polls are 4 * step to 4 * step + 3), at frame 0.
-const char* const kMotorLines = "motor 4 0 0 1\nmotor 12 0 0 0\nmotor 17 0 1 1\n";
+// reads the port (the step's polls are 4 * step to 4 * step + 3), at the step's frame.
+const char* const kMotorLines = "motor 4 101 0 1\nmotor 12 103 0 0\nmotor 17 104 1 1\n";
 
 // The lines of the file at `path` that start with `prefix`.
 std::string lines_starting(const std::string& path, const char* prefix) {
@@ -1374,7 +1378,7 @@ std::string steps(Virtual* a, Virtual* b, std::vector<PadState>& seen) {
         g_outbuf[1] = s >= 4 ? 0x00400001 : 0x00400000;
         frame();
         for (int i = 0; i < 4; i++) {
-            seen.push_back(read(i));
+            seen.push_back(read(i, 100 + s));
             out += describe(seen.back());
         }
     }
