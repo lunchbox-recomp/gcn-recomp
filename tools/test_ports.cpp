@@ -1425,6 +1425,39 @@ void headset_layout() {
           "the headset's default layout: south is GameCube A, east B, west X and north Y");
 }
 
+// ---- main() takes the disc speed from settings.txt, and --disc anywhere on the command
+// line beats it for the run (take_disc_speed). Each check starts g_fast_disc at the other
+// speed, so one that's left alone shows.
+void disc_speed(const std::string& dir) {
+    Settings console, fast;
+    console.fast_disc = false;
+    char game[] = "game", image[] = "game.iso", hidden[] = "--hidden", overlay[] = "--disc-overlay=overlay.json";
+    char to_fast[] = "--disc=fast", to_console[] = "--disc=console", slow[] = "--disc=slow";
+    char* none[] = {game, image, nullptr};
+    char* last[] = {game, image, to_fast, nullptr};
+    char* first[] = {game, to_fast, hidden, image, nullptr};
+    char* both[] = {game, to_fast, to_console, nullptr};
+    char* bad[] = {game, slow, image, nullptr};
+    char* other[] = {game, overlay, image, nullptr};
+
+    g_fast_disc = true;
+    check(take_disc_speed(console, 2, none) && !g_fast_disc, "settings.txt's disc console with no --disc reads at console");
+    g_fast_disc = false;
+    check(take_disc_speed(console, 3, last) && g_fast_disc, "--disc=fast beats settings.txt's disc console");
+    g_fast_disc = true;
+    check(take_disc_speed(fast, 3, both) && !g_fast_disc,
+          "--disc=console beats settings.txt's disc fast, and the last --disc wins");
+    g_fast_disc = false;
+    check(take_disc_speed(console, 4, first) && g_fast_disc, "a --disc before other arguments still counts");
+    g_fast_disc = false;
+    check(take_disc_speed(fast, 3, other) && g_fast_disc, "--disc-overlay= isn't taken for --disc=");
+    const std::string said = dir + "/disc-stderr.txt";
+    bool took = true;
+    capture(said, [&] { took = take_disc_speed(fast, 3, bad); });
+    check(!took && lines_with(said, "--disc: fast or console, not slow\n") == 1,
+          "--disc=slow is refused with a line that says what --disc takes");
+}
+
 // ---- The hints main() sets win over the environment, where SDL_JOYSTICK_HIDAPI=1 or the
 // like would otherwise turn a driver for real controllers back on, and the Steam variable
 // tools/test_ports.sh sets is gone from where SDL reads it. No virtual gamepad can show the
@@ -1482,6 +1515,7 @@ int run_ports(const std::string& dir) {
     gamecube_rumble(dir);
     labels(dir);
     headset_layout();
+    disc_speed(dir);
     return finish("ports");
 }
 
