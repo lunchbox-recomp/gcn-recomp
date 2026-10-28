@@ -157,13 +157,13 @@ and 64 MB/s. At that rate a music stream could start in one audio frame, so the 
 dropped its loop flag and the music stopped after its first buffer.
 
 By default every block reads as one the drive has read ahead, so a read costs 600 us and its
-length at 32 MiB/s, as Dolphin's "Speed up disc transfer rate" has it (`e97c3d5`, `702d45b`).
+length at 32 MiB/s, as Dolphin's "Speed up disc transfer rate" has it (`22bc2c8`, `7968abc`).
 `disc console` in `settings.txt` or `--disc=console` times reads as a console's drive does,
 with Dolphin's model and numbers, measured on hardware (`04c025f`). On one menu route that
 made two scene changes freeze for 1.5 s each, against 0.4 s and 0.2 s at the default.
 
-A replay reads at the speed its input log was recorded at (`e13ff65`), and `session.json`
-names the speed (`77b245f`). [The diagnostics](docs/diagnostics.md#the-disc-drive) give
+A replay reads at the speed its input log was recorded at (`80e1d38`), and `session.json`
+names the speed (`6fe5b37`). [The diagnostics](docs/diagnostics.md#the-disc-drive) give
 both speeds' numbers.
 
 A read's DIMAR and DILENGTH move when it completes, since a read at console speed can take
