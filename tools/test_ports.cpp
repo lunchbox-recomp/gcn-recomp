@@ -26,6 +26,8 @@
 //                                                    a gamepad connected before it starts
 //        test_ports --reset <empty work dir>   the game resetting the console during a
 //                                              replay, with a gamepad rumbling
+//        test_ports --shutdown <empty work dir>   the game shutting the console down,
+//                                                 with a gamepad rumbling
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. On macOS and Linux main() turns off
@@ -1682,6 +1684,47 @@ int run_reset(const std::string& dir) {
     return finish("--reset");
 }
 
+// ---- The game shutting the console down ends the process with no reset handler
+// (guest_reset), so what stops a rumbling gamepad and has it say what it sent is the
+// shutdown open_controllers leaves for the exit.
+Virtual* g_shut;
+int g_stderr = -1;  // the test's stderr, while the exit's goes to a file
+
+// The exit runs this last, after open_controllers' shutdown.
+void after_shutdown() {
+    fflush(stderr);
+    dup2(g_stderr, 2);
+    printf("---- stderr\n%s----\n", read_file("shutdown-stderr.txt").c_str());
+    check(g_shut->stops == 1 && lines_with("shutdown-stderr.txt", "gamepads: port 1 rumble on 1 time, 0 of 2 calls failed\n") == 1,
+          "the game shutting the console down stops a rumbling gamepad, which says what it sent");
+    printf("test_ports --shutdown: %d of %d checks passed\n", g_checks - g_failed, g_checks);
+    fflush(stdout);
+    _exit(g_failed ? 1 : 0);
+}
+
+int run_shutdown(const std::string& dir) {
+    // main()'s saves/ports.txt is relative to where it runs.
+    if (chdir(dir.c_str()) != 0 || !sdl_up()) return 1;
+    open_controllers("no-controls.txt");
+    power_on(1);
+    Virtual a{"virtual pad shutdown"};
+    attach(a);
+    frame();
+    g_outbuf[0] = 0x00400001;  // port 1's motor on from here
+    frame();
+    check(a.rumbles == 1 && a.stops == 0, "port 1's motor rumbles its gamepad");
+    g_shut = &a;
+    fflush(stderr);
+    g_stderr = dup(2);
+    if (FILE* f = fopen("shutdown-stderr.txt", "w")) {
+        dup2(fileno(f), 2);
+        fclose(f);
+    }
+    plat_at_exit(after_shutdown);
+    // What guest_reset does for a shutdown: no reset handler, only the exit.
+    plat_exit_now(0);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1695,7 +1738,8 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--interrupt")) return run_interrupt(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
-    fprintf(stderr,
-            "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--interrupt|--no-gamepads|--reset] <work dir>\n");
+    if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
+    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--interrupt|--no-gamepads|--reset|"
+                    "--shutdown] <work dir>\n");
     return 2;
 }

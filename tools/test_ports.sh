@@ -2,11 +2,12 @@
 # Runs the gamepad port checks: the port checks, a recording of two gamepads, and that
 # recording replayed with none, and that recording's log replayed again with its SRAM
 # snapshot taken away, then a version 4 log replayed, an interrupt handled beside the main
-# loop, the frontend under --no-gamepads, and the game resetting the console. The port
-# checks include the ports remembered in saves/ports.txt under the work dir. SDL's virtual
-# joysticks stand in for the controllers. On macOS and Linux test_ports turns off SDL's
-# drivers that find real ones (kRealDriversOff in tools/test_ports.cpp), so a controller
-# that's connected is left alone unless the environment lets it in by another SDL hint.
+# loop, the frontend under --no-gamepads, the game resetting the console, and the game
+# shutting it down. The port checks include the ports remembered in saves/ports.txt under
+# the work dir. SDL's virtual joysticks stand in for the controllers. On macOS and Linux
+# test_ports turns off SDL's drivers that find real ones (kRealDriversOff in
+# tools/test_ports.cpp), so a controller that's connected is left alone unless the
+# environment lets it in by another SDL hint.
 #
 # usage: tools/test_ports.sh <test_ports> <work dir>
 #   <test_ports>  the program `ninja test_ports` builds in a build directory of a game
@@ -24,7 +25,7 @@ if [ -e "$work" ]; then
   exit 2
 fi
 mkdir -p "$work/files" "$work/log" "$work/v4" "$work/interrupt" "$work/no-gamepads" \
-  "$work/reset" || exit 2
+  "$work/reset" "$work/shutdown" || exit 2
 status=0
 export SDL_AUDIO_DRIVER=dummy
 "$test_ports" "$work/files" || status=1
@@ -35,4 +36,5 @@ export SDL_AUDIO_DRIVER=dummy
 "$test_ports" --interrupt "$work/interrupt" || status=1
 "$test_ports" --no-gamepads "$work/no-gamepads" || status=1
 "$test_ports" --reset "$work/reset" || status=1
+"$test_ports" --shutdown "$work/shutdown" || status=1
 exit $status

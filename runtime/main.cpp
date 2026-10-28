@@ -274,9 +274,24 @@ static bool pump_events() {
 // open_controllers starts unless --no-gamepads.
 static constexpr SDL_InitFlags kSdlInit = SDL_INIT_VIDEO | SDL_INIT_AUDIO;
 
+// The gamepads and a wheel shut down: none is left rumbling or pushing, and each gamepad
+// says what it sent.
+static void pads_down() {
+    std::lock_guard<std::mutex> lk(g_pads_mutex);
+    input_map_shutdown();
+    gamepads_shutdown();
+}
+
 // controls.txt, and unless --no-gamepads the joystick and haptic subsystems and the
-// gamepads, after SDL_Init.
+// gamepads, after SDL_Init. They're shut down at any exit, which covers a way out that
+// doesn't do it first: the game shutting the console down calls no reset handler
+// (guest_reset), and fatal knows nothing of them. A second shutdown finds nothing to do.
 static void open_controllers(const char* controls) {
+    static bool s_at_exit = false;
+    if (!s_at_exit) {
+        s_at_exit = true;
+        plat_at_exit(pads_down);
+    }
     if (g_gamepads && !SDL_InitSubSystem(SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
     std::lock_guard<std::mutex> lk(g_pads_mutex);
     input_map_load(controls);
@@ -301,15 +316,10 @@ static void show_frame(SDL_Window* win) {
 // The game resetting the console starts it again in a fresh process, as a power cycle
 // would -- except in a replay, which would only replay itself from the start again.
 // Either way this process ends (guest_reset), so the gamepads and a wheel are shut down
-// first, as at any other exit: none is left rumbling or pushing, and each gamepad says what
-// it sent.
+// first, as at any other exit.
 static char** g_argv;  // main()'s
 static void on_reset(uint32_t, uint32_t) {
-    {
-        std::lock_guard<std::mutex> lk(g_pads_mutex);
-        input_map_shutdown();
-        gamepads_shutdown();
-    }
+    pads_down();
     if (input_replay_active()) return;
     session_relaunching();
     plat_relaunch(g_argv);
