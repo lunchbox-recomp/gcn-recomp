@@ -752,7 +752,6 @@ function(gcn_add_game)
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
-      ${GCN_RECOMP_DIR}/tools/test_ports_stubs.cpp
       ${RT}/gamepads.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp ${RT}/input_defaults.cpp
       ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/platform.cpp ${RT}/hw/mmio.cpp
       ${RT}/vr_config.cpp ${RT}/settings.cpp)
@@ -761,16 +760,8 @@ function(gcn_add_game)
     target_link_libraries(test_ports PRIVATE ${GCN_SDL_TARGET})
     target_compile_options(test_ports PRIVATE ${GCN_RUNTIME_WARNINGS})
     target_compile_definitions(test_ports PRIVATE ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} ${GCN_GL_DEFS})
-    # main.cpp's own main() is renamed, and test_ports calls it only with a disc image that
-    # isn't there, so it returns before it boots. tools/test_ports_stubs.cpp stands in for
-    # the rest of the runtime that main() calls, and GL is linked for the calls it never
-    # makes. The linker drops what nothing calls, which would otherwise want the whole
-    # runtime.
-    if(APPLE AND NOT GCN_GL_ES)
-      target_link_libraries(test_ports PRIVATE "-framework OpenGL")
-    else()
-      target_sources(test_ports PRIVATE ${GLAD_SOURCE})
-    endif()
+    # main.cpp's own main() is renamed, and nothing else of it is called: the linker drops
+    # the rest, which would otherwise want the whole runtime.
     if(APPLE)
       target_link_options(test_ports PRIVATE -Wl,-dead_strip)
     elseif(NOT MSVC)

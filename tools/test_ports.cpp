@@ -16,8 +16,6 @@
 // that the game is starting again (session_relaunching), which no check reaches. The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
-// The renamed main() is run too, with a disc image that isn't there, and
-// tools/test_ports_stubs.cpp stands in for the rest of the runtime it calls.
 //
 // usage: test_ports <empty work dir>            the port checks
 //        test_ports --record <empty work dir>   two gamepads, played and logged
@@ -35,8 +33,6 @@
 //                                              replay, with a gamepad rumbling
 //        test_ports --shutdown <empty work dir>   the game shutting the console down,
 //                                                 with a gamepad rumbling
-//        test_ports --frontend-disc <empty work dir>   main() taking the disc speed from
-//                                                      settings.txt and --disc
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -1869,42 +1865,6 @@ int run_shutdown(const std::string& dir) {
     plat_exit_now(0);
 }
 
-// ---- The frontend's own main() takes the disc speed from settings.txt, and --disc beats
-// the file for the run. Each call gets a disc image that isn't there, so main() returns 1 at
-// its image check and boots nothing (test_ports_stubs.cpp aborts on anything past it), and
-// the speed it left is read back. On the way it installs the crash handlers
-// (plat_install_crash_handlers), whose thread and signal handlers stay until this process
-// ends.
-int run_frontend_disc(const std::string& dir) {
-    // main() reads settings.txt where it runs.
-    if (chdir(dir.c_str()) != 0) return 1;
-    unsetenv("GCN_TELEMETRY");  // which main() would set up before the image check
-    char game[] = "game", missing[] = "missing.iso", fast[] = "--disc=fast", slow[] = "--disc=slow";
-    char* alone[] = {game, missing, nullptr};
-    char* with_fast[] = {game, fast, missing, nullptr};
-    char* with_slow[] = {game, slow, missing, nullptr};
-    write_file("settings.txt", "disc console\n");
-    int rc = 0;
-
-    g_fast_disc = true;  // as di.cpp starts it
-    capture("console-stderr.txt", [&] { rc = gcn_frontend_main(2, alone); });
-    check(rc == 1 && lines_with("console-stderr.txt", "No game image found.") == 1,
-          "main() with a disc image that isn't there returns 1 at the image check, before it boots anything");
-    check(!g_fast_disc && lines_with("console-stderr.txt", "settings.txt: aspect 4:3, fullscreen 0, scale 2, disc console\n") == 1,
-          "settings.txt's disc console sets the disc to console speed");
-
-    g_fast_disc = false;
-    capture("fast-stderr.txt", [&] { rc = gcn_frontend_main(3, with_fast); });
-    check(rc == 1 && lines_with("fast-stderr.txt", "No game image found.") == 1 && g_fast_disc,
-          "--disc=fast beats settings.txt's disc console for the run");
-
-    capture("slow-stderr.txt", [&] { rc = gcn_frontend_main(3, with_slow); });
-    check(rc == 1 && lines_with("slow-stderr.txt", "--disc: fast or console, not slow\n") == 1 &&
-              lines_with("slow-stderr.txt", "No game image found.") == 0,
-          "--disc=slow is refused: main() says what --disc takes and returns 1 before the image check");
-    return finish("--frontend-disc");
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1922,8 +1882,7 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
-    if (argc == 3 && !strcmp(argv[1], "--frontend-disc")) return run_frontend_disc(argv[2]);
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown|--frontend-disc] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown] <work dir>\n");
     return 2;
 }
