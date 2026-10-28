@@ -187,14 +187,16 @@ fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad s
 `ninja test_ports` in a build directory (the build allows Linux, but it has only been run
 on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without
 a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own
-input loop and the SI layer in, so each port is read back as the guest reads it.
+input loop and the SI layer in, so each port is read back as the guest reads it. It also
+runs the frontend's `main()` with a disc image that isn't there, so it returns before it
+boots, and `tools/test_ports_stubs.cpp` stands in for the rest of the runtime.
 
 `tools/test_ports.sh <test_ports> <work dir>` runs the port checks, a recording of two
 gamepads and its replay with none, a version 4 log's replay, replays of logs recorded at
 `disc console` and at a speed the runtime doesn't know, an interrupt handled beside the
 main loop, the frontend under `--no-gamepads`, the game resetting the console during a
-replay and the game shutting it down. Each check prints `ok` or `FAIL`, and the exit code
-is 0 only if all pass.
+replay, the game shutting it down and `main()` taking the disc speed from `settings.txt`
+and `--disc`. Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass.
 
 Before SDL starts, the test turns off SDL's HIDAPI, IOKit and MFi drivers and HIDAPI's use
 of libusb, for runs on macOS and Linux. Linux's evdev driver has no switch, so the gamepad
