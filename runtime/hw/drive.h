@@ -9,7 +9,7 @@
 // since the disc spins at a constant 28.5 turns a second. Any other block is a seek, which
 // costs the head's travel and then the wait for the block to come round. After a read the
 // drive keeps the last block, the one before it and everything after, and goes on reading
-// until it holds 1 MiB.
+// until it holds 1 MiB. A drive set to read fast (Drive::fast) takes every block at 32 MiB/s.
 #pragma once
 #include <algorithm>
 #include <cmath>
@@ -61,6 +61,10 @@ struct Drive {
     // fill_end in seconds. The same start and end mean it holds nothing.
     uint64_t fill_from = 0, fill_to = 0;
     double fill_start = 0, fill_end = 0;
+    // When this is set, every block reads as one the drive holds, as Dolphin's "Speed up disc
+    // transfer rate" has it, so a read costs 600 us and its length at 32 MiB/s. What the
+    // drive holds and reads ahead is still kept, as after a read that didn't seek.
+    bool fast = false;
 
     // Seconds a read of `len` bytes at `offset` takes when the command starts at `now`
     // seconds, which is never before the last read finished. Updates what the drive holds.
@@ -87,7 +91,7 @@ struct Drive {
         uint64_t left = len;
         do {
             const uint64_t chunk = std::min(left, block + kBlock - offset);
-            if (block >= held_from && block < held_to) {
+            if (fast || (block >= held_from && block < held_to)) {
                 t += (double)chunk / kBufferRate;
             } else {
                 if (block != head) {

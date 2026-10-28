@@ -4,7 +4,8 @@
 // it gives with a time worked out here from the drive's numbers: 600 us to start a read, a
 // block under the head at the disc's rate for its radius, a block read ahead at 32 MiB/s and
 // a seek for anything else. The reads the game sees at console speed are what keep a music
-// stream's header and its first data in different 5 ms audio frames.
+// stream's header and its first data in different 5 ms audio frames. A drive set to read fast
+// takes every block at 32 MiB/s, and its checks pin that and the read ahead it still keeps.
 //
 // usage: test_drive
 // Exits 0 only if every check passes.
@@ -135,11 +136,55 @@ void read_checks() {
     check(near(two.fill_start, 20 + 600e-6 + 0x20 / (32 * kMiB)), "and one that ends three blocks in starts a new one");
 }
 
+// A drive set to read fast counts every block as one it holds, as Dolphin's "Speed up disc
+// transfer rate" does, so a read costs 600 us and its length at 32 MiB/s. It still keeps its
+// account of what it holds and reads ahead.
+void fast_checks() {
+    check(!drive::Drive{}.fast, "a drive times reads as a console's does unless it's set to read fast");
+    const auto fast = [](uint64_t len) { return 600e-6 + (double)len / (32 * kMiB); };
+    const uint64_t at26 = at_radius(0.026) / 0x8000 * 0x8000;
+
+    drive::Drive cold;
+    cold.fast = true;
+    check(near(cold.read(0, 0, 0x20), fast(0x20)), "fast: a 32-byte read at offset 0 takes 600 us and 1 us, not a block");
+    check(cold.fill_from == 0x8000 && cold.fill_to == 0xF8000 && near(cold.fill_start, fast(0x20)) &&
+              near(cold.fill_end, fast(0x20) + drive::disc_seconds(0x8000, 0xF0000)),
+          "and the drive reads ahead from the block after it, as from a read at the head");
+    check(near(cold.read(fast(0x20), 0x8000, 0x18000), fast(0x18000)),
+          "fast: three blocks the read ahead hasn't reached yet take 600 us and their length at 32 MiB/s");
+
+    drive::Drive far;
+    far.fast = true;
+    check(near(far.read(0, at26, 0x20), fast(0x20)), "fast: a read 2 mm out takes no seek and no turn");
+    check(far.fill_from == at26 + 0x8000 && far.fill_to == at26 + 0xF8000, "and the drive reads ahead from there");
+    check(near(far.read(10, at26 - 0x200000, 0x20), fast(0x20)) && far.fill_from == at26 - 0x1F8000,
+          "fast: a read 2 MiB behind what it holds takes no seek, and the read ahead moves to it");
+
+    drive::Drive cross;
+    cross.fast = true;
+    check(near(cross.read(0, 0x7FF8, 0x10), fast(0x10)), "fast: 16 bytes across a block's end take 600 us and their length");
+    drive::Drive none;
+    none.fast = true;
+    check(near(none.read(0, 0, 0), 600e-6) && none.fill_to == 0xF8000, "fast: a read of 0 bytes takes 600 us and reads ahead");
+
+    // What the drive holds is kept as after a read that didn't seek, from the block before the
+    // last one read. A read of that block ends inside the first two blocks held and leaves the
+    // read ahead alone.
+    drive::Drive two;
+    two.fast = true;
+    two.read(0, at26, 0x20);
+    const drive::Drive before = two;
+    check(near(two.read(10, at26 - 0x8000, 0x20), fast(0x20)) && two.fill_from == before.fill_from &&
+              two.fill_start == before.fill_start,
+          "fast: a read of the block before the last one leaves the read ahead as it was");
+}
+
 }  // namespace
 
 int main() {
     disc_checks();
     read_checks();
+    fast_checks();
     printf("%s\n", g_failed ? "FAILED" : "all passed");
     return g_failed ? 1 : 0;
 }
