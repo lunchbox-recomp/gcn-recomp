@@ -197,9 +197,9 @@ is 0 only if all pass.
 
 Before SDL starts, the test turns off SDL's HIDAPI, IOKit and MFi drivers and HIDAPI's use
 of libusb, for runs on macOS and Linux. Linux's evdev driver has no switch, so the gamepad
-allow list names only a reserved USB vendor. The environment can't turn those back on,
-though another of SDL's hints can still let a controller in, as `SDL_JOYSTICK_HIDAPI_PS4=1`
-would.
+allow list names only a reserved USB vendor, and the environment can't turn these back on.
+The test also clears `SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD`, which SDL reads from
+the environment ahead of the allow list, and `tools/test_ports.sh` sets it to check that.
 
 `ninja test_port_memory` builds `tools/test_port_memory.cpp`, which checks which port each
 gamepad gets from what `ports.txt` remembers. It covers serials, which SDL's virtual

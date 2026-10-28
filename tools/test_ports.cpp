@@ -30,10 +30,11 @@
 //                                                 with a gamepad rumbling
 // Files are written into the work dir and left there.
 //
-// SDL's virtual joysticks stand in for controllers. On macOS and Linux main() turns off
-// SDL's drivers that find real ones before anything starts SDL (kRealDriversOff), so a
-// controller connected beside the run isn't opened, rumbled or read, unless the environment
-// lets it in by another of SDL's hints.
+// SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
+// off SDL's drivers that find real ones on macOS and Linux (kRealDriversOff) and clears
+// SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD, which SDL reads ahead of the allow list
+// (kSteamVirtualGamepads), to keep a controller connected beside the run from being opened,
+// rumbled or read.
 #define main gcn_frontend_main
 #include "main.cpp"
 #undef main
@@ -96,8 +97,6 @@ const int kSdlIndex = INT_MIN;  // attach(): keep the player index SDL gives
 // list names only a USB vendor that's reserved (FFFF), which turns away every device a
 // driver that consults it finds; SDL's virtual driver doesn't. main() sets these before
 // anything starts SDL, at override priority, so the environment's values for them lose.
-// The environment can still let a controller in by another hint, as SDL_JOYSTICK_HIDAPI_PS4=1
-// turns that one HIDAPI driver back on.
 const struct {
     const char* hint;
     const char* value;
@@ -108,6 +107,11 @@ const struct {
     {SDL_HINT_JOYSTICK_MFI, "0"},
     {SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0xFFFF/0xFFFF"},
 };
+
+// Set, it lets Steam's virtual gamepads past the allow list. SDL reads it from the process
+// environment rather than as a hint, ahead of the allow list, so main() clears it before
+// anything starts SDL. tools/test_ports.sh sets it, so that drivers_stay_off sees it cleared.
+const char* const kSteamVirtualGamepads = "SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD";
 
 struct Virtual {
     const char* name;
@@ -1412,7 +1416,9 @@ void headset_layout() {
 }
 
 // ---- The hints main() sets win over the environment, where SDL_JOYSTICK_HIDAPI=1 or the
-// like would otherwise turn a driver for real controllers back on.
+// like would otherwise turn a driver for real controllers back on, and the Steam variable
+// tools/test_ports.sh sets is gone from where SDL reads it. No virtual gamepad can show the
+// variable's effect: SDL's virtual driver never asks whether to ignore a device.
 void drivers_stay_off() {
     SDL_Environment* env = SDL_GetEnvironment();
     bool off = true;
@@ -1423,6 +1429,8 @@ void drivers_stay_off() {
         SDL_UnsetEnvironmentVariable(env, h.hint);
     }
     check(off, "the hints that turn off the drivers for real controllers beat the environment");
+    check(!SDL_getenv_unsafe(kSteamVirtualGamepads),
+          "the variable that lets Steam's virtual gamepads past the allow list is cleared before SDL starts");
 }
 
 int run_ports(const std::string& dir) {
@@ -1764,8 +1772,10 @@ int run_shutdown(const std::string& dir) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    // Before anything starts SDL: its drivers that find real controllers off.
+    // Before anything starts SDL: its drivers that find real controllers off, and Steam's
+    // virtual gamepads kept to the allow list.
     for (const auto& h : kRealDriversOff) SDL_SetHintWithPriority(h.hint, h.value, SDL_HINT_OVERRIDE);
+    unsetenv(kSteamVirtualGamepads);
     if (argc == 2) return run_ports(argv[1]);
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);

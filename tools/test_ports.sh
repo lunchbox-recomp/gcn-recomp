@@ -6,8 +6,9 @@
 # shutting it down. The port checks include the ports remembered in saves/ports.txt under
 # the work dir. SDL's virtual joysticks stand in for the controllers. On macOS and Linux
 # test_ports turns off SDL's drivers that find real ones (kRealDriversOff in
-# tools/test_ports.cpp), so a controller that's connected is left alone unless the
-# environment lets it in by another SDL hint.
+# tools/test_ports.cpp) and clears SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD, which SDL
+# reads ahead of the allow list, to leave a controller that's connected alone. This script
+# sets that variable, so that the port checks see it cleared.
 #
 # usage: tools/test_ports.sh <test_ports> <work dir>
 #   <test_ports>  the program `ninja test_ports` builds in a build directory of a game
@@ -28,6 +29,7 @@ mkdir -p "$work/files" "$work/log" "$work/v4" "$work/interrupt" "$work/no-gamepa
   "$work/reset" "$work/shutdown" || exit 2
 status=0
 export SDL_AUDIO_DRIVER=dummy
+export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 "$test_ports" "$work/files" || status=1
 "$test_ports" --record "$work/log" || status=1
 "$test_ports" --replay "$work/log" || status=1
