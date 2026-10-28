@@ -12,11 +12,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: No game names in the tree
-        run: python3 tools/check_generic.py
       - name: Dependencies
         run: brew install ninja
-      - name: Configure without a game
-        run: cmake -S . -B build -G Ninja
-      - name: Unit tests
-        run: ninja -C build unit
+      # tools/ci.py holds the steps, so a Mac runs the same ones with `python3 tools/ci.py`.
+      - name: Unit job
+        run: python3 tools/ci.py unit

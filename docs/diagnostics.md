@@ -162,6 +162,10 @@ or `FAIL` for each check, and the exit code is 0 only if all pass.
 `<build>/unit`. The repository configured on its own (`cmake -S . -B build -G Ninja` at its
 root) defines it too, with placeholders for the game, which is what its CI runs on macOS.
 
+`python3 tools/ci.py` runs every step of CI from the repository's root, and the workflow
+runs its jobs by name, so a Mac and a runner run the same steps. The first step that fails
+stops it.
+
 `ninja unit` also runs `recomp/test_*.py` twice, with the Python CMake found and with
 `/usr/bin/python3` where it exists. `test_fst.py` writes its own disc images, plain and CISO.
 With `GCN_TEST_IMAGE` set to a disc image it also checks `fst.py` against that disc, and it
