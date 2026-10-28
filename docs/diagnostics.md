@@ -61,8 +61,8 @@ log keyed by them replays at the same instants on a game patched to run at a dif
 frame rate (`GCN_CPU_SCALE`, below): the inputs land at the same virtual times, and what
 differs from there is the game's own doing.
 
-The log format is text: a header (version, game, start time and its epoch), then one line
-per change of a channel's state --
+The log format is text: a header (version, game, start time, its epoch and the disc's speed),
+then one line per change of a channel's state --
 `poll frame chan connected buttons stick_x stick_y cstick_x cstick_y trig_l trig_r`, in
 hex, `chan` 0 for port 1 -- the clock's catch-up jumps where they happened (`jump <back-edge count> <edges>`,
 decimal; see "The clock" below), and, when the run ended in a way the runtime saw (a
@@ -190,8 +190,9 @@ a controller or the game, using SDL's virtual joysticks. It compiles the fronten
 input loop and the SI layer in, so each port is read back as the guest reads it.
 
 `tools/test_ports.sh <test_ports> <work dir>` runs the port checks, a recording of two
-gamepads and its replay with none, a version 4 log's replay, an interrupt handled beside
-the main loop, the frontend under `--no-gamepads`, the game resetting the console during a
+gamepads and its replay with none, a version 4 log's replay, replays of logs recorded at
+`disc console` and at a speed the runtime doesn't know, an interrupt handled beside the
+main loop, the frontend under `--no-gamepads`, the game resetting the console during a
 replay and the game shutting it down. Each check prints `ok` or `FAIL`, and the exit code
 is 0 only if all pass.
 
@@ -867,8 +868,8 @@ keep the run's output beside it, as a script does that runs the game with
 `2>&1 | tee <dir>/stdout.txt`. Once the window and the sound device are open, the process
 writes `<dir>/session.json`. Under `--vr` that waits for the headset frontend to open the
 device. A `--headless` run has no window or device and writes it before the guest boots,
-with `refresh_hz` and `audio_device` null. This one is from a run on SDL's dummy
-driver, with its command line shortened and the game's binary called `game`:
+with `refresh_hz` and `audio_device` null. For a run on SDL's dummy driver it looks like
+this, with the command line shortened and the game's binary called `game`:
 
 ```json
 {
@@ -876,6 +877,7 @@ driver, with its command line shortened and the game's binary called `game`:
   "start_epoch": 1792711131,
   "host": {"os": "macOS 26.6.2 (25G83)", "cpu": "Apple M4 Max", "refresh_hz": 120},
   "engine_sha": "b8481589c35a03b87ceda434d190f2c7b63c219a-dirty",
+  "disc": "fast",
   "audio_device": {"driver": "dummy", "rate": 48000, "channels": 2, "buffer": 512},
   "command_line": ["build/game", "--hidden", "--pads=1"]
 }
@@ -884,12 +886,17 @@ driver, with its command line shortened and the game's binary called `game`:
 `start` is the local time the process started with its offset from UTC. `start_epoch` is
 the same moment in seconds since 1970. `host` gives the OS with its version, the CPU's
 model and the refresh rate of the display the window opened on, or null where the platform
-doesn't say. `engine_sha` is the gcn-recomp commit the build was made from, ending `-dirty`
-when a tracked file had changed. The build writes it into a generated header
+doesn't say.
+
+`engine_sha` is the gcn-recomp commit the build was made from, ending `-dirty` when a
+tracked file had changed. The build writes it into a generated header
 (`tools/engine_sha.cmake`), and a build whose engine isn't a git checkout of its own, such as
 a copy inside a game's repository, has null. `ninja test_engine_sha` checks that script in
-repositories it makes. `audio_device` holds the `[audio] device` line's values, and
-`command_line` the process's arguments.
+repositories it makes.
+
+`disc` is the speed the run read the disc at, `fast` or `console`, which for a replay is its
+log's (see "The disc drive" below). `audio_device` holds the `[audio] device` line's
+values, and `command_line` the process's arguments.
 
 Each process prints `[session] <dir>` as it starts. A game that resets the console relaunches
 itself, and the switches the session turned on are cleared first, so the new process turns
@@ -1187,10 +1194,17 @@ is the way to test without moving a rig, given SRS holds 33001: send to another 
 
 ## The disc drive
 
-A DVD read takes as long as a console's drive would take over it (`hw/drive.h`). The model
-and its numbers are Dolphin's, measured on hardware. A read costs 600 us to start, a block
-the drive has read ahead moves at 32 MiB/s and a block under the head costs one 32 KiB
-block at the disc's own rate, from 2.1 MiB/s at the inner edge to 3.325 MiB/s at the outer.
+A DVD read takes the time a drive would take over it (`hw/drive.h`), at the speed `disc` in
+`settings.txt` names or `--disc=` sets for one run, though Android, visionOS and the
+benchmark take neither, so they read fast outside a replay. The default, `fast`, reads
+every block as one the drive has read ahead, as Dolphin's "Speed up disc transfer rate"
+does, so a read costs 600 us and its length at 32 MiB/s. `console` times reads as a
+console's drive does.
+
+At `console` the model and its numbers are Dolphin's, measured on hardware. A read costs
+600 us to start, a block the drive has read ahead moves at 32 MiB/s and a block under the
+head costs one 32 KiB block at the disc's own rate, from 2.1 MiB/s at the inner edge to
+3.325 MiB/s at the outer.
 
 Any other block is a seek, which costs the head's travel and the wait for the block to come
 round. After each read the drive keeps the last block and the one before it, and reads on
@@ -1201,15 +1215,36 @@ code rounds down to a whole second, and a read's DIMAR and DILENGTH move only wh
 completes, where Dolphin moves them a block at a time. The data lands in RAM as the read
 starts.
 
+A game that waits on a load waits as long as the drive takes, and at `console` the drive's
+time is most of it. On one menu route two scene changes froze for 1,485 ms and 1,458 ms at
+`console` and for 400 ms and 213 ms at `fast`, with drive time falling from 1,253 ms and
+1,521 ms to 111 ms and 49 ms.
+
 Games time things against the disc, so a faster drive changes what they do. The AX library
 drops a voice's loop flag when the game sets the voice's addresses and then its loop, end
 or current address within one 5 ms audio frame. A streaming music player that does both in
 a disc read's callbacks then plays its first buffer and stops, which at the 64 MB/s the
 runtime used to read at it often did.
 
+At `fast` such a player kept looping in the one game checked. Its paired updates landed two
+audio frames apart all 46 times, one frame more than the loop flag needs.
+
+A replay reads at the speed its input log was recorded at, whatever the file or the flag
+say, since the guest's timeline runs on its reads. The log's header gives it as `# disc fast`
+or `# disc console`, and a replay asked for the other says so on stderr, as
+`[input] the log was recorded at disc console, so the replay reads at that and not at disc fast`.
+A log without the line replays at `console`, since every log from before the line was
+recorded at console timing or on the faster drive before it, and says
+`[input] the log has no disc line, so the replay reads at disc console and not at disc fast`
+when `fast` was asked for.
+
+A log whose disc line names neither speed replays at `console` too, and says
+`[input] the log's disc line names neither fast nor console, so the replay reads at disc console and not at disc fast`
+when `fast` was asked for.
+
 `--log=dvd` ends each `read off=` line with the read's time, as `in <N> us`.
 `ninja test_drive` builds `tools/test_drive.cpp`, which checks the model's times against
-times worked out from its numbers. It needs no disc image or device.
+times worked out from its numbers, at both speeds. It needs no disc image or device.
 
 ## The disc overlay
 

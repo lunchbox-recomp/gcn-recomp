@@ -152,14 +152,22 @@ nothing was compared with a real console. Every run was on one machine.
 
 ## The disc drive
 
-A DVD read takes as long as a console's drive would take over it, where upstream gave every
-read 100 us and 64 MB/s (`04c025f`). The model and its numbers are Dolphin's, measured on
-hardware, and [the diagnostics](docs/diagnostics.md#the-disc-drive) give them. At the faster
-rate a music stream could start in one audio frame, so the AX library dropped its loop flag
-and the music stopped after its first buffer.
+A DVD read takes the time a drive would take over it, where upstream gave every read 100 us
+and 64 MB/s. At that rate a music stream could start in one audio frame, so the AX library
+dropped its loop flag and the music stopped after its first buffer.
 
-A read's DIMAR and DILENGTH move when it completes, since a read can now take hundreds of
-milliseconds (`f19f98d`).
+By default every block reads as one the drive has read ahead, so a read costs 600 us and its
+length at 32 MiB/s, as Dolphin's "Speed up disc transfer rate" has it (`e97c3d5`, `702d45b`).
+`disc console` in `settings.txt` or `--disc=console` times reads as a console's drive does,
+with Dolphin's model and numbers, measured on hardware (`04c025f`). On one menu route that
+made two scene changes freeze for 1.5 s each, against 0.4 s and 0.2 s at the default.
+
+A replay reads at the speed its input log was recorded at (`e13ff65`), and `session.json`
+names the speed (`77b245f`). [The diagnostics](docs/diagnostics.md#the-disc-drive) give
+both speeds' numbers.
+
+A read's DIMAR and DILENGTH move when it completes, since a read at console speed can take
+hundreds of milliseconds (`f19f98d`).
 
 ## Layout
 
@@ -194,9 +202,9 @@ milliseconds (`f19f98d`).
   port the file didn't name it on.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
-  `fullscreen` and `scale`, though this build applies only `scale`. A flag beats the file
-  for that run and isn't written back, and a save rewrites only the owned keys' lines and
-  adds any that are missing.
+  `fullscreen`, `scale` and `disc`, though this build applies only `scale` and `disc`. A
+  flag beats the file for that run and isn't written back, and a save rewrites only the
+  owned keys' lines and adds any that are missing.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;
   `xr_desktop.cpp` puts it on the desktop's GL context for PC VR (`--vr`, Windows).
