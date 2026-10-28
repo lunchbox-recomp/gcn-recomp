@@ -10,10 +10,11 @@
 // to. Returns "" without a session. Call it first in main, before anything reads a switch.
 std::string session_begin(int argc, char** argv);
 // Writes <dir>/session.json once the audio device is open, or before the guest boots in a
-// run with no window or device: the start time, the host, the engine's commit, the device and
-// the command line. `refresh_hz` is the display's, 0 when unknown, and `engine_sha` "" when
-// unknown. Without it a relaunch can't tell the directory is used.
-void session_write(double refresh_hz, const char* engine_sha);
+// run with no window or device. It holds the start time, the host, the engine's commit, the
+// disc speed, the device and the command line. `refresh_hz` is the display's, 0 when
+// unknown, and `engine_sha` "" when unknown. `fast_disc` is the speed the run reads the disc
+// at (g_fast_disc). Without it a relaunch can't tell the directory is used.
+void session_write(double refresh_hz, const char* engine_sha, bool fast_disc);
 // Takes back the switches this process set, before it relaunches itself, so the new process
 // sets its own.
 void session_relaunching();

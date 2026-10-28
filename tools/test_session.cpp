@@ -5,12 +5,12 @@
 // One process plays the part of each the session sees. The first starts a session in a new
 // directory with one switch set by hand, and must leave that switch alone, turn on the others,
 // send the input log into the directory and write session.json: the start with its offset
-// from UTC, the host, the engine's commit, the sound device and the command line, whose
-// quotes, backslashes and control characters have to be escaped. The game resetting the
-// console relaunches it, so the switches the session set are cleared and a second and third
-// process go on in run-2 and run-3 without touching the first's files. Without GCN_SESSION
-// nothing is set or written. A directory that can't be written must be said out loud and
-// leave no session, where the recordings after it would fail without a word.
+// from UTC, the host, the engine's commit, the disc speed, the sound device and the command
+// line, whose quotes, backslashes and control characters have to be escaped. The game
+// resetting the console relaunches it, so the switches the session set are cleared and a
+// second and third process go on in run-2 and run-3 without touching the first's files.
+// Without GCN_SESSION nothing is set or written. A directory that can't be written must be
+// said out loud and leave no session, where the recordings after it would fail without a word.
 //
 // usage: test_session <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
           "without GCN_SESSION nothing is set and no input directory is given");
     set_env("GCN_SESSION", "");
     check(session_begin(nargs, args).empty() && env("GCN_AIDWAV") == "<unset>", "an empty GCN_SESSION is no session");
-    session_write(60, "sha");  // writes nothing, anywhere
+    session_write(60, "sha", true);  // writes nothing, anywhere
 
     // The first process: one switch set by hand, one set to a value the session would not.
     const std::string dir = g_dir + "/sess";
@@ -164,18 +164,21 @@ int main(int argc, char** argv) {
     // or the engine. TZ is set to a zone without daylight saving, 7 hours behind UTC.
     setenv("TZ", "MST7", 1);
     tzset();
-    session_write(0, "");
+    session_write(0, "", true);
     std::string json = read_file(dir + "/session.json");
     check(json != "<missing>", "session.json is written");
     check(line_starting(json, "  \"audio_device\": ") == "  \"audio_device\": null,",
           "the sound device is null before it has opened");
     check(ends_with(line_starting(json, "  \"host\": "), "\"refresh_hz\": null},"), "an unknown refresh rate is null");
     check(line_starting(json, "  \"engine_sha\": ") == "  \"engine_sha\": null,", "an unknown engine commit is null");
+    check(line_starting(json, "  \"disc\": ") == "  \"disc\": \"fast\",", "a run reading the disc fast says disc fast");
 
     // Then with all of it known. The commit is made up with a quote, a backslash and a newline in it.
     audio_stats_opened("dummy", 48000, 2, 512);
-    session_write(119.88, "abc\"def\\\n");
+    session_write(119.88, "abc\"def\\\n", false);
     json = read_file(dir + "/session.json");
+    check(line_starting(json, "  \"disc\": ") == "  \"disc\": \"console\",",
+          "a run reading the disc as a console does says disc console");
     check(line_starting(json, "  \"audio_device\": ") ==
               "  \"audio_device\": {\"driver\": \"dummy\", \"rate\": 48000, \"channels\": 2, \"buffer\": 512},",
           "the sound device gives its driver, rate, channels and buffer");
@@ -195,7 +198,7 @@ int main(int argc, char** argv) {
     // A zone ahead of UTC by a half hour.
     setenv("TZ", "IST-5:30", 1);
     tzset();
-    session_write(0, "");
+    session_write(0, "", true);
     json = read_file(dir + "/session.json");
     check(start_times(json, from_text, epoch) && line_starting(json, "  \"start\": ").find("+05:30\"") != std::string::npos &&
               from_text == epoch,
@@ -211,7 +214,7 @@ int main(int argc, char** argv) {
     check(env("GCN_SESSION") == dir, "a relaunch keeps GCN_SESSION");
     check(session_begin(nargs, args) == dir + "/run-2/inputs", "the second process goes on in <dir>/run-2");
     check(env("GCN_AIDWAV") == dir + "/run-2/aid.raw", "and points GCN_AIDWAV into it");
-    session_write(0, "");
+    session_write(0, "", true);
     check(exists(dir + "/run-2/session.json"), "and writes its own session.json");
     check(read_file(dir + "/session.json") == first_json, "the first process's session.json is as it was");
     session_relaunching();
@@ -232,7 +235,7 @@ int main(int argc, char** argv) {
         check(got.empty(), "and no input directory is given");
         check(env("GCN_WAV") == "<unset>" && env("GCN_AIDWAV") == "<unset>" && env("GCN_AXSTATS") == "<unset>",
               "and no recording switch is turned on");
-        session_write(60, "sha");
+        session_write(60, "sha", true);
         check(!exists(ro + "/session.json"), "and no session.json is written");
 
         set_env("GCN_SESSION", ro + "/new");

@@ -103,7 +103,7 @@ std::string session_begin(int argc, char** argv) {
     return g_dir + "/inputs";
 }
 
-void session_write(double refresh_hz, const char* engine_sha) {
+void session_write(double refresh_hz, const char* engine_sha, bool fast_disc) {
     if (g_dir.empty()) return;
     const std::string path = g_dir + "/session.json";
     FILE* f = fopen(path.c_str(), "w");
@@ -117,6 +117,7 @@ void session_write(double refresh_hz, const char* engine_sha) {
     if (refresh_hz > 0) fprintf(f, "%g},\n", refresh_hz);
     else fprintf(f, "null},\n");
     fprintf(f, "  \"engine_sha\": %s,\n", json_or_null(engine_sha ? engine_sha : "").c_str());
+    fprintf(f, "  \"disc\": \"%s\",\n", fast_disc ? "fast" : "console");
     if (const AudioDeviceInfo* d = audio_stats_device())
         fprintf(f, "  \"audio_device\": {\"driver\": %s, \"rate\": %d, \"channels\": %d, \"buffer\": %d},\n",
                 json_string(d->driver).c_str(), d->rate, d->channels, d->buffer);
