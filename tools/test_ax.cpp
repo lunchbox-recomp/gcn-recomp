@@ -435,13 +435,15 @@ void polyphase_checks() {
 // Two ADPCM frames at nibble 0x1000 whose nibbles are all 1. With a scale of 1 and the first
 // coefficient at 1.0, each sample is the last one plus 1, so the 160th of a list is 160 if
 // the history carries through every wrap. A one-shot from 0x1002 whose loop is 0x1002 and
-// whose end is `at_end`. The loop's predictor, 5A, and history, 0x1234, would break the count.
-// Call it before run_list().
+// whose end is `at_end`. It starts past the first header and wraps before the second, so
+// neither header's 01 is read and the predictor stays the voice's own, 00. The loop's
+// predictor, 5A, and history, 0x1234, would break the count. Call it before run_list().
 void header_end_voice(uint32_t at_end) {
     reset(kHashLater);
-    for (uint32_t i = 0; i < 16; i++) g_aram[0x800 + i] = i % 8 ? 0x11 : 0x00;
+    for (uint32_t i = 0; i < 16; i++) g_aram[0x800 + i] = i % 8 ? 0x11 : 0x01;
     PB pb = pcm_voice(0, 1, 0x8000, 0x8000);
     pb.w[PB_FORMAT] = 0x00;
+    pb.w[PB_PRED_SCALE] = 0x00;
     pb.w[PB_LOOPING] = 0;
     pb.w[PB_COEFS] = 0x0800;
     pb.w[PB_LOOP_PRED_SCALE] = 0x5A;
@@ -501,7 +503,7 @@ void end_checks() {
         snprintf(what, sizeof what, "an ADPCM one-shot whose end is the header nibble %X wraps to its loop and keeps running",
                  at_end);
         check(pb_word(PB_RUNNING) == 1 && mem_r16(kPB + 2 * PB_CUR_LO) == (at_end == 0x1010 ? 0x1006 : 0x1008), what);
-        snprintf(what, sizeof what, "and keeps the frame's predictor and its history, so the 160th sample is 160, at %X", at_end);
+        snprintf(what, sizeof what, "and keeps its predictor and history, so the 160th sample is 160, at %X", at_end);
         check(pb_word(PB_PRED_SCALE) == 0 && pb_word(PB_YN1) == 160 && pb_word(PB_YN2) == 159, what);
     }
 }
