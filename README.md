@@ -100,6 +100,8 @@ ucode's hash.
 | While a pause holds the guest, DVD streamed music fades out over 5 ms and keeps its place on the disc. On the resume it fades back in over 8 ms from the next sample | `26db0da`, `c0a12ea` |
 | The desktop frontend plays through an SDL3 audio stream and asks the device for 512 frames a pull | `d9ee73d` |
 | Under SDL's dummy audio driver the runtime pulls 512 frames itself on 48 kHz deadlines, so a run with no sound keeps a sound card's pace | `e6ea431`, `dbd8c99` |
+| A voice loops or stops only on reading the sample at its end address, as the DSP does. A voice that loops above its old end plays on from the loop, where it used to sit on the loop's first sample until the end moved | `1f5e5a3` |
+| `GCN_AXVOICES` prints what the game and the mixer do to each voice. Every 200 lists it also gives each voice's loudest sample | `1b25342` |
 | `GCN_AXSTATS` also prints command counts, bus peaks, the samples the output clamp changed, what the running voices ask for, a hash of the output and each ring cut | `8fabc65`, `3056588`, `3f5da1e` |
 | `GCN_AUDIOSTATS` prints the device it opened and each late callback and underrun. It also says where the device's output lines up with the DMA's stream | `3c71be8` |
 | `ninja test_ax`, `test_aid`, `test_clock` and `test_audio_ring` check the mixer, the DMA's hold, the clock's jumps and the sound ring with no disc or device. `test_audio_ring` also checks the held DVD music and the `GCN_AUDIOSTATS` accounting | `3056588`, `a87ab06`, `250ebda`, `3ae8463`, `3c71be8`, `6e361ba`, `26db0da`, `c0a12ea`, `244fa9e`, `84698f6`, `b0dcc2e` |
@@ -147,6 +149,14 @@ ring's cuts, so its log doesn't say where the rest went.
 
 A click is any sharp edge, the game's own sounds included. Nobody listened to any build, and
 nothing was compared with a real console. Every run was on one machine.
+
+## The disc drive
+
+A DVD read takes as long as a console's drive would take over it, where upstream gave every
+read 100 us and 64 MB/s (`04c025f`). The model and its numbers are Dolphin's, measured on
+hardware, and [the diagnostics](docs/diagnostics.md#the-disc-drive) give them. At the faster
+rate a music stream could start in one audio frame, so the AX library dropped its loop flag
+and the music stopped after its first buffer.
 
 ## Layout
 
