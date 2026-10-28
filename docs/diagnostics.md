@@ -156,14 +156,20 @@ said once and never written over.
 The run's output says what each gamepad did, on `gamepads:` lines (`runtime/gamepads.h`).
 One that lands on a port gets a second line with what SDL knows of it, such as
 `port 1 is switchpro, wireless, 057e:2009, rumble yes, south label B, east label A`. The
-labels say whose layout its face buttons have, and the GameCube's A, B, X and Y follow
+labels are the ones SDL reports for the pad's type, and the GameCube's A, B, X and Y follow
 them (`runtime/gamepads.h`).
+
+A pad that passes for another gets that pad's labels, whatever's printed on it. An 8BitDo
+in its X-input mode is an Xbox 360 pad to SDL, so its south button is A.
 
 When it's pulled out, or when the run ends with it still on its port, a `port N sent` line
 gives each SDL button's presses and each axis's lowest and highest raw value, whether the
 frontend maps them or not. A stick that this line shows reaching its ends while the input
 log shows no push was sent by the pad and lost after SDL. A `port N rumble` line follows
 with how often the rumble went on and how many of SDL's rumble calls failed.
+
+A gamepad that leaves before a frame reads it says `port N was never read` in place of the
+`sent` line. The rumble line says `time` and `call` where the count is 1.
 
 A gamepad SDL says has no rumble, whose second line says `rumble no`, is never asked for
 one, so its rumble line counts the game's ons with no calls. A rumble call that fails says

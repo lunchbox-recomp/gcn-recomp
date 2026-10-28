@@ -28,9 +28,12 @@
 //
 // The GameCube's A, B, X and Y are the face buttons labeled A, B, X and Y, as Nintendo's own
 // GameCube games have them on its consoles: east A and south B on a Switch Pro, south A and
-// east B on an Xbox pad. A gamepad whose faces carry no letters (PlayStation's symbols) has
-// them where an Xbox pad does. Which is which is worked out as the gamepad lands on its
-// port. Z is the right shoulder, and L and R are the triggers.
+// east B on an Xbox pad. The labels are the ones SDL reports for the pad's type
+// (SDL_GetGamepadButtonLabel), not what's printed on it: a pad that passes for another, as an
+// 8BitDo does in its X-input mode as an Xbox 360 pad, gets that pad's. A gamepad whose faces
+// carry no letters (PlayStation's symbols) has them where an Xbox pad does. Which is which
+// is worked out as the gamepad lands on its port. Z is the right shoulder, and L and R are
+// the triggers.
 //
 // What each gamepad did goes to stderr as `gamepads: ` lines. After `"<name>" on port N`,
 // what SDL knows of it: `port N is <type>, <wired|wireless|unknown>, <vendor>:<product>,
@@ -38,8 +41,9 @@
 // port N`, and at gamepads_shutdown for each gamepad still on a port, what it sent while
 // there: `port N sent <button> <presses>, ..., left stick x <lowest> to <highest> y ...,
 // right stick x ... y ..., triggers left ... right ...`, naming only the buttons pressed,
-// raw values before any dead zone, then `port N rumble on <ons> times, <failed> of <calls>
-// calls failed`.
+// raw values before any dead zone, or `port N was never read` for one that left before a
+// frame read it. Then `port N rumble on <ons> times, <failed> of <calls> calls failed`
+// (`time` and `call` for 1).
 //
 // A gamepad SDL says has no rumble (SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, asked at each call)
 // is never asked for one, so its line counts the game's ons and no calls. A rumble that

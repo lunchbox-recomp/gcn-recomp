@@ -52,8 +52,9 @@ const char* label_name(SDL_GamepadButtonLabel l) {
 }
 
 // The SDL buttons that are the GameCube's A, B, X and Y on `g`: its face buttons labeled A,
-// B, X and Y, wherever the gamepad has them (south B and east A on Nintendo's own). A
-// gamepad whose faces carry no letters, as PlayStation's don't, has them by Xbox position.
+// B, X and Y, wherever the gamepad has them (south B and east A on Nintendo's own), by the
+// labels SDL reports for its type. A gamepad whose faces carry no letters, as PlayStation's
+// don't, has them by Xbox position.
 std::array<SDL_GamepadButton, 4> faces(SDL_Gamepad* g) {
     static constexpr std::array<SDL_GamepadButton, 4> kXbox = {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST,
                                                                SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH};
