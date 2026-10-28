@@ -298,7 +298,11 @@ void gamepads_rumble(int port, bool motor) {
         if (motor) g.rumbles++;
         g.failure_said = false;
     }
-    if (g.pad && (motor || g.rumbling)) {
+    // A gamepad SDL says has no rumble isn't asked for one, which would only fail. It's
+    // asked each time, since a pad can gain rumble after it lands (a GameCube adapter's
+    // second cable plugged in).
+    if (g.pad && (motor || g.rumbling) &&
+        SDL_GetBooleanProperty(SDL_GetGamepadProperties(g.pad), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false)) {
         g.calls++;
         if (!SDL_RumbleGamepad(g.pad, motor ? 0x6000 : 0, motor ? 0xA000 : 0, motor ? 200 : 0)) {
             g.failed++;

@@ -165,9 +165,13 @@ frontend maps them or not. A stick that this line shows reaching its ends while 
 log shows no push was sent by the pad and lost after SDL. A `port N rumble` line follows
 with how often the rumble went on and how many of SDL's rumble calls failed.
 
-A rumble call that fails says why once after each on or off, as
-`port N rumble failed: <SDL's error>`, so a pad that never rumbles gets one line rather
-than one every few milliseconds.
+A gamepad SDL says has no rumble, whose second line says `rumble no`, is never asked for
+one, so its rumble line counts the game's ons with no calls. A rumble call that fails says
+why once after each on or off, as `port N rumble failed: <SDL's error>`, rather than once
+every few milliseconds.
+
+On a pad SDL drives through HIDAPI, a call SDL accepts has only been queued. A write that
+fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad shook.
 
 `ninja test_ports` in a build directory (the build allows Linux, but it has only been run
 on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without

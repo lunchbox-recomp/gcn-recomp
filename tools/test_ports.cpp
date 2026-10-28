@@ -1229,6 +1229,13 @@ void said(const std::string& dir) {
               lines_with(dir + "/said-failing-out.txt", "gamepads: port 1 rumble on 3 times, 9 of 13 calls failed\n") == 1,
           "a rumble that fails says why once after each on or off, and the pull-out line counts the failed calls");
 
+    // The game's motor on port 2 on and off three times, where the gamepad SDL says has no
+    // rumble is: it's never asked for one.
+    const std::string none = dir + "/said-no-rumble.txt";
+    capture(none, [] {
+        for (int k = 0; k < 3; k++) motor(1);
+    });
+
     // At shutdown each gamepad still on a port says what it sent: one with a press, one with none.
     Virtual b{"virtual pad shut"};
     attach(b);
@@ -1240,9 +1247,11 @@ void said(const std::string& dir) {
     const char* const still = "left stick x 0 to 0 y 0 to 0, right stick x 0 to 0 y 0 to 0, triggers left 0 to 0 right 0 to 0\n";
     check(lines_with(shut, (std::string("gamepads: port 1 sent west 1, ") + still).c_str()) == 1 &&
               lines_with(shut, (std::string("gamepads: port 2 sent ") + still).c_str()) == 1 &&
-              lines_with(shut, "gamepads: port 1 rumble on 0 times, 0 of 0 calls failed\n") == 1 &&
-              lines_with(shut, "gamepads: port 2 rumble on 0 times, 0 of 0 calls failed\n") == 1,
+              lines_with(shut, "gamepads: port 1 rumble on 0 times, 0 of 0 calls failed\n") == 1,
           "at shutdown each gamepad still on a port says what it sent, a press or none, and its rumble");
+    check(lines_with(none, "rumble failed") == 0 &&
+              lines_with(shut, "gamepads: port 2 rumble on 3 times, 0 of 0 calls failed\n") == 1,
+          "a gamepad SDL says has no rumble makes no rumble call and says no failure, and its line counts the game's ons");
     unplug({&b, &quiet});
 }
 

@@ -39,8 +39,14 @@
 // there: `port N sent <button> <presses>, ..., left stick x <lowest> to <highest> y ...,
 // right stick x ... y ..., triggers left ... right ...`, naming only the buttons pressed,
 // raw values before any dead zone, then `port N rumble on <ons> times, <failed> of <calls>
-// calls failed`. A rumble that fails is said once after each on or off, not at every call:
-// `port N rumble failed: <SDL's error>`.
+// calls failed`.
+//
+// A gamepad SDL says has no rumble (SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, asked at each call)
+// is never asked for one, so its line counts the game's ons and no calls. A rumble that
+// fails is said once after each on or off, not at every call: `port N rumble failed: <SDL's
+// error>`. On a pad SDL drives through HIDAPI a call SDL accepts has only been queued, and a
+// write that fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad
+// shook.
 #pragma once
 #include "hw/pad.h"
 
