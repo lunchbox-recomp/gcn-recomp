@@ -191,9 +191,13 @@ input loop and the SI layer in, so each port is read back as the guest reads it.
 `tools/test_ports.sh <test_ports> <work dir>` runs the port checks, a recording of two
 gamepads and its replay with none, a version 4 log's replay, an interrupt handled beside
 the main loop, the frontend under `--no-gamepads` and the game resetting the console during
-a replay. Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. SDL's
-drivers for real controllers are off before it starts, whatever the environment says, so a
-controller that's connected is never opened.
+a replay. Each check prints `ok` or `FAIL`, and the exit code is 0 only if all pass.
+
+Before SDL starts, the test turns off SDL's HIDAPI, IOKit and MFi drivers and HIDAPI's use
+of libusb, for runs on macOS and Linux. Linux's evdev driver has no switch, so the gamepad
+allow list names only a reserved USB vendor. The environment can't turn those back on,
+though another of SDL's hints can still let a controller in, as `SDL_JOYSTICK_HIDAPI_PS4=1`
+would.
 
 `ninja test_port_memory` builds `tools/test_port_memory.cpp`, which checks which port each
 gamepad gets from what `ports.txt` remembers. It covers serials, which SDL's virtual

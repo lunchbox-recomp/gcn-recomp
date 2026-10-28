@@ -4,8 +4,9 @@
 # snapshot taken away, then a version 4 log replayed, an interrupt handled beside the main
 # loop, the frontend under --no-gamepads, and the game resetting the console. The port
 # checks include the ports remembered in saves/ports.txt under the work dir. SDL's virtual
-# joysticks stand in for the controllers, and the drivers that find real ones are off, so a
-# controller that's connected is left alone.
+# joysticks stand in for the controllers. On macOS and Linux test_ports turns off SDL's
+# drivers that find real ones (kRealDriversOff in tools/test_ports.cpp), so a controller
+# that's connected is left alone unless the environment lets it in by another SDL hint.
 #
 # usage: tools/test_ports.sh <test_ports> <work dir>
 #   <test_ports>  the program `ninja test_ports` builds in a build directory of a game

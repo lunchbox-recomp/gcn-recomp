@@ -28,9 +28,10 @@
 //                                              replay, with a gamepad rumbling
 // Files are written into the work dir and left there.
 //
-// Only SDL's virtual joysticks are seen: main() turns off every driver that finds real
-// controllers before anything starts SDL, so a controller connected beside the run is never
-// opened, rumbled or read.
+// SDL's virtual joysticks stand in for controllers. On macOS and Linux main() turns off
+// SDL's drivers that find real ones before anything starts SDL (kRealDriversOff), so a
+// controller connected beside the run isn't opened, rumbled or read, unless the environment
+// lets it in by another of SDL's hints.
 #define main gcn_frontend_main
 #include "main.cpp"
 #undef main
@@ -88,15 +89,19 @@ int finish(const char* what) {
 
 const int kSdlIndex = INT_MIN;  // attach(): keep the player index SDL gives
 
-// The drivers that find real controllers, off. HIDAPI, IOKit and MFi have switches. Linux's
-// evdev driver has none, so the gamepad allow list names only a USB vendor that's reserved
-// (FFFF), which turns away every device a driver finds; SDL's virtual driver doesn't
-// consult it. main() sets these before anything starts SDL.
+// SDL's drivers that find real controllers on macOS and Linux, off. HIDAPI, its use of
+// libusb, IOKit and MFi have switches. Linux's evdev driver has none, so the gamepad allow
+// list names only a USB vendor that's reserved (FFFF), which turns away every device a
+// driver that consults it finds; SDL's virtual driver doesn't. main() sets these before
+// anything starts SDL, at override priority, so the environment's values for them lose.
+// The environment can still let a controller in by another hint, as SDL_JOYSTICK_HIDAPI_PS4=1
+// turns that one HIDAPI driver back on.
 const struct {
     const char* hint;
     const char* value;
 } kRealDriversOff[] = {
     {SDL_HINT_JOYSTICK_HIDAPI, "0"},
+    {SDL_HINT_HIDAPI_LIBUSB, "0"},
     {SDL_HINT_JOYSTICK_IOKIT, "0"},
     {SDL_HINT_JOYSTICK_MFI, "0"},
     {SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0xFFFF/0xFFFF"},
@@ -1680,8 +1685,7 @@ int run_reset(const std::string& dir) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    // Before anything starts SDL: no driver that finds real controllers, so only the virtual
-    // joysticks are seen.
+    // Before anything starts SDL: its drivers that find real controllers off.
     for (const auto& h : kRealDriversOff) SDL_SetHintWithPriority(h.hint, h.value, SDL_HINT_OVERRIDE);
     if (argc == 2) return run_ports(argv[1]);
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
