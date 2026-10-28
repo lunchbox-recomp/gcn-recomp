@@ -113,9 +113,10 @@ same way:
   gamepad is merged as a pad (`Platform::merge_input`), with its stick clicks fed to the
   thumbstick-click actions so the view toggle and the game's left click work on it too. It
   is read by the names GameController gives its buttons (`vr::Gamepad`), which are an Xbox
-  pad's places except on Nintendo's own pads, whose buttons it names by their labels. It's
-  laid out by the game's `map_gamepad` hook, or failing one by `vr::default_gamepad_layout`,
-  which makes the button named A the GameCube's A, as on the desktop.
+  pad's places except on a Switch Pro or a Joy-Con pair, whose buttons it names by their
+  labels, and a single Joy-Con, whose B is west and X east. It's laid out by the game's
+  `map_gamepad` hook, or failing one by `vr::default_gamepad_layout`, which makes the
+  button named A the GameCube's A, as on the desktop.
 - **Lifecycle.** Session states are queued as a runtime would send them. When the layer is
   invalidated (the viewer left the space) the session is lost and the core's loop ends.
 

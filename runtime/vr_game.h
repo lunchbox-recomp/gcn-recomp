@@ -17,8 +17,10 @@ namespace vr {
 // A gamepad as a platform reads it: its face buttons where an Xbox pad has the letters the
 // platform gives them, `south` A, `east` B, `west` X and `north` Y, its sticks from -1 to 1
 // with up positive, its triggers from 0 to 1. Apple's GameController gives a pad's buttons
-// an Xbox pad's letters by place (PlayStation's cross is A) except on Nintendo's own, whose
-// buttons it names by their labels: a Switch Pro's A, on its east, arrives as `south`.
+// an Xbox pad's letters by place (PlayStation's cross is A) except on a Switch Pro or a
+// Joy-Con pair, whose buttons it names by their labels: a Switch Pro's A, on its east,
+// arrives as `south`. A single Joy-Con held sideways has A south and Y north, but B west and
+// X east, so its west button arrives as `east`.
 struct Gamepad {
     enum : uint32_t {
         South = 1u << 0, East = 1u << 1, West = 1u << 2, North = 1u << 3,
