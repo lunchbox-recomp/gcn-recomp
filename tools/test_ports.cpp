@@ -84,6 +84,20 @@ int finish(const char* what) {
 
 const int kSdlIndex = INT_MIN;  // attach(): keep the player index SDL gives
 
+// The drivers that find real controllers, off. HIDAPI, IOKit and MFi have switches. Linux's
+// evdev driver has none, so the gamepad allow list names only a USB vendor that's reserved
+// (FFFF), which turns away every device a driver finds; SDL's virtual driver doesn't
+// consult it. main() sets these before anything starts SDL.
+const struct {
+    const char* hint;
+    const char* value;
+} kRealDriversOff[] = {
+    {SDL_HINT_JOYSTICK_HIDAPI, "0"},
+    {SDL_HINT_JOYSTICK_IOKIT, "0"},
+    {SDL_HINT_JOYSTICK_MFI, "0"},
+    {SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0xFFFF/0xFFFF"},
+};
+
 struct Virtual {
     const char* name;
     bool gamepad = true;
@@ -1323,7 +1337,22 @@ void headset_layout() {
           "the headset's default layout: south is GameCube A, east B, west X and north Y");
 }
 
+// ---- The hints main() sets win over the environment, where SDL_JOYSTICK_HIDAPI=1 or the
+// like would otherwise turn a driver for real controllers back on.
+void drivers_stay_off() {
+    SDL_Environment* env = SDL_GetEnvironment();
+    bool off = true;
+    for (const auto& h : kRealDriversOff) {
+        SDL_SetEnvironmentVariable(env, h.hint, "1", true);
+        const char* v = SDL_GetHint(h.hint);
+        off = off && v && !strcmp(v, h.value);
+        SDL_UnsetEnvironmentVariable(env, h.hint);
+    }
+    check(off, "the hints that turn off the drivers for real controllers beat the environment");
+}
+
 int run_ports(const std::string& dir) {
+    drivers_stay_off();
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
     // Port 2 and port 3 pressed B by script from frame 1000 to 1099.
@@ -1592,13 +1621,8 @@ int run_no_gamepads(const std::string& dir) {
 
 int main(int argc, char** argv) {
     // Before anything starts SDL: no driver that finds real controllers, so only the virtual
-    // joysticks are seen. HIDAPI, IOKit and MFi have switches. Linux's evdev driver has none,
-    // so the gamepad allow list names only a USB vendor that's reserved (FFFF), which turns
-    // away every device a driver finds; SDL's virtual driver doesn't consult it.
-    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
-    SDL_SetHint(SDL_HINT_JOYSTICK_IOKIT, "0");
-    SDL_SetHint(SDL_HINT_JOYSTICK_MFI, "0");
-    SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0xFFFF/0xFFFF");
+    // joysticks are seen.
+    for (const auto& h : kRealDriversOff) SDL_SetHintWithPriority(h.hint, h.value, SDL_HINT_OVERRIDE);
     if (argc == 2) return run_ports(argv[1]);
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);
