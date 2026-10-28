@@ -77,6 +77,30 @@ void read_checks() {
     check(near(ahead.read(20, 0x40000, 0x100), 600e-6 + 0x100 / (32 * kMiB)),
           "and 256 bytes of one take 600 us and 7.6 us");
 
+    // While the drive reads ahead it holds the blocks it has reached. 3.5 blocks' time after
+    // the first read, the blocks from 0x8000 to 0x1FFFF are held and 0x20000 is under the head.
+    drive::Drive d1, d2;
+    const double t1 = d1.read(0, 0, 0x20);
+    d2.read(0, 0, 0x20);
+    const double mid = t1 + 3.5 * drive::disc_seconds(0x8000, 0x8000);
+    check(near(d1.read(mid, 0x18000, 0x8000), 600e-6 + 0x8000 / (32 * kMiB)),
+          "a block the read ahead has reached is held while it reads on");
+    check(near(d2.read(mid, 0x20000, 0x8000), 600e-6 + drive::disc_seconds(0x20000, 0x8000)),
+          "and the block it reaches next is under the head");
+
+    // 5.5 blocks' time on it holds up to 0x2FFFF. A read of 0x18000 leaves it reading on from
+    // 0x30000, so 0x28000 is still held right after.
+    drive::Drive d3;
+    const double t3 = d3.read(0, 0, 0x20);
+    const double later = t3 + 5.5 * drive::disc_seconds(0x8000, 0x8000);
+    const double t4 = d3.read(later, 0x18000, 0x8000);
+    check(d3.fill_from == 0x30000 && near(d3.read(later + t4, 0x28000, 0x8000), 600e-6 + 0x8000 / (32 * kMiB)),
+          "a read inside what the drive holds keeps what it held past the read");
+
+    // A read of no bytes still costs a block, and the drive reads ahead after it.
+    drive::Drive none;
+    check(near(none.read(0, 0, 0), cold) && none.fill_to == 0xF8000, "a read of 0 bytes costs a block and reads ahead");
+
     // A read that crosses a block's end reads both blocks.
     drive::Drive cross;
     check(near(cross.read(0, 0x7FF8, 0x10), cold + drive::disc_seconds(0x8000, 0x8000)),
@@ -98,6 +122,17 @@ void read_checks() {
     check(far.fill_to == at26 + 0x100000, "a seek reads ahead until it holds the 1 MiB from its block");
     check(far.read(20, at26 - 0x200000, 0x20) > 0.035, "a read 2 MiB behind it seeks");
     check(far.read(30, at26 + 0x10000, 0x20) > 0.035, "and the block 2 out from the seek is no longer held");
+
+    // A read that ends two blocks into what's held leaves it alone too, and three blocks in
+    // starts a new read ahead.
+    drive::Drive two;
+    two.read(0, at26, 0x20);
+    const drive::Drive before = two;
+    two.read(10, at26 + 0x8000, 0x20);
+    check(two.fill_from == before.fill_from && two.fill_start == before.fill_start,
+          "a read that ends two blocks into what's held leaves the read ahead as it was");
+    two.read(20, at26 + 0x10000, 0x20);
+    check(near(two.fill_start, 20 + 600e-6 + 0x20 / (32 * kMiB)), "and one that ends three blocks in starts a new one");
 }
 
 }  // namespace

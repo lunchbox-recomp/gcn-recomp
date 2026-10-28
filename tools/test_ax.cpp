@@ -436,19 +436,20 @@ void polyphase_checks() {
 // accelerator does. A stream moves its loop address to the next slot before it moves its end
 // there, so a voice that loops into a slot above its old end has to play on from the loop.
 void end_checks() {
-    // 1000 for 32 samples, then 2000 for 0x200 samples from 0x100 on. The voice starts two
-    // before its end, so it plays two of 1000, loops to 0x100 and plays 158 of 2000.
+    // 1000 for 32 samples, then 2000, 2001 and so on for 0x200 samples from 0x100 on. The
+    // voice starts two before its end, so it plays two of 1000, loops to 0x100 and plays 158
+    // from there, 2000 to 2157.
     reset(kHashLater);
     PB pb = pcm_voice(1000, 32, 0x8000, 0x8000);
     for (int i = 0; i < 0x200; i++) {
-        g_aram[2 * (kSampleAt + 0x100 + i)] = 2000 >> 8;
-        g_aram[2 * (kSampleAt + 0x100 + i) + 1] = 2000 & 0xFF;
+        g_aram[2 * (kSampleAt + 0x100 + i)] = (uint8_t)((2000 + i) >> 8);
+        g_aram[2 * (kSampleAt + 0x100 + i) + 1] = (uint8_t)(2000 + i);
     }
     pb.set32(PB_LOOP_HI, kSampleAt + 0x100);
     pb.set32(PB_CUR_HI, kSampleAt + 30);
     store_pb(pb);
     run_list();
-    check(out_l(1) == 1000 && out_l(2) == 2000 && out_l(159) == 2000 && pb_word(PB_RUNNING) == 1,
+    check(out_l(1) == 1000 && out_l(2) == 2000 && out_l(159) == 2157 && pb_word(PB_RUNNING) == 1,
           "a voice that loops above its end plays its last sample, then the loop on");
     check(mem_r16(kPB + 2 * PB_CUR_LO) == (uint16_t)(kSampleAt + 0x100 + 158),
           "and is 158 samples past the loop after the list, not stuck on the loop's first sample");
@@ -515,47 +516,51 @@ bool has(const std::string& text, const char* line) { return text.find(line) != 
 // mixer loops or ends one, and every 200 lists each voice's loudest sample.
 void voices_run() {
     reset(kHashLater);
+    g_axstats = false;  // the lists are counted without GCN_AXSTATS too
     g_axvoices = true;
-    g_stat_lists = 198;
+    g_stat_lists = 98;
     PB pb = pcm_voice(1000, 0x100, 0x4000, 0x8000);
     pb.set32(PB_CUR_HI, kSampleAt + 0xFE);
     store_pb(pb);
-    run_list();                                       // list 199: runs, and loops in its first ms
+    run_list();                                       // list 99: runs, and loops in its first ms
     mem_w16(kPB + 2 * PB_END_LO, kSampleAt + 0x1FF);
-    run_list();                                       // 200: a new end, then the level line
+    run_list();                                       // 100: a new end, and no level line
+    g_stat_lists = 198;
     mem_w16(kPB + 2 * PB_CUR_LO, kSampleAt + 0x20);
-    run_list();                                       // 201: a new place
+    run_list();                                       // 199: a new place
+    run_list();                                       // 200: the level line
     mem_w16(kPB + 2 * PB_LOOPING, 0);
     mem_w16(kPB + 2 * PB_CUR_LO, kSampleAt + 0x1FE);
-    run_list();                                       // 202: a one-shot two from its end
+    run_list();                                       // 201: a one-shot two from its end
     mem_w16(kPB + 2 * PB_RUNNING, 1);
-    run_list();                                       // 203: run again
+    run_list();                                       // 202: run again
     mem_w16(kPB + 2 * PB_RUNNING, 0);
-    run_list();                                       // 204: stopped by the game
+    run_list();                                       // 203: stopped by the game
     g_axvoices = false;
 }
 
 void voice_log_checks() {
     const std::string log = stderr_of(voices_run);
-    check(has(log, "[axv] list=199 pb=80003000 run run=1 looping=1 stream=0 fmt=0A src=2 loop=00000800 end=000008FF "
+    check(has(log, "[axv] list=99 pb=80003000 run run=1 looping=1 stream=0 fmt=0A src=2 loop=00000800 end=000008FF "
                    "cur=000008FE ratio=00010000\n"),
           "a voice the mixer hasn't seen running prints run with its PB");
-    check(has(log, "[axv] list=199 pb=80003000 loop run=1 looping=1 stream=0 fmt=0A src=2 loop=00000800 "
+    check(has(log, "[axv] list=99 pb=80003000 loop run=1 looping=1 stream=0 fmt=0A src=2 loop=00000800 "
                    "end=000008FF cur=0000081E ratio=00010000\n"),
           "a voice that loops in a millisecond prints loop with where it is after it");
-    check(has(log, "[axv] list=200 pb=80003000 set ") && has(log, " end=000009FF cur=0000089E "),
+    check(has(log, "[axv] list=100 pb=80003000 set ") && has(log, " end=000009FF cur=0000089E "),
           "an end the game moved prints set");
-    check(has(log, "[axv] list=200 pb=80003000 level peak=500 cur=0000093E\n"),
+    check(!has(log, "[axv] list=100 pb=80003000 level"), "the 100th list prints no level line");
+    check(has(log, "[axv] list=199 pb=80003000 seek ") && has(log, " cur=00000820 "), "a place the game moved prints seek");
+    check(has(log, "[axv] list=200 pb=80003000 level peak=500 cur=00000960\n"),
           "the 200th list prints the voice's loudest sample, 500");
-    check(has(log, "[axv] list=201 pb=80003000 seek ") && has(log, " cur=00000820 "), "a place the game moved prints seek");
-    check(has(log, "[axv] list=202 pb=80003000 set run=1 looping=0") &&
-              has(log, "[axv] list=202 pb=80003000 end run=0 looping=0"),
+    check(has(log, "[axv] list=201 pb=80003000 set run=1 looping=0") &&
+              has(log, "[axv] list=201 pb=80003000 end run=0 looping=0"),
           "a one-shot that reaches its end prints set, then end with run=0");
-    check(has(log, "[axv] list=203 pb=80003000 run run=1") && has(log, "[axv] list=204 pb=80003000 stop run=0"),
+    check(has(log, "[axv] list=202 pb=80003000 run run=1") && has(log, "[axv] list=203 pb=80003000 stop run=0"),
           "the game running it again prints run, and stopping it prints stop");
     int lines = 0;
     for (char c : log) lines += c == '\n';
-    check(lines == 9, "and nothing else prints");
+    check(lines == 9, "and nothing else prints, with GCN_AXSTATS off");
 }
 
 }  // namespace
