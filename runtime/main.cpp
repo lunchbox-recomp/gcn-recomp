@@ -188,6 +188,11 @@ static double display_hz(SDL_Window* win) {
 // applies scripts, input_script.h).
 // ---------------------------------------------------------------------------
 static int g_port_count = 1;  // plugged in from power-on: --pads, or the ports controls.txt binds
+// --no-gamepads turns this off, for a scripted or replayed run: SDL then starts no joystick,
+// gamepad or haptic subsystem, so a controller left on beside the run is never opened,
+// rumbled or read, and saves/ports.txt is never touched. The keyboard, controls.txt's keys
+// and GCN_INPUT scripts still work.
+static bool g_gamepads = true;
 
 static void merge_keyboard(PadState& p) {
     const bool* k = SDL_GetKeyboardState(nullptr);
@@ -246,7 +251,9 @@ static bool pump_events() {
     SDL_Event e;
     bool running = true;
     while (SDL_PollEvent(&e)) {
-        {
+        // Under --no-gamepads SDL announces no device, unless something else in the process
+        // started its joysticks, and even then none is opened here.
+        if (g_gamepads) {
             std::lock_guard<std::mutex> lk(g_pads_mutex);
             input_map_event(e);
             gamepads_event(e);
@@ -261,6 +268,18 @@ static bool pump_events() {
         }
     }
     return running;
+}
+
+// controls.txt, and unless --no-gamepads the joystick and haptic subsystems and the
+// gamepads, after SDL_Init.
+static void open_controllers(const char* controls) {
+    if (g_gamepads && !SDL_InitSubSystem(SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
+    std::lock_guard<std::mutex> lk(g_pads_mutex);
+    input_map_load(controls);
+    if (!g_gamepads) return;
+    gamepads_load_mappings();
+    gamepads_remember("saves/ports.txt");
+    gamepads_init();
 }
 
 // What has been drawn to the window goes to it, and to the movie if one is being made.
@@ -299,7 +318,7 @@ int main(int argc, char** argv) {
     const char* record_to = nullptr;
     int record_w = 2560, record_h = 1440;
     const char* controls = "controls.txt";
-    bool test_ffb = false;
+    bool list_controls = false, test_ffb = false;
     // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
     const char* telemetry_to = getenv("GCN_TELEMETRY");
     // settings.txt in the working directory (settings.h). A flag beats it for this run and
@@ -318,8 +337,9 @@ int main(int argc, char** argv) {
         }
         else if (!strcmp(argv[i], "--eye")) g_eye_mode = true;
         else if (!strcmp(argv[i], "--vr")) vr = true;
-        else if (!strcmp(argv[i], "--list-controls")) return input_map_probe();
+        else if (!strcmp(argv[i], "--list-controls")) list_controls = true;
         else if (!strcmp(argv[i], "--test-ffb")) test_ffb = true;
+        else if (!strcmp(argv[i], "--no-gamepads")) g_gamepads = false;
         else if (!strncmp(argv[i], "--controls=", 11)) controls = argv[i] + 11;
         else if (!strncmp(argv[i], "--pads=", 7)) {
             pads = atoi(argv[i] + 7);
@@ -368,6 +388,12 @@ int main(int argc, char** argv) {
         aspect_h = 3;
         aspect_window = false;
     }
+    // Both are there to open controllers, which --no-gamepads rules out.
+    if ((list_controls || test_ffb) && !g_gamepads) {
+        fprintf(stderr, "--no-gamepads opens no controller, so it can't go with --list-controls or --test-ffb\n");
+        return 1;
+    }
+    if (list_controls) return input_map_probe();
     if (test_ffb) return input_map_test_ffb(controls);
     plat_install_crash_handlers(on_interrupt, on_fault);
     if (record_to && !record::start(record_to, record_w, record_h, 60)) return 1;
@@ -431,14 +457,8 @@ int main(int argc, char** argv) {
     // Joysticks are read without the window's focus: in --vr the headset has it, and a
     // wheel or pedals have no reason to stop when another window is clicked.
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
-    {
-        std::lock_guard<std::mutex> lk(g_pads_mutex);
-        input_map_load(controls);
-        gamepads_load_mappings();
-        gamepads_remember("saves/ports.txt");
-        gamepads_init();
-    }
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) fatal("SDL_Init: %s", SDL_GetError());
+    open_controllers(controls);
     // Ports 1 to the highest controls.txt binds are plugged in at power-on, as --pads would.
     g_port_count = std::max(pads, input_map_port_count());
     pad_set_count(g_port_count);

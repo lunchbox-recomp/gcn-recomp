@@ -11,7 +11,7 @@
 // (rtc_set_base), the event queue and interrupt request (event_schedule_in, irq_request),
 // and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a check sets
 // by hand. The interrupt handler's thread dump (debug_dump_threads) and guest memory
-// (g_mem) are stubbed too.
+// (g_mem) are stubbed too, and fatal, which says why and exits 1.
 //
 // usage: test_ports <empty work dir>            the port checks
 //        test_ports --record <empty work dir>   two gamepads, played and logged
@@ -19,7 +19,13 @@
 //        test_ports --replay-no-sram <that work dir>   that log again, its SRAM snapshot gone
 //        test_ports --interrupt <empty work dir>   the interrupt handler run beside the
 //                                                  main loop, which ends the process
+//        test_ports --no-gamepads <empty work dir>   the frontend under --no-gamepads, with
+//                                                    a gamepad connected before it starts
 // Files are written into the work dir and left there.
+//
+// Only SDL's virtual joysticks are seen: main() turns off every driver that finds real
+// controllers before anything starts SDL, so a controller connected beside the run is never
+// opened, rumbled or read.
 #define main gcn_frontend_main
 #include "main.cpp"
 #undef main
@@ -47,6 +53,14 @@ void ffb_update(bool motor) { g_ffb_motor = motor ? 1 : 0; }
 void ffb_shutdown() {}
 uint8_t* g_mem;  // on_interrupt's GCN_RAM_DUMP, which nothing here sets
 void debug_dump_threads() {}
+void fatal(const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(stderr, fmt, ap);
+    va_end(ap);
+    fputc('\n', stderr);
+    exit(1);
+}
 
 namespace {
 
@@ -1295,14 +1309,61 @@ int run_interrupt(const std::string& dir) {
     return finish("--interrupt");
 }
 
+// ---- --no-gamepads: a gamepad connected before the frontend starts is never opened, gets
+// no port and isn't saved, and the game's rumble motor reaches nothing.
+int run_no_gamepads(const std::string& dir) {
+    // main()'s saves/ports.txt is relative to where it runs.
+    if (chdir(dir.c_str()) != 0) return 1;
+    g_gamepads = false;
+    open_controllers("no-controls.txt");
+    check(!SDL_WasInit(SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC),
+          "--no-gamepads starts no joystick, gamepad or haptic subsystem");
+    gamepads_shutdown();
+    // From here SDL is up for the virtual gamepad, as another program's SDL would be: what's
+    // checked is that the frontend leaves it alone.
+    if (!sdl_up()) return 1;
+    power_on(1);
+    Virtual v{"virtual pad unseen"};
+    attach(v, 1);
+    capture("no-gamepads-stderr.txt", [] {
+        open_controllers("no-controls.txt");
+        frame();
+    });
+    const bool unopened = !SDL_GetGamepadFromID(v.id) && !SDL_GetJoystickFromID(v.id);
+    // Opened here, by the test, to press its buttons: the frontend hears nothing of it.
+    SDL_Joystick* j = SDL_OpenJoystick(v.id);
+    SDL_SetJoystickVirtualButton(j, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    frame();
+    const bool unread = !read(0).buttons && !read(1).connected;
+    SDL_SetJoystickVirtualButton(j, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    motor(1);
+    check(unopened && lines_with("no-gamepads-stderr.txt", " on port ") == 0 && unread && v.rumbles == 0 &&
+              !exists_path("saves/ports.txt") && !exists_path("saves"),
+          "--no-gamepads: a gamepad connected before start is never opened, plugs no port in, rumbles for no motor, "
+          "and nothing is saved");
+    SDL_CloseJoystick(j);
+    detach(v);
+    gamepads_shutdown();
+    return finish("--no-gamepads");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Before anything starts SDL: no driver that finds real controllers, so only the virtual
+    // joysticks are seen. HIDAPI, IOKit and MFi have switches. Linux's evdev driver has none,
+    // so the gamepad allow list names only a USB vendor that's reserved (FFFF), which turns
+    // away every device a driver finds; SDL's virtual driver doesn't consult it.
+    SDL_SetHint(SDL_HINT_JOYSTICK_HIDAPI, "0");
+    SDL_SetHint(SDL_HINT_JOYSTICK_IOKIT, "0");
+    SDL_SetHint(SDL_HINT_JOYSTICK_MFI, "0");
+    SDL_SetHint(SDL_HINT_GAMECONTROLLER_IGNORE_DEVICES_EXCEPT, "0xFFFF/0xFFFF");
     if (argc == 2) return run_ports(argv[1]);
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay-no-sram")) return run_replay_without_sram(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--interrupt")) return run_interrupt(argv[2]);
-    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--interrupt] <work dir>\n");
+    if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
+    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--interrupt|--no-gamepads] <work dir>\n");
     return 2;
 }

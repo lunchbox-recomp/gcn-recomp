@@ -29,6 +29,16 @@ settings the original did. A log with no SRAM snapshot replays from the default 
 replay is still recorded as a new log, so a route can be extended by replaying it and then
 playing on.
 
+`--no-gamepads` keeps a run off the controllers. SDL starts no joystick, gamepad or haptic
+support, so a controller left on beside the run is never opened, rumbled or read. The
+keyboard and `GCN_INPUT` scripts still work, and a `controls.txt` line that binds a device
+binds nothing.
+
+A scripted or replayed run should pass it, `--hidden` ones most of all. Without it a hidden
+replay plays the game's rumble on whatever pad is on beside it, and hands that pad the game
+when the log runs out. It doesn't touch `saves/ports.txt` either, and `--list-controls` and
+`--test-ffb` refuse it.
+
 The log holds every port the guest polls, so a run with more controllers (`--pads`, under
 "Scripted input") replays all of them, whatever `--pads` the replay is given. When the log
 runs out, a port it ends with plugged in stays plugged in, at rest, if the replaying run has
@@ -141,9 +151,11 @@ said once and never written over.
 on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their ports without
 a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own
 input loop and the SI layer in, so each port is read back as the guest reads it.
-`tools/test_ports.sh <test_ports> <work dir>` runs its three modes: the port checks, and a
-recording of two gamepads and its replay with none. Each check prints `ok` or `FAIL`, and
-the exit code is 0 only if all pass. It refuses to run while any joystick is connected.
+`tools/test_ports.sh <test_ports> <work dir>` runs the port checks, a recording of two
+gamepads and its replay with none, an interrupt handled beside the main loop and the
+frontend under `--no-gamepads`. Each check prints `ok` or `FAIL`, and the exit code is 0
+only if all pass. SDL's drivers for real controllers are off before it starts, so a
+controller that's connected is never opened.
 
 `ninja test_port_memory` builds `tools/test_port_memory.cpp`, which checks which port each
 gamepad gets from what `ports.txt` remembers. It covers serials, which SDL's virtual

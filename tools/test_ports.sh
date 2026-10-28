@@ -1,9 +1,10 @@
 #!/bin/bash
 # Runs the gamepad port checks: the port checks, a recording of two gamepads, and that
 # recording replayed with none, and that recording's log replayed again with its SRAM
-# snapshot taken away, then an interrupt handled beside the main loop. The port checks
-# include the ports remembered in saves/ports.txt under the work dir. SDL's virtual
-# joysticks stand in for the controllers, so no joystick may be connected.
+# snapshot taken away, then an interrupt handled beside the main loop, then the frontend
+# under --no-gamepads. The port checks include the ports remembered in saves/ports.txt
+# under the work dir. SDL's virtual joysticks stand in for the controllers, and the
+# drivers that find real ones are off, so a controller that's connected is left alone.
 #
 # usage: tools/test_ports.sh <test_ports> <work dir>
 #   <test_ports>  the program `ninja test_ports` builds in a build directory of a game
@@ -20,7 +21,7 @@ if [ -e "$work" ]; then
   echo "$work exists: give a new directory" >&2
   exit 2
 fi
-mkdir -p "$work/files" "$work/log" "$work/interrupt" || exit 2
+mkdir -p "$work/files" "$work/log" "$work/interrupt" "$work/no-gamepads" || exit 2
 status=0
 export SDL_AUDIO_DRIVER=dummy
 "$test_ports" "$work/files" || status=1
@@ -28,4 +29,5 @@ export SDL_AUDIO_DRIVER=dummy
 "$test_ports" --replay "$work/log" || status=1
 "$test_ports" --replay-no-sram "$work/log" || status=1
 "$test_ports" --interrupt "$work/interrupt" || status=1
+"$test_ports" --no-gamepads "$work/no-gamepads" || status=1
 exit $status
