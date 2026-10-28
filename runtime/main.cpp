@@ -270,6 +270,10 @@ static bool pump_events() {
     return running;
 }
 
+// What main() starts SDL with: no joystick, gamepad or haptic subsystem, which
+// open_controllers starts unless --no-gamepads.
+static constexpr SDL_InitFlags kSdlInit = SDL_INIT_VIDEO | SDL_INIT_AUDIO;
+
 // controls.txt, and unless --no-gamepads the joystick and haptic subsystems and the
 // gamepads, after SDL_Init.
 static void open_controllers(const char* controls) {
@@ -457,7 +461,7 @@ int main(int argc, char** argv) {
     // Joysticks are read without the window's focus: in --vr the headset has it, and a
     // wheel or pedals have no reason to stop when another window is clicked.
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO)) fatal("SDL_Init: %s", SDL_GetError());
+    if (!SDL_Init(kSdlInit)) fatal("SDL_Init: %s", SDL_GetError());
     open_controllers(controls);
     // Ports 1 to the highest controls.txt binds are plugged in at power-on, as --pads would.
     g_port_count = std::max(pads, input_map_port_count());

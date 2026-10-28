@@ -1586,8 +1586,9 @@ int run_no_gamepads(const std::string& dir) {
     if (chdir(dir.c_str()) != 0) return 1;
     g_gamepads = false;
     open_controllers("no-controls.txt");
-    check(!SDL_WasInit(SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC),
-          "--no-gamepads starts no joystick, gamepad or haptic subsystem");
+    const SDL_InitFlags controllers = SDL_INIT_JOYSTICK | SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC;
+    check(!(kSdlInit & controllers) && !SDL_WasInit(controllers),
+          "--no-gamepads: neither main()'s SDL_Init nor open_controllers starts a joystick, gamepad or haptic subsystem");
     gamepads_shutdown();
     // From here SDL is up for the virtual gamepad, as another program's SDL would be: what's
     // checked is that the frontend leaves it alone.
