@@ -48,6 +48,7 @@ inline double seek_seconds(uint64_t from, uint64_t to) {
 
 // Seconds from time `at` until the disc has turned the block at `offset` under the head. The
 // track is a spiral 0.74 um apart, and the disc has spun at a constant rate since time 0.
+// `at` is the exact time, where Dolphin's code rounds it down to a whole second.
 inline double turn_seconds(uint64_t offset, double at) {
     constexpr double kTurns = 28.5, kPitch = 0.74e-6;
     const double target = std::fmod(radius(offset) / kPitch, 1.0);

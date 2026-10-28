@@ -7,6 +7,7 @@
 static PlatFile* g_iso;
 static uint32_t g_disr, g_dicvr, g_cmd[3], g_dimar, g_dilen, g_dicr, g_diimm, g_dicfg;
 static bool g_busy;
+static uint32_t g_moved;  // the bytes the running read moves, which DIMAR and DILENGTH show at its end
 static drive::Drive g_drive;  // where the head is and what the drive has read ahead
 
 #include "dtk.h"
@@ -79,6 +80,9 @@ static void di_update_irq() {
 
 static void di_complete() {
     g_busy = false;
+    g_dimar += g_moved;
+    g_dilen -= g_moved;
+    g_moved = 0;
     g_dicr &= ~1u;
     g_disr |= 0x10;  // TCINT
     di_update_irq();
@@ -103,8 +107,7 @@ static void di_execute() {
         }
         debug_guard_dma("DVD read", g_dimar, len);
         debug_guest_check("after DVD read");
-        g_dimar += len;
-        g_dilen = 0;
+        g_moved = len;
         break;
     }
     case 0x12: {  // inquiry

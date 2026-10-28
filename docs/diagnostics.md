@@ -1135,6 +1135,10 @@ Any other block is a seek, which costs the head's travel and the wait for the bl
 round. After each read the drive keeps the last block and the one before it, and reads on
 until it holds 1 MiB. Every other command takes 300 us.
 
+Two things differ from Dolphin. The disc's turn is timed at the exact time, where Dolphin's
+code rounds down to a whole second, and a read's DIMAR and DILENGTH move only when it
+completes, where Dolphin moves them a block at a time. The data lands in RAM as the read starts.
+
 Games time things against the disc, so a faster drive changes what they do. The AX library
 drops a voice's loop flag when the game sets the voice's addresses and then its loop, end
 or current address within one 5 ms audio frame. A streaming music player that does both in
