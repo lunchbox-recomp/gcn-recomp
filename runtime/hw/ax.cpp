@@ -99,7 +99,7 @@ void stats_output(uint32_t surround_addr, uint32_t lr_addr) {
 }
 
 void stats_list_end() {
-    const uint32_t n = ++g_stat_lists;
+    const uint32_t n = g_stat_lists;
     if (n % 400) return;
     std::string ids;
     for (int c = 0; c < NUM_CMDS; c++) {
@@ -137,6 +137,8 @@ struct Accel {
     uint32_t cur, end, loop;
     uint16_t fmt;
     bool stopped = false;
+    int loops = 0;       // times it reached the end and looped, for GCN_AXVOICES
+    bool ended = false;  // reached the end and stopped
 
     explicit Accel(PB& p) : pb(p), cur(p.get32(PB_CUR_HI)), end(p.get32(PB_END_HI)), loop(p.get32(PB_LOOP_HI)), fmt(p.w[PB_FORMAT]) {}
 
@@ -192,9 +194,11 @@ struct Accel {
                     pb.w[PB_YN2] = pb.w[PB_LOOP_YN2];
                 }
                 if (pb.w[PB_IS_STREAM] && g_axstats) g_sw.stream_loops++;
+                loops++;
             } else {
                 pb.w[PB_RUNNING] = 0;
                 stopped = true;
+                ended = true;
             }
         }
         return (int16_t)val;
@@ -366,6 +370,58 @@ void resample_polyphase(PB& pb, Accel& acc, int16_t* out) {
     pb.w[PB_FRAC] = (uint16_t)pos;
 }
 
+// ---- GCN_AXVOICES: a line for each thing that happens to a voice ----
+bool g_axvoices;
+uint32_t g_voice_addr;  // the PB process_voice is mixing
+struct VoiceSeen {
+    PB pb;               // as the mixer last wrote it back
+    int peak = 0;        // largest sample after the envelope since the last level line
+    bool mixed = false;  // mixed since the last level line
+};
+std::map<uint32_t, VoiceSeen> g_seen;
+
+// `list` is the list being mixed, counted from 1 as the [ax] lines count them.
+void voice_line(const char* what, uint32_t addr, const PB& pb) {
+    fprintf(stderr,
+            "[axv] list=%u pb=%08X %s run=%u looping=%u stream=%u fmt=%02X src=%u loop=%08X end=%08X cur=%08X "
+            "ratio=%08X\n",
+            g_stat_lists + 1, addr, what, pb.w[PB_RUNNING], pb.w[PB_LOOPING], pb.w[PB_IS_STREAM], pb.w[PB_FORMAT],
+            pb.w[PB_SRC_TYPE], pb.get32(PB_LOOP_HI), pb.get32(PB_END_HI), pb.get32(PB_CUR_HI), pb.get32(PB_RATIO_HI));
+}
+
+// What the game changed in a voice since the mixer last wrote it back.
+void voice_read(uint32_t addr, const PB& pb) {
+    auto it = g_seen.find(addr);
+    if (it == g_seen.end()) {
+        if (pb.w[PB_RUNNING]) voice_line("run", addr, pb);
+        return;
+    }
+    const PB& was = it->second.pb;
+    if (pb.w[PB_RUNNING] != was.w[PB_RUNNING]) {
+        voice_line(pb.w[PB_RUNNING] ? "run" : "stop", addr, pb);
+    } else if (!pb.w[PB_RUNNING]) {
+        return;
+    } else if (pb.w[PB_LOOPING] != was.w[PB_LOOPING] || pb.w[PB_IS_STREAM] != was.w[PB_IS_STREAM] ||
+               pb.w[PB_FORMAT] != was.w[PB_FORMAT] || pb.get32(PB_LOOP_HI) != was.get32(PB_LOOP_HI) ||
+               pb.get32(PB_END_HI) != was.get32(PB_END_HI)) {
+        voice_line("set", addr, pb);
+    } else if (pb.get32(PB_CUR_HI) != was.get32(PB_CUR_HI)) {
+        voice_line("seek", addr, pb);
+    }
+}
+
+// After every 200th list, each voice mixed since the last time, with its loudest sample.
+void voice_levels() {
+    if (g_stat_lists % 200) return;
+    for (auto& [addr, s] : g_seen) {
+        if (!s.mixed) continue;
+        fprintf(stderr, "[axv] list=%u pb=%08X level peak=%d cur=%08X\n", g_stat_lists, addr, s.peak,
+                s.pb.get32(PB_CUR_HI));
+        s.peak = 0;
+        s.mixed = false;
+    }
+}
+
 extern int g_stat_voices;
 void process_voice(PB& pb, int offset) {
     if (!pb.w[PB_RUNNING]) return;
@@ -401,11 +457,17 @@ void process_voice(PB& pb, int offset) {
         pb.w[PB_FRAC] = (uint16_t)pos;
     }
     acc.finish();
+    if (g_axvoices && (acc.loops || acc.ended)) voice_line(acc.ended ? "end" : "loop", g_voice_addr, pb);
     // Volume envelope
     for (int i = 0; i < SPMS; i++) {
         uint16_t v = pb.w[PB_VOL];
         samples[i] = (int16_t)std::clamp(((int32_t)samples[i] * v) >> 15, -32767, 32767);
         pb.w[PB_VOL] = (uint16_t)(v + (int16_t)pb.w[PB_VOL_DELTA]);
+    }
+    if (g_axvoices) {
+        VoiceSeen& s = g_seen[g_voice_addr];
+        for (int i = 0; i < SPMS; i++) s.peak = std::max(s.peak, std::abs((int)samples[i]));
+        s.mixed = true;
     }
     for (int b = 0; b < 9; b++)
         if (mf.enable[b])
@@ -417,6 +479,8 @@ void process_pb_list(uint32_t pb_addr) {
     int guard = 0;
     while (pb_addr && guard++ < 256) {
         read_pb(pb_addr, pb);
+        if (g_axvoices) voice_read(pb_addr, pb);
+        g_voice_addr = pb_addr;
         // Per-millisecond parameter updates: (word index, value) pairs.
         uint32_t upd = pb.get32(PB_UPDATES + 5);
         for (int ms = 0; ms < 5; ms++) {
@@ -429,6 +493,7 @@ void process_pb_list(uint32_t pb_addr) {
             process_voice(pb, ms * SPMS);
         }
         write_pb(pb_addr, pb);
+        if (g_axvoices) g_seen[pb_addr].pb = pb;
         pb_addr = pb.get32(PB_NEXT_HI);
     }
 }
@@ -538,6 +603,8 @@ constexpr uint32_t kUcode2001Hash = 0x4E8A8B21;
 
 void ax_init(uint32_t ucode_hash) {
     g_axstats = getenv("GCN_AXSTATS") != nullptr;
+    g_axvoices = getenv("GCN_AXVOICES") != nullptr;
+    g_seen.clear();
     g_layout_later = ucode_hash != kUcode2001Hash;
     g_has_compressor = ucode_hash != kUcode2001Hash;
     g_has_lpf = ucode_hash != kUcode2001Hash;
@@ -626,5 +693,7 @@ static void run_cmdlist(uint32_t addr, uint16_t size) {
 
 void ax_process_cmdlist(uint32_t addr, uint16_t size) {
     run_cmdlist(addr, size);
+    g_stat_lists++;
     if (g_axstats) stats_list_end();
+    if (g_axvoices) voice_levels();
 }

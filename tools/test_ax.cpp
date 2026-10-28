@@ -11,6 +11,8 @@
 #include "hw/ax.cpp"
 #include <cstdio>
 #include <cstdlib>
+#include <string>
+#include <unistd.h>
 
 uint8_t* g_mem;
 uint8_t* g_aram;
@@ -466,6 +468,74 @@ void end_checks() {
           "an ADPCM voice whose end is a frame's last nibble loops there, past the next header");
 }
 
+// What `f` writes to stderr.
+std::string stderr_of(void (*f)()) {
+    fflush(stderr);
+    FILE* tmp = tmpfile();
+    if (!tmp) return "";
+    const int saved = dup(2);
+    dup2(fileno(tmp), 2);
+    f();
+    fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+    std::string text;
+    rewind(tmp);
+    char buf[256];
+    for (size_t n; (n = fread(buf, 1, sizeof buf, tmp)) > 0;) text.append(buf, n);
+    fclose(tmp);
+    return text;
+}
+
+bool has(const std::string& text, const char* line) { return text.find(line) != std::string::npos; }
+
+// GCN_AXVOICES prints a line when the game starts, changes or stops a voice and when the
+// mixer loops or ends one, and every 200 lists each voice's loudest sample.
+void voices_run() {
+    reset(kHashLater);
+    g_axvoices = true;
+    g_stat_lists = 198;
+    PB pb = pcm_voice(1000, 0x100, 0x4000, 0x8000);
+    pb.set32(PB_CUR_HI, kSampleAt + 0xFE);
+    store_pb(pb);
+    run_list();                                       // list 199: runs, and loops in its first ms
+    mem_w16(kPB + 2 * PB_END_LO, kSampleAt + 0x1FF);
+    run_list();                                       // 200: a new end, then the level line
+    mem_w16(kPB + 2 * PB_CUR_LO, kSampleAt + 0x20);
+    run_list();                                       // 201: a new place
+    mem_w16(kPB + 2 * PB_LOOPING, 0);
+    mem_w16(kPB + 2 * PB_CUR_LO, kSampleAt + 0x1FE);
+    run_list();                                       // 202: a one-shot two from its end
+    mem_w16(kPB + 2 * PB_RUNNING, 1);
+    run_list();                                       // 203: run again
+    mem_w16(kPB + 2 * PB_RUNNING, 0);
+    run_list();                                       // 204: stopped by the game
+    g_axvoices = false;
+}
+
+void voice_log_checks() {
+    const std::string log = stderr_of(voices_run);
+    check(has(log, "[axv] list=199 pb=80003000 run run=1 looping=1 stream=0 fmt=0A src=2 loop=00000800 end=000008FF "
+                   "cur=000008FE ratio=00010000\n"),
+          "a voice the mixer hasn't seen running prints run with its PB");
+    check(has(log, "[axv] list=199 pb=80003000 loop run=1 looping=1 stream=0 fmt=0A src=2 loop=00000800 "
+                   "end=000008FF cur=0000081E ratio=00010000\n"),
+          "a voice that loops in a millisecond prints loop with where it is after it");
+    check(has(log, "[axv] list=200 pb=80003000 set ") && has(log, " end=000009FF cur=0000089E "),
+          "an end the game moved prints set");
+    check(has(log, "[axv] list=200 pb=80003000 level peak=500 cur=0000093E\n"),
+          "the 200th list prints the voice's loudest sample, 500");
+    check(has(log, "[axv] list=201 pb=80003000 seek ") && has(log, " cur=00000820 "), "a place the game moved prints seek");
+    check(has(log, "[axv] list=202 pb=80003000 set run=1 looping=0") &&
+              has(log, "[axv] list=202 pb=80003000 end run=0 looping=0"),
+          "a one-shot that reaches its end prints set, then end with run=0");
+    check(has(log, "[axv] list=203 pb=80003000 run run=1") && has(log, "[axv] list=204 pb=80003000 stop run=0"),
+          "the game running it again prints run, and stopping it prints stop");
+    int lines = 0;
+    for (char c : log) lines += c == '\n';
+    check(lines == 9, "and nothing else prints");
+}
+
 }  // namespace
 
 int main() {
@@ -477,6 +547,7 @@ int main() {
     adpcm_checks();
     polyphase_checks();
     end_checks();
+    voice_log_checks();
     printf("%s: %d failed\n", g_failed ? "FAIL" : "ok", g_failed);
     return g_failed ? 1 : 0;
 }

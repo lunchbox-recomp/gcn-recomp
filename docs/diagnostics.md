@@ -712,6 +712,22 @@ moves the end there, so a voice that loops above its old end plays on from the l
 the end catches up. It used to loop again on every sample past the end and sit on the
 loop's first sample for a list or two.
 
+`GCN_AXVOICES` (set to anything) prints a line to stderr for each thing that happens to a
+voice, so a sound that stops can be traced to the game or the mixer. Each line starts
+`[axv] list=N pb=<address>`, with the list being mixed counted as the `[ax]` lines count
+them.
+
+- `run`, `stop`, `set` and `seek` are what the game did since the mixer last wrote the PB
+  back. It started or stopped the voice, changed its loop flag, stream flag, format, loop
+  address or end address, or moved its current address.
+- `loop` and `end` are what the mixer did. In a millisecond the voice read the sample at
+  its end address and looped, or stopped there.
+- These lines go on with `run= looping= stream= fmt= src= loop= end= cur= ratio=`, the PB's
+  running flag, loop flag, stream flag, format, source type, three addresses and ratio. A
+  `loop` or `end` line gives them as that millisecond left them.
+- `level peak=P cur=C` comes after every 200th list for each voice mixed since the last
+  one. It gives the voice's loudest sample after its volume envelope and where it is.
+
 `ninja test_ax` builds `tools/test_ax.cpp`, which runs `hw/ax.cpp` over a fake main memory
 and ARAM. Each check writes parameter blocks, samples and a command list by hand, runs the
 list and compares what the mixer wrote or counted with numbers worked out by hand. Each
