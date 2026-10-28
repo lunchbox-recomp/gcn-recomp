@@ -12,7 +12,8 @@
 // (rtc_set_base), the event queue and interrupt request (event_schedule_in, irq_request),
 // and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a check sets
 // by hand. The interrupt handler's thread dump (debug_dump_threads) and guest memory
-// (g_mem) are stubbed too, and fatal, which says why and exits 1.
+// (g_mem) are stubbed too, and fatal, which says why and exits 1, and the session's note
+// that the game is starting again (session_relaunching), which no check reaches.
 //
 // usage: test_ports <empty work dir>            the port checks
 //        test_ports --record <empty work dir>   two gamepads, played and logged
@@ -23,6 +24,8 @@
 //                                                  main loop, which ends the process
 //        test_ports --no-gamepads <empty work dir>   the frontend under --no-gamepads, with
 //                                                    a gamepad connected before it starts
+//        test_ports --reset <empty work dir>   the game resetting the console during a
+//                                              replay, with a gamepad rumbling
 // Files are written into the work dir and left there.
 //
 // Only SDL's virtual joysticks are seen: main() turns off every driver that finds real
@@ -64,6 +67,7 @@ void fatal(const char* fmt, ...) {
     fputc('\n', stderr);
     exit(1);
 }
+void session_relaunching() {}
 
 namespace {
 
@@ -1618,6 +1622,33 @@ int run_no_gamepads(const std::string& dir) {
     return finish("--no-gamepads");
 }
 
+// ---- The game resetting the console ends the process (guest_reset), so the frontend's
+// reset handler stops a rumbling gamepad and has it say what it sent first. Under a replay
+// the handler doesn't start the game again, which leaves this process here to check.
+int run_reset(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    input_map_load((dir + "/no-controls.txt").c_str());
+    plat_make_dirs(dir + "/log");
+    write_file(dir + "/log/inputs.txt", "# gcn-recomp input log v5\n# game TEST00  started 2026-10-28T12:00:00\n"
+                                        "# epoch 1792000000\n0 0 0 1 0000 80 80 80 80 00 00\n# end 4 0\n");
+    std::string card, sram;
+    if (!input_replay_load(dir + "/log", card, sram)) return 1;
+    power_on(1);
+    gamepads_init();
+    Virtual a{"virtual pad reset"};
+    attach(a);
+    frame();
+    g_outbuf[0] = 0x00400001;  // port 1's motor on from here
+    frame();
+    const std::string out = dir + "/reset-stderr.txt";
+    // Without the replay the handler would start this program again.
+    if (input_replay_active()) capture(out, [] { on_reset(0, 0); });
+    check(a.rumbles == 1 && a.stops == 1 && lines_with(out, "gamepads: port 1 rumble on 1 time, 0 of 2 calls failed\n") == 1,
+          "the game resetting the console stops a rumbling gamepad, which says what it sent");
+    detach(a);
+    return finish("--reset");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -1631,6 +1662,8 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--replay-v4")) return run_replay_v4(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--interrupt")) return run_interrupt(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
-    fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--interrupt|--no-gamepads] <work dir>\n");
+    if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
+    fprintf(stderr,
+            "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--interrupt|--no-gamepads|--reset] <work dir>\n");
     return 2;
 }

@@ -298,18 +298,29 @@ static void show_frame(SDL_Window* win) {
     SDL_GL_SwapWindow(win);
 }
 
+// The game resetting the console starts it again in a fresh process, as a power cycle
+// would -- except in a replay, which would only replay itself from the start again.
+// Either way this process ends (guest_reset), so the gamepads and a wheel are shut down
+// first, as at any other exit: none is left rumbling or pushing, and each gamepad says what
+// it sent.
+static char** g_argv;  // main()'s
+static void on_reset(uint32_t, uint32_t) {
+    {
+        std::lock_guard<std::mutex> lk(g_pads_mutex);
+        input_map_shutdown();
+        gamepads_shutdown();
+    }
+    if (input_replay_active()) return;
+    session_relaunching();
+    plat_relaunch(g_argv);
+}
+
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv) {
     // GCN_SESSION sets the switches a session turns on, so it goes before anything reads one.
     const std::string session_inputs = session_begin(argc, argv);
-    // The game resetting the console starts it again in a fresh process, as a power cycle
-    // would -- except in a replay, which would only replay itself from the start again.
-    static char** s_argv = argv;
-    set_reset_handler([](uint32_t, uint32_t) {
-        if (input_replay_active()) return;
-        session_relaunching();
-        plat_relaunch(s_argv);
-    });
+    g_argv = argv;
+    set_reset_handler(on_reset);
     // Default: the image the build was configured with, else the first image in ./rom
     std::string iso_default = GCN_DEFAULT_ISO;
     if (!plat_readable(iso_default.c_str())) iso_default = plat_find_file("rom", ".iso");
