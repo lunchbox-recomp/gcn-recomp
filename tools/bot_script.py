@@ -16,8 +16,9 @@ COMMAND can't be run. A bad script or a SOCKET it can't listen on exits 2 before
 A socket an earlier run left at SOCKET is replaced, but not one another bot still listens on.
 
 --late=MS:N waits MS milliseconds before it answers each frame whose number is a multiple of N.
-It's there to check that how long a bot takes to answer changes nothing in a run, paced or
-not: the same bot with and without it leaves the same input log.
+It's there to check that how long a bot takes to answer changes nothing in a run: the same bot
+with and without it leaves the same input log, unpaced or paced under GCN_CATCHUP=0. Only the
+end line can differ, since it says where --exit-after caught the guest.
 """
 from __future__ import annotations
 

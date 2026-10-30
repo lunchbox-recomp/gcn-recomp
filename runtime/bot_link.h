@@ -13,8 +13,9 @@
 // jump.
 //
 // The guest waits for `done`, and the host time it waited goes to the clock as a pause's does
-// (clock_hold), so a bot's run is the same every time for the same bot, paced or not. The
-// states go in below the input log (input_log.h), which records them as it records any
+// (clock_hold), so the pacer makes no catch-up jump for the wait. A run is the same every time
+// for the same bot unpaced, or paced under GCN_CATCHUP=0: a paced run still jumps when the host
+// falls behind for other reasons, and two runs part there. The states go in below the input log (input_log.h), which records them as it records any
 // controller's, so a replay needs no bot. The link only reads memory. A line it doesn't take,
 // a read outside RAM, a `done` without a port the bot drives and the bot hanging up each stop
 // the game: the reason goes to stderr, with the line quoted, the input log is ended there

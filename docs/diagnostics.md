@@ -251,9 +251,14 @@ can jump.
 
 The guest waits for `done` and never races the bot. Guest time stands still while it waits,
 and the host time goes to the clock as a pause's does (see "Pausing" below), so the pacer
-makes no jump for it and a bot's run is the same every time for the same bot, paced or not.
-The bot's states take the live ones' place below the input log, which records them as it
-records any controller's, so the run replays with `--replay` and no bot.
+makes no jump for the wait. The bot's states take the live ones' place below the input log,
+which records them as it records any controller's, so the run replays with `--replay` and no
+bot.
+
+An unpaced run is the same every time for the same bot. A paced one still jumps when the host
+falls behind for other reasons (see "The clock" below), at boot and now and then in a heavy
+scene, and two paced runs of a bot part at the first jump that differs. `GCN_CATCHUP=0` turns
+the jumps off, and a paced run under it repeats as an unpaced one does.
 
 Like `--no-gamepads`, `--bot` opens no controller. It drives ports 1 to `--pads=N` (port 1
 alone by default), and a `GCN_INPUT` script still presses on top of it. A game that resets the
@@ -299,8 +304,9 @@ is refused, since the two bots would take each other's games. When COMMAND can't
 `bot_script.py` exits 127.
 
 `--late=MS:N` has `bot_script.py` wait MS milliseconds before it answers each frame whose
-number is a multiple of N. The same bot with and without it leaves the same input log, paced
-or not, with no `jump` line for the waits.
+number is a multiple of N. The same bot with and without it leaves the same input log
+unpaced, or paced under `GCN_CATCHUP=0`. Only the end line can differ, since it says where
+`--exit-after` caught the guest.
 
 `ninja test_bot_link` builds `tools/test_bot_link.cpp`, which steps the link through the SI
 layer's `pad_get` with a bot on a socket in a work dir and no game. It covers a frame polled

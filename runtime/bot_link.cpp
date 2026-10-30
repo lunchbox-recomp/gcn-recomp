@@ -233,8 +233,7 @@ void bot_link_apply(PadState& p, int chan) {
     const uint32_t frame = gx::g_frames_submitted.load();
     if (!g_stepped || frame != g_frame) {
         // The guest is held while the bot answers, as by a pause, and the host time that took
-        // goes to the clock (clock_hold): the pacer doesn't take it for time to catch up, so
-        // how long the bot took changes nothing in the run, paced or not.
+        // goes to the clock (clock_hold), so the pacer doesn't take it for time to catch up.
         const uint64_t t0 = host_ns();
         step(frame);
         clock_hold(host_ns() - t0);
