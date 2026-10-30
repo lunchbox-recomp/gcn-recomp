@@ -238,13 +238,16 @@ error. The protocol is text, so a person can stand in for the bot with `nc -U` w
 At the first pad poll of each new submitted frame, the count `GCN_INPUT` keys on, the engine
 sends `frame N` and waits. The bot may send any number of `read ADDR LEN` lines, and the
 engine answers each with `data HEX`, the bytes as the guest has them. ADDR is in hex where the
-game sees main RAM (`80000000` to `817FFFFF`) and LEN is 1 to 256.
+game sees main RAM (`80000000` to `817FFFFF`) and LEN is 1 to 256 in decimal.
 
 Then the bot sends one `pad PORT BUTTONS SX SY CX CY L R` line for each port it drives, and
-`done`. BUTTONS holds the PADStatus bits in hex (`runtime/hw/pad.h`), and the sticks and
-triggers are 0 to 255 in decimal, with 128 a stick at rest. Every poll of that frame on every
-port reads those states, so a frame the game polls several times is one exchange, and a frame
-with no poll sends nothing at all, which is why `frame` numbers can jump.
+`done`. BUTTONS holds the PADStatus bits in hex (`runtime/hw/pad.h`), and a bit outside
+`1F7F`, which no button sets, stops the game. The sticks and triggers are 0 to 255 in decimal,
+with 128 a stick at rest.
+
+Every poll of that frame on every port reads those states, so a frame the game polls several
+times is one exchange. A frame with no poll sends nothing at all, which is why `frame` numbers
+can jump.
 
 The guest waits for `done` and never races the bot. Guest time stands still while it waits,
 and the host time goes to the clock as a pause's does (see "Pausing" below), so the pacer
@@ -269,11 +272,13 @@ frame (`input_log_end`) and the game exits 1.
 The engine has no timeout of its own. A bot sees both sides of the link, so a watchdog for a
 hung game or a frozen picture belongs in the bot.
 
-To be the bot by hand, listen first and then start the game.
+To be the bot by hand, listen in one terminal and then start the game in another. `nc` can't
+listen where an earlier run's socket file is still in the way, so remove it first.
 
 ```sh
-nc -lU /tmp/bot.sock
-build/<game> --bot=/tmp/bot.sock
+rm -f build/bot.sock
+nc -lU build/bot.sock
+build/<game> --bot=build/bot.sock
 ```
 
 `nc` prints a `frame` line. Typing `pad 1 0000 128 128 128 128 0 0` and `done` steps one
@@ -295,11 +300,12 @@ or not, with no `jump` line for the waits.
 
 `ninja test_bot_link` builds `tools/test_bot_link.cpp`, which steps the link through the SI
 layer's `pad_get` with a bot on a socket in a work dir and no game. It covers a frame polled
-several times, a jump in frame numbers, reads up to the last byte of RAM and each way the link
-stops the game, each stop in a child process. `test_bot_link <new dir>` makes that directory
-and writes its files there.
+several times, a jump in frame numbers and reads up to the last byte of RAM. It stops the game
+in a child process for each kind of line the link refuses, a line too long and a bot that hangs
+up, though not for a send or read that fails some other way.
 
-`ninja unit` runs it, and `tools/test_*.py` under both Pythons as it runs `recomp/test_*.py`.
+`test_bot_link <new dir>` makes that directory and writes its files there. `ninja unit` runs
+it, and `tools/test_*.py` under both Pythons as it runs `recomp/test_*.py`.
 `tools/test_bot_script.py` runs `bot_script.py` against a fake engine.
 
 ## Frame dumps
