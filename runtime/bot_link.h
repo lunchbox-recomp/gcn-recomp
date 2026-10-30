@@ -23,9 +23,10 @@
 #include "hw/pad.h"
 
 // Connects to the bot listening on the Unix socket at `path`, to drive ports 1 to `ports`
-// (1 to 4) from the first poll. A frontend calls it before the guest boots. False, saying why
-// on stderr, if `replaying` (a replay already decides the pads) or the connect fails.
-bool bot_link_start(const char* path, int ports, bool replaying);
+// (1 to 4) from the first poll. A frontend calls it before the guest boots, once nothing else
+// can stop the run, and never with a replay, which already decides the pads. False, saying
+// why on stderr, if the connect fails.
+bool bot_link_start(const char* path, int ports);
 
 // Called by the SI layer (pad_get in hw/si.cpp) at every pad poll, on the guest thread, before
 // a script's presses go on and before the input log sees the state. With a bot linked, steps

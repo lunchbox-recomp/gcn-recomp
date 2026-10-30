@@ -231,9 +231,9 @@ prints counts but never a name, an offset or a size.
 ## Bots
 
 `--bot=PATH`, or `GCN_BOT=PATH`, hands the controllers to another program, which listens on
-the Unix socket at PATH. The engine connects before the guest runs, and a connect that fails
-stops it with the path and the error. The protocol is text, so a person can stand in for the
-bot with `nc -U` while debugging.
+the Unix socket at PATH. The engine connects just before the guest runs, once its flags and
+the disc image have been checked, and a connect that fails stops it with the path and the
+error. The protocol is text, so a person can stand in for the bot with `nc -U` while debugging.
 
 At the first pad poll of each new submitted frame, the count `GCN_INPUT` keys on, the engine
 sends `frame N` and waits. The bot may send any number of `read ADDR LEN` lines, and the
@@ -253,9 +253,13 @@ The bot's states take the live ones' place below the input log, which records th
 records any controller's, so the run replays with `--replay` and no bot.
 
 Like `--no-gamepads`, `--bot` opens no controller. It drives ports 1 to `--pads=N` (port 1
-alone by default) and refuses `--replay` at start, since a replay already decides the pads. A
-`GCN_INPUT` script still presses on top of the bot, and a game that resets the console starts
-again in a new run that connects again.
+alone by default), and a `GCN_INPUT` script still presses on top of it. A game that resets the
+console starts again in a new run that connects again.
+
+A bot can't go with `--replay`, which already decides the pads. Nor can it go with
+`--list-controls` or `--test-ffb`, which are there to open a controller. A bare `--bot` with
+no `=PATH` is refused as well, rather than leaving the word after it to be read as the disc
+image.
 
 The link only reads memory. A line it doesn't take stops the game with the line quoted on
 stderr, and so does a read outside RAM or a `done` that leaves out a port the bot drives. The

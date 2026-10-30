@@ -1457,6 +1457,62 @@ void disc_speed(const std::string& dir) {
           "--disc=slow is refused with a line that says what --disc takes");
 }
 
+// ---- main() takes the bot from --bot=PATH or GCN_BOT (take_bot), which turns the gamepads
+// off. Each check starts with the gamepads on, so one the bot turned off shows.
+void bot_flags(const std::string& dir) {
+    char game[] = "game", image[] = "game.iso", to_a[] = "--bot=a.sock", to_b[] = "--bot=b.sock";
+    char bare[] = "--bot", empty[] = "--bot=", other[] = "--botany=x";
+    char* none[] = {game, image, nullptr};
+    char* both[] = {game, to_a, image, to_b, nullptr};
+    char* lone[] = {game, bare, image, nullptr};
+    char* blank[] = {game, empty, nullptr};
+    char* near[] = {game, other, nullptr};
+    char* one[] = {game, to_a, nullptr};
+    const std::string said = dir + "/bot-stderr.txt";
+    std::string bot = "left";
+    bool took = false;
+    // Takes argv with `replaying` and `opening`, saying on stderr into `said`, from the
+    // gamepads on and `bot` set to something it must replace.
+    auto take = [&](int argc, char** argv, bool replaying = false, bool opening = false) {
+        g_gamepads = true;
+        bot = "left";
+        capture(said, [&] { took = take_bot(argc, argv, replaying, opening, bot); });
+        return took;
+    };
+
+    unsetenv("GCN_BOT");
+    check(take(2, none) && bot.empty() && g_gamepads, "with no --bot and no GCN_BOT there's no bot");
+    check(take(4, both) && bot == "b.sock" && !g_gamepads,
+          "--bot=PATH is the bot, the last one winning, and turns the gamepads off");
+    check(take(2, near) && bot.empty() && g_gamepads, "--botany= isn't taken for --bot=");
+    check(take(2, none, true, true) && bot.empty() && g_gamepads,
+          "with no bot, a replay and --list-controls go ahead");
+    setenv("GCN_BOT", "env.sock", 1);
+    check(take(2, none) && bot == "env.sock" && !g_gamepads, "GCN_BOT is the bot with no --bot");
+    check(take(2, one) && bot == "a.sock", "--bot=PATH beats GCN_BOT");
+    check(!take(2, none, true) &&
+              lines_with(said, "GCN_BOT can't go with --replay: a replay already decides the pads\n") == 1,
+          "GCN_BOT with a replay is refused, naming GCN_BOT");
+    check(!take(2, none, false, true) &&
+              lines_with(said, "GCN_BOT opens no controller, so it can't go with --list-controls or --test-ffb\n") == 1,
+          "GCN_BOT with --list-controls or --test-ffb is refused, naming GCN_BOT and not --no-gamepads");
+    setenv("GCN_BOT", "", 1);
+    check(take(2, none) && bot.empty() && g_gamepads, "an empty GCN_BOT is no bot");
+    unsetenv("GCN_BOT");
+    check(!take(2, one, true) &&
+              lines_with(said, "--bot can't go with --replay: a replay already decides the pads\n") == 1,
+          "--bot with a replay is refused, naming --bot");
+    check(!take(2, one, false, true) &&
+              lines_with(said, "--bot opens no controller, so it can't go with --list-controls or --test-ffb\n") == 1,
+          "--bot with --list-controls or --test-ffb is refused, naming --bot");
+    check(!take(3, lone) && lines_with(said, "--bot: the socket's path goes after an =, as in --bot=PATH\n") == 1,
+          "a bare --bot is refused, so the argument after it isn't taken for the disc image");
+    check(!take(2, blank) &&
+              lines_with(said, "--bot: the path of the socket the bot listens on, not nothing\n") == 1,
+          "--bot= with no path is refused");
+    g_gamepads = true;
+}
+
 // ---- The hints main() sets win over the environment, where SDL_JOYSTICK_HIDAPI=1 or the
 // like would otherwise turn a driver for real controllers back on, and the Steam variable
 // tools/test_ports.sh sets is gone from where SDL reads it. No virtual gamepad can show the
@@ -1515,6 +1571,7 @@ int run_ports(const std::string& dir) {
     labels(dir);
     headset_layout();
     disc_speed(dir);
+    bot_flags(dir);
     return finish("ports");
 }
 

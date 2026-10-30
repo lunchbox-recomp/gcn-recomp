@@ -337,6 +337,42 @@ static bool take_disc_speed(const Settings& settings, int argc, char** argv) {
     return true;
 }
 
+// Sets `bot` to the socket of the bot that drives the pads (bot_link.h): --bot=PATH, the last
+// one winning, or else GCN_BOT, and none when neither names one. A bot opens no controller, as
+// under --no-gamepads. A bare --bot, one with no path, or a bot with a replay (`replaying`),
+// which already decides the pads, or with --list-controls or --test-ffb (`opening`), which are
+// there to open a controller, is refused, naming the flag or variable that brought the bot,
+// and the result is false.
+static bool take_bot(int argc, char** argv, bool replaying, bool opening, std::string& bot) {
+    const char* from = "GCN_BOT";
+    const char* env = getenv("GCN_BOT");
+    bot = env ? env : "";
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--bot")) {
+            fprintf(stderr, "--bot: the socket's path goes after an =, as in --bot=PATH\n");
+            return false;
+        }
+        if (strncmp(argv[i], "--bot=", 6)) continue;
+        if (!argv[i][6]) {
+            fprintf(stderr, "--bot: the path of the socket the bot listens on, not nothing\n");
+            return false;
+        }
+        bot = argv[i] + 6;
+        from = "--bot";
+    }
+    if (bot.empty()) return true;
+    if (replaying) {
+        fprintf(stderr, "%s can't go with --replay: a replay already decides the pads\n", from);
+        return false;
+    }
+    if (opening) {
+        fprintf(stderr, "%s opens no controller, so it can't go with --list-controls or --test-ffb\n", from);
+        return false;
+    }
+    g_gamepads = false;
+    return true;
+}
+
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv) {
     // GCN_SESSION sets the switches a session turns on, so it goes before anything reads one.
@@ -358,9 +394,6 @@ int main(int argc, char** argv) {
     bool list_controls = false, test_ffb = false;
     // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
     const char* telemetry_to = getenv("GCN_TELEMETRY");
-    // --bot=PATH: a bot listening on that Unix socket drives the controllers (bot_link.h).
-    const char* bot = getenv("GCN_BOT");
-    if (bot && !*bot) bot = nullptr;
     // settings.txt in the working directory (settings.h). A flag beats it for this run and
     // isn't written back.
     const Settings settings = settings_load("settings.txt");
@@ -389,10 +422,6 @@ int main(int argc, char** argv) {
         }
         else if (!strcmp(argv[i], "--telemetry")) telemetry_to = "";
         else if (!strncmp(argv[i], "--telemetry=", 12)) telemetry_to = argv[i] + 12;
-        else if (!strncmp(argv[i], "--bot=", 6)) {
-            bot = argv[i] + 6;
-            if (!*bot) { fprintf(stderr, "--bot: the path of the socket the bot listens on, not nothing\n"); return 1; }
-        }
         // --disc-overlay=FILE: read the disc through an overlay (hw/disc_overlay.h). It beats
         // GCN_DISC_OVERLAY, which di_init checks when there's no flag.
         else if (!strncmp(argv[i], "--disc-overlay=", 15)) g_disc_overlay_flag = argv[i] + 15;
@@ -434,8 +463,9 @@ int main(int argc, char** argv) {
         aspect_h = 3;
         aspect_window = false;
     }
-    // A bot drives the pads, so no controller is opened, as under --no-gamepads.
-    if (bot) g_gamepads = false;
+    // --bot=PATH or GCN_BOT: a bot listening on that Unix socket drives the controllers.
+    std::string bot;
+    if (!take_bot(argc, argv, !replay_dir.empty(), list_controls || test_ffb, bot)) return 1;
     // Both are there to open controllers, which --no-gamepads rules out.
     if ((list_controls || test_ffb) && !g_gamepads) {
         fprintf(stderr, "--no-gamepads opens no controller, so it can't go with --list-controls or --test-ffb\n");
@@ -443,8 +473,6 @@ int main(int argc, char** argv) {
     }
     if (list_controls) return input_map_probe();
     if (test_ffb) return input_map_test_ffb(controls);
-    // The bot drives ports 1 to --pads from the guest's first poll. A replay can't have one.
-    if (bot && !bot_link_start(bot, pads, !replay_dir.empty())) return 1;
     plat_install_crash_handlers(on_interrupt, on_fault);
     if (record_to && !record::start(record_to, record_w, record_h, 60)) return 1;
     if (telemetry_to && !telemetry::configure(telemetry_to)) {
@@ -462,6 +490,9 @@ int main(int argc, char** argv) {
         fprintf(stderr, "No game image found. Put your " GCN_GAME_TITLE " .iso or .ciso in rom/ or pass its path.\n");
         return 1;
     }
+    // The bot drives ports 1 to --pads from the guest's first poll. It's connected last, so a
+    // run that can't start never takes its connection.
+    if (!bot.empty() && !bot_link_start(bot.c_str(), pads)) return 1;
     mem_init();
     timing_init();
     if (fast) clock_set_scale(0);  // run as fast as the host allows; the game sees 60 Hz regardless

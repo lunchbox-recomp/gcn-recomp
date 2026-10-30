@@ -9,7 +9,7 @@
 
 #ifdef _WIN32
 
-bool bot_link_start(const char* path, int, bool) {
+bool bot_link_start(const char* path, int) {
     fprintf(stderr, "--bot %s: the bot link needs a Unix socket, which this build doesn't have\n", path);
     return false;
 }
@@ -188,11 +188,7 @@ void step(uint32_t frame) {
 
 }  // namespace
 
-bool bot_link_start(const char* path, int ports, bool replaying) {
-    if (replaying) {
-        fprintf(stderr, "--bot can't go with --replay: a replay already decides the pads\n");
-        return false;
-    }
+bool bot_link_start(const char* path, int ports) {
     sockaddr_un addr{};
     addr.sun_family = AF_UNIX;
     if (strlen(path) >= sizeof(addr.sun_path)) {

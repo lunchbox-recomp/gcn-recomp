@@ -101,16 +101,10 @@ std::string stderr_of(const std::function<void()>& fn) {
     return read_file("stderr.txt");
 }
 
-// Whether a connection is waiting on the listener.
-bool knocked() {
-    pollfd p{g_listener, POLLIN, 0};
-    return poll(&p, 1, 0) == 1;
-}
-
 // A new link driving `ports` ports. Returns the bot's end of it.
 int link(int ports) {
     bool ok = false;
-    stderr_of([&] { ok = bot_link_start(kSocket, ports, false); });
+    stderr_of([&] { ok = bot_link_start(kSocket, ports); });
     const int bot = ok ? accept(g_listener, nullptr, nullptr) : -1;
     if (bot < 0) {
         printf("FAIL the link to %s can't be made\n", kSocket);
@@ -289,17 +283,13 @@ int main(int argc, char** argv) {
     pad_set_state(0, live);
     check(same(poll_at(0, 1), live), "without a bot a poll reads the live state");
 
-    // A replay already decides the pads.
-    bool ok = true;
-    std::string err = stderr_of([&] { ok = bot_link_start(kSocket, 1, true); });
-    check(!ok && has(err, "--replay") && !knocked(), "--bot with --replay is refused before it connects");
-
     // Nobody listening.
-    err = stderr_of([&] { ok = bot_link_start("nobody.sock", 1, false); });
+    bool ok = true;
+    std::string err = stderr_of([&] { ok = bot_link_start("nobody.sock", 1); });
     check(!ok && has(err, "nobody.sock") && has(err, strerror(ENOENT)),
           "a connect that fails says the path and the error (" + err.substr(0, err.find('\n')) + ")");
     const std::string long_path(200, 'x');
-    err = stderr_of([&] { ok = bot_link_start(long_path.c_str(), 1, false); });
+    err = stderr_of([&] { ok = bot_link_start(long_path.c_str(), 1); });
     check(!ok && has(err, "bytes at most"), "a path too long for a Unix socket is refused");
 
     // Two ports driven. The bot's states replace the live one, and every poll of the frame,
