@@ -365,18 +365,21 @@ int main(int argc, char** argv) {
     check(scripted.buttons == (PAD_A | PAD_B) && same(after, p1), "a script's press goes on top of the bot's state");
     heard(bot);
 
-    // Lockstep: a bot that takes its time is waited for, and the wait goes to the clock as a
-    // pause's does, so the pacer doesn't make it up after.
+    // Lockstep. A bot that takes its time is waited for, and the wait goes to the clock as a
+    // pause's does, so the pacer doesn't make it up after. The clock gets no more than the
+    // poll took, all told.
     std::thread late([bot, p1, p2] {
         const std::string line = first_line(bot);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         say(bot, line == "frame 30\n" ? pad_line(1, p1) + pad_line(2, p2) + "done\n" : "wrong frame\n");
     });
-    const uint64_t held = g_held_ns;
+    const uint64_t held = g_held_ns, polled = host_ns();
     const PadState waited = poll_at(0, 30);
+    const uint64_t took = host_ns() - polled;
     late.join();
     check(same(waited, p1), "the guest waits for the bot's done");
-    check(g_held_ns - held >= 100000000, "the time the guest waited goes to the clock");
+    check(g_held_ns - held >= 100000000 && g_held_ns - held <= took,
+          "the time the guest waited goes to the clock, and no more than the poll took");
     close(bot);
 
     // The stops. Each ends the child with status 1 and the reason on stderr.
