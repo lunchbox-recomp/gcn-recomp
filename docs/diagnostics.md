@@ -228,6 +228,72 @@ stops it.
 With `GCN_TEST_IMAGE` set to a disc image it also checks `fst.py` against that disc, and it
 prints counts but never a name, an offset or a size.
 
+## Bots
+
+`--bot=PATH`, or `GCN_BOT=PATH`, hands the controllers to another program, which listens on
+the Unix socket at PATH. The engine connects before the guest runs, and a connect that fails
+stops it with the path and the error. The protocol is text, so a person can stand in for the
+bot with `nc -U` while debugging.
+
+At the first pad poll of each new submitted frame, the count `GCN_INPUT` keys on, the engine
+sends `frame N` and waits. The bot may send any number of `read ADDR LEN` lines, and the
+engine answers each with `data HEX`, the bytes as the guest has them. ADDR is in hex where the
+game sees main RAM (`80000000` to `817FFFFF`) and LEN is 1 to 256.
+
+Then the bot sends one `pad PORT BUTTONS SX SY CX CY L R` line for each port it drives, and
+`done`. BUTTONS holds the PADStatus bits in hex (`runtime/hw/pad.h`), and the sticks and
+triggers are 0 to 255 in decimal, with 128 a stick at rest. Every poll of that frame on every
+port reads those states, so a frame the game polls several times is one exchange, and a frame
+with no poll sends nothing at all, which is why `frame` numbers can jump.
+
+The guest waits for `done` and never races the bot, so a bot's run is the same every time for
+the same bot. Guest time stands still while it waits, so a slow bot holds back a paced run as a
+slow host would (see "The clock" below). The bot's states take the live ones' place below the
+input log, which records them as it records any controller's, so the run replays with
+`--replay` and no bot.
+
+Like `--no-gamepads`, `--bot` opens no controller. It drives ports 1 to `--pads=N` (port 1
+alone by default) and refuses `--replay` at start, since a replay already decides the pads. A
+`GCN_INPUT` script still presses on top of the bot, and a game that resets the console starts
+again in a new run that connects again.
+
+The link only reads memory. A line it doesn't take stops the game with the line quoted on
+stderr, and so does a read outside RAM or a `done` that leaves out a port the bot drives. The
+bot hanging up stops it with `the bot hung up`, and either way the input log ends at that
+frame (`input_log_end`) and the game exits 1.
+
+The engine has no timeout of its own. A bot sees both sides of the link, so a watchdog for a
+hung game or a frozen picture belongs in the bot.
+
+To be the bot by hand, listen first and then start the game.
+
+```sh
+nc -lU /tmp/bot.sock
+build/<game> --bot=/tmp/bot.sock
+```
+
+`nc` prints a `frame` line. Typing `pad 1 0000 128 128 128 128 0 0` and `done` steps one
+frame with the pad at rest, and `pad 1 1000 128 128 128 128 0 0` in its place presses START.
+
+`tools/bot_script.py [--pads=N] SOCKET SCRIPT -- COMMAND` is a small bot that answers each
+frame with the presses of a script in `GCN_INPUT`'s syntax, or of a file holding one whose `#`
+lines are comments. It listens on SOCKET first and then runs COMMAND with `GCN_BOT` set to the
+socket's full path, so the game can't start before the bot and nothing is left running in the
+background. It exits with COMMAND's status, and an empty script is a bot that presses nothing.
+
+```sh
+python3 tools/bot_script.py build/bot.sock "900:START:10,1200:A:5" -- build/<game> --hidden --fast
+```
+
+`ninja test_bot_link` builds `tools/test_bot_link.cpp`, which steps the link through the SI
+layer's `pad_get` with a bot on a socket in a work dir and no game. It covers a frame polled
+several times, a jump in frame numbers, reads up to the last byte of RAM and each way the link
+stops the game, each stop in a child process. `test_bot_link <new dir>` makes that directory
+and writes its files there.
+
+`ninja unit` runs it, and `tools/test_*.py` under both Pythons as it runs `recomp/test_*.py`.
+`tools/test_bot_script.py` runs `bot_script.py` against a fake engine.
+
 ## Frame dumps
 
 `--hidden --dump-dir=DIR --dump-every=N` runs with the window hidden and writes every Nth

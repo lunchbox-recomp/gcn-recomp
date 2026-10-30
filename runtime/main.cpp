@@ -2,6 +2,7 @@
 // batches produced by the guest thread.
 #include "runtime.h"
 #include "platform.h"
+#include "bot_link.h"
 #include "input_script.h"
 #include "input_log.h"
 #include "input_map.h"
@@ -357,6 +358,9 @@ int main(int argc, char** argv) {
     bool list_controls = false, test_ffb = false;
     // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
     const char* telemetry_to = getenv("GCN_TELEMETRY");
+    // --bot=PATH: a bot listening on that Unix socket drives the controllers (bot_link.h).
+    const char* bot = getenv("GCN_BOT");
+    if (bot && !*bot) bot = nullptr;
     // settings.txt in the working directory (settings.h). A flag beats it for this run and
     // isn't written back.
     const Settings settings = settings_load("settings.txt");
@@ -385,6 +389,10 @@ int main(int argc, char** argv) {
         }
         else if (!strcmp(argv[i], "--telemetry")) telemetry_to = "";
         else if (!strncmp(argv[i], "--telemetry=", 12)) telemetry_to = argv[i] + 12;
+        else if (!strncmp(argv[i], "--bot=", 6)) {
+            bot = argv[i] + 6;
+            if (!*bot) { fprintf(stderr, "--bot: the path of the socket the bot listens on, not nothing\n"); return 1; }
+        }
         // --disc-overlay=FILE: read the disc through an overlay (hw/disc_overlay.h). It beats
         // GCN_DISC_OVERLAY, which di_init checks when there's no flag.
         else if (!strncmp(argv[i], "--disc-overlay=", 15)) g_disc_overlay_flag = argv[i] + 15;
@@ -426,6 +434,8 @@ int main(int argc, char** argv) {
         aspect_h = 3;
         aspect_window = false;
     }
+    // A bot drives the pads, so no controller is opened, as under --no-gamepads.
+    if (bot) g_gamepads = false;
     // Both are there to open controllers, which --no-gamepads rules out.
     if ((list_controls || test_ffb) && !g_gamepads) {
         fprintf(stderr, "--no-gamepads opens no controller, so it can't go with --list-controls or --test-ffb\n");
@@ -433,6 +443,8 @@ int main(int argc, char** argv) {
     }
     if (list_controls) return input_map_probe();
     if (test_ffb) return input_map_test_ffb(controls);
+    // The bot drives ports 1 to --pads from the guest's first poll. A replay can't have one.
+    if (bot && !bot_link_start(bot, pads, !replay_dir.empty())) return 1;
     plat_install_crash_handlers(on_interrupt, on_fault);
     if (record_to && !record::start(record_to, record_w, record_h, 60)) return 1;
     if (telemetry_to && !telemetry::configure(telemetry_to)) {
