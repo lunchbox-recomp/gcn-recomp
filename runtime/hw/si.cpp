@@ -1,5 +1,6 @@
 // Serial Interface: GameCube controllers.
 #include "../runtime.h"
+#include "../bot_link.h"
 #include "../input_log.h"
 #include "../input_script.h"
 #include "pad.h"
@@ -21,12 +22,14 @@ static PadState pad_get(int chan) {
     // frame the guest has reached: a frontend's loop runs on the host's time, and a press
     // it applied landed wherever the guest happened to be when it looked. Replay then
     // substitutes the logged state for both; recording sees what the guest actually read,
-    // whichever that was.
+    // whichever that was. A bot (bot_link.h) is stepped here too, and its state takes the live
+    // one's place, under any script's presses.
     PadState p;
     {
         std::lock_guard<std::mutex> lk(g_pad_mutex);
         p = g_pads[chan];
     }
+    bot_link_apply(p, chan);
     if (p.connected) input_script_apply(p, chan);
     input_pad_poll(chan, p);
     return p;

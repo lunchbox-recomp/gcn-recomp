@@ -753,7 +753,7 @@ function(gcn_add_game)
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
       ${RT}/gamepads.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp ${RT}/input_defaults.cpp
-      ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/platform.cpp ${RT}/hw/mmio.cpp
+      ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/bot_link.cpp ${RT}/platform.cpp ${RT}/hw/mmio.cpp
       ${RT}/vr_config.cpp ${RT}/settings.cpp)
     _gcn_set_standards(test_ports)
     target_include_directories(test_ports PRIVATE ${RT} ${RECOMP_GEN_DIR} ${GLAD_INCLUDE_DIR})
@@ -871,6 +871,17 @@ function(gcn_add_game)
       target_link_options(test_pause PRIVATE -Wl,--gc-sections)
     endif()
 
+    # The bot link checks (tools/test_bot_link.cpp): runtime/bot_link.cpp stepped through the SI
+    # layer's pad_get by a bot on a Unix socket in a work dir, with scripts and the input log as
+    # they are, and each stop in a child process. Needs no disc image, device, SDL or game.
+    add_executable(test_bot_link EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_bot_link.cpp
+      ${RT}/bot_link.cpp ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_bot_link)
+    target_include_directories(test_bot_link PRIVATE ${RT})
+    target_link_libraries(test_bot_link PRIVATE Threads::Threads)
+    target_compile_options(test_bot_link PRIVATE ${GCN_RUNTIME_WARNINGS})
+    target_compile_definitions(test_bot_link PRIVATE ${GCN_GAME_DEFS})
+
     # The virtual clock's checks (tools/test_clock.cpp): cpu.cpp's clock run as a replay runs
     # it, its jumps against the total the AI DMA leaves out of the guest's time. The linker
     # drops the rest of cpu.cpp, which would otherwise want the whole runtime.
@@ -918,7 +929,8 @@ function(gcn_add_game)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_aid test_blend test_clock test_pause)
-    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay)
+    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay
+        test_bot_link)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()

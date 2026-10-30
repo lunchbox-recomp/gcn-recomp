@@ -6,7 +6,8 @@
 // so each port is read back the way the guest reads it: pad_get, with scripted presses
 // (input_script.cpp) applied and the input log (input_log.cpp) consulted. gamepads.cpp,
 // port_memory.cpp, input_map.cpp, input_defaults.cpp, input_script.cpp, input_log.cpp,
-// platform.cpp, hw/mmio.cpp, vr_config.cpp (the headset's default gamepad layout) and
+// bot_link.cpp (with no bot), platform.cpp, hw/mmio.cpp, vr_config.cpp (the headset's
+// default gamepad layout) and
 // settings.cpp are linked as they are. Stubbed: force feedback (ffb_configure, ffb_attach,
 // ffb_update, ffb_shutdown; ffb_update keeps the motor it was given), the RTC
 // (rtc_set_base), the event queue and interrupt request (event_schedule_in, irq_request),
