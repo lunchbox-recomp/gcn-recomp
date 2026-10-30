@@ -373,6 +373,13 @@ static bool take_bot(int argc, char** argv, bool replaying, bool opening, std::s
     return true;
 }
 
+// Connects the bot take_bot found, if there's one, to drive ports 1 to `pads` from the guest's
+// first poll. The window and headless paths call it last, after boot_load has read the disc and
+// checked it's the one this build was made from and just before threads_start_boot starts the
+// guest, so a run that fails to start never takes the bot's connection. False, saying why on
+// stderr, if the connect fails.
+static bool link_bot(const std::string& bot, int pads) { return bot.empty() || bot_link_start(bot.c_str(), pads); }
+
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv) {
     // GCN_SESSION sets the switches a session turns on, so it goes before anything reads one.
@@ -490,9 +497,6 @@ int main(int argc, char** argv) {
         fprintf(stderr, "No game image found. Put your " GCN_GAME_TITLE " .iso or .ciso in rom/ or pass its path.\n");
         return 1;
     }
-    // The bot drives ports 1 to --pads from the guest's first poll. It's connected last, so a
-    // run that can't start never takes its connection.
-    if (!bot.empty() && !bot_link_start(bot.c_str(), pads)) return 1;
     mem_init();
     timing_init();
     if (fast) clock_set_scale(0);  // run as fast as the host allows; the game sees 60 Hz regardless
@@ -530,6 +534,7 @@ int main(int argc, char** argv) {
         // is written all the same: a reset relaunches into the next run-N by finding it.
         session_write(0, GCN_ENGINE_SHA, g_fast_disc);
         uint32_t entry = boot_load(iso);
+        if (!link_bot(bot, pads)) return 1;
         threads_start_boot(entry);
         for (;;) {
             auto b = gx::take_batch(5);  // discard
@@ -626,6 +631,9 @@ int main(int argc, char** argv) {
             return running;
         };
         // The headset frontend opens the sound device, so it is told to write session.json then.
+        // It reads the disc and starts the guest itself, so here the bot is connected before
+        // the headset comes up, not after boot_load as on the other paths.
+        if (!link_bot(bot, pads)) return 1;
         const int rc = xr_desktop_main({win, pump, merge_desktop_pad,
                                         [](SDL_Window* w) { session_write(display_hz(w), GCN_ENGINE_SHA, g_fast_disc); }},
                                        iso);
@@ -651,6 +659,7 @@ int main(int argc, char** argv) {
     session_write(display_hz(win), GCN_ENGINE_SHA, g_fast_disc);
 
     uint32_t entry = boot_load(iso);
+    if (!link_bot(bot, pads)) return 1;
     threads_start_boot(entry);
 
     bool running = true;
