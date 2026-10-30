@@ -203,7 +203,11 @@ bool bot_link_start(const char* path, int ports) {
     }
     // The game resetting the console runs it again in this process (plat_relaunch), which
     // connects again; the bot sees this connection end.
-    fcntl(fd, F_SETFD, FD_CLOEXEC);
+    if (fcntl(fd, F_SETFD, FD_CLOEXEC) != 0) {
+        fprintf(stderr, "--bot %s: can't keep the socket from a console reset's run: %s\n", path, strerror(errno));
+        close(fd);
+        return false;
+    }
 #ifdef SO_NOSIGPIPE
     const int one = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));

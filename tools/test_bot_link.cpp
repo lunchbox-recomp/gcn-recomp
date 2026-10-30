@@ -12,10 +12,11 @@
 // This process plays the bot on a Unix socket in the work dir. For a step that goes through,
 // the bot's lines wait in the socket before the poll, and what the link sent is read after it.
 // One check answers from a thread of its own, late, to show the guest waits for `done` and
-// the clock is handed the wait. A step
-// that stops the game runs in a child process, which the stop ends: the bot reads the frame
-// line, answers, then hangs up or stops sending, and the child's exit status, its stderr and
-// the input log's end say what the stop did.
+// the clock is handed the wait. Another finds the link's socket among this process's file
+// descriptors, by the path its peer listens on, to see that an exec closes it. A step that
+// stops the game runs in a child process, which the stop ends: the bot reads the frame line,
+// answers, then hangs up or stops sending, and the child's exit status, its stderr and the
+// input log's end say what the stop did.
 //
 // usage: test_bot_link <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if every
@@ -111,6 +112,19 @@ int link(int ports) {
         exit(1);
     }
     return bot;
+}
+
+// The engine's end of the link: the socket in this process whose peer is the listener on
+// kSocket, or -1.
+int engine_end() {
+    for (int fd = 0; fd < 1024; fd++) {
+        sockaddr_un peer{};
+        socklen_t len = sizeof(peer);
+        if (getpeername(fd, (sockaddr*)&peer, &len) == 0 && peer.sun_family == AF_UNIX &&
+            !strcmp(peer.sun_path, kSocket))
+            return fd;
+    }
+    return -1;
 }
 
 void say(int bot, const std::string& lines) {
@@ -281,29 +295,43 @@ int main(int argc, char** argv) {
     // No bot: the live state, as before.
     const PadState live = pad(PAD_START, 10, 20);
     pad_set_state(0, live);
-    check(same(poll_at(0, 1), live), "without a bot a poll reads the live state");
+    check(same(poll_at(0, 0), live), "without a bot a poll reads the live state");
 
-    // Nobody listening.
+    // Nobody listening: no socket file, or one a bot that's gone left.
     bool ok = true;
     std::string err = stderr_of([&] { ok = bot_link_start("nobody.sock", 1); });
     check(!ok && has(err, "nobody.sock") && has(err, strerror(ENOENT)),
           "a connect that fails says the path and the error (" + err.substr(0, err.find('\n')) + ")");
+    const int dead = socket(AF_UNIX, SOCK_STREAM, 0);
+    sockaddr_un dead_addr{};
+    dead_addr.sun_family = AF_UNIX;
+    strcpy(dead_addr.sun_path, "dead.sock");
+    const bool left = dead >= 0 && bind(dead, (const sockaddr*)&dead_addr, sizeof(dead_addr)) == 0;
+    close(dead);
+    err = stderr_of([&] { ok = bot_link_start("dead.sock", 1); });
+    check(left && !ok && has(err, "dead.sock") && has(err, strerror(ECONNREFUSED)),
+          "a socket file with nothing listening on it is refused with the path and the error (" +
+              err.substr(0, err.find('\n')) + ")");
     const std::string long_path(200, 'x');
     err = stderr_of([&] { ok = bot_link_start(long_path.c_str(), 1); });
     check(!ok && has(err, "bytes at most"), "a path too long for a Unix socket is refused");
 
-    // Two ports driven. The bot's states replace the live one, and every poll of the frame,
-    // on any port, reads them from the one exchange. Ports 3 and 4 read unplugged.
+    // Two ports driven, from the guest's first poll, at frame 0. The bot's states replace the
+    // live one, and every poll of the frame, on any port, reads them from the one exchange.
+    // Ports 3 and 4 read unplugged.
     int bot = link(2);
+    const int engine = engine_end();
+    check(engine >= 0 && (fcntl(engine, F_GETFD) & FD_CLOEXEC),
+          "the link's socket closes on exec, so the run a console reset starts connects again");
     const PadState p1 = pad(PAD_A, 200, 128, 128, 128, 0, 0), p2 = pad(0);
     say(bot, pad_line(1, p1) + pad_line(2, p2) + "done\n");
     bool all = true;
-    for (int i = 0; i < 3; i++) all = all && same(poll_at(0, 5), p1) && same(poll_at(1, 5), p2);
-    all = all && !poll_at(2, 5).connected && !poll_at(3, 5).connected;
-    check(all, "every poll of a frame reads the bot's states, in place of the live one");
-    check(heard(bot) == "frame 5\n", "a frame polled several times on several ports is one exchange");
+    for (int i = 0; i < 3; i++) all = all && same(poll_at(0, 0), p1) && same(poll_at(1, 0), p2);
+    all = all && !poll_at(2, 0).connected && !poll_at(3, 0).connected;
+    check(all, "every poll of a frame reads the bot's states, in place of the live one, from frame 0");
+    check(heard(bot) == "frame 0\n", "a frame polled several times on several ports is one exchange");
 
-    // The frame count jumps from 5 to 9: the next step says 9.
+    // The frame count jumps from 0 to 9: the next step says 9.
     const PadState p1b = pad(PAD_B | PAD_L, 128, 30, 128, 128, 255, 0);
     say(bot, pad_line(1, p1b) + pad_line(2, p2) + "done\n");
     const bool jumped = same(poll_at(1, 9), p2) && same(poll_at(0, 9), p1b);
@@ -326,7 +354,7 @@ int main(int argc, char** argv) {
 
     // The input log records what the bot pressed, so a replay needs no bot.
     const std::string log = read_file(std::string(kLog) + "/inputs.txt");
-    check(has(log, " 5 0 1 0100 C8 80 80 80 00 00\n") && has(log, " 9 0 1 0240 80 1E 80 80 FF 00\n"),
+    check(has(log, "\n1 0 0 1 0100 C8 80 80 80 00 00\n") && has(log, " 9 0 1 0240 80 1E 80 80 FF 00\n"),
           "the input log records the bot's states");
 
     // A script's presses go on top of the bot's.
@@ -370,6 +398,23 @@ int main(int argc, char** argv) {
     s = gone_case(43);
     check(s.status == 1 && s.err == "[bot] frame 43: the bot hung up\n",
           "a bot gone before its frame line stops the game with \"the bot hung up\", not a SIGPIPE");
+    s = stop_case(1, 44, "pad 1 0000", true);
+    check(s.status == 1 && s.err == "[bot] frame 44: the bot hung up\n" && log_end_frame() == 44,
+          "a bot that hangs up partway through a line stops the game with \"the bot hung up\"");
+
+    // Lines past the 256 characters the link takes, with their newline or still coming.
+    const std::string longest = "press " + std::string(250, 'A'), too_long(257, 'x');
+    s = stop_case(1, 45, longest + "\n", false);
+    check(s.status == 1 && has(s.err, "not read, pad or done") && has(s.err, "\"" + longest + "\""),
+          "a line of 256 characters, the most the link takes, is read whole");
+    s = stop_case(1, 46, too_long + "\n", false);
+    check(s.status == 1 && has(s.err, "[bot] frame 46: a line longer than the link takes: \"" +
+                                          too_long.substr(0, 256) + "...\"\n"),
+          "a line of 257 characters stops the game, quoting the first 256");
+    s = stop_case(1, 47, too_long, false);
+    check(s.status == 1 && has(s.err, "[bot] frame 47: a line longer than the link takes: \"" +
+                                          too_long.substr(0, 256) + "...\"\n"),
+          "257 characters with no newline stop the game once they're in, not at the hang-up after");
 
     refuses(1, "read 80000000 0", "not read ADDR LEN", "a read of 0 bytes");
     refuses(1, "read 80000000 257", "not read ADDR LEN", "a read of 257 bytes");
