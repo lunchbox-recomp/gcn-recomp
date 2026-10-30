@@ -231,9 +231,15 @@ prints counts but never a name, an offset or a size.
 ## Bots
 
 `--bot=PATH`, or `GCN_BOT=PATH`, hands the controllers to another program, which listens on
-the Unix socket at PATH. The engine connects just before the guest runs, once its flags and
-the disc image have been checked, and a connect that fails stops it with the path and the
-error. The protocol is text, so a person can stand in for the bot with `nc -U` while debugging.
+the Unix socket at PATH. The last `--bot=` wins and beats `GCN_BOT`, and an empty `GCN_BOT` is
+no bot. The protocol is text, so a person can stand in for the bot with `nc -U` while debugging.
+
+The engine connects last, just before the guest starts. By then the window, the renderer and
+the sound device are up in a run that has them, and `boot_load` has read the disc and checked
+it's the one the build was made from, so a run that fails to start never takes the bot's
+connection. Under `--vr` the headset frontend reads the disc itself, so the engine connects
+before the headset comes up, and on any path a connect that fails stops the game with the path
+and the error.
 
 At the first pad poll of each new submitted frame, the count `GCN_INPUT` keys on, the engine
 sends `frame N` and waits. The bot may send any number of `read ADDR LEN` lines, and the
@@ -265,9 +271,9 @@ alone by default), and a `GCN_INPUT` script still presses on top of it. A game t
 console starts again in a new run that connects again.
 
 A bot can't go with `--replay`, which already decides the pads. Nor can it go with
-`--list-controls` or `--test-ffb`, which are there to open a controller. A bare `--bot` with
-no `=PATH` is refused as well, rather than leaving the word after it to be read as the disc
-image.
+`--list-controls` or `--test-ffb`, which are there to open a controller. A bare `--bot` and a
+`--bot=` with no path are refused as well, which keeps the word after a bare one from being
+read as the disc image.
 
 The link only reads memory. A line it doesn't take stops the game with the line quoted on
 stderr, and so does a read outside RAM or a `done` that leaves out a port the bot drives. The
@@ -299,9 +305,10 @@ background. It exits with COMMAND's status, and an empty script is a bot that pr
 python3 tools/bot_script.py build/bot.sock "900:START:10,1200:A:5" -- build/<game> --hidden --fast
 ```
 
-A socket file an earlier run left at SOCKET is replaced, but one another bot still listens on
-is refused, since the two bots would take each other's games. When COMMAND can't be run at all,
-`bot_script.py` exits 127.
+While it listens, `bot_script.py` holds a lock on `SOCKET.lock`, a file it leaves in place. A
+second start that finds the lock taken exits 2 and leaves both files alone, since two bots on
+one socket would take each other's games, and one that takes the lock replaces any socket file
+an earlier run left at SOCKET. When COMMAND can't be run at all, `bot_script.py` exits 127.
 
 `--late=MS:N` has `bot_script.py` wait MS milliseconds before it answers each frame whose
 number is a multiple of N. The same bot with and without it leaves the same input log
@@ -310,9 +317,9 @@ unpaced, or paced under `GCN_CATCHUP=0`. Only the end line can differ, since it 
 
 `ninja test_bot_link` builds `tools/test_bot_link.cpp`, which steps the link through the SI
 layer's `pad_get` with a bot on a socket in a work dir and no game. It covers a frame polled
-several times, a jump in frame numbers and reads up to the last byte of RAM. It stops the game
-in a child process for each kind of line the link refuses, a line too long and a bot that hangs
-up, though not for a send or read that fails some other way.
+several times, a jump in frame numbers and reads up to the last byte of RAM. Each kind of line
+the link refuses stops the game in a child process there, as do a line too long and a bot that
+hangs up, but a send or read that fails some other way isn't covered.
 
 `test_bot_link <new dir>` makes that directory and writes its files there. `ninja unit` runs
 it, and `tools/test_*.py` under both Pythons as it runs `recomp/test_*.py`.
