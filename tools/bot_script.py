@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """A bot that presses what a script says: the bot link's example bot (docs/diagnostics.md, "Bots").
 
-Usage: bot_script.py [--pads=N] SOCKET SCRIPT -- COMMAND [ARG ...]
+Usage: bot_script.py [--pads=N] [--late=MS:N] SOCKET SCRIPT -- COMMAND [ARG ...]
 
 It listens on the Unix socket SOCKET first, then runs COMMAND with GCN_BOT set to SOCKET's full
 path, so the game COMMAND starts connects to it with nothing left to chance. At each frame the
@@ -13,6 +13,10 @@ A game that resets the console starts again and connects again, and the script s
 with it as GCN_INPUT's would. Once COMMAND exits, the bot says how many frames it answered and
 exits with COMMAND's status, or 1 if the link sent it something it doesn't take. A bad script
 or a SOCKET it can't listen on exits 2 before COMMAND runs.
+
+--late=MS:N waits MS milliseconds before it answers each frame whose number is a multiple of N.
+It's there to check that how long a bot takes to answer changes nothing in a run, paced or
+not: the same bot with and without it leaves the same input log.
 """
 from __future__ import annotations
 
@@ -24,6 +28,7 @@ import socket
 import stat
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 
 # The PADStatus bits (gcn-recomp's runtime/hw/pad.h), by input_script.h's names.
@@ -112,8 +117,10 @@ class LinkError(Exception):
     pass
 
 
-def serve(conn: socket.socket, presses: list[Press], ports: int) -> tuple[int, int | None]:
-    """Answers the game's frames until it hangs up: how many, and the last."""
+def serve(conn: socket.socket, presses: list[Press], ports: int,
+          late: tuple[int, int] | None = None) -> tuple[int, int | None]:
+    """Answers the game's frames until it hangs up: how many, and the last. `late` is
+    --late's (MS, N)."""
     count, last = 0, None
     with conn.makefile("rb") as lines:
         try:
@@ -122,6 +129,8 @@ def serve(conn: socket.socket, presses: list[Press], ports: int) -> tuple[int, i
                 if len(words) != 2 or words[0] != b"frame" or not words[1].isdigit():
                     raise LinkError(f"the link sent {line!r}, not a frame line")
                 last = int(words[1])
+                if late and last % late[1] == 0:
+                    time.sleep(late[0] / 1000)
                 conn.sendall(answer(presses, ports, last))
                 count += 1
         except ConnectionError:  # the game ended partway through an answer
@@ -156,7 +165,8 @@ def accept(listener: socket.socket, proc: subprocess.Popen) -> socket.socket | N
             return None
 
 
-def run(listener: socket.socket, path: str, presses: list[Press], ports: int, command: list[str]) -> int:
+def run(listener: socket.socket, path: str, presses: list[Press], ports: int, command: list[str],
+        late: tuple[int, int] | None = None) -> int:
     """Runs COMMAND and answers each game it starts until it exits: COMMAND's status, or 1."""
     try:
         proc = subprocess.Popen(command, env={**os.environ, "GCN_BOT": path})
@@ -169,7 +179,7 @@ def run(listener: socket.socket, path: str, presses: list[Press], ports: int, co
         while (conn := accept(listener, proc)) is not None:
             with conn:
                 try:
-                    n, at = serve(conn, presses, ports)
+                    n, at = serve(conn, presses, ports, late)
                 except LinkError as e:
                     print(f"bot_script.py: {e}", file=sys.stderr)
                     failed = True
@@ -183,14 +193,23 @@ def run(listener: socket.socket, path: str, presses: list[Press], ports: int, co
     return 1 if failed else status
 
 
+def late_arg(text: str) -> tuple[int, int]:
+    m = re.fullmatch(r"(\d+):([1-9]\d*)", text)
+    if not m:
+        raise argparse.ArgumentTypeError(f"MS:N, two whole numbers and N from 1, not {text}")
+    return int(m[1]), int(m[2])
+
+
 def main(argv: list[str]) -> int:
     if "--" not in argv:
-        print("usage: bot_script.py [--pads=N] SOCKET SCRIPT -- COMMAND [ARG ...]", file=sys.stderr)
+        print("usage: bot_script.py [--pads=N] [--late=MS:N] SOCKET SCRIPT -- COMMAND [ARG ...]",
+              file=sys.stderr)
         return 2
     split = argv.index("--")
     ap = argparse.ArgumentParser(prog="bot_script.py", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--pads", type=int, choices=range(1, 5), default=1, metavar="N")
+    ap.add_argument("--late", type=late_arg, metavar="MS:N")
     ap.add_argument("socket")
     ap.add_argument("script")
     args = ap.parse_args(argv[:split])
@@ -213,7 +232,7 @@ def main(argv: list[str]) -> int:
         print(f"bot_script.py: can't listen on {path}: {e}", file=sys.stderr)
         return 2
     try:
-        return run(listener, path, presses, args.pads, command)
+        return run(listener, path, presses, args.pads, command, args.late)
     finally:
         listener.close()
         try:

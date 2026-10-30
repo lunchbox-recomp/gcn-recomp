@@ -10,6 +10,7 @@ import os
 import socket
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -22,8 +23,10 @@ HERE = Path(__file__).resolve()
 def fake_engine(out: str, connections: str, status: str) -> int:
     """Steps the bot at each connection's frames ("0,3,7;0,1" is two connections, as a game
     that resets the console makes, and "" none) and writes each answer, up to its done, to
-    `out`."""
-    answers = []
+    `out`, and the milliseconds each took to `out`.ms. It runs from another directory, as a
+    game probe.sh starts does, so a GCN_BOT that isn't a full path fails."""
+    os.chdir("/")
+    answers, times = [], []
     for frames in connections.split(";") if connections else []:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(10)
@@ -34,6 +37,7 @@ def fake_engine(out: str, connections: str, status: str) -> int:
                         s.sendall(b"hello\n")
                         answers.append(lines.readline().decode())  # the bot hangs up: ""
                         continue
+                    start = time.monotonic()
                     s.sendall(f"frame {frame}\n".encode())
                     answer = ""
                     while not answer.endswith("done\n"):
@@ -41,8 +45,10 @@ def fake_engine(out: str, connections: str, status: str) -> int:
                         if not line:
                             break
                         answer += line
+                    times.append(str(round((time.monotonic() - start) * 1000)))
                     answers.append(answer)
     Path(out).write_text("|".join(answers))
+    Path(out + ".ms").write_text("|".join(times))
     return int(status)
 
 
@@ -113,6 +119,20 @@ class RunTest(unittest.TestCase):
             "pad 1 0000 128 128 128 128 0 0\ndone\n",
             "pad 1 0100 128 128 128 128 0 0\ndone\n",
         ])
+
+    def test_late_answers_every_nth_frame_late_and_the_same(self):
+        self.assertEqual(self.run_bot("--late=40:2", self.sock, "1:A:1", connections="0,1,2,3"), 0)
+        self.assertEqual(self.answers(), [
+            "pad 1 0000 128 128 128 128 0 0\ndone\n",
+            "pad 1 0100 128 128 128 128 0 0\ndone\n",
+            "pad 1 0000 128 128 128 128 0 0\ndone\n",
+            "pad 1 0000 128 128 128 128 0 0\ndone\n",
+        ])
+        ms = [int(t) for t in Path(self.out + ".ms").read_text().split("|")]
+        self.assertTrue(ms[0] >= 40 and ms[2] >= 40 and ms[1] < 40 and ms[3] < 40, ms)
+        with self.assertRaises(SystemExit) as refused:  # argparse's way out, status 2
+            self.run_bot("--late=40", self.sock, "")
+        self.assertEqual(refused.exception.code, 2)
 
     def test_a_command_that_never_connects(self):
         self.assertEqual(self.run_bot(self.sock, "", connections="", status=3), 3)

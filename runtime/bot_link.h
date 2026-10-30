@@ -12,7 +12,8 @@
 // polls several times is one exchange, and a frame with no poll is none: `frame` numbers can
 // jump.
 //
-// The guest waits for `done`, so a bot's run is the same every time for the same bot. The
+// The guest waits for `done`, and the host time it waited goes to the clock as a pause's does
+// (clock_hold), so a bot's run is the same every time for the same bot, paced or not. The
 // states go in below the input log (input_log.h), which records them as it records any
 // controller's, so a replay needs no bot. The link only reads memory. A line it doesn't take,
 // a read outside RAM, a `done` without a port the bot drives and the bot hanging up each stop

@@ -246,11 +246,11 @@ triggers are 0 to 255 in decimal, with 128 a stick at rest. Every poll of that f
 port reads those states, so a frame the game polls several times is one exchange, and a frame
 with no poll sends nothing at all, which is why `frame` numbers can jump.
 
-The guest waits for `done` and never races the bot, so a bot's run is the same every time for
-the same bot. Guest time stands still while it waits, so a slow bot holds back a paced run as a
-slow host would (see "The clock" below). The bot's states take the live ones' place below the
-input log, which records them as it records any controller's, so the run replays with
-`--replay` and no bot.
+The guest waits for `done` and never races the bot. Guest time stands still while it waits,
+and the host time goes to the clock as a pause's does (see "Pausing" below), so the pacer
+makes no jump for it and a bot's run is the same every time for the same bot, paced or not.
+The bot's states take the live ones' place below the input log, which records them as it
+records any controller's, so the run replays with `--replay` and no bot.
 
 Like `--no-gamepads`, `--bot` opens no controller. It drives ports 1 to `--pads=N` (port 1
 alone by default) and refuses `--replay` at start, since a replay already decides the pads. A
@@ -284,6 +284,10 @@ background. It exits with COMMAND's status, and an empty script is a bot that pr
 ```sh
 python3 tools/bot_script.py build/bot.sock "900:START:10,1200:A:5" -- build/<game> --hidden --fast
 ```
+
+`--late=MS:N` has `bot_script.py` wait MS milliseconds before it answers each frame whose
+number is a multiple of N. The same bot with and without it leaves the same input log, paced
+or not, with no `jump` line for the waits.
 
 `ninja test_bot_link` builds `tools/test_bot_link.cpp`, which steps the link through the SI
 layer's `pad_get` with a bot on a socket in a work dir and no game. It covers a frame polled

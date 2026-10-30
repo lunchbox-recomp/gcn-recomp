@@ -6,12 +6,13 @@
 // platform.cpp are linked as they are. Stubbed: the frame counter (gx::g_frames_submitted,
 // gx_frames_submitted), which a check sets by hand, guest memory (g_mem), which a check fills,
 // the RTC (rtc_set_base), the event queue and the interrupt line (event_schedule_in,
-// pi_set_interrupt), the SI's log (g_log_enabled, log_msg) and the disc speed the log's header
-// records (g_fast_disc).
+// pi_set_interrupt), the SI's log (g_log_enabled, log_msg), the disc speed the log's header
+// records (g_fast_disc) and the clock (host_ns, and clock_hold, which adds up what it's given).
 //
 // This process plays the bot on a Unix socket in the work dir. For a step that goes through,
 // the bot's lines wait in the socket before the poll, and what the link sent is read after it.
-// One check answers from a thread of its own, late, to show the guest waits for `done`. A step
+// One check answers from a thread of its own, late, to show the guest waits for `done` and
+// the clock is handed the wait. A step
 // that stops the game runs in a child process, which the stop ends: the bot reads the frame
 // line, answers, then hangs up or stops sending, and the child's exit status, its stderr and
 // the input log's end say what the stop did.
@@ -51,6 +52,13 @@ void log_msg(LogCat, const char*, ...) {}
 void rtc_set_base(time_t) {}
 void event_schedule_in(uint64_t, EventFn) {}
 void pi_set_interrupt(uint32_t, bool) {}
+uint64_t host_ns() {
+    return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+               std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+static uint64_t g_held_ns;  // what the link has handed the clock
+void clock_hold(uint64_t ns) { g_held_ns += ns; }
 
 namespace {
 
@@ -339,15 +347,18 @@ int main(int argc, char** argv) {
     check(scripted.buttons == (PAD_A | PAD_B) && same(after, p1), "a script's press goes on top of the bot's state");
     heard(bot);
 
-    // Lockstep: a bot that takes its time is waited for.
+    // Lockstep: a bot that takes its time is waited for, and the wait goes to the clock as a
+    // pause's does, so the pacer doesn't make it up after.
     std::thread late([bot, p1, p2] {
         const std::string line = first_line(bot);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         say(bot, line == "frame 30\n" ? pad_line(1, p1) + pad_line(2, p2) + "done\n" : "wrong frame\n");
     });
+    const uint64_t held = g_held_ns;
     const PadState waited = poll_at(0, 30);
     late.join();
     check(same(waited, p1), "the guest waits for the bot's done");
+    check(g_held_ns - held >= 100000000, "the time the guest waited goes to the clock");
     close(bot);
 
     // The stops. Each ends the child with status 1 and the reason on stderr.

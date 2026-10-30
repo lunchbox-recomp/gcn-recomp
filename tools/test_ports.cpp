@@ -7,14 +7,14 @@
 // (input_script.cpp) applied and the input log (input_log.cpp) consulted. gamepads.cpp,
 // port_memory.cpp, input_map.cpp, input_defaults.cpp, input_script.cpp, input_log.cpp,
 // bot_link.cpp (with no bot), platform.cpp, hw/mmio.cpp, vr_config.cpp (the headset's
-// default gamepad layout) and
-// settings.cpp are linked as they are. Stubbed: force feedback (ffb_configure, ffb_attach,
-// ffb_update, ffb_shutdown; ffb_update keeps the motor it was given), the RTC
-// (rtc_set_base), the event queue and interrupt request (event_schedule_in, irq_request),
-// and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a check sets
-// by hand. The interrupt handler's thread dump (debug_dump_threads) and guest memory
-// (g_mem) are stubbed too, and fatal, which says why and exits 1, and the session's note
-// that the game is starting again (session_relaunching), which no check reaches. The disc
+// default gamepad layout) and settings.cpp are linked as they are. Stubbed: force feedback
+// (ffb_configure, ffb_attach, ffb_update, ffb_shutdown; ffb_update keeps the motor it was
+// given), the RTC (rtc_set_base), the event queue and interrupt request (event_schedule_in,
+// irq_request), and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a
+// check sets by hand. The interrupt handler's thread dump (debug_dump_threads) and guest
+// memory (g_mem) are stubbed too, and fatal, which says why and exits 1, and the session's
+// note that the game is starting again (session_relaunching) and the clock's hold for a bot
+// (host_ns, clock_hold), which no check reaches. The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
 //
@@ -78,6 +78,8 @@ void fatal(const char* fmt, ...) {
     exit(1);
 }
 void session_relaunching() {}
+uint64_t host_ns() { return 0; }
+void clock_hold(uint64_t) {}
 bool g_fast_disc = true;
 
 namespace {
