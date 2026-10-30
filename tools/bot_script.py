@@ -1,28 +1,35 @@
 #!/usr/bin/env python3
-"""A bot that presses what a script says: the bot link's example bot (docs/diagnostics.md, "Bots").
+"""A bot that presses what a script says, the bot link's example bot (docs/diagnostics.md, "Bots").
 
 Usage: bot_script.py [--pads=N] [--late=MS:N] SOCKET SCRIPT -- COMMAND [ARG ...]
 
 It listens on the Unix socket SOCKET first, then runs COMMAND with GCN_BOT set to SOCKET's full
 path, so the game COMMAND starts connects to it with nothing left to chance. At each frame the
 game steps it, it answers with the presses SCRIPT holds then, on ports 1 to N (1 by default),
-as GCN_INPUT would make them. SCRIPT is in input_script.h's syntax, e.g. "900:START:10,2/1200:A:5",
-or a file holding that, whose # lines are comments. An empty SCRIPT presses nothing.
+as GCN_INPUT would make them.
+
+SCRIPT is in input_script.h's syntax, e.g. "900:START:10,2/1200:A:5", or a file holding that,
+whose # lines are comments. An empty SCRIPT presses nothing.
 
 A game that resets the console starts again and connects again, and the script starts over
 with it as GCN_INPUT's would. Once COMMAND exits, the bot says how many frames it answered and
 exits with COMMAND's status, or 1 if the link sent it something it doesn't take, or 127 if
-COMMAND can't be run. A bad script or a SOCKET it can't listen on exits 2 before COMMAND runs.
-A socket an earlier run left at SOCKET is replaced, but not one another bot still listens on.
+COMMAND can't be run.
+
+A bad script or a SOCKET it can't listen on exits 2 before COMMAND runs. While it listens it
+holds a lock on SOCKET.lock, a file it leaves in place, so a second bot_script.py on the same
+SOCKET exits 2 and leaves both files alone. One that takes the lock replaces any socket file an
+earlier run left at SOCKET.
 
 --late=MS:N waits MS milliseconds before it answers each frame whose number is a multiple of N.
-It's there to check that how long a bot takes to answer changes nothing in a run: the same bot
-with and without it leaves the same input log, unpaced or paced under GCN_CATCHUP=0. Only the
+It's there to check that how long a bot takes to answer changes nothing in a run. The same bot
+with and without it leaves the same input log unpaced or paced under GCN_CATCHUP=0. Only the
 end line can differ, since it says where --exit-after caught the guest.
 """
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
 import re
 import select
@@ -121,8 +128,8 @@ class LinkError(Exception):
 
 def serve(conn: socket.socket, presses: list[Press], ports: int,
           late: tuple[int, int] | None = None) -> tuple[int, int | None]:
-    """Answers the game's frames until it hangs up: how many, and the last. `late` is
-    --late's (MS, N)."""
+    """Answers the game's frames until it hangs up, and returns how many and the last. `late`
+    is --late's (MS, N)."""
     count, last = 0, None
     with conn.makefile("rb") as lines:
         try:
@@ -140,30 +147,34 @@ def serve(conn: socket.socket, presses: list[Press], ports: int,
     return count, last
 
 
-def listen(path: str) -> socket.socket:
-    """A socket listening at `path`, in place of a socket an earlier run left there. A socket
-    another bot still listens on stays, and is an OSError: the two bots would take each other's
-    games."""
+def listen(path: str) -> tuple[socket.socket, int]:
+    """A socket listening at `path`, and the lock on `path`.lock held while it listens, as an
+    open file to close once the socket file is gone. When another bot_script.py holds the lock,
+    it's an OSError and neither file is touched, since the two bots would take each other's
+    games. With the lock taken, a socket file at `path` is one an earlier run left, and it's
+    replaced."""
+    lock = os.open(path + ".lock", os.O_RDWR | os.O_CREAT, 0o644)
     try:
-        if stat.S_ISSOCK(os.stat(path).st_mode):
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as knock:
-                knock.settimeout(2)
-                try:
-                    knock.connect(path)
-                except ConnectionRefusedError:  # nobody listens there any more
-                    os.unlink(path)
-                else:
-                    raise OSError("another bot is listening on it")
-    except FileNotFoundError:
-        pass
-    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        listener.bind(path)
-        listener.listen(1)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise OSError("another bot is listening on it") from None
+        try:
+            if stat.S_ISSOCK(os.stat(path).st_mode):
+                os.unlink(path)
+        except FileNotFoundError:
+            pass
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            listener.bind(path)
+            listener.listen(1)
+        except OSError:
+            listener.close()
+            raise
     except OSError:
-        listener.close()
+        os.close(lock)
         raise
-    return listener
+    return listener, lock
 
 
 def accept(listener: socket.socket, proc: subprocess.Popen) -> socket.socket | None:
@@ -178,7 +189,8 @@ def accept(listener: socket.socket, proc: subprocess.Popen) -> socket.socket | N
 
 def run(listener: socket.socket, path: str, presses: list[Press], ports: int, command: list[str],
         late: tuple[int, int] | None = None) -> int:
-    """Runs COMMAND and answers each game it starts until it exits: COMMAND's status, or 1."""
+    """Runs COMMAND and answers each game it starts until it exits, and returns COMMAND's
+    status, or 1."""
     try:
         proc = subprocess.Popen(command, env={**os.environ, "GCN_BOT": path})
     except OSError as e:
@@ -238,7 +250,7 @@ def main(argv: list[str]) -> int:
         return 2
     path = os.path.abspath(args.socket)
     try:
-        listener = listen(path)
+        listener, lock = listen(path)
     except OSError as e:
         print(f"bot_script.py: can't listen on {path}: {e}", file=sys.stderr)
         return 2
@@ -250,6 +262,8 @@ def main(argv: list[str]) -> int:
             os.unlink(path)
         except FileNotFoundError:
             pass
+        # Only now, or a bot that took the lock first could have its new socket file removed.
+        os.close(lock)
 
 
 if __name__ == "__main__":

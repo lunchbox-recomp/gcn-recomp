@@ -1,11 +1,13 @@
 """Checks for bot_script.py, against a fake engine.
 
-The fake engine is this file run as a program (fake_engine below): it connects to GCN_BOT as
+The fake engine is this file run as a program (fake_engine below). It connects to GCN_BOT as
 the engine does, steps the bot at the frames it's given, writes what the bot answered to a
 file and exits with the status it's given. Run with `python3 -m unittest discover -s tools`.
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import socket
 import sys
@@ -35,7 +37,7 @@ def fake_engine(out: str, connections: str, status: str) -> int:
                 for frame in frames.split(","):
                     if frame == "junk":
                         s.sendall(b"hello\n")
-                        answers.append(lines.readline().decode())  # the bot hangs up: ""
+                        answers.append(lines.readline().decode())  # "" once the bot hangs up
                         continue
                     start = time.monotonic()
                     s.sendall(f"frame {frame}\n".encode())
@@ -121,7 +123,7 @@ class RunTest(unittest.TestCase):
         ])
 
     def test_late_answers_every_nth_frame_late_and_the_same(self):
-        self.assertEqual(self.run_bot("--late=40:2", self.sock, "1:A:1", connections="0,1,2,3"), 0)
+        self.assertEqual(self.run_bot("--late=200:2", self.sock, "1:A:1", connections="0,1,2,3"), 0)
         self.assertEqual(self.answers(), [
             "pad 1 0000 128 128 128 128 0 0\ndone\n",
             "pad 1 0100 128 128 128 128 0 0\ndone\n",
@@ -129,7 +131,8 @@ class RunTest(unittest.TestCase):
             "pad 1 0000 128 128 128 128 0 0\ndone\n",
         ])
         ms = [int(t) for t in Path(self.out + ".ms").read_text().split("|")]
-        self.assertTrue(ms[0] >= 40 and ms[2] >= 40 and ms[1] < 40 and ms[3] < 40, ms)
+        # Wide apart, so a loaded machine's slow answer isn't taken for a late one.
+        self.assertTrue(ms[0] >= 200 and ms[2] >= 200 and ms[1] < 150 and ms[3] < 150, ms)
         with self.assertRaises(SystemExit) as refused:  # argparse's way out, status 2
             self.run_bot("--late=40", self.sock, "")
         self.assertEqual(refused.exception.code, 2)
@@ -158,14 +161,21 @@ class RunTest(unittest.TestCase):
         self.assertEqual(Path(self.sock).read_text(), "not a socket")
 
     def test_leaves_a_socket_another_bot_listens_on(self):
-        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as other:
-            other.bind(self.sock)
-            other.listen(4)
-            self.assertEqual(self.run_bot(self.sock, ""), 2)
-            self.assertFalse(os.path.exists(self.out))  # the command never ran
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as game:
-                game.settimeout(10)
-                game.connect(self.sock)  # the other bot still answers there
+        live, lock = bot_script.listen(self.sock)
+        self.addCleanup(os.close, lock)
+        self.addCleanup(live.close)
+        # Two more starts. With a connect in place of the lock, the second once took the path.
+        for start in (1, 2):
+            with self.subTest(start=start), contextlib.redirect_stderr(io.StringIO()) as err:
+                self.assertEqual(self.run_bot(self.sock, ""), 2)
+                self.assertIn("another bot is listening on it", err.getvalue())
+        self.assertFalse(os.path.exists(self.out))  # neither command ran
+        self.assertTrue(os.path.exists(self.sock + ".lock"))
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as game:
+            game.settimeout(10)
+            game.connect(self.sock)
+            live.settimeout(10)
+            live.accept()[0].close()  # the live bot still answers at its own path
 
     def test_a_command_that_cannot_run_exits_127(self):
         missing = os.path.join(self.dir.name, "no-such-command")
