@@ -157,6 +157,29 @@ class RunTest(unittest.TestCase):
         self.assertEqual(self.run_bot(self.sock, ""), 2)
         self.assertEqual(Path(self.sock).read_text(), "not a socket")
 
+    def test_leaves_a_socket_another_bot_listens_on(self):
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as other:
+            other.bind(self.sock)
+            other.listen(4)
+            self.assertEqual(self.run_bot(self.sock, ""), 2)
+            self.assertFalse(os.path.exists(self.out))  # the command never ran
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as game:
+                game.settimeout(10)
+                game.connect(self.sock)  # the other bot still answers there
+
+    def test_a_command_that_cannot_run_exits_127(self):
+        missing = os.path.join(self.dir.name, "no-such-command")
+        self.assertEqual(bot_script.main([self.sock, "", "--", missing]), 127)
+        self.assertFalse(os.path.exists(self.sock))
+
+    def test_a_relative_socket_reaches_a_game_in_another_directory(self):
+        here = os.getcwd()
+        os.chdir(self.dir.name)
+        self.addCleanup(os.chdir, here)
+        self.assertEqual(self.run_bot("bot.sock", "0:A:1", connections="0"), 0)
+        self.assertEqual(self.answers(), ["pad 1 0100 128 128 128 128 0 0\ndone\n"])
+        self.assertFalse(os.path.exists(self.sock))
+
 
 if __name__ == "__main__":
     if sys.argv[1:2] == ["--fake-engine"]:

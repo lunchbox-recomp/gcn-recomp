@@ -11,8 +11,9 @@ or a file holding that, whose # lines are comments. An empty SCRIPT presses noth
 
 A game that resets the console starts again and connects again, and the script starts over
 with it as GCN_INPUT's would. Once COMMAND exits, the bot says how many frames it answered and
-exits with COMMAND's status, or 1 if the link sent it something it doesn't take. A bad script
-or a SOCKET it can't listen on exits 2 before COMMAND runs.
+exits with COMMAND's status, or 1 if the link sent it something it doesn't take, or 127 if
+COMMAND can't be run. A bad script or a SOCKET it can't listen on exits 2 before COMMAND runs.
+A socket an earlier run left at SOCKET is replaced, but not one another bot still listens on.
 
 --late=MS:N waits MS milliseconds before it answers each frame whose number is a multiple of N.
 It's there to check that how long a bot takes to answer changes nothing in a run, paced or
@@ -139,10 +140,19 @@ def serve(conn: socket.socket, presses: list[Press], ports: int,
 
 
 def listen(path: str) -> socket.socket:
-    """A socket listening at `path`, in place of a socket an earlier run left there."""
+    """A socket listening at `path`, in place of a socket an earlier run left there. A socket
+    another bot still listens on stays, and is an OSError: the two bots would take each other's
+    games."""
     try:
         if stat.S_ISSOCK(os.stat(path).st_mode):
-            os.unlink(path)
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as knock:
+                knock.settimeout(2)
+                try:
+                    knock.connect(path)
+                except ConnectionRefusedError:  # nobody listens there any more
+                    os.unlink(path)
+                else:
+                    raise OSError("another bot is listening on it")
     except FileNotFoundError:
         pass
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

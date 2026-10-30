@@ -294,6 +294,10 @@ background. It exits with COMMAND's status, and an empty script is a bot that pr
 python3 tools/bot_script.py build/bot.sock "900:START:10,1200:A:5" -- build/<game> --hidden --fast
 ```
 
+A socket file an earlier run left at SOCKET is replaced, but one another bot still listens on
+is refused, since the two bots would take each other's games. When COMMAND can't be run at all,
+`bot_script.py` exits 127.
+
 `--late=MS:N` has `bot_script.py` wait MS milliseconds before it answers each frame whose
 number is a multiple of N. The same bot with and without it leaves the same input log, paced
 or not, with no `jump` line for the waits.
