@@ -959,6 +959,13 @@ function(gcn_add_game)
       add_test(NAME test_recomp_py_system COMMAND /usr/bin/python3 -B -m unittest discover
                -s recomp -p test_*.py WORKING_DIRECTORY ${GCN_RECOMP_DIR})
     endif()
+    # The same for tools/test_*.py: bot_script.py against a fake engine.
+    add_test(NAME test_tools_py COMMAND ${Python3_EXECUTABLE} -B -m unittest discover
+             -s tools -p test_*.py WORKING_DIRECTORY ${GCN_RECOMP_DIR})
+    if(EXISTS /usr/bin/python3)
+      add_test(NAME test_tools_py_system COMMAND /usr/bin/python3 -B -m unittest discover
+               -s tools -p test_*.py WORKING_DIRECTORY ${GCN_RECOMP_DIR})
+    endif()
     # game_cflags.txt's checks (tools/test_game_cflags.cmake): the flags the configure wrote
     # hold the build type's and compile optimized GNU C11 with no fused multiply-add. Needs
     # the C compiler only. NO_BUILD_FLAGS says the build type has none, read from its flags
