@@ -3,9 +3,10 @@
 //
 // recomp/ppc_cases.py writes ppc.translate's own C for random and edge-case words of every form it
 // accepts, and what ppc.decode_branch says each branch does, into <build>/interp_cases/. Each case
-// runs here from seeded random CPU states, once as that C and once through interp_step or
-// interp_branch. Every CPU field, a 64 KiB window of RAM and the calls into the runtime must come out
-// the same, bit for bit.
+// runs here from seeded random CPU states, and a step also from a few fixed ones, once as that C and
+// once through interp_step or interp_branch. Every CPU field, a 64 KiB window of RAM and the calls
+// into the runtime must come out the same, bit for bit, and a band of RAM on each side of the window
+// must come out as it went in.
 //
 // A word translate refuses must come back INTERP_UNIMPL with nothing changed, and one decode_branch
 // refuses must come back false. The runtime's services are fakes that record each call, and the
@@ -119,6 +120,12 @@ const char* const kSkipped[] = {"fp", "ps", "fpmem"};
 constexpr uint32_t kWindowBase = 0x80000000u;  // and so physical 0, where an rA 0 load lands
 constexpr uint32_t kWindow = 0x10000;
 
+// The guard bands, by physical address. The one below the window is at the top of the guest's
+// gigabyte, where an address just under kWindowBase lands.
+constexpr uint32_t kGuard = 0x1000;
+constexpr uint32_t kGuardAt[] = {0x40000000u - kGuard, kWindow};
+uint8_t g_guard[2][kGuard];  // the pattern they're filled with
+
 struct Rng {
     uint64_t s;
     uint64_t next() {  // splitmix64
@@ -172,6 +179,32 @@ void random_cpu(CPU* c, Rng& r) {
     c->fprf_pending = (uint8_t)r.below(3);
     for (uint32_t& g : c->gqr) g = r.u32();
     for (uint32_t& s : c->spr) s = r.u32();
+}
+
+// Pairs of register values a result turns on, which random picks seldom bring together. A fixed state
+// gives x to rS and rA, then y to rB and its own CA, over a random state. A memory form's base and
+// index are pointed into the window after that as usual.
+struct Fixed {
+    uint32_t x, y;
+    uint8_t ca;
+};
+const Fixed kFixed[] = {
+    {0x80000000u, 0xFFFFFFFFu, 0},  // INT_MIN / -1, and the negation of INT_MIN
+    {0x9ABCDEF0u, 0, 1},            // a negative dividend over 0
+    {0x12345678u, 0, 0},            // a positive one
+    {0xFFFFFFFFu, 0, 1},            // the carry out of addze, adde and addme
+    {0x7FFFFFFFu, 1, 0},            // an overflow past INT_MAX
+    {0, 0, 0},                      // cntlzw of 0, and shifts and rotates of 0
+    {0xFFFFFFFFu, 32, 1},           // shifts by 32, and cntlzw of all ones
+    {0x80000001u, 31, 0},           // shifts by 31
+};
+constexpr int kFixedCount = sizeof kFixed / sizeof *kFixed;
+
+void fix(CPU* c, uint32_t insn, const Fixed& f) {
+    c->r[insn >> 21 & 31] = f.x;
+    c->r[insn >> 16 & 31] = f.x;
+    c->r[insn >> 11 & 31] = f.y;
+    c->xer_ca = f.ca;
 }
 
 // A memory form's registers, set so its whole reach is inside the window.
@@ -261,6 +294,25 @@ std::string window_differs(const uint8_t* want) {
     return b;
 }
 
+// The window as a state has it, and the guard bands as they always start.
+void load_ram(const uint8_t* window) {
+    memcpy(g_mem, window, kWindow);
+    for (int k = 0; k < 2; k++) memcpy(g_mem + kGuardAt[k], g_guard[k], kGuard);
+}
+
+std::string guard_changed() {
+    for (int k = 0; k < 2; k++) {
+        const uint8_t* got = g_mem + kGuardAt[k];
+        if (!memcmp(g_guard[k], got, kGuard)) continue;
+        uint32_t n = 0;
+        while (g_guard[k][n] == got[n]) n++;
+        char b[96];
+        snprintf(b, sizeof b, "RAM at physical %08X, outside the window", kGuardAt[k] + n);
+        return b;
+    }
+    return "";
+}
+
 std::string clock_moved() { return g_vcount == 0 && g_vlimit == UINT64_MAX ? "" : "the clock moved"; }
 
 std::vector<std::vector<uint8_t>> g_windows;  // each state's RAM, seeded
@@ -276,13 +328,14 @@ std::string fields(uint32_t i) {
     return b;
 }
 
-// form is the word's form, or -1 for a refused word.
+// form is the word's form, or -1 for a refused word. A state below 0 is kFixed[kFixedCount + state].
 void fail(int form, uint32_t insn, uint32_t pc, int state, const std::string& what) {
     g_failed++;
     int& shown = form < 0 ? g_refused_fails : g_form_fails[form];
     if (shown++ >= 2) return;
-    printf("FAIL %08X at %08X (%s; %s) state %d: %s\n", insn, pc, form < 0 ? "refused" : g_case_forms[form].name,
-           fields(insn).c_str(), state, what.c_str());
+    printf("FAIL %08X at %08X (%s; %s) %s %d: %s\n", insn, pc, form < 0 ? "refused" : g_case_forms[form].name,
+           fields(insn).c_str(), state < 0 ? "fixed state" : "state", state < 0 ? kFixedCount + state : state,
+           what.c_str());
 }
 
 // The word's run through interp_step must refuse it and change nothing.
@@ -290,14 +343,14 @@ bool step_refuses(int form, uint32_t insn, uint32_t pc, const char* who) {
     Rng r = rng_for(insn, pc, 0);
     CPU st;
     random_cpu(&st, r);
-    memcpy(g_mem, g_windows[0].data(), kWindow);
+    load_ram(g_windows[0].data());
     g_calls.clear();
     CPU in = st;
     std::string what;
     if (interp_step(&in, pc, insn) != INTERP_UNIMPL)
         what = std::string("interp_step took a word ") + who;
     else if ((what = differ(st, in)).empty() && (what = calls_differ({}, g_calls)).empty() &&
-             (what = window_differs(g_windows[0].data())).empty())
+             (what = window_differs(g_windows[0].data())).empty() && (what = guard_changed()).empty())
         return true;
     else
         what = "interp_step refused it but changed " + what;
@@ -322,33 +375,39 @@ bool branch_refuses(int form, uint32_t insn, uint32_t pc, const char* who) {
     return false;
 }
 
+// A state s below 0 is kFixed[kFixedCount + s], run over window 0.
 bool run_step(const CaseStep& k, int s) {
     Rng r = rng_for(k.insn, k.pc, s);
     CPU st;
     random_cpu(&st, r);
+    if (s < 0) fix(&st, k.insn, kFixed[kFixedCount + s]);
     point(&st, k, r);
-    const uint8_t* w = g_windows[s].data();
+    const uint8_t* w = g_windows[s < 0 ? 0 : s].data();
 
-    memcpy(g_mem, w, kWindow);
+    load_ram(w);
     g_calls.clear();
     CPU nat = st;
     k.fn(&nat);
     const std::vector<Call> nat_calls = g_calls;
     memcpy(g_native, g_mem, kWindow);
+    const std::string nat_guard = guard_changed();
     bool rfi = false;
     for (const Call& call : nat_calls) rfi |= !strcmp(call.fn, "hle_rfi");
 
-    memcpy(g_mem, w, kWindow);
+    load_ram(w);
     g_calls.clear();
     CPU in = st;
     const InterpStep ret = interp_step(&in, k.pc, k.insn);
     std::string what;
-    if (ret == INTERP_UNIMPL)
+    if (!nat_guard.empty())
+        what = "translate's C itself changed " + nat_guard;
+    else if (ret == INTERP_UNIMPL)
         what = "interp_step refused a word translate accepts";
     else if (ret != (rfi ? INTERP_RFI : INTERP_NEXT))
         what = rfi ? "hle_rfi ran and interp_step didn't return INTERP_RFI" : "INTERP_RFI with no hle_rfi";
     else if ((what = differ(nat, in)).empty() && (what = calls_differ(nat_calls, g_calls)).empty() &&
-             (what = window_differs(g_native)).empty() && (what = clock_moved()).empty())
+             (what = window_differs(g_native)).empty() && (what = guard_changed()).empty() &&
+             (what = clock_moved()).empty())
         return true;
     fail(k.form, k.insn, k.pc, s, what);
     return false;
@@ -422,10 +481,13 @@ int main(int argc, char** argv) {
         w.resize(kWindow);
         for (uint8_t& b : w) b = (uint8_t)wr.next();
     }
+    for (auto& band : g_guard)
+        for (uint8_t& b : band) b = (uint8_t)wr.next();
     g_form_fails.assign(g_case_form_count, 0);
     g_link_not_taken.assign(g_case_form_count, 0);
     g_link_taken.assign(g_case_form_count, 0);
-    printf("cases from ppc_cases.py --seed %u --per-form %u, %d states each\n", g_case_seed, g_case_per_form, states);
+    printf("cases from ppc_cases.py --seed %u --per-form %u, %d states each and %d fixed ones for a step\n",
+           g_case_seed, g_case_per_form, states, kFixedCount);
 
     for (uint32_t f = 0; f < g_case_family_count; f++) {
         const CaseFamily& fam = *g_case_families[f];
@@ -441,7 +503,7 @@ int main(int argc, char** argv) {
             continue;
         }
         for (uint32_t k = 0; k < fam.step_count; k++)
-            for (int s = 0; s < states; s++, runs++) run_step(fam.steps[k], s);
+            for (int s = -kFixedCount; s < states; s++, runs++) run_step(fam.steps[k], s);
         for (uint32_t k = 0; k < fam.branch_count; k++)
             for (int s = 0; s < states; s++, runs++) run_branch(fam.branches[k], s);
         printf("%-7s %5u cases %7llu runs  %s\n", fam.name, fam.step_count + fam.branch_count,
