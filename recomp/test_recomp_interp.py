@@ -165,6 +165,15 @@ def write_fixture(d):
     return dol, symbols, tables
 
 
+def cc_command(cc, out, harness, sources, exe, flags=()):
+    """The command line that builds `harness` and recomp.py's `sources`, which it wrote to `out`,
+    into `exe`. The flags are the game's, with the guest call stack on so ENTER and EXIT show;
+    `flags` come after them."""
+    return ([cc, '-std=gnu11', '-O1', '-DGCN_TRACE_CALLS', '-fno-strict-aliasing', '-ffp-contract=off',
+             '-Wno-unused-label', '-Wno-unused-variable', '-Wno-parentheses-equality'] + list(flags)
+            + ['-I', RUNTIME, '-I', out, harness] + list(sources) + ['-o', exe, '-lm'])
+
+
 def guard(n, entry):
     return f'\tif (UNLIKELY(GCN_CODE_CHANGED({n}))) {{ interp_enter(c, {entry}); RET(); }}\n'
 
@@ -454,10 +463,7 @@ class Compiled(Recompiled):
         write(harness, HARNESS)
         exe = os.path.join(cls.dir, 'harness')
         srcs = [os.path.join(cls.out, f) for f in cls.sources]
-        r = subprocess.run([cc, '-std=gnu11', '-O1', '-DGCN_TRACE_CALLS', '-fno-strict-aliasing', '-ffp-contract=off',
-                            '-Wno-unused-label', '-Wno-unused-variable', '-Wno-parentheses-equality',
-                            '-I', RUNTIME, '-I', cls.out, harness] + srcs + ['-o', exe, '-lm'],
-                           capture_output=True, text=True)
+        r = subprocess.run(cc_command(cc, cls.out, harness, srcs, exe), capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
         r = subprocess.run([exe], capture_output=True, text=True, timeout=60)
         assert r.returncode == 0, r.stdout + r.stderr

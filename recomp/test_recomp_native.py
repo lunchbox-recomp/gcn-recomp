@@ -18,7 +18,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import ppc  # noqa: E402
-from test_recomp_interp import BLR, NOP, RECOMP, RUNTIME, addi, read, write, write_dol  # noqa: E402
+from test_recomp_interp import BLR, NOP, RECOMP, addi, cc_command, read, write, write_dol  # noqa: E402
 
 T = 0x80104000
 MFLR_R3 = 0x7C6802A6
@@ -163,9 +163,7 @@ class Fixture(unittest.TestCase):
         cc = cls.compiler()
         exe = os.path.join(cls.dir, name)
         write(exe + '.c', cls.harness())
-        r = subprocess.run([cc, '-std=gnu11', '-O1', '-DGCN_TRACE_CALLS', '-fno-strict-aliasing', '-ffp-contract=off',
-                            '-Wno-unused-label', '-Wno-unused-variable', '-Wno-parentheses-equality'] + flags
-                           + ['-I', RUNTIME, '-I', cls.out, exe + '.c'] + cls.sources + ['-o', exe, '-lm'],
+        r = subprocess.run(cc_command(cc, cls.out, exe + '.c', cls.sources, exe, flags),
                            capture_output=True, text=True)
         if r.returncode:
             return f'the build failed:\n{r.stderr}', {}
