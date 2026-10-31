@@ -404,6 +404,49 @@ void irq_poll(CPU* c);
 void idle_hint(CPU* c);
 #define IDLE_CHECK() idle_hint(c)
 
+/* ---- the interpreter's way in and its tables (recomp_interp.c, from recomp.py) ---- */
+/* One range [start, end) per recompiled function, sorted by start, and its index is the N that
+   function's entry guard tests. An HLE'd function's original body has a guard and its wrapper
+   has none. Module and REL code isn't in RAM at its own address, so it gets none either. */
+#define RECOMP_RANGE_HLE 1u
+#define RECOMP_RANGE_LONGJMP 2u
+#define RECOMP_RANGE_NO_GUARD 4u
+typedef struct { uint32_t start, end, flags; } RecompRange;
+extern const RecompRange g_recomp_ranges[];
+extern const uint32_t g_recomp_range_count;
+/* g_code_changed_bits holds a bit per function, by its index in g_recomp_ranges. While a
+   function's bit is set, its body hands its entry to interp_enter right after ENTER and returns
+   once that does. */
+extern uint8_t g_code_changed_bits[];
+#define GCN_CODE_CHANGED(n) ((g_code_changed_bits[(n) >> 3] >> ((n) & 7)) & 1u)
+void interp_enter(CPU* c, uint32_t entry);
+/* recomp.py makes each patches.txt and steps.txt site a function of its own, listed sorted
+   with the word it replaces. The interpreter calls it in place of that word, and a 1 back means
+   the patch returned from the guest function. A patch with a goto can't run outside its
+   function, so its site calls interp_site_unusable instead. */
+typedef int (*RecompSiteFn)(CPU*);
+typedef struct { uint32_t addr, original; RecompSiteFn fn; } RecompSite;
+extern const RecompSite g_recomp_sites[];
+extern const uint32_t g_recomp_site_count;
+void interp_site_unusable(CPU* c, uint32_t addr);
+/* idle.txt's back edges, sorted. */
+extern const uint32_t g_recomp_idle[];
+extern const uint32_t g_recomp_idle_count;
+/* special_calls.txt, sorted. SETJMP and LONGJMP are the C library's pair, and CONTEXT is any
+   other name, such as OSSaveContext. */
+#define RECOMP_SPECIAL_SETJMP 1u
+#define RECOMP_SPECIAL_CONTEXT 2u
+#define RECOMP_SPECIAL_LONGJMP 3u
+typedef struct { uint32_t addr, kind; } RecompSpecial;
+extern const RecompSpecial g_recomp_specials[];
+extern const uint32_t g_recomp_special_count;
+/* These are the text sections recomp.py compiled whose code is in RAM at its own address,
+   sorted, and the 64-bit FNV-1a of their bytes in that order. */
+typedef struct { uint32_t start, size; } RecompText;
+extern const RecompText g_recomp_text[];
+extern const uint32_t g_recomp_text_count;
+extern const uint64_t g_recomp_text_fnv;
+
 #ifdef __cplusplus
 }
 #endif
