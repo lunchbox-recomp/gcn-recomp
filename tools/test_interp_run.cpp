@@ -60,6 +60,8 @@ const Case kCases[] = {
     {"a loose frame's branch onto a patch site", FX_BLOB_SITE, FX_F_BLOB_SITE_TWIN, nullptr, "heap_trace_alloc", true},
     {"running off the end into a gap no function holds", FX_F_GAP_FALLS, 0, nullptr, "unimplemented instruction",
      false},
+    {"a setjmp site taken 10,000 times in a loop, in one C frame", FX_F_SJ_LOOP, 0, nullptr, "hle_setjmp_jmpbuf",
+     false},
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to

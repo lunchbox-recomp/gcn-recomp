@@ -56,20 +56,20 @@ bool first_report(std::unordered_set<uint32_t>& seen, uint32_t pc) {
 
 }  // namespace
 
-void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc) {
+bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again) {
     for (;;) {
         // Running off the end calls what comes next, as recomp.py's fallthrough does.
         if (!f->loose && pc == f->end) {
             if (starts_function(pc)) call_indirect(c, pc);
             else unimpl(c, pc, 0);
-            return;
+            return false;
         }
         ++*f->ran;
         const uint32_t insn = LD32(pc);
         // A site's function runs while RAM holds the word it replaced, and RAM's word runs otherwise.
         if (const RecompSite* s = site_at(f, pc)) {
             if (insn == s->original) {
-                if (s->fn(c)) return;
+                if (s->fn(c)) return false;
                 pc += 4;
                 continue;
             }
@@ -89,8 +89,11 @@ void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc) {
                 if (br.taken) {
                     const uint32_t kind = br.kind <= INTERP_BC ? special_kind(br.target) : 0;
                     if (kind == RECOMP_SPECIAL_SETJMP || kind == RECOMP_SPECIAL_CONTEXT) {
-                        interp_setjmp_site(c, f, kind, br.target, pc + 4);
-                        return;
+                        // The site that ran this frame takes its setjmp again itself, so the host stack
+                        // doesn't grow each time a loop comes round.
+                        if (pc == again) return true;
+                        interp_setjmp_site(c, f, kind, br.target, pc);
+                        return false;
                     }
                     call_indirect(c, br.target);
                 }
@@ -104,18 +107,18 @@ void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc) {
             if (br.kind == INTERP_BLR) {
                 if (f->longjmp) {
                     hle_longjmp_resume(c, f->jb);
-                    return;
+                    return false;
                 }
                 if (br.target != f->entry_lr && first_report(g_blr_seen, pc))
                     log_msg(LOG_INTERP, "blr at %08X returns to %08X, and its frame was entered with LR %08X", pc,
                             br.target, f->entry_lr);
-                return;
+                return false;
             }
             // Out of the function's range, a branch that doesn't link is a call and then a return. A loose
             // frame has no range, so its tail call is a branch onto a function's start.
             if (f->loose ? starts_function(br.target) : (br.target < f->start || br.target >= f->end)) {
                 call_indirect(c, br.target);
-                return;
+                return false;
             }
             if (br.kind != INTERP_BCTR && br.target <= pc) {
                 if (idle_at(pc)) IDLE_CHECK();
@@ -125,7 +128,7 @@ void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc) {
             continue;
         }
         switch (interp_step(c, pc, insn)) {
-        case INTERP_RFI: return;
+        case INTERP_RFI: return false;
         case INTERP_UNIMPL: unimpl(c, pc, insn); break;
         case INTERP_NEXT:
             if ((insn >> 26) == 31 && insn_xo(insn) == 146) irq_check(c);  // mtmsr

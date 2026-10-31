@@ -98,6 +98,9 @@ struct Outcome {
     std::vector<Call> calls;
     std::string stop;
     uint64_t ran;  // the words interpreted in the entry's frame and any of its function's
+    // The bytes between the highest and lowest host stack frames that asked the runtime for a setjmp or
+    // context site's jmp_buf, which is 0 when each site is taken in the same C frame each time.
+    uint64_t site_spread;
 };
 
 Outcome run(const Case& k, Mode m);

@@ -52,6 +52,10 @@ point. `interp_setjmp_site` takes the host setjmp in a C frame of its own and ca
 function. It then runs the rest of the guest function from that frame, so a longjmp to the
 jmp_buf lands in a live frame for as long as the guest function hasn't returned.
 
+When a loop brings the guest function back to the same site, the setjmp is taken again in
+that C frame, as native code takes it again in the function's. So the host stack stays flat
+however often the loop comes round.
+
 ## Sites
 
 `recomp.py` makes each `patches.txt` and `steps.txt` site a function of its own, listed in
@@ -98,8 +102,9 @@ The runtime doesn't call it, and `tools/test_interp_run.cpp` does.
 - In a `-DGCN_WATCH` build, recomp.py's C reports each load and store, and the interpreter
   doesn't. `GCN_STORE_HIST`, `GCN_READERS` and `GCN_WATCH_ADDR`'s check after each store
   don't see an interpreted function's accesses.
-- A setjmp site in a loop nests one more C frame each time round, until the guest function
-  returns.
+- A loop through more than one setjmp or context site nests a C frame for each site every
+  time round, until the guest function returns. Each site's frame has to stay live for a longjmp
+  to its jmp_buf, as the function's one C frame does natively.
 - A loose frame's `bl` or `bcl` to the next word sets LR and runs on. recomp.py's C, and a
   function frame with it, calls the next word as a mid-entry and runs the rest again once
   that call returns.

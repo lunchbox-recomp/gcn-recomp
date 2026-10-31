@@ -66,14 +66,16 @@ struct InterpFrame {
     uint64_t* ran;              // where its interpreted instructions are counted
 };
 
-// Runs f's code from pc, and returns when the guest returns from it.
-void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc);
+// Runs f's code from pc, and returns false when the guest returns from it. It returns true instead when
+// it reaches the setjmp or context site at again, which 0 never is, with LR set for it.
+bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again = 0);
 // A loose frame at pc, with its own ENTER and EXIT, for code in RAM that no table knows.
 void interp_run_loose(CPU* c, uint32_t pc);
-// A bl to a setjmp or context row's function, with LR set already. It takes the setjmp and calls target
-// when that returns 0, then runs the rest of f's code from resume_pc. So a longjmp finds the setjmp's
-// frame for as long as the guest function hasn't returned.
-void interp_setjmp_site(CPU* c, const InterpFrame* f, uint32_t kind, uint32_t target, uint32_t resume_pc);
+// The bl at site_pc to a setjmp or context row's function, with LR set already. It takes the setjmp and
+// calls target when that returns 0, then runs the rest of f's code from the next word. So a longjmp
+// finds the setjmp's frame for as long as the guest function hasn't returned. The code coming back
+// round to site_pc takes the setjmp again in the same C frame.
+void interp_setjmp_site(CPU* c, const InterpFrame* f, uint32_t kind, uint32_t target, uint32_t site_pc);
 
 // ---- which functions run interpreted (code_table.cpp) ----
 // A function's bit in g_code_changed_bits is set while any of its marks is. GCN_INTERPRET sets
