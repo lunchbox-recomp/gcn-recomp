@@ -19,6 +19,8 @@
 // While it's open nothing reaches the game. Each port stays plugged in or not, at rest, and a
 // button still held as it closes stays out of the game until it's let go, so the press that
 // closed it isn't the game's as well. Any gamepad, the keyboard or the mouse drives the menu.
+// A key or a gamepad's button held as it opens stays out of the menu the same way, so it
+// presses nothing there, and a held key's repeats never reach the menu.
 //
 // The Display page sets the aspect (4:3, 16:9, 16:10, 21:9 or the window's own shape),
 // fullscreen and the internal scale. A change applies at once, and settings.txt (settings.h)

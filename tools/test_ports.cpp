@@ -1668,6 +1668,18 @@ void overlay(const std::string& dir) {
 
     key_down(SDL_SCANCODE_F1);
     host_frame(guest);
+    key_down(SDL_SCANCODE_F1, true);
+    host_frame(guest);
+    const bool f1_repeat_stays = overlay_open();
+    key_down(SDL_SCANCODE_ESCAPE, true);
+    host_frame(guest);
+    const bool escape_repeat_stays = overlay_open();
+    key_down(SDL_SCANCODE_F1);
+    host_frame(guest);
+    check(f1_repeat_stays && escape_repeat_stays && !overlay_open(), "a held F1's or Escape's repeat doesn't close it");
+
+    key_down(SDL_SCANCODE_F1);
+    host_frame(guest);
     key_down(SDL_SCANCODE_ESCAPE);
     const bool stays = host_frame(guest);
     const bool escape_closes = stays && !overlay_open() && !paused();
@@ -1715,27 +1727,32 @@ void overlay(const std::string& dir) {
 }
 
 // ---- The overlay's Restart game and Quit game, over a window from SDL's dummy video driver.
-// It has no GL context, so the menu is driven but not drawn (overlay_menu_frame). A gamepad
-// alone goes through Restart and the keyboard alone through Quit. Neither ends this process:
-// each stops pump_events, the frontend's loop, and --restart follows a restart from there.
+// It has no GL context, so the menu is driven but not drawn (overlay_menu_frame). First an A
+// and an Enter held as the menu opens press nothing. Then a gamepad alone goes through Restart
+// and the keyboard alone through Quit. Neither ends this process: each stops pump_events, the
+// frontend's loop, and --restart follows a restart from there.
 // Between the two a Switch Pro pad asks and goes back with its faces by their labels, as the
 // game reads them, so its east presses and its south goes back.
 SDL_WindowID g_window_id;  // the test window's, which the menu takes keys from
 
+// A key pressed, or let go, over the window, or a held one's repeat, then a host frame. False
+// if pump_events was.
+bool key(Guest& g, SDL_Scancode scancode, SDL_Keycode keycode, bool down, bool repeat = false) {
+    SDL_Event e{};
+    e.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+    e.key.windowID = g_window_id;
+    e.key.scancode = scancode;
+    e.key.key = keycode;
+    e.key.down = down;
+    e.key.repeat = repeat;
+    SDL_PushEvent(&e);
+    return host_frame(g);
+}
+
 // A key pressed and let go over the window, a host frame each. False if pump_events was.
-bool tap(Guest& g, SDL_Scancode scancode, SDL_Keycode key) {
-    bool running = true;
-    for (const bool down : {true, false}) {
-        SDL_Event e{};
-        e.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
-        e.key.windowID = g_window_id;
-        e.key.scancode = scancode;
-        e.key.key = key;
-        e.key.down = down;
-        SDL_PushEvent(&e);
-        running = host_frame(g) && running;
-    }
-    return running;
+bool tap(Guest& g, SDL_Scancode scancode, SDL_Keycode keycode) {
+    const bool pressed = key(g, scancode, keycode, true);
+    return key(g, scancode, keycode, false) && pressed;
 }
 
 // A gamepad's button pressed and let go, a host frame each.
@@ -1771,6 +1788,51 @@ void overlay_buttons(const std::string& dir) {
     attach(nintendo);
     Guest guest;
     host_frame(guest);
+
+    // A face or a key held as the menu opens stays out of it until it's let go, though the
+    // focus is where the menu left it, here on Restart game (below).
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    for (int i = 0; i < 8; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    for (int i = 0; i < 2; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    host_frame(guest);
+    const bool held_a = waiting(OverlayAsk::none);
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    host_frame(guest);
+    const bool let_go = waiting(OverlayAsk::none);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(held_a && let_go && waiting(OverlayAsk::restart),
+          "an A held as Back opens the menu presses nothing, nor does letting it go, and its next press does");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    key(guest, SDL_SCANCODE_RETURN, SDLK_RETURN, true);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    key(guest, SDL_SCANCODE_RETURN, SDLK_RETURN, true, true);
+    host_frame(guest);
+    const bool repeat_presses_nothing = waiting(OverlayAsk::none);
+    key(guest, SDL_SCANCODE_RETURN, SDLK_RETURN, false);
+    tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    check(repeat_presses_nothing && waiting(OverlayAsk::restart),
+          "a held Enter's repeat after F1 opens the menu presses nothing, and its next press does");
+    tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    // A key let go while the menu was closed is up to it as it opens again, so its next press
+    // reaches it: here Left, held as the menu closed, onto Restart game from Quit game.
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    key(guest, SDL_SCANCODE_LEFT, SDLK_LEFT, true);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    key(guest, SDL_SCANCODE_LEFT, SDLK_LEFT, false);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    tap(guest, SDL_SCANCODE_LEFT, SDLK_LEFT);
+    tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    check(waiting(OverlayAsk::restart), "a key let go while the menu was closed moves its focus the next time it's open");
+    tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
 
     // From the top of the page down past every row and left past every column is Restart game.
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);

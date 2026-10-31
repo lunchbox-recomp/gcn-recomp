@@ -36,7 +36,21 @@ bool g_focus;             // the menu takes the keyboard's and the gamepads' foc
 bool g_dumped;            // since it opened, under --dump-output
 long long g_at_frame = -1;  // GCN_OVERLAY_AT's, -1 for none or once it's opened the overlay
 long g_at_left;             // draws over the held frame left before GCN_OVERLAY_AT's closes it
-std::vector<SDL_Gamepad*> g_pads;  // every gamepad SDL has, held for the menu (hold_pads)
+
+// A gamepad held for the menu (hold_pads), and its buttons held as the menu opened, kept from
+// the menu until each is let go, a bit for each SDL_GamepadButton.
+struct HeldPad {
+    SDL_Gamepad* pad;
+    uint32_t latched;
+};
+std::vector<HeldPad> g_pads;
+
+uint32_t buttons_down(SDL_Gamepad* p) {
+    uint32_t down = 0;
+    for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; b++)
+        if (SDL_GetGamepadButton(p, (SDL_GamepadButton)b)) down |= 1u << b;
+    return down;
+}
 
 void set_open(bool on) {
     if (on == g_open) return;
@@ -45,39 +59,48 @@ void set_open(bool on) {
     pause_request(on);
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
     if (!on || !g_window) return;
-    // Keys and buttons let go while it was closed never reached the menu.
+    // Keys and buttons let go while it was closed never reached the menu. One held as it opens
+    // stays out of it until it's let go, though Dear ImGui keeps the focus from the last time,
+    // so that it presses nothing: a key's repeats never reach the menu (overlay_event), and a
+    // gamepad's buttons are latched here.
     ImGui::GetIO().ClearInputKeys();
+    for (HeldPad& h : g_pads) h.latched = buttons_down(h.pad);
     g_focus = true;
     g_dumped = false;
 }
 
 // Every gamepad SDL has, held open after letting go of those held before, so that the menu
 // reads each one and each one's Back opens it, on a port or not. At the start and again as a
-// gamepad comes or goes.
+// gamepad comes or goes. While the menu is open, what each one holds is latched as at the open.
 void hold_pads() {
-    for (SDL_Gamepad* p : g_pads) SDL_CloseGamepad(p);
+    for (const HeldPad& h : g_pads) SDL_CloseGamepad(h.pad);
     g_pads.clear();
     int n = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&n);
     for (int i = 0; i < n; i++)
-        if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) g_pads.push_back(p);
+        if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) g_pads.push_back({p, g_open ? buttons_down(p) : 0});
     SDL_free(ids);
 }
 
 // What Dear ImGui's navigation reads of the held gamepads, for the menu's frame, merged over
 // them all as its SDL backend merges them but with each one's faces by their labels, as the
 // game takes them (gamepads_faces). The backend takes faces by position, so it's given no
-// gamepad (overlay_init).
+// gamepad (overlay_init). A latched button is up to the menu, and once it's let go it's no
+// longer latched.
 void read_pads() {
     if (g_pads.empty()) return;
     ImGuiIO& io = ImGui::GetIO();
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+    for (HeldPad& h : g_pads) h.latched &= buttons_down(h.pad);
+    const auto down = [](const HeldPad& h, int b) {
+        return SDL_GetGamepadButton(h.pad, (SDL_GamepadButton)b) && !(h.latched >> b & 1);
+    };
     static constexpr ImGuiKey kFaces[4] = {ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight,
                                            ImGuiKey_GamepadFaceLeft, ImGuiKey_GamepadFaceUp};
     bool faces[4] = {};
-    for (SDL_Gamepad* p : g_pads) {
-        const std::array<int, 4> f = gamepads_faces(p);
-        for (int k = 0; k < 4; k++) faces[k] = faces[k] || SDL_GetGamepadButton(p, (SDL_GamepadButton)f[k]);
+    for (const HeldPad& h : g_pads) {
+        const std::array<int, 4> f = gamepads_faces(h.pad);
+        for (int k = 0; k < 4; k++) faces[k] = faces[k] || down(h, f[k]);
     }
     for (int k = 0; k < 4; k++) io.AddKeyEvent(kFaces[k], faces[k]);
     static constexpr struct {
@@ -92,9 +115,9 @@ void read_pads() {
         {ImGuiKey_GamepadR1, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER},
     };
     for (const auto& b : kButtons) {
-        bool down = false;
-        for (SDL_Gamepad* p : g_pads) down = down || SDL_GetGamepadButton(p, b.button);
-        io.AddKeyEvent(b.key, down);
+        bool held = false;
+        for (const HeldPad& h : g_pads) held = held || down(h, b.button);
+        io.AddKeyEvent(b.key, held);
     }
     // How far past the backend's dead zone the left stick is pushed each way, 0 to 1.
     constexpr int kDeadZone = 8000;
@@ -110,8 +133,8 @@ void read_pads() {
     };
     for (const auto& s : kStick) {
         float v = 0.0f;
-        for (SDL_Gamepad* p : g_pads)
-            v = std::max(v, std::clamp((s.sign * SDL_GetGamepadAxis(p, s.axis) - kDeadZone) / float(32767 - kDeadZone),
+        for (const HeldPad& h : g_pads)
+            v = std::max(v, std::clamp((s.sign * SDL_GetGamepadAxis(h.pad, s.axis) - kDeadZone) / float(32767 - kDeadZone),
                                        0.0f, 1.0f));
         io.AddKeyAnalogEvent(s.key, v > 0.1f, v);
     }
@@ -318,7 +341,7 @@ bool overlay_event(const SDL_Event& e) {
         return true;
     }
     if (g_window && (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED)) hold_pads();
-    else if (g_window && g_open) ImGui_ImplSDL3_ProcessEvent(&e);
+    else if (g_window && g_open && !(e.type == SDL_EVENT_KEY_DOWN && e.key.repeat)) ImGui_ImplSDL3_ProcessEvent(&e);
     return g_open && is_input(e);
 }
 
