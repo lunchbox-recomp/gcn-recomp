@@ -32,8 +32,9 @@ public:
     void shutdown();
     // How many times the card's file has been written.
     uint64_t saves() const { return saves_.load(); }
-    // Whether the card has a write the saver hasn't taken for the file yet, as it does from a
-    // write until a quiet period after the last one: the game may be part way through a save.
+    // Whether the game wrote the card within the last quiet period, before which the saver takes
+    // nothing: the game may be part way through a save. It goes by the game's writes and not by
+    // the file, so a card file that can't be written isn't unsaved forever.
     bool unsaved();
     void format();
     void write_serial(uint8_t* header);
@@ -65,6 +66,7 @@ private:
     bool stop_ = false;      // shutdown() has begun
     bool stopped_ = false;   // and the saver is gone: write the file at each write
     Clock::time_point last_write_;
+    Clock::time_point game_write_;  // the game's last write, which a failed save doesn't move
     std::vector<uint8_t> snapshot_;
     std::atomic<uint64_t> saves_{0};
     std::thread saver_;

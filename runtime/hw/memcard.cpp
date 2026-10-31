@@ -195,7 +195,7 @@ void MemCard::saver_main() {
 
 bool MemCard::unsaved() {
     std::lock_guard<std::mutex> lk(mutex_);
-    return dirty_;
+    return Clock::now() < game_write_ + quiet_;
 }
 
 void MemCard::shutdown() {
@@ -245,7 +245,7 @@ bool MemCard::deselect() {
     if (irq && stopped_) {
         dirty_ = !write_file(data_);
     } else if (irq) {
-        last_write_ = Clock::now();
+        last_write_ = game_write_ = Clock::now();
         if (!dirty_) {
             dirty_ = true;
             cv_.notify_one();

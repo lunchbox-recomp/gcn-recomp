@@ -182,7 +182,7 @@ void vi_init(); uint16_t vi_read16(uint32_t off); void vi_write16(uint32_t off, 
 void di_init(const char* iso_path); uint32_t di_read32(uint32_t off); void di_write32(uint32_t off, uint32_t v);
 void si_init(); uint32_t si_read32(uint32_t off); void si_write32(uint32_t off, uint32_t v);
 void exi_init(); uint32_t exi_read32(uint32_t off); void exi_write32(uint32_t off, uint32_t v);
-// Whether the memory card in slot A has a write its saver hasn't taken yet (hw/memcard.h), so
+// Whether the game wrote the memory card in slot A within its quiet period (hw/memcard.h), so
 // the game may be part way through a save. False with no card.
 bool exi_card_unsaved();
 void ai_init(); uint32_t ai_read32(uint32_t off); void ai_write32(uint32_t off, uint32_t v);

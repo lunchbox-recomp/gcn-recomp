@@ -353,9 +353,8 @@ static void on_reset(uint32_t, uint32_t) {
 }
 
 // The window loop's end, put off while the game may be part way through a save, so that a quit
-// or a restart doesn't cut one short: from the first ask until the memory card has no write
-// its saver hasn't taken (exi_card_unsaved), which is a quiet period after the game's last
-// write, and kSaveWait at most. A run with no card, or no write lately, ends at the first ask.
+// or a restart doesn't cut one short: from the first ask until a quiet period after the game's
+// last write to the memory card (exi_card_unsaved), and kSaveWait at most. A run with no card, or no write lately, ends at the first ask.
 class RunEnd {
 public:
     using Clock = std::chrono::steady_clock;

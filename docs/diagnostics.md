@@ -759,8 +759,8 @@ The menu's Restart game and Quit game close it before they act, so the run print
 way. If the game resets the console as the run ends, whichever of the two comes first ends
 the run while the other waits.
 
-Before `end_run`, the window's loop lets the guest run on while the memory card has a write
-its saver hasn't taken, as it has for a quiet period after the game's last write. It waits 3 s
+Before `end_run`, the window's loop lets the guest run on for a quiet period after the game's
+last write to the memory card, even when the card's file can't be written. It waits 3 s
 at most, after Quit, Restart, Escape, the window's close button or `--exit-after`. A run that
 waits prints
 `[quit] the game is writing to the memory card, so the run ends once it's done, 3 s at most`,

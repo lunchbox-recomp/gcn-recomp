@@ -17,8 +17,8 @@
 // period after the last write, and at shutdown if it still lacks one. A write that fails,
 // at the open or cut short by a file size limit, leaves the file as it was and is tried
 // again. A gate MemCard calls before each write holds one so a page or a shutdown can land
-// during it. A card has a write unsaved until the saver takes it, which exi_card_unsaved
-// passes on. Running exi_init again makes a new card from the same file, and the new card
+// during it. A card has a write unsaved for a quiet period after the game's last write, even
+// when its file can't be written, which exi_card_unsaved passes on. Running exi_init again makes a new card from the same file, and the new card
 // has to hold a page the old one hadn't written yet.
 //
 // The exit checks each run in a child process. Two write a page through the EXI registers
@@ -514,6 +514,20 @@ void card_unsaved() {
     check(fresh && written && !card.unsaved(), "a card has a write unsaved from the write until the saver takes it");
 }
 
+// The answer goes by the game's writes, not by the file, so a card file that can't be written
+// (a directory where its temporary file goes) never holds a run's end off for the full wait.
+void card_unsaved_unwritable() {
+    const std::string p = path_of("unwritable.raw");
+    MemCard card(p, 4, kQuiet);
+    mkdir((p + ".tmp").c_str(), 0755);
+    program_page(card, 0);
+    const bool written = card.unsaved();
+    std::this_thread::sleep_for(2 * kQuiet);
+    const bool later = card.unsaved();
+    rmdir((p + ".tmp").c_str());
+    check(written && !later, "a card whose file can't be written has nothing unsaved a quiet period after the game's last write");
+}
+
 // exi_card_unsaved is the slot A card's answer, and no with no card.
 void exi_card_answers() {
     const std::string p = path_of("asked.raw");
@@ -685,6 +699,7 @@ int main(int argc, char** argv) {
     card_page_during_save();
     card_shutdown_during_save();
     card_unsaved();
+    card_unsaved_unwritable();
     exi_card_answers();
     card_made_again();
     card_saved_at_exit();
