@@ -144,6 +144,27 @@ class Generated(unittest.TestCase):
         rlw = [f for f in self.cases.forms if f.value >> 26 in (20, 21, 23)]
         self.assertEqual(len(rlw), 6)
 
+    def test_fp_edge_fields_are_present(self):
+        a_forms = psq = mtfsf = 0
+        for n, form in enumerate(self.cases.forms):
+            words = self.words[n]
+            if is_free(form, C) and not is_free(form, M):  # an A-form, whose C field is a register
+                a_forms += 1
+                for x, name in ((D, 'rD'), (A, 'rA'), (B, 'rB')):
+                    self.assertTrue(any(field(w, x) == field(w, C) for w in words), f'{name} = rC in {form.name}')
+            op = form.value >> 26
+            if op in ppc_cases.PSQ_D or form.mask == 0xFC00007E:
+                psq += 1
+                w_at, i_at = (15, 12) if op in ppc_cases.PSQ_D else (10, 7)
+                seen = {(w >> w_at & 1, w >> i_at & 7) for w in words}
+                self.assertEqual(seen, {(w, i) for w in (0, 1) for i in range(8)}, f'W and I in {form.name}')
+            if op == 63 and form.mask == 0xFC0007FF and (form.value >> 1) & 0x3FF == 711:
+                mtfsf += 1
+                self.assertTrue({0, 0xFF, 0x80, 0x01} <= {w >> 17 & 0xFF for w in words}, form.name)
+        self.assertGreater(a_forms, 40)
+        self.assertEqual(psq, 8)
+        self.assertEqual(mtfsf, 2)
+
     def test_every_spr_the_runtime_handles(self):
         with open(CPU_CPP) as f:
             named = {int(v) for v in re.findall(r'SPR_\w+ = (\d+)', f.read())}

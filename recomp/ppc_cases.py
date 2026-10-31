@@ -191,7 +191,8 @@ def get(i, shift):
 def edge_words(mask, value, rng):
     """The form's words with edge operands: every field 0 and every bit 1, rA 0, registers equal,
     shifts of 0 and 31, MB past ME, the 16-bit immediate's ends, each SPR, CRM and BO, and the
-    branch displacements' ends."""
+    branch displacements' ends. A quantized load or store gets each GQR with W 0 and 1, and mtfsf
+    its FM field's ends."""
     free = ~mask & 0xFFFFFFFF
 
     def rand():
@@ -207,6 +208,10 @@ def edge_words(mask, value, rng):
         if has(x, y):
             w = rand()
             out.append(put(w, x, get(w, y)))
+    if has(C) and not has(M):  # an A-form, whose C field is a register
+        for x in (D, A, B):
+            w = rand()
+            out.append(put(w, x, get(w, C)))
     if has(B):
         out += [put(rand(), B, 0), put(rand(), B, 31)]
     if has(C, M):
@@ -222,6 +227,12 @@ def edge_words(mask, value, rng):
         out += [put(put(rand(), A, s & 31), B, s >> 5) for s in SPRS]
     if x_form and op == 31 and xo == 144:
         out += [(rand() & ~0xFF000) | crm << 12 for crm in (0, 0xFF, 0x80, 0x01, 0x5A)]
+    if x_form and op == 63 and xo == 711:  # mtfsf
+        out += [(rand() & ~0x1FE0000) | fm << 17 for fm in (0, 0xFF, 0x80, 0x01)]
+    if op in PSQ_D:
+        out += [(rand() & ~0xF000) | w << 15 | gq << 12 for w in (0, 1) for gq in range(8)]
+    if mask == 0xFC00007E:  # psq_lx and the rest, by bits 1-6
+        out += [(rand() & ~0x780) | w << 10 | gq << 7 for w in (0, 1) for gq in range(8)]
     if op == 16 or (x_form and op == 19 and xo in (16, 528)):
         out += [put(rand(), D, bo) for bo in BO_EDGES]
     if op == 16:
