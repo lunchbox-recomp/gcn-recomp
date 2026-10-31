@@ -4,8 +4,10 @@
 //
 // F1 or a gamepad's Back opens it, and the guest is paused (pause.h) at its next frame
 // boundary. F1, Back or B closes it and the guest goes on. Escape closes it too, and the
-// frontend quits on an Escape while it's closed. A device controls.txt binds is the file's
-// alone (input_map.h), so the menu never reads it.
+// frontend quits on an Escape while it's closed. A gamepad with no Back, as SDL maps a
+// GameCube controller, opens and closes it with L, R and Start held together, L and R clicked
+// in as gamepads_merge takes them (kGamepadTriggerClick). A device controls.txt binds is the
+// file's alone (input_map.h), so the menu never reads it.
 //
 // A gamepad's A presses what's focused and its B goes back, and they're the faces labeled A and
 // B, the game's own A and B (gamepads_faces in gamepads.h). So a Switch Pro's east button
@@ -21,7 +23,8 @@
 // While it's open nothing reaches the game. Each port keeps what it had as it opened until the
 // guest is held, so the game sees nothing let go before it stops. Then each port stays plugged
 // in or not, at rest, and a button still held as it closes stays out of the game until it's
-// let go, so the press that closed it isn't the game's as well. Any gamepad, the keyboard or
+// let go, a clicked-in trigger's travel too, so the press that closed it isn't the game's as
+// well. Any gamepad, the keyboard or
 // the mouse drives the menu. A key or a gamepad's button held as it opens stays out of the
 // menu the same way, so it presses nothing there, and a held key's repeats never reach the
 // menu.

@@ -153,6 +153,31 @@ bool is_b(const SDL_GamepadButtonEvent& b) {
     return p && b.button == gamepads_faces(p)[1];
 }
 
+std::vector<SDL_JoystickID> g_chords;  // gamepads holding the chord that last opened or closed it
+
+// Whether `e` completes the chord on a gamepad with no Back, as SDL maps GameCube controllers:
+// L and R clicked in, as the game takes them (kGamepadTriggerClick), and Start, all held. Once
+// it's opened or closed the overlay, it's let go before it does again.
+bool chord(const SDL_Event& e) {
+    SDL_JoystickID id;
+    if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_BUTTON_UP) id = e.gbutton.which;
+    else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) id = e.gaxis.which;
+    else return false;
+    SDL_Gamepad* p = SDL_GetGamepadFromID(id);
+    if (!p || SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_BACK)) return false;
+    const bool held = SDL_GetGamepadButton(p, SDL_GAMEPAD_BUTTON_START) &&
+                      SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > kGamepadTriggerClick &&
+                      SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > kGamepadTriggerClick;
+    const auto at = std::find(g_chords.begin(), g_chords.end(), id);
+    if (!held) {
+        if (at != g_chords.end()) g_chords.erase(at);
+        return false;
+    }
+    if (at != g_chords.end()) return false;
+    g_chords.push_back(id);
+    return true;
+}
+
 bool is_input(const SDL_Event& e) {
     switch (e.type) {
     case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP: case SDL_EVENT_TEXT_INPUT:
@@ -340,13 +365,14 @@ bool overlay_event(const SDL_Event& e) {
     if (!g_ready) return false;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
     const bool pressed = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+    const bool chorded = chord(e);
     const bool cancel = g_open && (key == SDL_SCANCODE_ESCAPE || (pressed && is_b(e.gbutton)));
     // While the menu asks, B or Escape goes back to it instead of closing it.
     if (cancel && g_ask != OverlayAsk::none) {
         back();
         return true;
     }
-    if (key == SDL_SCANCODE_F1 || (pressed && e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) || cancel) {
+    if (key == SDL_SCANCODE_F1 || (pressed && e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) || cancel || chorded) {
         set_open(!g_open);
         return true;
     }
@@ -368,6 +394,9 @@ void overlay_gate(int port, PadState& p) {
     }
     g_held_over[port] &= p.buttons;
     p.buttons &= ~g_held_over[port];
+    // A trigger clicked in as it closed, as the chord does, stays out with its travel.
+    if (g_held_over[port] & PAD_L) p.trig_l = 0;
+    if (g_held_over[port] & PAD_R) p.trig_r = 0;
     g_before[port] = p;
 }
 

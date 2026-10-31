@@ -150,6 +150,7 @@ struct Virtual {
     bool refuses = false;    // a rumble asked of it fails, saying why
     const char* why = "virtual pad refuses rumble";
     Uint16 vendor = 0, product = 0;  // its USB IDs, from which SDL takes its type and labels
+    Uint32 button_mask = 0;  // a gamepad's buttons, a bit for each SDL_GamepadButton; 0 is all
 };
 
 bool SDLCALL on_rumble(void* u, Uint16 low, Uint16 high) {
@@ -164,16 +165,17 @@ void SDLCALL on_player(void* u, int index) { static_cast<Virtual*>(u)->player = 
 // The player index SDL has for `v`.
 int player(const Virtual& v) { return SDL_GetJoystickPlayerIndexForID(v.id); }
 
-// Plugs `v` in: a gamepad with every button and axis SDL has, in SDL's order, or a plain
-// joystick with two axes and four buttons, which SDL has no mapping for. With `index`, its
-// player index is set to that before the frontend hears of it, as Steam Input's slot or
-// an XInput user index would be.
+// Plugs `v` in: a gamepad with every axis SDL has and every button, or those in its
+// button_mask, in SDL's order, or a plain joystick with two axes and four buttons, which SDL
+// has no mapping for. With `index`, its player index is set to that before the frontend hears
+// of it, as Steam Input's slot or an XInput user index would be.
 void attach(Virtual& v, int index = kSdlIndex) {
     SDL_VirtualJoystickDesc d;
     SDL_INIT_INTERFACE(&d);
     d.type = v.gamepad ? SDL_JOYSTICK_TYPE_GAMEPAD : SDL_JOYSTICK_TYPE_UNKNOWN;
     d.naxes = v.gamepad ? SDL_GAMEPAD_AXIS_COUNT : 2;
-    d.nbuttons = v.gamepad ? SDL_GAMEPAD_BUTTON_COUNT : 4;
+    d.nbuttons = !v.gamepad ? 4 : v.button_mask ? __builtin_popcount(v.button_mask) : SDL_GAMEPAD_BUTTON_COUNT;
+    d.button_mask = v.button_mask;
     d.name = v.name;
     d.vendor_id = v.vendor;
     d.product_id = v.product;
@@ -1632,8 +1634,11 @@ void key_down(SDL_Scancode key, bool repeat = false) {
     SDL_PushEvent(&e);
 }
 
+// SDL's gamepad button `button` on `v`, which a virtual gamepad numbers among the buttons it
+// has, in SDL's order.
 void set_button(const Virtual& v, int button, bool down) {
-    if (SDL_Joystick* j = SDL_GetJoystickFromID(v.id)) SDL_SetJoystickVirtualButton(j, button, down);
+    const int index = v.button_mask ? __builtin_popcount(v.button_mask & ((1u << button) - 1)) : button;
+    if (SDL_Joystick* j = SDL_GetJoystickFromID(v.id)) SDL_SetJoystickVirtualButton(j, index, down);
 }
 
 void set_axis(const Virtual& v, int axis, Sint16 value) {
@@ -1762,6 +1767,43 @@ void overlay(const std::string& dir) {
     host_frame(guest);
     set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
     host_frame(guest);
+
+    // A gamepad with no Back, as SDL maps GameCube controllers, opens and closes it with L and
+    // R clicked in and Start, all held, once each time they're held together.
+    // SDL keeps a virtual gamepad's mapping under the first nine characters of its name, so
+    // this name can't start as "virtual pad" does, or it would get that pad's Back.
+    Virtual cube{"no-back pad"};
+    cube.button_mask = ((1u << SDL_GAMEPAD_BUTTON_COUNT) - 1) & ~(1u << SDL_GAMEPAD_BUTTON_BACK);
+    attach(cube);
+    host_frame(guest);
+    SDL_Gamepad* cube_pad = SDL_GetGamepadFromID(cube.id);
+    const bool no_back = cube_pad && !SDL_GamepadHasButton(cube_pad, SDL_GAMEPAD_BUTTON_BACK);
+    const auto hold = [&](const Virtual& v, bool l, bool r, bool start) {
+        set_axis(v, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, l ? 32767 : -32768);
+        set_axis(v, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, r ? 32767 : -32768);
+        set_button(v, SDL_GAMEPAD_BUTTON_START, start);
+        host_frame(guest);
+    };
+    hold(cube, true, false, true);
+    const bool two_of_three = !overlay_open();
+    hold(cube, true, true, true);
+    const bool chord_opens = overlay_open() && paused();
+    hold(cube, true, true, true);
+    const bool held_stays = overlay_open();
+    hold(cube, false, false, false);
+    hold(cube, true, true, true);
+    const bool chord_closes = !overlay_open() && !paused();
+    const PadState closing = read(1);
+    hold(cube, false, false, false);
+    hold(pad, true, true, true);
+    const bool back_pad = !overlay_open();
+    hold(pad, false, false, false);
+    check(no_back && chord_opens && held_stays && chord_closes,
+          "on a gamepad with no Back, L, R and Start held together open it, once, and then close it");
+    check(two_of_three && back_pad, "two of the three don't, and on a gamepad with a Back all three don't");
+    check(closing.connected && at_rest(closing),
+          "the chord that closed it stays out of port 2 until it's let go, the triggers' travel too");
+    unplug({&cube});
 
     Settings next = picture.now;
     next.aspect = "16:9";

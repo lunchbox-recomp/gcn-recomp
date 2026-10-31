@@ -86,6 +86,10 @@ void gamepads_event(const SDL_Event& e);
 // on the port. Each of SDL's buttons and axes is also counted here, for the line said when
 // the gamepad leaves.
 void gamepads_merge(int port, PadState& p);
+// How far a trigger's axis (0 to 32767) goes before gamepads_merge takes it for the GameCube's
+// digital L or R, the click at the bottom of its travel. The overlay's chord for a gamepad
+// with no Back takes them the same way (overlay.h).
+constexpr int kGamepadTriggerClick = 30000;
 // The pad's rumble motor on the gamepad on `port`, renewed while it runs.
 void gamepads_rumble(int port, bool motor);
 // Stops any rumble, says what each gamepad on a port sent, and closes the gamepads.
