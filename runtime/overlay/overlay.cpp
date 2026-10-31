@@ -33,6 +33,7 @@ OverlayAsk g_ask;         // what the menu is asking before it does it
 OverlayAsk g_asked;       // the button that asked, which takes the focus back at the next draw
 bool g_focus_cancel;      // Cancel takes the focus at the next draw, as the menu starts asking
 uint16_t g_held_over[4];  // the buttons held as the overlay closed, kept from the game until let go
+PadState g_before[4];     // each port as the game last had it with the overlay closed
 bool g_focus;             // the menu takes the keyboard's and the gamepads' focus at its next draw
 bool g_dumped;            // since it opened, under --dump-output
 long long g_at_frame = -1;  // GCN_OVERLAY_AT's, -1 for none or once it's opened the overlay
@@ -355,12 +356,15 @@ void overlay_gate(int port, PadState& p) {
     if (g_open) {
         g_held_over[port] = 0xFFFF;
         const bool connected = p.connected;
-        p = PadState{};
+        // Until the guest is held at its frame boundary it may poll again, and a port at rest
+        // would be a press let go, which a game may act on.
+        p = paused() ? PadState{} : g_before[port];
         p.connected = connected;
         return;
     }
     g_held_over[port] &= p.buttons;
     p.buttons &= ~g_held_over[port];
+    g_before[port] = p;
 }
 
 void overlay_menu_frame() {

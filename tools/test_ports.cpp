@@ -1609,6 +1609,10 @@ void set_button(const Virtual& v, int button, bool down) {
     if (SDL_Joystick* j = SDL_GetJoystickFromID(v.id)) SDL_SetJoystickVirtualButton(j, button, down);
 }
 
+void set_axis(const Virtual& v, int axis, Sint16 value) {
+    if (SDL_Joystick* j = SDL_GetJoystickFromID(v.id)) SDL_SetJoystickVirtualAxis(j, axis, value);
+}
+
 Settings g_applied;  // what the Display page last had the frontend apply
 int g_applies;
 void record_apply(const Settings& s) {
@@ -1643,14 +1647,22 @@ void overlay(const std::string& dir) {
     host_frame(guest);
     check(frames <= 2 && overlay_open() && paused(), "a gamepad's Back opens the overlay, and the guest is held within 2 host frames");
 
-    if (SDL_Joystick* j = SDL_GetJoystickFromID(pad.id)) SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFTX, 32767);
+    // Each pushed all the way, and back to where it rests: a virtual pad's triggers rest at the
+    // bottom of their axis.
+    const struct {
+        int axis;
+        Sint16 rest;
+    } kPushed[] = {{SDL_GAMEPAD_AXIS_LEFTX, 0}, {SDL_GAMEPAD_AXIS_RIGHTX, 0},
+                   {SDL_GAMEPAD_AXIS_LEFT_TRIGGER, -32768}, {SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, -32768}};
+    for (const auto& a : kPushed) set_axis(pad, a.axis, 32767);
     set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
     host_frame(guest);
     const PadState gated = read(0);
     set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
-    if (SDL_Joystick* j = SDL_GetJoystickFromID(pad.id)) SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFTX, 0);
+    for (const auto& a : kPushed) set_axis(pad, a.axis, a.rest);
     host_frame(guest);
-    check(gated.connected && at_rest(gated) && overlay_open(), "while it's open, the gamepad's A and stick don't reach port 1, which stays plugged in");
+    check(gated.connected && at_rest(gated) && overlay_open(),
+          "while it's open, the gamepad's A, sticks and triggers don't reach port 1, which stays plugged in");
 
     set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
     host_frame(guest);
@@ -1704,6 +1716,25 @@ void overlay(const std::string& dir) {
     host_frame(guest);
     check(b_closes && !held.buttons && again.buttons == PAD_B && !overlay_open(),
           "B closes it and stays out of the game until it's let go; pressed with it closed, it's the game's B and opens nothing");
+
+    // Until the guest is held, port 1 keeps what it had as the overlay opened, so the game
+    // never sees the A let go, and then it's at rest.
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    host_frame(guest);
+    const bool a_in = read(0).buttons & PAD_A;
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
+    host_frame(guest);
+    const PadState opening = read(0);
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
+    host_frame(guest);
+    const PadState stopped = read(0);
+    check(a_in && (opening.buttons & PAD_A) && overlay_open() && paused() && stopped.connected && at_rest(stopped),
+          "an A held across the open stays in port 1 until the guest is held, then the port is at rest");
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
+    host_frame(guest);
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
+    host_frame(guest);
 
     Settings next = picture.now;
     next.aspect = "16:9";
