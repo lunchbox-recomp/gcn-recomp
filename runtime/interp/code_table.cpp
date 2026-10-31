@@ -34,13 +34,14 @@ bool parse_hex(const char* s, uint32_t* out) {
     return true;
 }
 
-// Forces the starts f lists, with what the line printed says in *said. It returns 0, or the number
-// of a line that isn't a recompiled function's start with that line in bad, which holds 1024 bytes.
+// Forces the starts f lists, with what the line printed says in *said. Each line that isn't a
+// recompiled function's start goes to stderr, and it returns how many of those there were.
 //
 // An HLE'd function's start is guarded, and only its original body runs interpreted. A module's has
 // no guard, so it's taken and left native.
-unsigned force_file(FILE* f, const char* spec, std::string* said, char* bad) {
+unsigned force_file(FILE* f, const char* spec, std::string* said) {
     std::set<uint32_t> listed, forced;
+    unsigned bad = 0;
     char line[1024];
     for (unsigned no = 1; fgets(line, sizeof line, f); no++) {
         if (char* hash = strchr(line, '#')) *hash = 0;
@@ -51,8 +52,10 @@ unsigned force_file(FILE* f, const char* spec, std::string* said, char* bad) {
         if (!*s) continue;
         uint32_t addr, n;
         if (!parse_hex(s, &addr) || !code_table_find(addr, &n) || g_recomp_ranges[n].start != addr) {
-            snprintf(bad, 1024, "%s", s);
-            return no;
+            fprintf(stderr, "GCN_INTERPRET: line %u of %s is \"%s\", which isn't a recompiled function's start\n", no,
+                    spec, s);
+            bad++;
+            continue;
         }
         listed.insert(addr);
         if (g_recomp_ranges[n].flags & RECOMP_RANGE_NO_GUARD) continue;
@@ -62,7 +65,7 @@ unsigned force_file(FILE* f, const char* spec, std::string* said, char* bad) {
     *said = "[interp] GCN_INTERPRET=" + std::string(spec) + ": forced " + std::to_string(forced.size()) + " of the " +
             std::to_string(listed.size()) + " starts listed";
     if (forced.size() != listed.size()) *said += " (" + std::to_string(listed.size() - forced.size()) + " with no guard)";
-    return 0;
+    return bad;
 }
 
 }  // namespace
@@ -100,17 +103,15 @@ std::string code_table_force(const char* spec) {
     }
     FILE* f = fopen(spec, "r");
     if (!f) fatal("GCN_INTERPRET: can't read %s", spec);
-    unsigned no;
+    unsigned bad;
     {
         std::string said;
-        no = force_file(f, spec, &said, line);
-        if (!no) {
-            fclose(f);
-            return said;
-        }
+        bad = force_file(f, spec, &said);
+        fclose(f);
+        if (!bad) return said;
     }
-    fclose(f);
-    fatal("GCN_INTERPRET: line %u of %s is \"%s\", which isn't a recompiled function's start", no, spec, line);
+    fatal("GCN_INTERPRET: %s names no recompiled function's start on %u line%s, listed above", spec, bad,
+          bad == 1 ? "" : "s");
 }
 
 std::string code_table_stats() {

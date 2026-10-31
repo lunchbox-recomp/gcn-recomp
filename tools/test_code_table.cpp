@@ -13,6 +13,7 @@
 #include <cstring>
 #include <string>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -111,6 +112,52 @@ void write_file(const std::string& path, const std::string& text) {
     fclose(f);
 }
 
+std::string read_file(const std::string& path) {
+    FILE* f = fopen(path.c_str(), "r");
+    if (!f) {
+        fprintf(stderr, "can't read %s\n", path.c_str());
+        exit(2);
+    }
+    std::string text;
+    char b[4096];
+    for (size_t n; (n = fread(b, 1, sizeof b, f)) > 0;) text.append(b, n);
+    fclose(f);
+    return text;
+}
+
+// What GCN_INTERPRET prints for a line of path that isn't a recompiled function's start.
+std::string bad_line(const std::string& path, unsigned no, const char* line) {
+    char s[512];
+    snprintf(s, sizeof s, "GCN_INTERPRET: line %u of %s is \"%s\", which isn't a recompiled function's start\n", no,
+             path.c_str(), line);
+    return s;
+}
+
+// Forces the file at path with stderr sent to err, and checks that it printed lines and then stopped with
+// stop.
+void check_bad_file(const char* what, const std::string& path, const std::string& lines, const std::string& stop,
+                    const std::string& err) {
+    fflush(stderr);
+    const int saved = dup(2);
+    FILE* f = fopen(err.c_str(), "w");
+    if (saved < 0 || !f) {
+        fprintf(stderr, "can't send stderr to %s\n", err.c_str());
+        exit(2);
+    }
+    dup2(fileno(f), 2);
+    const bool went_on = guarded(force_spec, (void*)path.c_str());
+    fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+    fclose(f);
+    const std::string printed = read_file(err);
+    if (went_on) fail(std::string("GCN_INTERPRET took ") + what);
+    else if (printed != lines) fail("GCN_INTERPRET printed\n" + printed + "for " + what + ", where it should print\n" + lines);
+    else if (g_fatal != stop) fail("GCN_INTERPRET stopped with \"" + g_fatal + "\", not \"" + stop + "\"");
+    else printf("match  GCN_INTERPRET prints %s, then stops\n", what);
+    force_none();
+}
+
 void check_interpret(const std::string& dir) {
     // The list has each kind of line, which are bare upper-case hex, 0x with lower case, 0X with a
     // comment after, a blank line, spaces and tabs around, an HLE'd function's start, a module's start
@@ -148,21 +195,28 @@ void check_interpret(const std::string& dir) {
     else printf("match  a forced HLE'd function runs its replacement, which interprets the original\n");
     force_none();
 
-    // Each line that names no recompiled function's start stops it, naming the line.
+    // Each line that names no recompiled function's start is printed, between good ones, and then the
+    // file stops the game once.
     char mid[16], extra[32];
     snprintf(mid, sizeof mid, "%08X", FX_F_LOOP + 4);
     snprintf(extra, sizeof extra, "%08X 1", FX_F_LOOP);
-    for (const char* bad : {(const char*)mid, "f_loop", (const char*)extra, "0x", "-8010000"}) {
-        snprintf(text, sizeof text, "%08X\n%s\n", FX_F_IDLE, bad);
-        const std::string path = dir + "/bad.txt";
-        write_file(path, text);
-        snprintf(want, sizeof want, "GCN_INTERPRET: line 2 of %s is \"%s\", which isn't a recompiled function's start",
-                 path.c_str(), bad);
-        if (guarded(force_spec, (void*)path.c_str())) fail(std::string("GCN_INTERPRET took the line \"") + bad + "\"");
-        else if (g_fatal != want) fail("GCN_INTERPRET stopped with \"" + g_fatal + "\", not \"" + want + "\"");
-        else printf("match  GCN_INTERPRET stops at the line \"%s\"\n", bad);
-        force_none();
-    }
+    const char* const bad[] = {mid, "f_loop", extra, "0x", "-8010000"};
+    const unsigned bad_at[] = {2, 3, 5, 6, 7};
+    snprintf(text, sizeof text, "%08X\n%s\n%s\n%08X\n%s\n%s\n%s\n", FX_F_IDLE, bad[0], bad[1], FX_F_LOOP, bad[2],
+             bad[3], bad[4]);
+    const std::string five = dir + "/bad.txt";
+    write_file(five, text);
+    std::string lines;
+    for (int k = 0; k < 5; k++) lines += bad_line(five, bad_at[k], bad[k]);
+    check_bad_file("each of a file's 5 bad lines", five, lines,
+                   "GCN_INTERPRET: " + five + " names no recompiled function's start on 5 lines, listed above",
+                   dir + "/bad.err");
+    snprintf(text, sizeof text, "%08X\n%s\n", FX_F_IDLE, bad[1]);
+    const std::string one = dir + "/bad1.txt";
+    write_file(one, text);
+    check_bad_file("a file's one bad line", one, bad_line(one, 2, bad[1]),
+                   "GCN_INTERPRET: " + one + " names no recompiled function's start on 1 line, listed above",
+                   dir + "/bad1.err");
     const std::string missing = dir + "/missing.txt";
     snprintf(want, sizeof want, "GCN_INTERPRET: can't read %s", missing.c_str());
     if (guarded(force_spec, (void*)missing.c_str()) || g_fatal.find(want) != 0)

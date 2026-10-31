@@ -88,7 +88,8 @@ bool code_table_find(uint32_t addr, uint32_t* n);
 // Where function n's interpreted instructions are counted. Loose frames count at g_recomp_range_count.
 uint64_t* code_table_counter(uint32_t n);
 // Forces what GCN_INTERPRET's value names, "all" or a file of starts, and returns the line saying how
-// many functions that was. A line of the file that isn't a recompiled function's start stops the game.
+// many functions that was. Each line of the file that isn't a recompiled function's start is printed,
+// and then the game stops.
 std::string code_table_force(const char* spec);
 // GCN_INTERPRET_STATS's report, with the 30 functions that ran the most interpreted instructions and
 // the total.

@@ -1449,8 +1449,10 @@ function's start is forced, while its wrapper and replacement stay native and th
 body runs interpreted when the replacement calls it. A module's or a REL's start has no
 guard, so it's taken and not forced.
 
-A line that names no recompiled function's start stops the game with
-`GCN_INTERPRET: line N of <file> is "<line>", which isn't a recompiled function's start`. A
+Each line that names no recompiled function's start prints
+`GCN_INTERPRET: line N of <file> is "<line>", which isn't a recompiled function's start`.
+Once the file's read, any such line stops the game with
+`GCN_INTERPRET: <file> names no recompiled function's start on K lines, listed above`. A
 file that can't be read stops it with `GCN_INTERPRET: can't read <file>`.
 
 `GCN_INTERPRET_STATS=1` prints on stderr at exit the 30 functions that ran the most
