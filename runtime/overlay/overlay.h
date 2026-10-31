@@ -4,7 +4,8 @@
 //
 // F1 or a gamepad's Back opens it, and the guest is paused (pause.h) at its next frame
 // boundary. F1, Back or B closes it and the guest goes on. Escape closes it too, and the
-// frontend quits on an Escape while it's closed.
+// frontend quits on an Escape while it's closed. A device controls.txt binds is the file's
+// alone (input_map.h), so the menu never reads it.
 //
 // A gamepad's A presses what's focused and its B goes back, and they're the faces labeled A and
 // B, the game's own A and B (gamepads_faces in gamepads.h). So a Switch Pro's east button

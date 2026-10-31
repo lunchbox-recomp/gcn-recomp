@@ -2,6 +2,7 @@
 // Display page is overlay_display.cpp.
 #include "overlay/overlay.h"
 #include "gamepads.h"
+#include "input_map.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
 #include "pause.h"
@@ -70,15 +71,19 @@ void set_open(bool on) {
 }
 
 // Every gamepad SDL has, held open after letting go of those held before, so that the menu
-// reads each one and each one's Back opens it, on a port or not. At the start and again as a
-// gamepad comes or goes. While the menu is open, what each one holds is latched as at the open.
+// reads each one and each one's Back opens it, on a port or not. A device controls.txt binds
+// is the file's alone, as it is for the ports (gamepads.cpp), so it's left out. At the start
+// and again as a gamepad comes or goes. While the menu is open, what each one holds is latched
+// as at the open.
 void hold_pads() {
     for (const HeldPad& h : g_pads) SDL_CloseGamepad(h.pad);
     g_pads.clear();
     int n = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&n);
-    for (int i = 0; i < n; i++)
+    for (int i = 0; i < n; i++) {
+        if (input_map_binds(ids[i])) continue;
         if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) g_pads.push_back({p, g_open ? buttons_down(p) : 0});
+    }
     SDL_free(ids);
 }
 

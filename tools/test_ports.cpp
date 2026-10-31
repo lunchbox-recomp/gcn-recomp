@@ -1906,6 +1906,25 @@ void overlay_buttons(const std::string& dir) {
           "confirming Quit closes the overlay, and the frontend's loop stops as for a quit, not a restart");
     check(g_applies == applies, "no press on the way to either button changed the picture");
 
+    // A device controls.txt binds is the file's alone, so its Back opens nothing.
+    const std::string controls = dir + "/buttons-controls.txt";
+    write_file(controls, "A = \"virtual pad bound overlay\" button 0\n");
+    input_map_load(controls.c_str());
+    Virtual bound{"virtual pad bound overlay"};
+    attach(bound);
+    host_frame(guest);
+    tap(guest, bound, SDL_GAMEPAD_BUTTON_BACK);
+    const bool unopened = !overlay_open() && !paused();
+    set_button(bound, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    host_frame(guest);
+    const bool a_by_file = read(0).buttons & PAD_A;
+    set_button(bound, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    host_frame(guest);
+    check(unopened && a_by_file, "a gamepad controls.txt binds opens no menu with its Back, and its button 0 is A on port 1 by the file");
+    detach(bound);
+    host_frame(guest);
+    input_map_load((dir + "/no-controls.txt").c_str());
+
     unplug({&pad, &nintendo});
     gamepads_shutdown();
     SDL_DestroyWindow(window);
