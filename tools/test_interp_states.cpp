@@ -87,6 +87,8 @@ struct FixedFp {
 };
 constexpr uint32_t kSingleSnan = 0x7FA00001u, kSingleSnanNeg = 0xFF800001u;
 constexpr uint32_t kSingleQnan = 0x7FC00001u, kSingleQnanNeg = 0xFFC00002u;
+constexpr uint64_t kHalf = 0x3FE0000000000000ull, kTwoAndHalf = 0x4004000000000000ull;
+constexpr uint64_t kOneAndHalfNeg = 0xBFF8000000000000ull;
 const FixedFp kFixedFp[] = {
     {kOneUp, kOneNeg, kOneDown, 0, gqr(0, 0), kSingleSnan},          // a*c + b fused or not
     {kOneUp, kOne, kOneDown, 1, gqr(4, 1), kSingleSnanNeg},          // a*c - b fused or not
@@ -103,6 +105,11 @@ const FixedFp kFixedFp[] = {
     {0x3FE0000000000000ull, 0xC1E0000000100000ull, 0x41E0000000000000ull, 3, gqr(0, 31), kSingleSnanNeg},  // its bottom
     {kOne, kZero, kZeroNeg, 0xF8, gqr(1, 32), kSingleQnan},          // 1 / 0, and 1 / sqrt(0)
     {kOneNeg, kOneNeg, kZero, 0, gqr(2, 63), kSingleQnanNeg},        // 1 / sqrt(-1)
+    // The ties 0.5, 2.5 and -1.5 in fB, which fctiw, fctiwz, frsp, fres and frsqrte read, under round
+    // to nearest.
+    {kOneAndHalfNeg, kHalf, kTwoAndHalf, 0, gqr(3, 63), 0x3F000000u},
+    {kHalf, kTwoAndHalf, kOneAndHalfNeg, 0xF8, gqr(4, 0), 0x40200000u},
+    {kTwoAndHalf, kOneAndHalfNeg, kHalf, 0, gqr(5, 1), 0xBFC00000u},
 };
 constexpr int kFixedFpCount = sizeof kFixedFp / sizeof *kFixedFp;
 
