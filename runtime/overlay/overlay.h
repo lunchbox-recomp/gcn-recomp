@@ -3,9 +3,14 @@
 // the picture.
 //
 // F1 or a gamepad's Back opens it, and the guest is paused (pause.h) at its next frame
-// boundary. F1, Back or B closes it and the guest goes on. B is the right face button, which
-// Dear ImGui's menus take as cancel. Escape closes it too, and the frontend quits on an Escape
-// while it's closed.
+// boundary. F1, Back or B closes it and the guest goes on. Escape closes it too, and the
+// frontend quits on an Escape while it's closed.
+//
+// A gamepad's A presses what's focused and its B goes back, and they're the faces labeled A and
+// B, the game's own A and B (gamepads_faces in gamepads.h). So a Switch Pro's east button
+// presses and its south one goes back, the other way round from an Xbox pad's, and with both
+// in each press goes by its own pad. X and Y are the faces labeled so too, and a pad whose
+// faces carry no letters has all four by Xbox position.
 //
 // Below the pages, on every one of them, are Restart game and Quit game. Each asks first, with
 // Cancel focused, and Cancel, B or Escape goes back to the page with nothing done. Quit closes

@@ -157,7 +157,8 @@ The run's output says what each gamepad did, on `gamepads:` lines (`runtime/game
 One that lands on a port gets a second line with what SDL knows of it, such as
 `port 1 is switchpro, wireless, 057e:2009, rumble yes, south label B, east label A`. The
 labels are the ones SDL reports for the pad's type, and the GameCube's A, B, X and Y follow
-them (`runtime/gamepads.h`).
+them (`runtime/gamepads.h`). The overlay's menu reads a pad's faces the same way, so the
+button the game takes as A is the one that picks there.
 
 A pad that passes for another gets that pad's labels, whatever's printed on it. An 8BitDo
 in its X-input mode is an Xbox 360 pad to SDL, so its south button is A.

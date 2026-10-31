@@ -80,7 +80,9 @@ Control-Command-F on a Mac, from the Window menu SDL adds, where F11 is Show Des
 default.
 
 F1 or a gamepad's Back opens a menu over the game and pauses it until F1, Back or B closes it.
-Escape closes the menu too, and quits the game when the menu is closed.
+Escape closes the menu too, and quits the game when the menu is closed. On a gamepad A picks
+and B goes back, the buttons the game takes as A and B, so a Switch Pro's are the other way
+round from an Xbox pad's.
 
 The menu's Display page sets the aspect and the internal scale and turns fullscreen on or off.
 Each change applies at once and is saved to `settings.txt`, which the window reads at start.

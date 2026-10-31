@@ -1,10 +1,12 @@
 // The overlay's set-up, opening and closing, and the input it holds back; see overlay.h. The
 // Display page is overlay_display.cpp.
 #include "overlay/overlay.h"
+#include "gamepads.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
 #include "pause.h"
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -34,6 +36,7 @@ bool g_focus;             // the menu takes the keyboard's and the gamepads' foc
 bool g_dumped;            // since it opened, under --dump-output
 long long g_at_frame = -1;  // GCN_OVERLAY_AT's, -1 for none or once it's opened the overlay
 long g_at_left;             // draws over the held frame left before GCN_OVERLAY_AT's closes it
+std::vector<SDL_Gamepad*> g_pads;  // every gamepad SDL has, held for the menu (hold_pads)
 
 void set_open(bool on) {
     if (on == g_open) return;
@@ -44,9 +47,80 @@ void set_open(bool on) {
     if (!on || !g_window) return;
     // Keys and buttons let go while it was closed never reached the menu.
     ImGui::GetIO().ClearInputKeys();
-    ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_AutoAll);
     g_focus = true;
     g_dumped = false;
+}
+
+// Every gamepad SDL has, held open after letting go of those held before, so that the menu
+// reads each one and each one's Back opens it, on a port or not. At the start and again as a
+// gamepad comes or goes.
+void hold_pads() {
+    for (SDL_Gamepad* p : g_pads) SDL_CloseGamepad(p);
+    g_pads.clear();
+    int n = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&n);
+    for (int i = 0; i < n; i++)
+        if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) g_pads.push_back(p);
+    SDL_free(ids);
+}
+
+// What Dear ImGui's navigation reads of the held gamepads, for the menu's frame, merged over
+// them all as its SDL backend merges them but with each one's faces by their labels, as the
+// game takes them (gamepads_faces). The backend takes faces by position, so it's given no
+// gamepad (overlay_init).
+void read_pads() {
+    if (g_pads.empty()) return;
+    ImGuiIO& io = ImGui::GetIO();
+    io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+    static constexpr ImGuiKey kFaces[4] = {ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight,
+                                           ImGuiKey_GamepadFaceLeft, ImGuiKey_GamepadFaceUp};
+    bool faces[4] = {};
+    for (SDL_Gamepad* p : g_pads) {
+        const std::array<int, 4> f = gamepads_faces(p);
+        for (int k = 0; k < 4; k++) faces[k] = faces[k] || SDL_GetGamepadButton(p, (SDL_GamepadButton)f[k]);
+    }
+    for (int k = 0; k < 4; k++) io.AddKeyEvent(kFaces[k], faces[k]);
+    static constexpr struct {
+        ImGuiKey key;
+        SDL_GamepadButton button;
+    } kButtons[] = {
+        {ImGuiKey_GamepadDpadLeft, SDL_GAMEPAD_BUTTON_DPAD_LEFT},
+        {ImGuiKey_GamepadDpadRight, SDL_GAMEPAD_BUTTON_DPAD_RIGHT},
+        {ImGuiKey_GamepadDpadUp, SDL_GAMEPAD_BUTTON_DPAD_UP},
+        {ImGuiKey_GamepadDpadDown, SDL_GAMEPAD_BUTTON_DPAD_DOWN},
+        {ImGuiKey_GamepadL1, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER},
+        {ImGuiKey_GamepadR1, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER},
+    };
+    for (const auto& b : kButtons) {
+        bool down = false;
+        for (SDL_Gamepad* p : g_pads) down = down || SDL_GetGamepadButton(p, b.button);
+        io.AddKeyEvent(b.key, down);
+    }
+    // How far past the backend's dead zone the left stick is pushed each way, 0 to 1.
+    constexpr int kDeadZone = 8000;
+    static constexpr struct {
+        ImGuiKey key;
+        SDL_GamepadAxis axis;
+        int sign;
+    } kStick[] = {
+        {ImGuiKey_GamepadLStickLeft, SDL_GAMEPAD_AXIS_LEFTX, -1},
+        {ImGuiKey_GamepadLStickRight, SDL_GAMEPAD_AXIS_LEFTX, 1},
+        {ImGuiKey_GamepadLStickUp, SDL_GAMEPAD_AXIS_LEFTY, -1},
+        {ImGuiKey_GamepadLStickDown, SDL_GAMEPAD_AXIS_LEFTY, 1},
+    };
+    for (const auto& s : kStick) {
+        float v = 0.0f;
+        for (SDL_Gamepad* p : g_pads)
+            v = std::max(v, std::clamp((s.sign * SDL_GetGamepadAxis(p, s.axis) - kDeadZone) / float(32767 - kDeadZone),
+                                       0.0f, 1.0f));
+        io.AddKeyAnalogEvent(s.key, v > 0.1f, v);
+    }
+}
+
+// Whether the press `b` is of its gamepad's B, the face labeled B (gamepads_faces).
+bool is_b(const SDL_GamepadButtonEvent& b) {
+    SDL_Gamepad* p = SDL_GetGamepadFromID(b.which);
+    return p && b.button == gamepads_faces(p)[1];
 }
 
 bool is_input(const SDL_Event& e) {
@@ -182,6 +256,7 @@ void draw_menu() {
 // The menu's frame: its input taken and its windows laid out, ready to draw.
 void menu_frame() {
     ImGui_ImplSDL3_NewFrame();
+    read_pads();
     ImGui::NewFrame();
     draw_menu();
     ImGui::Render();
@@ -212,11 +287,14 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     if (g_gl) {
         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
         ImGui_ImplOpenGL3_Init();
-        return;
+    } else {
+        // Nothing draws the menu, so the texture its font is baked into is never made.
+        ImGui_ImplSDL3_InitForOther(window);
+        io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
     }
-    // Nothing draws the menu, so the texture its font is baked into is never made.
-    ImGui_ImplSDL3_InitForOther(window);
-    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    // The backend reads no gamepad, so read_pads can read them all by their labels.
+    ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_Manual, nullptr, 0);
+    hold_pads();
 }
 
 bool overlay_open() { return g_open; }
@@ -228,20 +306,19 @@ OverlayAsk overlay_asking() { return g_ask; }
 bool overlay_event(const SDL_Event& e) {
     if (!g_ready) return false;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
-    const int button = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ? e.gbutton.button : -1;
-    const bool cancel = key == SDL_SCANCODE_ESCAPE || button == SDL_GAMEPAD_BUTTON_EAST;
+    const bool pressed = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+    const bool cancel = g_open && (key == SDL_SCANCODE_ESCAPE || (pressed && is_b(e.gbutton)));
     // While the menu asks, B or Escape goes back to it instead of closing it.
-    if (g_open && g_ask != OverlayAsk::none && cancel) {
+    if (cancel && g_ask != OverlayAsk::none) {
         back();
         return true;
     }
-    if (key == SDL_SCANCODE_F1 || button == SDL_GAMEPAD_BUTTON_BACK || (g_open && cancel)) {
+    if (key == SDL_SCANCODE_F1 || (pressed && e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) || cancel) {
         set_open(!g_open);
         return true;
     }
-    // Gamepads coming and going reach the menu while it's closed too, so it knows them all.
-    if (g_window && (g_open || e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED))
-        ImGui_ImplSDL3_ProcessEvent(&e);
+    if (g_window && (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED)) hold_pads();
+    else if (g_window && g_open) ImGui_ImplSDL3_ProcessEvent(&e);
     return g_open && is_input(e);
 }
 

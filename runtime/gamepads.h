@@ -56,8 +56,10 @@
 // fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad shook.
 #pragma once
 #include "hw/pad.h"
+#include <array>
 
 union SDL_Event;
+struct SDL_Gamepad;
 
 // Controller mappings in SDL_GameControllerDB's format (one `<guid>,<name>,<mapping>,
 // platform:<platform>,` line a controller, as github.com/mdqinc/SDL_GameControllerDB keeps
@@ -88,3 +90,7 @@ void gamepads_merge(int port, PadState& p);
 void gamepads_rumble(int port, bool motor);
 // Stops any rumble, says what each gamepad on a port sent, and closes the gamepads.
 void gamepads_shutdown();
+// The SDL buttons (SDL_GamepadButton's values) that are the GameCube's A, B, X and Y on the
+// open gamepad `g`, by its labels as above, the ones gamepads_merge reads. The overlay's menu
+// takes a gamepad's faces from here too, on a port or not (overlay.h).
+std::array<int, 4> gamepads_faces(SDL_Gamepad* g);

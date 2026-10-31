@@ -336,3 +336,8 @@ void gamepads_shutdown() {
     g_saved_loaded = false;
     g_may_save = true;
 }
+
+std::array<int, 4> gamepads_faces(SDL_Gamepad* g) {
+    const std::array<SDL_GamepadButton, 4> f = faces(g);
+    return {f[0], f[1], f[2], f[3]};
+}

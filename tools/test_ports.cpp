@@ -1718,6 +1718,8 @@ void overlay(const std::string& dir) {
 // It has no GL context, so the menu is driven but not drawn (overlay_menu_frame). A gamepad
 // alone goes through Restart and the keyboard alone through Quit. Neither ends this process:
 // each stops pump_events, the frontend's loop, and --restart follows a restart from there.
+// Between the two a Switch Pro pad asks and goes back with its faces by their labels, as the
+// game reads them, so its east presses and its south goes back.
 SDL_WindowID g_window_id;  // the test window's, which the menu takes keys from
 
 // A key pressed and let go over the window, a host frame each. False if pump_events was.
@@ -1761,6 +1763,12 @@ void overlay_buttons(const std::string& dir) {
     gamepads_init();
     Virtual pad{"virtual pad buttons"};
     attach(pad);
+    // A south and B east by its labels, as by position, where a Switch Pro has them the other
+    // way round. Both are in throughout, so each press goes by its own pad's labels.
+    Virtual nintendo{"virtual switch pro buttons"};
+    nintendo.vendor = 0x057e;
+    nintendo.product = 0x2009;
+    attach(nintendo);
     Guest guest;
     host_frame(guest);
 
@@ -1791,6 +1799,30 @@ void overlay_buttons(const std::string& dir) {
           "confirming Restart closes the overlay and lets the guest go, then the frontend's loop stops to restart");
     g_restart = false;  // as the relaunched process starts
 
+    tap(guest, nintendo, SDL_GAMEPAD_BUTTON_BACK);
+    for (int i = 0; i < 8; i++) tap(guest, nintendo, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    for (int i = 0; i < 2; i++) tap(guest, nintendo, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    tap(guest, nintendo, SDL_GAMEPAD_BUTTON_EAST);
+    SDL_Gamepad* switch_pro = SDL_GetGamepadFromID(nintendo.id);
+    check(switch_pro && SDL_GetGamepadButtonLabel(switch_pro, SDL_GAMEPAD_BUTTON_EAST) == SDL_GAMEPAD_BUTTON_LABEL_A &&
+              waiting(OverlayAsk::restart),
+          "on a Switch Pro pad, the button labeled A, east, presses Restart game");
+    tap(guest, nintendo, SDL_GAMEPAD_BUTTON_EAST);
+    check(waiting(OverlayAsk::none) && host_frame(guest), "its A presses Cancel too, going back with nothing done");
+    tap(guest, nintendo, SDL_GAMEPAD_BUTTON_EAST);
+    const bool asks_again = waiting(OverlayAsk::restart);
+    tap(guest, nintendo, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(asks_again && waiting(OverlayAsk::none) && host_frame(guest),
+          "its B, south, goes back from the question with nothing done, the overlay still open");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool other_presses = waiting(OverlayAsk::restart);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
+    const bool open = waiting(OverlayAsk::none);
+    check(other_presses && open, "the other pad's south is still its A and its east its B");
+    tap(guest, nintendo, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(open && !overlay_open() && !paused() && guest.passed == guest.asked,
+          "the Switch Pro pad's B closes the overlay, and the guest goes on");
+
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     for (int i = 0; i < 8; i++) tap(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
     for (int i = 0; i < 2; i++) tap(guest, SDL_SCANCODE_LEFT, SDLK_LEFT);
@@ -1812,7 +1844,7 @@ void overlay_buttons(const std::string& dir) {
           "confirming Quit closes the overlay, and the frontend's loop stops as for a quit, not a restart");
     check(g_applies == applies, "no press on the way to either button changed the picture");
 
-    unplug({&pad});
+    unplug({&pad, &nintendo});
     gamepads_shutdown();
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
