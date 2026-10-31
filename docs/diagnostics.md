@@ -1157,7 +1157,7 @@ so the variants never mix with the real ones).
   with `vm_peek32` and is silent until the game maps it) and the store histogram below.
 - `--log-all` enables every log category, including the DSP mailbox and DVD reads (off by
   default, since the game reads the disc every frame);
-  `--log=exi,dsp` enables just those (`cpu os hw dvd gx vi si exi dsp ai thr`).
+  `--log=exi,dsp` enables just those (`cpu os hw dvd gx vi si exi dsp ai thr interp`).
 - Build with `-DGCN_GUEST_CHECKS=ON` to call the game project's consistency check (a
   function installed with `debug_set_guest_check`, which inspects the guest's own data
   structures and reports the first thing wrong) at every interrupt poll, after every
@@ -1431,3 +1431,42 @@ keeps the instruction it replaces -- the first instruction of `OSAllocFromHeap` 
 
 `HeapArray` is the small-data word `OSAllocFromHeap` loads first (`lwz r3, off(r13)`), and
 `r13` is set by `__start`. Without the hooks the panic report says the heaps were not traced.
+
+## Running functions interpreted
+
+`GCN_INTERPRET` sends recompiled functions to the interpreter (`docs/interpreter.md`), and
+it's read at the end of boot. Either form prints on stderr how many functions it forced.
+
+- `GCN_INTERPRET=all` forces every guarded function, and prints
+  `[interp] GCN_INTERPRET=all: forced N functions`.
+- `GCN_INTERPRET=<file>` forces the function starts the file lists, one a line, in hex with
+  or without `0x`. A `#` starts a comment, and a blank line is skipped. It prints
+  `[interp] GCN_INTERPRET=<file>: forced N of the M starts listed`, with `(K with no guard)`
+  after it when K of them weren't forced.
+
+Any recompiled function's start counts, and one listed twice counts once. An HLE'd
+function's start is forced, while its wrapper and replacement stay native and the original
+body runs interpreted when the replacement calls it. A module's or a REL's start has no
+guard, so it's taken and not forced.
+
+A line that names no recompiled function's start stops the game with
+`GCN_INTERPRET: line N of <file> is "<line>", which isn't a recompiled function's start`. A
+file that can't be read stops it with `GCN_INTERPRET: can't read <file>`.
+
+`GCN_INTERPRET_STATS=1` prints on stderr at exit the 30 functions that ran the most
+interpreted instructions, after a line with the total. A fatal stop prints it too, and an
+exit after a fault doesn't. Every word a frame runs counts, a site's included.
+
+```
+[interp] GCN_INTERPRET_STATS: <total> instructions interpreted, <n> of them in loose frames
+[interp]      <count>  <start> <name>
+```
+
+`--log=interp` reports each of these once for its address. The first is a `blr` that goes
+somewhere other than the LR its frame was entered with, and the second a site whose word in
+RAM isn't the one its patch replaced, which then runs in the patch's place.
+
+```
+[INTERP] blr at <pc> returns to <lr>, and its frame was entered with LR <entry lr>
+[INTERP] site at <pc> holds <word>, not the <original> its patch replaced, so that word runs
+```
