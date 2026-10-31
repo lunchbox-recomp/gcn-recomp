@@ -5,8 +5,10 @@
 // and add would round once where translate's C rounds twice.
 //
 // A, B and C are read up front, which is the order translate's text names them in for every sum and
-// product here. Clang orders those operands by when they were read, and that order can decide which
-// of two NaNs comes out, so interp_ps.cpp reads its registers case by case instead.
+// product here, and that gives the operand order translate's C compiles to on its own. In a larger
+// function clang orders those operands by where their values come from, so which of two different NaNs
+// native code gives in fadd, fadds, fmul or fmuls depends on the code around it. The interpreter can
+// give the other one.
 #include "interp.h"
 
 namespace {

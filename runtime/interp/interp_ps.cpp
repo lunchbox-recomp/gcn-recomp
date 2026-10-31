@@ -2,9 +2,13 @@
 // either is written, and a rounded pair records lane 0 for FPRF, as translate's pair() does. Like
 // interp_fp.cpp, it has to compile with the game's FP flags.
 //
-// Each case reads its registers in the order translate's text names them. Clang orders a sum's or a
-// product's operands by when they were read, and when both are NaNs that order can decide which comes
-// out. Read up front, ps_muls0's lane 1 would get A1's NaN where translate's C gets C0's.
+// Each case reads its registers in the order translate's text names them. That gives the operand order
+// translate's C compiles to on its own, and when both operands are NaNs the order decides which comes
+// out. Read up front, ps_muls0's lane 1 would get A1's NaN where translate's C alone gets C0's.
+//
+// In a larger function, clang orders a sum's or a product's operands by where their values come from.
+// So which of two different NaNs native code gives in a ps add, mul, muls or sum form depends on the
+// code around it, and the interpreter can give the other one.
 #include "interp.h"
 
 namespace {
