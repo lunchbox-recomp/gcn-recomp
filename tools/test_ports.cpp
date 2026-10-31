@@ -38,8 +38,8 @@
 //                                              replay, with a gamepad rumbling
 //        test_ports --shutdown <empty work dir>   the game shutting the console down,
 //                                                 with a gamepad rumbling
-//        test_ports --restart <work dir>   a restart asked for (frontend_restart), to the
-//                                          relaunch, which writes nothing there
+//        test_ports --restart <empty work dir>   a restart asked for (frontend_restart), to
+//                                                the relaunch
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -2363,19 +2363,38 @@ int run_shutdown(const std::string& dir) {
 
 // ---- A restart asked for (frontend_restart, which the overlay's Restart calls) stops the
 // frontend's loop as a quit does, and the window path's end (end_run) ends the run as for a
-// quit, with the exit's at-exit functions, then relaunches. This process isn't started again:
-// the at-exit function added here runs last, and ends it, before the relaunch would.
+// quit: the input log gets its end, and the exit's at-exit functions run. Then it prints a
+// [reset] line, as a console reset does, and relaunches. This process isn't started again:
+// the at-exit function added here runs last, and ends it, before the relaunch would. No memory
+// card is made here (exi_init), so none is written.
+std::string g_restart_dir;
+
 void after_restart() {
-    check(g_relaunching, "the run ends through the exit's at-exit functions, the memory card's among them, on the way to a relaunch");
+    fflush(stderr);
+    dup2(g_stderr, 2);
+    const std::string out = g_restart_dir + "/restart-stderr.txt";
+    printf("---- stderr\n%s----\n", read_file(out).c_str());
+    check(g_relaunching, "the run ends through the exit's at-exit functions on the way to a relaunch");
+    check(!lines_starting(g_restart_dir + "/log/inputs.txt", "# end ").empty(), "the input log has its end");
+    check(lines_starting(out, "[reset] ") == "[reset] the overlay's Restart game starts the game again\n",
+          "one [reset] line, not a shutdown's, says the game starts again");
     printf("test_ports --restart: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     fflush(stdout);
     _exit(g_failed ? 1 : 0);
 }
 
-int run_restart() {
+int run_restart(const std::string& dir) {
     if (!sdl_up()) return 1;
+    g_restart_dir = dir;
+    if (!input_log_start(dir + "/log", dir + "/no-card.raw", dir + "/no-sram.raw")) return 1;
     frontend_restart();
     check(!pump_events() && !g_relaunching, "after a restart is asked for, the frontend's loop stops, as for a quit");
+    fflush(stderr);
+    g_stderr = dup(2);
+    if (FILE* f = fopen((dir + "/restart-stderr.txt").c_str(), "w")) {
+        dup2(fileno(f), 2);
+        fclose(f);
+    }
     plat_at_exit(after_restart);
     end_run();
 }
@@ -2397,7 +2416,7 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
-    if (argc == 3 && !strcmp(argv[1], "--restart")) return run_restart();
+    if (argc == 3 && !strcmp(argv[1], "--restart")) return run_restart(argv[2]);
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
                     "--no-gamepads|--reset|--shutdown|--restart] <work dir>\n");
     return 2;

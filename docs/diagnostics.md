@@ -756,11 +756,16 @@ dumps never include it, so a run that opened it writes the same frame dumps as o
 The menu's Restart game and Quit game close it before they act, so the run prints
 `[overlay] closed` and the guest goes on before the end. Both end the run at `end_run` in
 `runtime/main.cpp`, whose at-exit functions write the memory card and wait for a write under
-way. Restart then relaunches the game as a console reset does (`on_reset`), and a replay ends.
+way.
+
+Restart then prints `[reset] the overlay's Restart game starts the game again` and relaunches
+the game as a console reset does (`on_reset`). A tool reading the run's output sees a restart
+in that line, as it does in a console reset's `[reset]` line. A replay ends instead.
 
 `test_ports` presses both through the menu on a virtual gamepad and on the keyboard, over a
 window from SDL's dummy video driver, which has no GL context. Its `--restart` run follows a
-restart to the relaunch, and its own at-exit function ends the process there.
+restart to the relaunch, and its own at-exit function checks the input log's `# end` and the
+`[reset]` line there, then ends the process.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under

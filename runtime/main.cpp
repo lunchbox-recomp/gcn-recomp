@@ -323,9 +323,13 @@ static void show_frame(SDL_Window* win) {
 
 // The game started again in a fresh process, as a power cycle would -- except in a replay,
 // which would only replay itself from the start again, so there the caller's exit follows.
+// `why`, if there's one, goes on stderr first as a [reset] line, so that a tool reading the
+// run's output sees the game start again, as it does after a console reset's own line
+// (guest_reset).
 static char** g_argv;  // main()'s
-static void relaunch() {
+static void relaunch(const char* why = nullptr) {
     if (input_replay_active()) return;
+    if (why) fprintf(stderr, "[reset] %s\n", why);
     session_relaunching();
     plat_relaunch(g_argv);
 }
@@ -345,7 +349,7 @@ static void on_reset(uint32_t, uint32_t) {
     input_log_end();
     pads_down();
     threads_request_quit();
-    if (g_restart) relaunch();
+    if (g_restart) relaunch("the overlay's Restart game starts the game again");
     plat_exit_now(0);
 }
 
