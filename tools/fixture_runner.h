@@ -87,8 +87,8 @@ struct Case {
     uint32_t entry;     // a recompiled entry, or a blob for a loose frame
     uint32_t twin;      // what the native run calls in place of entry, when entry's code changed in RAM
     void (*setup)(CPU*);
-    // A call the native run has to make, the start of the stop it has to end in, or IRQ_CHECK for the
-    // clock to move.
+    // A call the native run has to make, the whole message of the stop it has to end in, or IRQ_CHECK
+    // for the clock to move.
     const char* needs;
     bool loose;
 };

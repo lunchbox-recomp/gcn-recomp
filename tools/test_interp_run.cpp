@@ -19,6 +19,13 @@ using namespace fx;
 
 namespace {
 
+// The stop the fake unimpl makes when f_gap_falls runs off its end into the gap.
+const std::string kGapStop = [] {
+    char s[64];
+    snprintf(s, sizeof s, "unimplemented instruction 00000000 at %08X", FX_F_GAP_FALLS_GAP);
+    return std::string(s);
+}();
+
 const Case kCases[] = {
     {"an in-range loop", FX_F_LOOP, 0, nullptr, "IRQ_CHECK", false},
     {"an idle back edge", FX_F_IDLE, 0, nullptr, "idle_hint", false},
@@ -60,8 +67,7 @@ const Case kCases[] = {
     {"an rfi, which returns", FX_F_RFI, 0, nullptr, "hle_rfi", false},
     {"a bdnz to itself, with an IRQ_CHECK each time", FX_F_BDNZ, 0, nullptr, "IRQ_CHECK", false},
     {"a loose frame's branch onto a patch site", FX_BLOB_SITE, FX_F_BLOB_SITE_TWIN, nullptr, "heap_trace_alloc", true},
-    {"running off the end into a gap no function holds", FX_F_GAP_FALLS, 0, nullptr, "unimplemented instruction",
-     false},
+    {"running off the end into a gap no function holds", FX_F_GAP_FALLS, 0, nullptr, kGapStop.c_str(), false},
     {"a setjmp site taken 10,000 times in a loop, in one C frame", FX_F_SJ_LOOP, 0, nullptr, "hle_setjmp_jmpbuf",
      false},
     {"a setjmp site's function calling one with a context site", FX_F_TWO_SITES, 0, nullptr, "hle_context_jmpbuf",

@@ -473,7 +473,7 @@ void check_case(const Case& k) {
     const Outcome nat = run(k, NATIVE);
     int before = g_failed;
     // A stop doesn't unwind the call stack, so only a run that finished has to balance it.
-    const bool stop_needed = k.needs && !nat.stop.empty() && nat.stop.rfind(k.needs, 0) == 0;
+    const bool stop_needed = k.needs && nat.stop == k.needs;
     if (!nat.stop.empty() && !stop_needed)
         fail(std::string(k.name) + ": the native run stopped with \"" + nat.stop + "\"");
     if (nat.stop.empty() && depth_of(&nat.cpu)) fail(std::string(k.name) + ": the native run left the call stack unbalanced");
@@ -481,7 +481,7 @@ void check_case(const Case& k) {
     if (k.needs) {
         bool seen = stop_needed || (!strcmp(k.needs, "IRQ_CHECK") && nat.vcount > 0);
         for (const Call& c : nat.calls) seen = seen || c.fn == k.needs;
-        if (!seen) fail(std::string(k.name) + ": the native run never made the " + k.needs + " it's for");
+        if (!seen && nat.stop.empty()) fail(std::string(k.name) + ": the native run never made the " + k.needs + " it's for");
     }
     for (Mode m : {OWN, ALL}) {
         const Outcome o = run(k, m);
