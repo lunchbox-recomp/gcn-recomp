@@ -941,6 +941,39 @@ function(gcn_add_game)
     target_include_directories(test_interp PRIVATE ${RT} ${_cases_dir})
     target_compile_options(test_interp PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The interpreter's frames (tools/test_interp_run.cpp) run made-up programs natively and then
+    # interpreted, from the same state. recomp/fixture_programs.py writes them into
+    # <build>/interp_fixtures/, and recomp.py compiles them there as it does a game. Their C builds as
+    # the game's does.
+    #
+    # test_interp_run_trace is the same built with GCN_TRACE_CALLS, to see that the guest call stack
+    # balances. Needs no disc image, device or SDL.
+    set(_fx_dir ${CMAKE_BINARY_DIR}/interp_fixtures)
+    set(_fx_c ${_fx_dir}/out/recomp_000.c ${_fx_dir}/out/recomp_table.c ${_fx_dir}/out/recomp_interp.c)
+    set(_rc ${GCN_RECOMP_DIR}/recomp)
+    add_custom_command(OUTPUT ${_fx_dir}/fixture_programs.h ${_fx_dir}/out/recomp_funcs.h ${_fx_c}
+      COMMAND ${Python3_EXECUTABLE} -B ${_rc}/fixture_programs.py ${_fx_dir}
+      COMMAND ${Python3_EXECUTABLE} -B ${_rc}/recomp.py ${_fx_dir}/main.dol ${_fx_dir}/symbols.txt
+              ${_fx_dir}/out ${_fx_dir}/tables
+      DEPENDS ${_rc}/fixture_programs.py ${_rc}/recomp.py ${_rc}/ppc.py ${_rc}/interp_tables.py ${_rc}/dol.py
+              ${_rc}/rel.py
+      COMMENT "Writing the interpreter's fixture programs and recompiling them" VERBATIM)
+    # One target runs the command, since two that list its outputs could run it at once.
+    add_custom_target(interp_fixtures DEPENDS ${_fx_dir}/fixture_programs.h ${_fx_c})
+    set_source_files_properties(${_fx_c} PROPERTIES COMPILE_OPTIONS "${GCN_GAME_C_FLAGS}")
+    foreach(_t test_interp_run test_interp_run_trace)
+      add_executable(${_t} EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_interp_run.cpp
+        ${RT}/interp/interp_step.cpp ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp
+        ${RT}/interp/interp_sys.cpp ${RT}/interp/interp_branch.cpp ${RT}/interp/interp_fp.cpp
+        ${RT}/interp/interp_ps.cpp ${RT}/interp/interp_run.cpp ${RT}/interp/code_table.cpp
+        ${_fx_dir}/fixture_programs.h ${_fx_c})
+      add_dependencies(${_t} interp_fixtures)
+      _gcn_set_standards(${_t})
+      target_include_directories(${_t} PRIVATE ${RT} ${_fx_dir} ${_fx_dir}/out)
+      target_compile_options(${_t} PRIVATE ${GCN_RUNTIME_WARNINGS})
+    endforeach()
+    target_compile_definitions(test_interp_run_trace PRIVATE GCN_TRACE_CALLS)
+
     # The engine commit script's checks (tools/test_engine_sha.cmake): engine_sha.cmake over
     # repositories it makes in the build directory. Needs git and nothing else.
     add_custom_target(test_engine_sha
@@ -958,7 +991,7 @@ function(gcn_add_game)
     set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_aid test_blend test_clock test_pause
         test_interp)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay
-        test_bot_link)
+        test_bot_link test_interp_run test_interp_run_trace)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()

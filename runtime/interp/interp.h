@@ -1,8 +1,10 @@
-// The PowerPC interpreter's single steps. It runs a guest function from RAM when that function's
-// code changed at run time, a word at a time, and each word does exactly what ppc.translate's C for
-// it does (recomp/ppc.py). tools/test_interp.cpp holds it to that text, case by case.
+// The PowerPC interpreter. It runs a guest function from RAM when that function's code changed at run
+// time, a word at a time, and each word does exactly what ppc.translate's C for it does
+// (recomp/ppc.py). tools/test_interp.cpp holds the single steps to that text, case by case, and
+// tools/test_interp_run.cpp holds the frames to what recomp.py's C does with them.
 #pragma once
 #include "recomp.h"
+#include <string>
 
 enum InterpStep { INTERP_NEXT, INTERP_RFI, INTERP_UNIMPL };
 
@@ -50,3 +52,44 @@ inline void interp_fprf(CPU* c, double v, bool single) {
 inline void interp_cr1(CPU* c, uint32_t i) {
     if (i & 1) c->cr[1] = (uint8_t)(c->fpscr >> 28);
 }
+
+// ---- the frames (interp_run.cpp, interp_setjmp.cpp) ----
+// An interpreted guest call is one frame. A function frame runs a recompiled function from the entry
+// its guard handed over (interp_enter, in recomp.h), and a loose frame runs code that no function
+// holds, so it has no range.
+struct InterpFrame {
+    uint32_t start, end;        // the function's range, which a loose frame hasn't got
+    bool loose, longjmp;        // longjmp says the function is RECOMP_RANGE_LONGJMP
+    uint32_t entry_lr;          // LR as the frame was entered
+    uint32_t jb;                // r3 as a longjmp frame was entered, the guest jmp_buf
+    uint32_t site_lo, site_hi;  // the rows of g_recomp_sites it can reach
+    uint64_t* ran;              // where its interpreted instructions are counted
+};
+
+// Runs f's code from pc, and returns when the guest returns from it.
+void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc);
+// A loose frame at pc, with its own ENTER and EXIT, for code in RAM that no table knows.
+void interp_run_loose(CPU* c, uint32_t pc);
+// A bl to a setjmp or context row's function, with LR set already. It takes the setjmp and calls target
+// when that returns 0, then runs the rest of f's code from resume_pc. So a longjmp finds the setjmp's
+// frame for as long as the guest function hasn't returned.
+void interp_setjmp_site(CPU* c, const InterpFrame* f, uint32_t kind, uint32_t target, uint32_t resume_pc);
+
+// ---- which functions run interpreted (code_table.cpp) ----
+// A function's bit in g_code_changed_bits is set while any of its marks is. GCN_INTERPRET sets
+// CODE_FORCED, and CODE_CHANGED is for code that changed at run time.
+enum CodeMark : uint8_t { CODE_FORCED = 1, CODE_CHANGED = 2 };
+// The one place the bits change, with n the function's index in g_recomp_ranges.
+void code_table_mark(uint32_t n, CodeMark mark, bool on);
+// The index of the range holding addr, or false when no recompiled function holds it.
+bool code_table_find(uint32_t addr, uint32_t* n);
+// Where function n's interpreted instructions are counted. Loose frames count at g_recomp_range_count.
+uint64_t* code_table_counter(uint32_t n);
+// Forces what GCN_INTERPRET's value names, "all" or a file of starts, and returns the line saying how
+// many functions that was. A line of the file that isn't a recompiled function's start stops the game.
+std::string code_table_force(const char* spec);
+// GCN_INTERPRET_STATS's report, with the 30 functions that ran the most interpreted instructions and
+// the total.
+std::string code_table_stats();
+// Reads GCN_INTERPRET and GCN_INTERPRET_STATS, once the DOL is in RAM.
+void code_table_boot();
