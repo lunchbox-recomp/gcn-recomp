@@ -432,8 +432,13 @@ void interp_site_unusable(CPU* c, uint32_t addr);
 /* idle.txt's back edges, sorted. */
 extern const uint32_t g_recomp_idle[];
 extern const uint32_t g_recomp_idle_count;
-/* special_calls.txt, sorted. SETJMP and LONGJMP are the C library's pair, and CONTEXT is any
-   other name, such as OSSaveContext. */
+/* special_calls.txt, sorted. Each addr is the start of the function called, not the pc of the
+   bl that calls it. A bl to a SETJMP or CONTEXT row's function is a resume point, while a bl to
+   a LONGJMP row's is a plain call, and its handling comes from that function's
+   RECOMP_RANGE_LONGJMP.
+
+   SETJMP and LONGJMP are the C library's pair, and CONTEXT is any other name, such as
+   OSSaveContext. */
 #define RECOMP_SPECIAL_SETJMP 1u
 #define RECOMP_SPECIAL_CONTEXT 2u
 #define RECOMP_SPECIAL_LONGJMP 3u
