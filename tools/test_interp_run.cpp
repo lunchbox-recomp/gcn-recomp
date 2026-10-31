@@ -402,6 +402,7 @@ const Case kCases[] = {
     {"blrl and bctrl", FX_F_REGCALLS, 0, nullptr, nullptr, false},
     {"a jump-table bctr to its first case", FX_F_SWITCH, 0, [](CPU* c) { c->r[3] = 0; }, nullptr, false},
     {"a jump-table bctr to its last case", FX_F_SWITCH, 0, [](CPU* c) { c->r[3] = 2; }, nullptr, false},
+    {"a jump-table bctr back to a case before it", FX_F_SWITCH_BACK, 0, nullptr, nullptr, false},
     {"a conditional bl not taken, then one taken", FX_F_CONDBL, 0, nullptr, nullptr, false},
     {"a mid-entry", FX_F_MULTI_MID, 0, nullptr, nullptr, false},
     {"a bl to a mid-entry", FX_F_MIDCALLER, 0, nullptr, nullptr, false},

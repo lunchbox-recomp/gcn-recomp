@@ -208,6 +208,9 @@ FUNCS = [
     Code('f_switch', address(4, 'jumptable') + [slwi(0, 3, 2), lwzx(0, 4, 0), mtctr(0), BCTR,
                                                 'case0:', li(5, 10), b('.end'), 'case1:', li(5, 11), b('.end'),
                                                 'case2:', li(5, 12), 'end:', BLR]),
+    # Its first pass takes the table's first case, which is back before the bctr, and its second the end.
+    Code('f_switch_back', address(4, 'jumptable_back') + [li(6, 0), 'again:', slwi(0, 6, 2), lwzx(0, 4, 0),
+                                                          addi(6, 6, 1), mtctr(0), BCTR, 'end:', BLR]),
     Code('f_condbl', P16 + [cmpwi(3, 0), beql('f_callee'), mflr(6), bnel('f_callee'), mflr(7)] + E16),
     Code('f_multi', [li(3, 1), 'mid:', addi(3, 3, 2), BLR]),
     Code('f_midcaller', P16 + [bl('f_multi.mid'), addi(3, 3, 1)] + E16),
@@ -248,8 +251,11 @@ FUNCS = [
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
 BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')]))]
-# The data holds the jump table's three words, then the guest jmp_buf, the context and the handler's mark.
-DATA_LABELS = {'jumptable': DATA, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80, 'mark': DATA + 0xC0}
+# The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
+DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
+               'mark': DATA + 0xC0}
+JUMP_TABLES = (('jumptable', 'f_switch', ('case0', 'case1', 'case2')),
+               ('jumptable_back', 'f_switch_back', ('again', 'end')))
 DATA_SIZE = 0x100
 
 
@@ -265,9 +271,11 @@ def layout():
         blob.place(a, labels)
     text = [w for f in FUNCS for w in f.words(labels)]
     module = [w for f in MODULE_FUNCS for w in f.words(labels)]
-    switch = FUNCS[[f.name for f in FUNCS].index('f_switch')]
-    table = [switch.label(labels, f'case{k}') for k in range(3)]
-    data = table + [0] * (DATA_SIZE // 4 - len(table))
+    data = [0] * (DATA_SIZE // 4)
+    for table, func, cases in JUMP_TABLES:
+        f = FUNCS[[g.name for g in FUNCS].index(func)]
+        k = (labels[table] - DATA) // 4
+        data[k:k + len(cases)] = [f.label(labels, case) for case in cases]
     return labels, text, module, data
 
 
@@ -343,7 +351,9 @@ def main():
     write(os.path.join(out, 'main.dol.modules'), f'{MODULE:08X} {len(module) * 4:X} 0 made_up_module\n')
     syms = [f'{f.name} = .text:0x{f.addr:08X}; // type:function size:0x{f.size():X} scope:global'
             for f in FUNCS + MODULE_FUNCS]
-    syms.append(f'jumptable_{DATA:08X} = .data:0x{DATA:08X}; // type:object size:0xC scope:local')
+    for table, _, cases in JUMP_TABLES:
+        a = labels[table]
+        syms.append(f'jumptable_{a:08X} = .data:0x{a:08X}; // type:object size:0x{len(cases) * 4:X} scope:local')
     write(os.path.join(out, 'symbols.txt'), '\n'.join(syms) + '\n')
     for name, lines in tables(labels).items():
         write(os.path.join(out, 'tables', name), ''.join(line + '\n' for line in lines))
