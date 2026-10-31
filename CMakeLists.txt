@@ -949,7 +949,8 @@ function(gcn_add_game)
     # the game's does.
     #
     # test_interp_run_trace is the same built with GCN_TRACE_CALLS, to see that the guest call stack
-    # balances. Needs no disc image, device or SDL.
+    # balances. The code table's checks (tools/test_code_table.cpp) run on the same programs, and all
+    # three share the fakes and the runner in tools/fixture_runner.cpp. Needs no disc image, device or SDL.
     set(_fx_dir ${CMAKE_BINARY_DIR}/interp_fixtures)
     set(_fx_c ${_fx_dir}/out/recomp_000.c ${_fx_dir}/out/recomp_table.c ${_fx_dir}/out/recomp_interp.c)
     set(_rc ${GCN_RECOMP_DIR}/recomp)
@@ -963,9 +964,9 @@ function(gcn_add_game)
     # One target runs the command, since two that list its outputs could run it at once.
     add_custom_target(interp_fixtures DEPENDS ${_fx_dir}/fixture_programs.h ${_fx_c})
     set_source_files_properties(${_fx_c} PROPERTIES COMPILE_OPTIONS "${GCN_GAME_C_FLAGS}")
-    foreach(_t test_interp_run test_interp_run_trace)
-      add_executable(${_t} EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_interp_run.cpp
-        ${RT}/interp/interp_step.cpp ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp
+    foreach(_t test_interp_run test_interp_run_trace test_code_table)
+      add_executable(${_t} EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/fixture_runner.cpp
+        ${GCN_RECOMP_DIR}/tools/fixture_runner.h ${RT}/interp/interp_step.cpp ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp
         ${RT}/interp/interp_sys.cpp ${RT}/interp/interp_branch.cpp ${RT}/interp/interp_fp.cpp
         ${RT}/interp/interp_ps.cpp ${RT}/interp/interp_run.cpp ${RT}/interp/interp_setjmp.cpp
         ${RT}/interp/code_table.cpp ${_fx_dir}/fixture_programs.h ${_fx_c})
@@ -974,6 +975,9 @@ function(gcn_add_game)
       target_include_directories(${_t} PRIVATE ${RT} ${_fx_dir} ${_fx_dir}/out)
       target_compile_options(${_t} PRIVATE ${GCN_RUNTIME_WARNINGS})
     endforeach()
+    target_sources(test_interp_run PRIVATE ${GCN_RECOMP_DIR}/tools/test_interp_run.cpp)
+    target_sources(test_interp_run_trace PRIVATE ${GCN_RECOMP_DIR}/tools/test_interp_run.cpp)
+    target_sources(test_code_table PRIVATE ${GCN_RECOMP_DIR}/tools/test_code_table.cpp)
     target_compile_definitions(test_interp_run_trace PRIVATE GCN_TRACE_CALLS)
 
     # The engine commit script's checks (tools/test_engine_sha.cmake): engine_sha.cmake over
@@ -991,9 +995,9 @@ function(gcn_add_game)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_aid test_blend test_clock test_pause
-        test_interp)
+        test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay
-        test_bot_link test_interp_run test_interp_run_trace)
+        test_bot_link test_code_table)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()
