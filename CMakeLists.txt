@@ -933,9 +933,10 @@ function(gcn_add_game)
       COMMENT "Writing the interpreter's cases from ppc.translate" VERBATIM)
     set_source_files_properties(${_cases_c} PROPERTIES COMPILE_OPTIONS "${GCN_GAME_C_FLAGS}")
     add_executable(test_interp EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_interp.cpp
-      ${RT}/interp/interp_step.cpp ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp
-      ${RT}/interp/interp_sys.cpp ${RT}/interp/interp_branch.cpp ${RT}/interp/interp_fp.cpp
-      ${RT}/interp/interp_ps.cpp ${_cases_dir}/interp_cases.h ${_cases_c})
+      ${GCN_RECOMP_DIR}/tools/test_interp_states.cpp ${RT}/interp/interp_step.cpp
+      ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp ${RT}/interp/interp_sys.cpp
+      ${RT}/interp/interp_branch.cpp ${RT}/interp/interp_fp.cpp ${RT}/interp/interp_ps.cpp
+      ${_cases_dir}/interp_cases.h ${_cases_c})
     _gcn_set_standards(test_interp)
     target_include_directories(test_interp PRIVATE ${RT} ${_cases_dir})
     target_compile_options(test_interp PRIVATE ${GCN_RUNTIME_WARNINGS})
