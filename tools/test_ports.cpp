@@ -40,6 +40,8 @@
 //                                                 with a gamepad rumbling
 //        test_ports --restart <empty work dir>   a restart asked for (frontend_restart), to
 //                                                the relaunch
+//        test_ports --restart-replay <empty work dir>   the menu, then a restart asked for,
+//                                                       in a replay
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -2383,19 +2385,83 @@ void after_restart() {
     _exit(g_failed ? 1 : 0);
 }
 
-int run_restart(const std::string& dir) {
-    if (!sdl_up()) return 1;
-    g_restart_dir = dir;
-    if (!input_log_start(dir + "/log", dir + "/no-card.raw", dir + "/no-sram.raw")) return 1;
-    frontend_restart();
-    check(!pump_events() && !g_relaunching, "after a restart is asked for, the frontend's loop stops, as for a quit");
+// From here stderr goes to <dir>/restart-stderr.txt, and g_stderr is the test's.
+void stderr_to_file(const std::string& dir) {
     fflush(stderr);
     g_stderr = dup(2);
     if (FILE* f = fopen((dir + "/restart-stderr.txt").c_str(), "w")) {
         dup2(fileno(f), 2);
         fclose(f);
     }
+}
+
+int run_restart(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    g_restart_dir = dir;
+    if (!input_log_start(dir + "/log", dir + "/no-card.raw", dir + "/no-sram.raw")) return 1;
+    frontend_restart();
+    check(!pump_events() && !g_relaunching, "after a restart is asked for, the frontend's loop stops, as for a quit");
+    stderr_to_file(dir);
     plat_at_exit(after_restart);
+    end_run();
+}
+
+// ---- In a replay the menu has no Restart game, as a relaunch would replay the log from its
+// start, which the log doesn't hold. A restart asked for all the same only ends the run, as a
+// console reset does in a replay, with no relaunch and no [reset] line.
+void after_restart_replay() {
+    fflush(stderr);
+    dup2(g_stderr, 2);
+    const std::string out = g_restart_dir + "/restart-stderr.txt";
+    printf("---- stderr\n%s----\n", read_file(out).c_str());
+    check(!g_relaunching && lines_starting(out, "[reset] ").empty(),
+          "in a replay a restart asked for ends the run with no relaunch and no [reset] line");
+    printf("test_ports --restart-replay: %d of %d checks passed\n", g_checks - g_failed, g_checks);
+    fflush(stdout);
+    _exit(g_failed ? 1 : 0);
+}
+
+#ifdef GCN_OVERLAY
+// The bottom row of the page, over a window as in overlay_buttons, from the keyboard.
+void replay_menu(const std::string& dir) {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
+    SDL_Window* window = SDL_InitSubSystem(SDL_INIT_VIDEO) ? SDL_CreateWindow("test_ports", 1280, 960, SDL_WINDOW_HIDDEN) : nullptr;
+    check(window != nullptr, "SDL's dummy video driver makes a window for the menu");
+    if (!window) return;
+    g_window_id = SDL_GetWindowID(window);
+    OverlayPicture picture;
+    picture.path = dir + "/settings.txt";
+    overlay_init(window, "Test title", picture);
+    {
+        Guest guest;
+        host_frame(guest);
+        tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+        for (int i = 0; i < 8; i++) tap(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
+        for (int i = 0; i < 2; i++) tap(guest, SDL_SCANCODE_LEFT, SDLK_LEFT);
+        tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+        check(waiting(OverlayAsk::quit), "in a replay the bottom row of the page is Quit game alone");
+        tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+        tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    }
+    SDL_DestroyWindow(window);
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+}
+#endif
+
+int run_restart_replay(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    g_restart_dir = dir;
+    plat_make_dirs(dir + "/log");
+    write_file(dir + "/log/inputs.txt", "# gcn-recomp input log v5\n# game TEST00  started 2026-10-31T12:00:00\n"
+                                        "# epoch 1792000000\n0 0 0 1 0000 80 80 80 80 00 00\n# end 4 0\n");
+    std::string card, sram;
+    if (!input_replay_load(dir + "/log", card, sram) || !input_replay_active()) return 1;
+#ifdef GCN_OVERLAY
+    replay_menu(dir);
+#endif
+    frontend_restart();
+    stderr_to_file(dir);
+    plat_at_exit(after_restart_replay);
     end_run();
 }
 
@@ -2417,7 +2483,8 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--restart")) return run_restart(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "--restart-replay")) return run_restart_replay(argv[2]);
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown|--restart] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown|--restart|--restart-replay] <work dir>\n");
     return 2;
 }

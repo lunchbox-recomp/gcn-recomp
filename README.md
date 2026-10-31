@@ -91,8 +91,8 @@ Restart game and Quit game sit below every page, and each asks first, with Cance
 Cancel, B or Escape goes back with nothing done.
 
 Quit ends the run as Escape does with the menu closed, saving the memory card on the way out.
-Restart ends it the same way, then starts the game again as the game's own reset does. In a
-replay it only ends the run, since that reset ends a replay too.
+Restart ends it the same way, then starts the game again as the game's own reset does. A
+replay has no Restart game, since its log can't hold one.
 
 ## Audio
 

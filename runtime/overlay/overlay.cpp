@@ -2,6 +2,7 @@
 // Display page is overlay_display.cpp.
 #include "overlay/overlay.h"
 #include "gamepads.h"
+#include "input_log.h"
 #include "input_map.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
@@ -234,12 +235,15 @@ void quit() {
     SDL_PushEvent(&e);
 }
 
-// Below the pages, so on every one.
+// Below the pages, so on every one. A replay has no Restart game: the log can't hold one, and
+// a relaunch would replay the log from its start (frontend_restart).
 void actions() {
     ImGui::Separator();
-    if (ImGui::Button("Restart game")) ask(OverlayAsk::restart);
-    if (g_asked == OverlayAsk::restart) ImGui::FocusItem();
-    ImGui::SameLine();
+    if (!input_replay_active()) {
+        if (ImGui::Button("Restart game")) ask(OverlayAsk::restart);
+        if (g_asked == OverlayAsk::restart) ImGui::FocusItem();
+        ImGui::SameLine();
+    }
     if (ImGui::Button("Quit game")) ask(OverlayAsk::quit);
     if (g_asked == OverlayAsk::quit) ImGui::FocusItem();
     g_asked = OverlayAsk::none;

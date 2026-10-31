@@ -16,6 +16,7 @@
 // Below the pages, on every one of them, are Restart game and Quit game. Each asks first, with
 // Cancel focused, and Cancel, B or Escape goes back to the page with nothing done. Quit closes
 // the overlay and quits the way an Escape with it closed does, and Restart is frontend_restart.
+// A replay has no Restart game, since its log can't hold one (input_log.h).
 //
 // While it's open nothing reaches the game. Each port keeps what it had as it opened until the
 // guest is held, so the game sees nothing let go before it stops. Then each port stays plugged
