@@ -359,6 +359,29 @@ class OtherOwnBodyCalls(Fixture):
         self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
 
 
+class RefusedBranchWord(Fixture):
+    """A bcctr with a CTR decrement is a word decode_branch refuses. It comes out as unimpl() like any
+    refused word, as an instruction and as a data word, and recomp.py does not stop."""
+
+    BAD = bcctr(0, 0, 0)       # BO 0 decrements CTR
+    BAD_LINK = bcctr(16, 0, 1)  # bdnzctrl
+    FUNCS = [('f_ins', [addi(4, 1), BAD, addi(4, 1), BLR]), ('f_data', [BLR, BAD_LINK])]
+    CASES = [Case('ins', 'f_ins')]
+
+    def test_each_word_is_written_as_unimpl_naming_its_form(self):
+        for fn, at, word in (('f_ins', 1, self.BAD), ('f_data', 1, self.BAD_LINK)):
+            with self.subTest(fn=fn):
+                self.assertIn(f'unimpl(c, 0x{self.addr[fn] + 4 * at:08X}u, 0x{word:08X}u); /* op19 xo 528 */',
+                              self.c)
+
+    def test_recomp_counts_them_as_unimplemented(self):
+        self.assertIn('unimplemented:\n  op19 xo 528: 2\n', self.stderr)
+
+    def test_a_run_that_reaches_one_stops_there(self):
+        self.assertIn('the run exited 3', self.problem)
+        self.assertIn(f'unimpl at {self.addr["f_ins"] + 4:08X}', self.problem)
+
+
 class UnimplDataWord(Fixture):
     """A run that reaches a word recomp.py refused stops, as the runtime's unimpl does."""
 

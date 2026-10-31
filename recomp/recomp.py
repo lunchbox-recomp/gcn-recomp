@@ -44,6 +44,16 @@ def load_list(path):
     return s
 
 
+def decode_branch(pc, i):
+    """ppc.decode_branch, but None for a branch word it refuses (a bcctr with a CTR decrement,
+    which a data word in a function can also look like). translate refuses it too, so it comes
+    out as unimpl() like any other word."""
+    try:
+        return ppc.decode_branch(pc, i)
+    except ppc.Unimpl:
+        return None
+
+
 STORE_OPS = {36, 37, 38, 39, 44, 45, 47, 52, 53, 54, 55, 60, 61}
 STORE_XO31 = {151, 183, 215, 247, 407, 439, 662, 918, 150, 663, 695, 727, 759, 983, 725, 1014}
 
@@ -284,7 +294,7 @@ def main():
     for f in funcs:
         for pc in range(f.addr, f.end, 4):
             i = dol.read32(pc)
-            br = ppc.decode_branch(pc, i)
+            br = decode_branch(pc, i)
             if br is None or br.target is None:
                 continue
             t = br.target
@@ -407,7 +417,7 @@ def main():
                 out.append(f'\t/* {pc:08X} {i:08X} STEP */ {ppc.translate_step(pc, i, *steps[pc])}')
                 last_uncond = False
                 continue
-            br = ppc.decode_branch(pc, i)
+            br = decode_branch(pc, i)
             last_uncond = False
             if br is None and pc in relocs:
                 out.append(f'\t/* {pc:08X} {i:08X} RELOC */ {translate_reloc(pc, i, relocs[pc])}')
