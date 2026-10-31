@@ -50,7 +50,6 @@ extern "C" {
 void hle_sc(CPU*, uint32_t pc) { note("hle_sc", pc); }
 void hle_trap(CPU*, uint32_t pc, uint32_t inst) { note("hle_trap", pc, inst); }
 void hle_rfi(CPU*, uint32_t pc) { note("hle_rfi", pc); }
-void unimpl(CPU*, uint32_t pc, uint32_t inst) { note("unimpl", pc, inst); }
 void hle_mtmsr(CPU* c, uint32_t v) {
     note("hle_mtmsr", v);
     c->msr = v;

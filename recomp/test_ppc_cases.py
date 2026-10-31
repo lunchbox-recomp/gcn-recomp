@@ -116,7 +116,6 @@ class Generated(unittest.TestCase):
         self.assertEqual(len({form(bc), form(bcl), form(bca)}), 3)
 
     def test_families(self):
-        fams = {name: n for n, name in enumerate(ppc_cases.FAMILIES)}
         expect = {0x38630004: 'int', 0x7C632214: 'int', 0x4C221A02: 'int', 0x80630000: 'mem',
                   0x7C63202E: 'mem', 0x7C001FEC: 'mem', 0x7C6802A6: 'sys', 0x44000002: 'sys',
                   0x4C000064: 'sys', 0x48000001: 'branch', 0x4E800421: 'branch', 0xFC22182A: 'fp',
@@ -127,8 +126,6 @@ class Generated(unittest.TestCase):
         for c in self.cases.steps + self.cases.branches:
             form = self.cases.forms[c.form]
             self.assertEqual(ppc_cases.FAMILIES[form.family], ppc_cases.family(c.insn))
-        for r in self.cases.refused:
-            self.assertEqual(r.family, fams[ppc_cases.family(r.insn)])
 
     def test_edge_fields_are_present(self):
         for n, form in enumerate(self.cases.forms):

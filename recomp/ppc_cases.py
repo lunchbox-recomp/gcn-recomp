@@ -63,7 +63,7 @@ SYS_X = frozenset({4, 19, 83, 144, 146, 210, 242, 306, 339, 371, 467, 512, 566, 
 Form = collections.namedtuple('Form', 'mask value name family')
 Step = collections.namedtuple('Step', 'insn pc form text mem')
 BranchCase = collections.namedtuple('BranchCase', 'insn pc form branch')
-Refused = collections.namedtuple('Refused', 'insn pc family')
+Refused = collections.namedtuple('Refused', 'insn pc')
 Cases = collections.namedtuple('Cases', 'seed per_form forms steps branches refused')
 
 
@@ -288,7 +288,7 @@ def generate(seed, per_form):
         fam = FAMILIES.index(family(value))
         if not acc:
             ref = ref[:1] + ref[-1:]
-        refused += [Refused(i, pc, fam) for i, pc, _, _ in ref]
+        refused += [Refused(i, pc) for i, pc, _, _ in ref]
         if not acc:
             continue
         n = len(forms)
@@ -334,8 +334,8 @@ typedef struct {
     uint16_t form;
     uint8_t kind, link;
 } CaseBranch;
-typedef struct { uint32_t insn, pc; uint16_t family; } CaseRefused;
-typedef struct { const char* name; uint16_t family; } CaseForm;
+typedef struct { uint32_t insn, pc; } CaseRefused;
+typedef struct { const char* name; } CaseForm;
 typedef struct {
     const char* name;
     const CaseStep* steps;
@@ -411,10 +411,10 @@ def write(out, cases):
     lines += [f'\t&g_case_family_{fam},' for fam in FAMILIES]
     lines += ['};', f'const uint32_t g_case_family_count = {len(FAMILIES)}u;', '']
     lines.append('const CaseForm g_case_forms[] = {')
-    lines += [f'\t{{"{f.name}", {f.family}}},' for f in cases.forms]
+    lines += [f'\t{{"{f.name}"}},' for f in cases.forms]
     lines += ['};', f'const uint32_t g_case_form_count = {len(cases.forms)}u;', '']
     lines.append('const CaseRefused g_case_refused[] = {')
-    lines += [f'\t{{0x{r.insn:08X}u, 0x{r.pc:08X}u, {r.family}}},' for r in cases.refused]
+    lines += [f'\t{{0x{r.insn:08X}u, 0x{r.pc:08X}u}},' for r in cases.refused]
     lines += ['};', f'const uint32_t g_case_refused_count = {len(cases.refused)}u;', '',
               f'const uint32_t g_case_seed = {cases.seed}u, g_case_per_form = {cases.per_form}u;']
     write_file(out, 'cases_index.c', lines)
