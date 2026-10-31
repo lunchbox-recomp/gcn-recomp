@@ -371,14 +371,18 @@ function(gcn_add_game)
 
   # How the recompiled game's C is compiled. Set outside the disc check, so a configure with
   # no disc has them too and writes them out (game_cflags.txt, below) for a build that
-  # compiles the generated C elsewhere against a prebuilt runtime.
+  # compiles the generated C elsewhere against a prebuilt runtime. GCN_GAME_FP_FLAGS are the
+  # ones that decide what floating point and aliasing compute, for runtime code that has to
+  # compute what the game's C does (runtime/interp/, below).
   if(MSVC)
     # Generated code is enormous and machine-written: keep the optimizer honest about
     # aliasing and floating point, and silence the noise it legitimately produces.
     set(GCN_GAME_C_FLAGS /O2 /fp:precise /fp:except- /wd4101 /wd4102 /wd4723 /bigobj)
+    set(GCN_GAME_FP_FLAGS /fp:precise /fp:except-)
   else()
     set(GCN_GAME_C_FLAGS -O2 -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable
                          -Wno-parentheses-equality -ffp-contract=off)
+    set(GCN_GAME_FP_FLAGS -ffp-contract=off -fno-strict-aliasing)
     # Line tables only, where the build has debug info at all: a crash's frames still
     # resolve to a line (addr2line, a symbolized backtrace), and nobody reads a
     # recompiled function's locals. Full debug info took about 15% longer to compile and
@@ -914,6 +918,27 @@ function(gcn_add_game)
     target_link_libraries(test_disc_overlay PRIVATE Threads::Threads)
     target_compile_options(test_disc_overlay PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The interpreter's differential checks (tools/test_interp.cpp) run ppc.translate's own C for
+    # random and edge-case words of every form it accepts against runtime/interp/, on the same
+    # seeded CPUs. recomp/ppc_cases.py writes the cases into <build>/interp_cases/, and they
+    # compile as the game's C does. Needs no disc image, device or SDL.
+    set(_cases_dir ${CMAKE_BINARY_DIR}/interp_cases)
+    set(_cases_c ${_cases_dir}/cases_index.c)
+    foreach(_f int mem sys branch fp ps fpmem)
+      list(APPEND _cases_c ${_cases_dir}/cases_${_f}.c)
+    endforeach()
+    add_custom_command(OUTPUT ${_cases_dir}/interp_cases.h ${_cases_c}
+      COMMAND ${Python3_EXECUTABLE} -B ${GCN_RECOMP_DIR}/recomp/ppc_cases.py ${_cases_dir} --seed 1
+      DEPENDS ${GCN_RECOMP_DIR}/recomp/ppc_cases.py ${GCN_RECOMP_DIR}/recomp/ppc.py
+      COMMENT "Writing the interpreter's cases from ppc.translate" VERBATIM)
+    set_source_files_properties(${_cases_c} PROPERTIES COMPILE_OPTIONS "${GCN_GAME_C_FLAGS}")
+    add_executable(test_interp EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_interp.cpp
+      ${RT}/interp/interp_step.cpp ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp
+      ${RT}/interp/interp_sys.cpp ${RT}/interp/interp_branch.cpp ${_cases_dir}/interp_cases.h ${_cases_c})
+    _gcn_set_standards(test_interp)
+    target_include_directories(test_interp PRIVATE ${RT} ${_cases_dir})
+    target_compile_options(test_interp PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The engine commit script's checks (tools/test_engine_sha.cmake): engine_sha.cmake over
     # repositories it makes in the build directory. Needs git and nothing else.
     add_custom_target(test_engine_sha
@@ -928,7 +953,8 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_aid test_blend test_clock test_pause)
+    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_aid test_blend test_clock test_pause
+        test_interp)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay
         test_bot_link)
     if(TARGET test_ports)
@@ -1213,6 +1239,12 @@ function(gcn_add_game)
       XCODE_EMBED_FRAMEWORKS_CODE_SIGN_ON_COPY ON
       XCODE_ATTRIBUTE_LD_RUNPATH_SEARCH_PATHS "@executable_path/Frameworks")
   endif()
+
+  # The interpreter computes what the game's C computes, so it compiles with the game's floating
+  # point flags in every target. A contracted a*b+c rounds once where the game's C rounds twice.
+  # Appended last, since the visionOS sources' options above replace what was there.
+  file(GLOB _gcn_interp_sources CONFIGURE_DEPENDS ${RT}/interp/*.cpp)
+  set_property(SOURCE ${_gcn_interp_sources} APPEND PROPERTY COMPILE_OPTIONS ${GCN_GAME_FP_FLAGS})
 
   # For a game project that adds frontends of its own -- a headset app, a headless harness
   # on a device -- the pieces such a target is assembled from. GCN_CORE_SOURCES is the
