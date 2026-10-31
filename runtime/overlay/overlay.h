@@ -33,6 +33,8 @@
 // The Display page sets the aspect (4:3, 16:9, 16:10, 21:9 or the window's own shape),
 // fullscreen and the internal scale. A change applies at once, and settings.txt (settings.h)
 // gets the key that changed, so a flag that set another key for this run isn't written back.
+// With the aspect held at 4:3, as --eye and GCN_THEATER_STEREO hold it, its choices are shown
+// disabled with a note saying so.
 //
 // GCN_OVERLAY_AT=<frame>:<host frames> opens it once <frame> frames have been presented and
 // closes it after it's been drawn over the held frame <host frames> times, for a run nobody is
@@ -54,6 +56,9 @@ struct OverlayPicture {
     std::string path;  // settings.txt
     // The frontend's, which applies `now` at once.
     void (*apply)(const Settings& now) = nullptr;
+    // The aspect stays 4:3 whatever `now` says, as --eye and GCN_THEATER_STEREO keep it, so the
+    // page shows its choices but none can be picked.
+    bool aspect_held = false;
 };
 
 // What the menu is asking before it does it, if anything.

@@ -89,6 +89,7 @@ are the other way round from an Xbox pad's.
 
 The menu's Display page sets the aspect and the internal scale and turns fullscreen on or off.
 Each change applies at once and is saved to `settings.txt`, which the window reads at start.
+With `--eye` or `GCN_THEATER_STEREO` the aspect choices are there but can't be picked.
 
 Restart game and Quit game sit below every page, and each asks first, with Cancel picked.
 Cancel, B or Escape goes back with nothing done. A replay has no Restart game, since its log

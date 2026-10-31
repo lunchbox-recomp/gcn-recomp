@@ -755,6 +755,7 @@ int main(int argc, char** argv) {
     picture.now.aspect = aspect_window ? "window" : std::to_string(aspect_w) + ":" + std::to_string(aspect_h);
     picture.now.fullscreen = fullscreen;
     picture.now.scale = scale;
+    picture.aspect_held = g_aspect_held;
     overlay_init(win, GCN_APP_LABEL, picture);
 
     audio_open();

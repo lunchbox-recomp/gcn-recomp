@@ -11,7 +11,8 @@
 // (ffb_configure, ffb_attach, ffb_update, ffb_shutdown; ffb_update keeps the motor it was
 // given), the RTC (rtc_set_base), the event queue and interrupt request (event_schedule_in,
 // irq_request), and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a
-// check sets by hand. The interrupt handler's thread dump (debug_dump_threads) and guest
+// check sets by hand. The renderer's aspect and internal scale (gx::render_set_output_aspect,
+// gx::render_set_internal_scale) keep what they were last given. The interrupt handler's thread dump (debug_dump_threads) and guest
 // memory (g_mem) are stubbed too, and fatal, which says why and exits 1, and the session's
 // note that the game is starting again (session_relaunching), which notes it was called, and
 // the clock's hold for a bot (host_ns, clock_hold), which no check reaches. So are the end of
@@ -64,8 +65,12 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+static float g_output_aspect;  // what the frontend last gave the renderer, 0 before any
+static int g_internal_scale;
 namespace gx {
 std::atomic<uint32_t> g_frames_submitted{0};
+void render_set_output_aspect(float aspect) { g_output_aspect = aspect; }
+void render_set_internal_scale(int scale) { g_internal_scale = scale; }
 }
 uint32_t gx_frames_submitted() { return gx::g_frames_submitted.load(); }
 void rtc_set_base(time_t) {}
@@ -97,6 +102,7 @@ void threads_request_quit() {}
 bool g_fast_disc = true;
 #ifdef GCN_OVERLAY
 uint64_t audio_frames_out() { return 0; }
+void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display page's picture
 #endif
 
 namespace {
@@ -2005,6 +2011,46 @@ void overlay_buttons(const std::string& dir) {
     check(!running && !g_restart && !overlay_open() && !pause_requested(),
           "confirming Quit closes the overlay, and the frontend's loop stops as for a quit, not a restart");
     check(g_applies == applies, "no press on the way to either button changed the picture");
+
+    // Up from Restart game past the scale and Fullscreen is the aspect's row, and the second in
+    // it is 16:9. With the aspect held, as --eye and GCN_THEATER_STEREO hold it, the row is
+    // there but can't be picked, so the same keys pick nothing.
+    const auto pick_16_9 = [&](bool held) {
+        OverlayPicture p;
+        p.path = dir + (held ? "/held-settings.txt" : "/free-settings.txt");
+        p.apply = record_apply;
+        p.aspect_held = held;
+        display_init(p);
+        const int before = g_applies;
+        tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+        for (int i = 0; i < 8; i++) tap(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
+        for (int i = 0; i < 2; i++) tap(guest, SDL_SCANCODE_LEFT, SDLK_LEFT);
+        for (int i = 0; i < 3; i++) tap(guest, SDL_SCANCODE_UP, SDLK_UP);
+        for (int i = 0; i < 5; i++) tap(guest, SDL_SCANCODE_LEFT, SDLK_LEFT);
+        tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+        tap(guest, SDL_SCANCODE_SPACE, SDLK_SPACE);
+        tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+        return g_applies == before + 1 && g_applied.aspect == "16:9";
+    };
+    check(pick_16_9(false), "up from Restart game past the scale and Fullscreen, the keys pick the Display page's 16:9");
+    check(!pick_16_9(true), "with the aspect held, the same keys pick nothing");
+
+    // The frontend's apply_picture, as the page calls it: the aspect and the scale reach the
+    // renderer, and with the aspect held only the scale does.
+    g_window = window;
+    Settings s;
+    s.aspect = "16:9";
+    s.scale = 4;
+    apply_picture(s);
+    const bool applied = std::abs(g_output_aspect - 16.0f / 9.0f) < 1e-4f && g_internal_scale == 4 && !g_aspect_window;
+    g_aspect_held = true;
+    s.aspect = "21:9";
+    s.scale = 2;
+    apply_picture(s);
+    check(applied && std::abs(g_output_aspect - 16.0f / 9.0f) < 1e-4f && g_internal_scale == 2,
+          "the frontend gives the renderer the page's aspect and scale, and with the aspect held the scale alone");
+    g_aspect_held = false;
+    g_window = nullptr;
 
     // A device controls.txt binds is the file's alone, so its Back opens nothing.
     const std::string controls = dir + "/buttons-controls.txt";

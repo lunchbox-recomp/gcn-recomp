@@ -31,11 +31,14 @@ void display_page(SDL_Window* window) {
     static const char* const kAspects[][2] = {
         {"4:3", "4:3"}, {"16:9", "16:9"}, {"16:10", "16:10"}, {"21:9", "21:9"}, {"window", "Fill window"}};
     ImGui::SeparatorText("Aspect ratio");
+    ImGui::BeginDisabled(g_picture.aspect_held);
     for (const auto& a : kAspects) {
         if (ImGui::RadioButton(a[1], next.aspect == a[0])) next.aspect = a[0];
         ImGui::SameLine();
     }
     ImGui::NewLine();
+    ImGui::EndDisabled();
+    if (g_picture.aspect_held) ImGui::TextDisabled("A headset's view stays 4:3.");
     ImGui::Separator();
     ImGui::Checkbox("Fullscreen", &next.fullscreen);
     ImGui::SeparatorText("Scale");
