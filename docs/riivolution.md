@@ -21,6 +21,8 @@ An XML is a package when its root element is `wiidisc`. Other XMLs, like the set
 
 A symbolic link to an XML isn't followed, and it shows up in the list with an error. A symbolic link for `riivolution/` itself is refused by both `list` and `apply`, since it could point anywhere.
 
+An XML whose name has a control character is listed with an error too, so `apply` never turns it on. A name like that could add a line to a caller's own files, so the error shows it escaped.
+
 A name that starts with a dot is skipped, so `.DS_Store` and the `._` files of a macOS zip never get in. A folder patch with `external="/"` skips an OUT folder named `.out` the same way.
 
 ## Running it
@@ -55,13 +57,17 @@ Then it prints one JSON line.
 
 On exit 1 the command also prints one JSON line on stdout, `{"error": "...", "packages": [...]}`. The `error` is the stderr message without `error: `, and `packages` holds the XML names at fault, both for a conflict. It's empty when no package is at fault, and `list` prints the same line when `riivolution/` is a link.
 
-Nothing is written when anything is refused, so earlier outputs stay as they were. The same inputs give the same bytes.
+Nothing is written when a package is refused, so earlier outputs stay as they were. The same inputs give the same bytes.
 
 ## Where apply writes
 
-OUT usually sits inside ROOT, which a release fills, so `apply` checks it before it writes. It refuses when OUT is a symbolic link, or when one of its three output names is a symbolic link or a folder. A link in a folder above OUT is the player's own and is followed.
+OUT usually sits inside ROOT, which a release fills, so `apply` checks it before it writes. It refuses when OUT is a symbolic link, or when one of its three output names is a symbolic link or a folder. OUT is read as `normpath` spells it, so `.out/.` and `.out/../.out` are the same folder as `.out`.
 
-Each output goes to a new temp file that's never opened through a link. Every temp file is made before any output is replaced, so a write that fails leaves the old outputs as they were.
+A link in a folder above OUT is the player's own and is followed. OUT itself is opened once, as a folder and not through a link. Every write then goes through that open folder, so a link put in OUT's place later changes nothing.
+
+Each output goes to a new temp file that's never opened through a link. Every temp file is made before any output is replaced, so a write that can't be made leaves the old outputs as they were.
+
+Each output name is looked at again just before its replace. If the folder changes during a run, `apply` can stop part way with exit 1, with some outputs replaced and the rest as they were. Running it again puts all three in place, and the manifest is replaced last.
 
 A name with a control character (C0 or DEL) is refused, since a manifest line can't hold one. That covers a part of an `external` path, a name in the host folder of a folder patch and a new disc name. It also covers the folders above ROOT that show in a manifest path.
 

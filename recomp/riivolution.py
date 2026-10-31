@@ -32,6 +32,7 @@ import json
 import os
 import re
 import secrets
+import stat
 import sys
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -40,7 +41,7 @@ import fst  # noqa: E402
 from disc_overlay import FST_FILE, MANIFEST, OverlayError, make_overlay  # noqa: E402
 from dol import DiscImage  # noqa: E402
 from riivolution_patch import Patcher, RamPatch  # noqa: E402
-from riivolution_paths import PathError, cut, fold, match  # noqa: E402
+from riivolution_paths import PathError, control, cut, fold, match  # noqa: E402
 from riivolution_xml import Package, Refused, read_package  # noqa: E402
 
 RAM_LIST = 'ram-patches.txt'
@@ -48,6 +49,7 @@ OUTPUT_NAMES = (FST_FILE, RAM_LIST, MANIFEST)
 # A temp file is made new and is never followed through a link, since OUT can sit in a folder
 # that a release fills.
 NEW_FILE = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, 'O_NOFOLLOW', 0)
+OPEN_OUT = os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0) | getattr(os, 'O_NOFOLLOW', 0)
 Found = Tuple[str, str, Union[Package, Refused]]  # an XML's name, its host path
 
 
@@ -61,7 +63,8 @@ def scan(root: str) -> List[Found]:
     Dolphin reads only the XMLs at the top of that folder, so no folder in it is entered. A name
     that starts with a dot is skipped, and so is an XML with another root element. A symbolic
     link to an XML is listed with an error instead of followed, and the folder itself must not
-    be a link.
+    be a link. An XML whose name has a control character is listed with an error too, with the
+    name escaped in the message, since a name like that could add a line to a caller's own files.
     """
     try:
         top = match(root, 'riivolution')
@@ -78,7 +81,11 @@ def scan(root: str) -> List[Found]:
     for entry in entries:
         if entry.name.startswith('.') or not fold(entry.name).endswith('.xml'):
             continue
-        if entry.is_symlink():
+        if control(entry.name):
+            odd = Refused("has a control character in its name, so it isn't read",
+                          repr(entry.name)[1:-1])
+            found.append((entry.name, entry.path, odd))
+        elif entry.is_symlink():
             link = Refused("is a symbolic link, so it isn't read", entry.name)
             found.append((entry.name, entry.path, link))
         elif entry.is_file(follow_symlinks=False):
@@ -148,22 +155,36 @@ def ram_text(disc_id: str, patches: Sequence[RamPatch]) -> bytes:
     return ('\n'.join(lines) + '\n').encode('ascii')
 
 
-def check_out(out: str) -> None:
+def check_output(name: str, mode: int) -> None:
+    """Refuse an output name that is a link or a folder, given the mode lstat gave it."""
+    if stat.S_ISLNK(mode):
+        raise Refused(f'The output {name} is a symbolic link, so nothing is written there')
+    if stat.S_ISDIR(mode):
+        raise Refused(f'The output {name} is a folder, so nothing is written there')
+
+
+def check_out(out: str) -> str:
     """Refuse an OUT, or an output name in it, that a write could be steered through.
 
     OUT is usually a folder inside ROOT, which a release fills, so a release could leave a link
     where OUT or an output goes. A link in a folder above OUT is the player's own and is followed.
+    The OUT it gives back is the one normpath spells, which every later step uses, so `.out/.` or
+    `.out/../.out` can't hide a link at `.out`.
     """
-    parent, name = os.path.split(out.rstrip('/' + os.sep) or out)
-    last = os.path.join(os.path.realpath(parent or '.'), name)
-    if name not in ('', '.', '..') and os.path.islink(last):
+    norm = os.path.normpath(out)
+    if os.path.islink(norm):
         raise Refused(f"The output folder {cut(out)!r} is a symbolic link, so it isn't written to")
     for output in OUTPUT_NAMES:
-        path = os.path.join(out, output)
-        if os.path.islink(path):
-            raise Refused(f'The output {output} is a symbolic link, so nothing is written there')
-        if os.path.isdir(path):
-            raise Refused(f'The output {output} is a folder, so nothing is written there')
+        try:
+            mode = os.lstat(os.path.join(norm, output)).st_mode
+        except FileNotFoundError:
+            continue
+        check_output(output, mode)
+    return norm
+
+
+def checkpoint(stage: str) -> None:
+    """Called where publish could be caught between two steps. A test replaces it to change OUT."""
 
 
 def temp_name(name: str) -> str:
@@ -171,38 +192,79 @@ def temp_name(name: str) -> str:
     return f'.{name}.{secrets.token_hex(8)}.tmp'
 
 
-def publish(out: str, files: Dict[str, Optional[bytes]]) -> None:
-    """Replace each output that has bytes and remove each that has None.
+def open_out(out: str) -> int:
+    """OUT opened as a folder and not through a link, so every write lands in the folder opened."""
+    try:
+        return os.open(out, OPEN_OUT)
+    except OSError:
+        if os.path.islink(out):
+            raise Refused(f"The output folder {cut(out)!r} is a symbolic link, so it isn't "
+                          'written to') from None
+        raise
 
-    Every temp file is made, new and never through a link, before any output changes, so a
-    write that can't be made leaves the old outputs as they were.
-    """
-    if any(data is not None for data in files.values()):
-        os.makedirs(out, exist_ok=True)
+
+def recheck(fd: int, name: str) -> None:
+    """Refuse an output name in the open folder that has become a link or a folder."""
+    try:
+        mode = os.lstat(name, dir_fd=fd).st_mode
+    except FileNotFoundError:
+        return
+    check_output(name, mode)
+
+
+def write_outputs(fd: int, files: Dict[str, Optional[bytes]]) -> None:
+    for name in OUTPUT_NAMES:
+        recheck(fd, name)
+    checkpoint('temps')
     made: List[Tuple[str, str]] = []
     try:
         for name, data in files.items():
             if data is not None:
-                temp = os.path.join(out, temp_name(name))
-                fd = os.open(temp, NEW_FILE, 0o644)
-                made.append((temp, os.path.join(out, name)))
-                with os.fdopen(fd, 'wb') as f:
+                temp = temp_name(name)
+                made_fd = os.open(temp, NEW_FILE, 0o644, dir_fd=fd)
+                made.append((temp, name))
+                with os.fdopen(made_fd, 'wb') as f:
                     f.write(data)
-        for temp, path in made:
-            os.replace(temp, path)
+        for temp, name in made:  # in order, so the manifest goes last
+            checkpoint(f'replace {name}')
+            recheck(fd, name)
+            os.replace(temp, name, src_dir_fd=fd, dst_dir_fd=fd)
     except BaseException:
         for temp, _ in made:
             with contextlib.suppress(FileNotFoundError):
-                os.unlink(temp)
+                os.unlink(temp, dir_fd=fd)
         raise
     for name, data in files.items():
-        path = os.path.join(out, name)
-        if data is None and os.path.lexists(path):
-            os.unlink(path)
+        if data is None:
+            recheck(fd, name)
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(name, dir_fd=fd)
+
+
+def publish(out: str, files: Dict[str, Optional[bytes]]) -> None:
+    """Replace each output that has bytes and remove each that has None.
+
+    OUT is opened once, not through a link, and every write goes through that open folder, so a
+    link put in OUT's place later changes nothing. Every temp file is made, new and never
+    through a link, before any output changes, so a write that can't be made leaves the old
+    outputs as they were. Each name is looked at again just before its replace. If the folder
+    changes during the run, a replace can still fail part way, and running it again puts all
+    three in place.
+    """
+    if any(data is not None for data in files.values()):
+        os.makedirs(out, exist_ok=True)
+    elif not os.path.lexists(out):
+        return
+    checkpoint('open')
+    fd = open_out(out)
+    try:
+        write_outputs(fd, files)
+    finally:
+        os.close(fd)
 
 
 def apply_packages(image: str, root: str, out: str, specs: Sequence[str]) -> Dict[str, object]:
-    check_out(out)
+    out = check_out(out)
     sd_root = os.path.realpath(root)
     out_dir = os.path.realpath(out)
     entries = scan(sd_root)

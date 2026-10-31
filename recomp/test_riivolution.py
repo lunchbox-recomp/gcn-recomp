@@ -294,6 +294,22 @@ class TestList(SdCase):
         self.assertRegex(self.listing()[0]['error'], r"^<wiidisc> in a\.xml isn't version 1")
         self.assertRegex(self.listing()[1]['error'], r"^<wiidisc> in b\.xml isn't version 1")
 
+    def test_an_xml_name_with_a_control_character_is_an_error_entry_never_a_package(self):
+        # A name like this would add a line to anything that keeps its choices one to a line.
+        names = ['a\nother.xml o = 1\nz.xml', 'del\x7f.xml', 'tab\t.xml', 'one\x01.xml']
+        for name in names:
+            self.package(name, '<memory offset="0x80001000" value="aa"/>')
+        self.package('good.xml', '<memory offset="0x80002000" value="bb"/>')
+        found = {p['xml']: p for p in self.listing()}
+        self.assertEqual(sorted(found), sorted(names + ['good.xml']))
+        for name in names:
+            self.assertEqual(found[name], {'xml': name, 'error': (
+                repr(name)[1:-1] + " has a control character in its name, so it isn't read")})
+            self.assertNotIn('\n', found[name]['error'])
+        self.assertIn('options', found['good.xml'])
+        self.assertEqual(self.apply()['packages'], ['good.xml'])
+        self.assertEqual(self.ram().splitlines()[2:], ['patch 80002000 bb'])
+
     def test_a_symbolic_link_to_an_xml_is_an_error_and_one_to_a_folder_is_not_entered(self):
         real = self.package('real.xml', '')
         elsewhere = self.write(self.tmp, 'elsewhere/b.xml', b'<wiidisc version="1"/>')
@@ -1714,6 +1730,106 @@ class TestOutputGuards(SdCase):
         with mock.patch.object(rv.os, 'replace', side_effect=OSError('no space')):
             self.refused('no space', out=self.out)
         self.assertEqual(self.outputs(), [])
+
+    def test_temp_names_are_new_each_time(self):
+        names = {rv.temp_name('x') for _ in range(20)}
+        self.assertEqual(len(names), 20)
+        for name in names:
+            self.assertRegex(name, r'^\.x\.[0-9a-f]{16}\.tmp$')
+
+    def swap_for_link(self, target):
+        """Move OUT aside and leave a link to target where it was, as a release's helper could."""
+        os.rename(self.out, self.out + '-real')
+        self.link(target, self.out)
+
+    def test_out_swapped_for_a_link_before_it_is_opened_is_refused(self):
+        elsewhere = os.path.join(self.tmp, 'elsewhere')
+        os.makedirs(elsewhere)
+        self.package('a.xml', self.FILE + self.MEM)
+        stages = []
+
+        def checkpoint(stage):
+            stages.append(stage)
+            if stage == 'open':
+                self.swap_for_link(elsewhere)
+
+        with mock.patch.object(rv, 'checkpoint', checkpoint):
+            self.refused(r"^error: The output folder '.*' is a symbolic link, so it isn't "
+                         r"written to$", out=self.out)
+        self.assertEqual(stages, ['open'])
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertEqual(os.listdir(self.out + '-real'), [])
+
+    def test_out_swapped_for_a_link_after_it_is_opened_still_gets_every_write(self):
+        elsewhere = os.path.join(self.tmp, 'elsewhere')
+        os.makedirs(elsewhere)
+        self.package('a.xml', self.FILE + self.MEM)
+
+        def checkpoint(stage):
+            if stage == 'temps':
+                self.swap_for_link(elsewhere)
+
+        with mock.patch.object(rv, 'checkpoint', checkpoint):
+            self.assertEqual(self.apply()['packages'], ['a.xml'])
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertEqual(sorted(os.listdir(self.out + '-real')), OUTPUTS)
+
+    def test_out_swapped_for_a_link_between_the_replaces_still_gets_every_write(self):
+        elsewhere = os.path.join(self.tmp, 'elsewhere')
+        os.makedirs(elsewhere)
+        self.package('a.xml', self.FILE + self.MEM)
+
+        def checkpoint(stage):
+            if stage == 'replace ram-patches.txt':
+                self.swap_for_link(elsewhere)
+
+        with mock.patch.object(rv, 'checkpoint', checkpoint):
+            self.apply()
+        self.assertEqual(os.listdir(elsewhere), [])
+        self.assertEqual(sorted(os.listdir(self.out + '-real')), OUTPUTS)
+
+    def test_a_name_that_becomes_a_folder_before_its_replace_stops_the_run_part_way(self):
+        self.package('a.xml', self.FILE + self.MEM)
+        self.stale()
+        folder = os.path.join(self.out, 'ram-patches.txt')
+
+        def checkpoint(stage):
+            if stage == 'replace ram-patches.txt':
+                os.unlink(folder)
+                os.mkdir(folder)
+
+        with mock.patch.object(rv, 'checkpoint', checkpoint):
+            self.refused(r"^error: The output ram-patches\.txt is a folder, so nothing is "
+                         r"written there$", out=self.out)
+        # fst.bin was replaced first and the manifest goes last, so it is still the old one.
+        self.assertEqual(self.outputs(), OUTPUTS)
+        with open(os.path.join(self.out, 'fst.bin'), 'rb') as f:
+            self.assertNotEqual(f.read(), b'old')
+        with open(os.path.join(self.out, 'disc-overlay.txt'), 'rb') as f:
+            self.assertEqual(f.read(), b'old')
+        os.rmdir(folder)
+        self.apply()
+        self.assertEqual(self.outputs(), OUTPUTS)
+        for name in OUTPUTS:
+            with open(os.path.join(self.out, name), 'rb') as f:
+                self.assertNotEqual(f.read(), b'old', name)
+        self.assertTrue(self.ram().startswith('gcn-ram-patches 1\nbase TEST00\n'))
+
+    def test_out_spelled_with_dots_through_a_link_is_refused(self):
+        folder = os.path.join(self.tmp, 'elsewhere')
+        os.makedirs(folder)
+        self.link(folder, self.out)
+        self.package('a.xml', self.FILE + self.MEM)
+        for spelling in ('/.', '/../.out', '//', '/./', '/sub/..'):
+            with self.subTest(spelling):
+                self.refused(r"^error: The output folder '.*' is a symbolic link, so it isn't "
+                             r"written to$", out=self.out + spelling)
+                self.assertEqual(os.listdir(folder), [])
+
+    def test_out_spelled_with_dots_works_when_it_is_a_folder(self):
+        self.package('a.xml', self.MEM)
+        self.apply(out=self.out + '/../.out')
+        self.assertEqual(self.outputs(), ['ram-patches.txt'])
 
     def test_out_as_a_symbolic_link_is_refused_and_nothing_is_written(self):
         folder = os.path.join(self.tmp, 'elsewhere')
