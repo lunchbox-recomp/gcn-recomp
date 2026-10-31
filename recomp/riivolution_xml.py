@@ -2,21 +2,32 @@
 
 A package is a `wiidisc` XML. Its `id` says which discs it fits, its `options` offer choices and a
 choice turns patches on. The rules are Dolphin's GameCube path (DiscIO/RiivolutionParser.cpp).
-What the reader can't honor is refused by name, and a file is refused before it is parsed when
-it is over 1 MiB, isn't UTF-8 or holds a DOCTYPE or an entity. See docs/riivolution.md.
+What the reader can't honor is refused by name. A file is refused before it is parsed when it is
+over 1 MiB, isn't UTF-8, holds a NUL or another control character or holds a DOCTYPE or an
+entity, and the parser itself refuses a DOCTYPE or an entity that gets past that. See
+docs/riivolution.md.
 """
 import os
 import re
+import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Sequence
+from xml.parsers import expat
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from riivolution_paths import cut  # noqa: E402
 
 MAX_XML = 1 << 20
 MAX_U32 = 0xFFFFFFFF
+MAX_DIGITS = 10  # after any 0x, which fits every 32 bit number
 DTD = re.compile(r'<!\s*(DOCTYPE|ENTITY)', re.IGNORECASE)
+# NUL and the C0 controls but tab, CR and LF. A NUL is how UTF-16 and UTF-32 text shows in UTF-8.
+CONTROL = re.compile('[\x00-\x08\x0b\x0c\x0e-\x1f]')
 NUMBER = re.compile(r'\s*([+-]?)(0[xX][0-9A-Fa-f]+|[0-9]+)\s*')
 HEX = re.compile(r'(0[xX])?((?:[0-9A-Fa-f]{2})*)')
-VARIABLE = re.compile(r'\{\$([^}]*)\}')
+# A name stops at the next { or $ or }, so a run of unclosed {$ is read once and not rescanned.
+VARIABLE = re.compile(r'\{\$([^{}$]*)\}')
 LABELLED = ('id', 'name', 'disc', 'external', 'offset', 'valuefile')
 # The elements of a patch that the reader looks at. Anything else in a patch is ignored.
 PATCH_PARTS = ('file', 'folder', 'memory', 'savegame', 'dolphin_sys_file', 'dolphin_sys_folder')
@@ -26,13 +37,16 @@ class Refused(ValueError):
     """A package, or part of one, that the reader won't use.
 
     The message names the XML and the element, as `<file disc="/a.bin"> in pkg/a.xml has ...`.
+    packages holds the XML paths at fault, which are the XML or the ones the reason names.
     """
 
-    def __init__(self, reason: str, xml: str = '', element: str = '') -> None:
+    def __init__(self, reason: str, xml: str = '', element: str = '',
+                 packages: Sequence[str] = ()) -> None:
         super().__init__(reason)
         self.reason = reason
         self.xml = xml
         self.element = element
+        self.packages = list(packages) or ([xml] if xml else [])
 
     def __str__(self) -> str:
         if self.element:
@@ -57,9 +71,7 @@ class Element:
         for key in LABELLED:
             value = self.node.get(key)
             if value is not None:
-                if len(value) > 60:
-                    value = value[:57] + '...'
-                shown += f' {key}="{value}"'
+                shown += f' {key}="{repr(cut(value))[1:-1]}"'  # escapes a newline in a value
         return f'<{self.tag}{shown}>'
 
     def refuse(self, reason: str) -> Refused:
@@ -75,11 +87,19 @@ class Element:
             return default
         found = NUMBER.fullmatch(value)
         if not found or (found.group(1) == '-' and not signed):
-            raise self.refuse(f"has {name}={value!r}, which isn't a number")
-        number = int(found.group(2), 0)
+            raise self.refuse(f"has {name}={cut(value)!r}, which isn't a number")
+        digits = found.group(2)
+        hexed = digits[:2] in ('0x', '0X')
+        if len(digits) - 2 * hexed > MAX_DIGITS:
+            raise self.refuse(f"has {name}={cut(value)!r}, which has more than {MAX_DIGITS} "
+                              "digits")
+        try:  # a leading zero is still decimal, as pugixml reads it
+            number = int(digits, 16) if hexed else int(digits, 10)
+        except ValueError:
+            raise self.refuse(f"has {name}={cut(value)!r}, which isn't a number") from None
         number = -number if found.group(1) == '-' else number
         if number > MAX_U32 or number < -(1 << 31):
-            raise self.refuse(f"has {name}={value!r}, which doesn't fit in 32 bits")
+            raise self.refuse(f"has {name}={cut(value)!r}, which doesn't fit in 32 bits")
         return number
 
     def flag(self, name: str, default: bool) -> bool:
@@ -94,7 +114,7 @@ class Element:
             return None
         found = HEX.fullmatch(value)
         if not found:
-            raise self.refuse(f"has {name}={value!r}, which isn't whole hex bytes")
+            raise self.refuse(f"has {name}={cut(value)!r}, which isn't whole hex bytes")
         return bytes.fromhex(found.group(2))
 
     def children(self, tag: str) -> List['Element']:
@@ -135,7 +155,6 @@ class Choice:
 class Option:
     """One option. key is its id, or its section's name and its own when it has no id."""
     key: str
-    id: str
     name: str
     section: str
     default: int
@@ -189,17 +208,43 @@ def expand(text: str, game_id: str) -> str:
 
     def swap(found: 're.Match[str]') -> str:
         if found.group(1) not in values:
-            raise VariableError(f"uses {found.group(0)}, which isn't supported")
+            raise VariableError(f"uses {cut(found.group(0))}, which isn't supported")
         return values[found.group(1)]
 
     return VARIABLE.sub(swap, text)
 
 
+def _no_dtd(xml: str) -> Callable[..., None]:
+    def refuse(*_args: object) -> None:
+        raise Refused('has a DOCTYPE or an entity, and neither is read', xml)
+    return refuse
+
+
+def parse_text(text: str, xml: str) -> ET.Element:
+    """The root element of XML text, with the parser itself refusing a DOCTYPE or an entity.
+
+    The byte scan in read_root should have stopped one already. This is the second wall, for
+    a declaration that the scan couldn't see. Names are read as written, with no namespaces.
+    """
+    builder = ET.TreeBuilder()
+    parser = expat.ParserCreate()
+    refuse = _no_dtd(xml)
+    parser.StartDoctypeDeclHandler = refuse
+    parser.EntityDeclHandler = refuse
+    parser.UnparsedEntityDeclHandler = refuse
+    parser.ExternalEntityRefHandler = refuse
+    parser.StartElementHandler = builder.start
+    parser.EndElementHandler = builder.end
+    try:
+        parser.Parse(text, True)
+    except expat.ExpatError as e:
+        raise Refused(f"isn't well-formed XML ({e})", xml) from None
+    return builder.close()
+
+
 def read_root(path: str, xml: str) -> ET.Element:
     """The root element of an XML file, after the checks that come before parsing."""
     try:
-        if os.stat(path).st_size > MAX_XML:
-            raise Refused("is over 1 MiB, so it isn't read", xml)
         with open(path, 'rb') as f:
             data = f.read(MAX_XML + 1)
     except OSError as e:
@@ -210,12 +255,11 @@ def read_root(path: str, xml: str) -> ET.Element:
         text = data.decode('utf-8-sig')
     except UnicodeDecodeError:
         raise Refused("isn't UTF-8", xml) from None
+    if CONTROL.search(text):
+        raise Refused("has a NUL or another control character, so it isn't read", xml)
     if DTD.search(text):
         raise Refused('has a DOCTYPE or an entity, and neither is read', xml)
-    try:
-        return ET.fromstring(text)
-    except (ET.ParseError, RecursionError) as e:
-        raise Refused(f"isn't well-formed XML ({e})", xml) from None
+    return parse_text(text, xml)
 
 
 def read_package(path: str, xml: str) -> Optional[Package]:
@@ -271,7 +315,7 @@ def _options(root: ET.Element, xml: str) -> List[Option]:
             _no_params(node, xml)
             key = option.text('id') or section_name + option.text('name')
             if key in keys:
-                raise option.refuse(f'repeats the option id {key!r}')
+                raise option.refuse(f'repeats the option id {cut(key)!r}')
             keys.add(key)
             choices = []
             for choice in node.findall('choice'):
@@ -280,7 +324,7 @@ def _options(root: ET.Element, xml: str) -> List[Option]:
                     _no_params(ref, xml)
                 refs = Element(choice, xml).children('patch')
                 choices.append(Choice(choice.get('name', ''), refs))
-            options.append(Option(key, option.text('id'), option.text('name'), section_name,
+            options.append(Option(key, option.text('name'), section_name,
                                   option.number('default', 0), choices))
     return options
 

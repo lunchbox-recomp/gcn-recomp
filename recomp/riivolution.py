@@ -1,35 +1,37 @@
 #!/usr/bin/env python3
 """Turn a folder of Riivolution mods into a disc overlay and a RAM patch list.
 
-ROOT is the SD root a Riivolution release unzips into, so the XMLs sit under ROOT/riivolution/.
-Each XML that has a wiidisc root is a package. A package offers options, and each option has
-choices that turn patches on. File and folder patches become a disc overlay (see
+ROOT is the SD root a Riivolution release unzips into, so the XMLs sit in ROOT/riivolution/.
+Each XML there that has a wiidisc root is a package. A package offers options, and each option
+has choices that turn patches on. File and folder patches become a disc overlay (see
 docs/disc-overlay.md) and memory patches become a RAM patch list. See docs/riivolution.md for
 what is read and what is refused.
 
 Usage:
   riivolution.py list ROOT
-      print one JSON line, {"packages": [...]}. A package has its XML's path under
-      ROOT/riivolution/ and either its options or an error. An option has an id, a name, its
-      section, the names of its choices and its default, which is a choice number from 1, or 0
-      for none. The id is the option's own, or its section's name and its name together when it
-      has none.
+      print one JSON line, {"packages": [...]}. A package has its XML's name and either its
+      options or an error. An option has an id, a name, its section, the names of its choices
+      and its default, which is a choice number from 1, or 0 for none. The id is the option's
+      own, or its section's name and its name together when it has none.
   riivolution.py apply IMAGE ROOT OUT [--choice XML:OPTION=CHOICE ...]
       write OUT/disc-overlay.txt and OUT/fst.bin when a file patch applies and OUT/ram-patches.txt
       when a memory patch does, and remove the ones that don't apply. Then print one JSON line
       with the packages that are on, the files replaced and added, the RAM patches and bytes
       and the overlay's summary. An option with no --choice uses its default, and choice 0 turns
-      it off. The packages are taken in the order of their XML paths.
+      it off, also for a package with an error. The packages are taken in the order of their names.
       Exits 0, or 1 with `error: ...` naming the XML and the element of the first refused
-      package, or 2 on bad arguments. Nothing is written when anything is refused. The same
-      inputs give the same bytes.
+      package, or 2 on bad arguments. On 1 it also prints one JSON line,
+      {"error": "...", "packages": [...]}, with the XML names at fault, both for a conflict.
+      Nothing is written when anything is refused. The same inputs give the same bytes.
 
 The image is a plain image or a CISO. OUT is made when it has something to hold.
 """
 import argparse
+import contextlib
 import json
 import os
 import re
+import secrets
 import sys
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
@@ -38,11 +40,15 @@ import fst  # noqa: E402
 from disc_overlay import FST_FILE, MANIFEST, OverlayError, make_overlay  # noqa: E402
 from dol import DiscImage  # noqa: E402
 from riivolution_patch import Patcher, RamPatch  # noqa: E402
-from riivolution_paths import PathError, fold, match  # noqa: E402
+from riivolution_paths import PathError, cut, fold, match  # noqa: E402
 from riivolution_xml import Package, Refused, read_package  # noqa: E402
 
 RAM_LIST = 'ram-patches.txt'
-Found = Tuple[str, str, Union[Package, Refused]]  # an XML's path under riivolution/, its host path
+OUTPUT_NAMES = (FST_FILE, RAM_LIST, MANIFEST)
+# A temp file is made new and is never followed through a link, since OUT can sit in a folder
+# that a release fills.
+NEW_FILE = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, 'O_NOFOLLOW', 0)
+Found = Tuple[str, str, Union[Package, Refused]]  # an XML's name, its host path
 
 
 class UsageError(ValueError):
@@ -50,10 +56,12 @@ class UsageError(ValueError):
 
 
 def scan(root: str) -> List[Found]:
-    """Every package under ROOT/riivolution, in the order of their paths.
+    """Every package directly in ROOT/riivolution, in the order of their names.
 
-    A file or folder whose name starts with a dot is skipped, and so is an XML with another root
-    element. A symbolic link to a folder or an XML is listed with an error instead of followed.
+    Dolphin reads only the XMLs at the top of that folder, so no folder in it is entered. A name
+    that starts with a dot is skipped, and so is an XML with another root element. A symbolic
+    link to an XML is listed with an error instead of followed, and the folder itself must not
+    be a link.
     """
     try:
         top = match(root, 'riivolution')
@@ -61,31 +69,27 @@ def scan(root: str) -> List[Found]:
         raise Refused(f"The folder 'riivolution' {e}") from None
     if top is None:
         return []
+    folder = os.path.join(root, top)
+    if os.path.islink(folder):
+        raise Refused("The folder 'riivolution' is a symbolic link, so it isn't read")
     found: List[Found] = []
-    todo = [((), os.path.join(root, top))]
-    while todo:
-        names, folder = todo.pop()
-        with os.scandir(folder) as it:
-            entries = sorted(it, key=lambda e: e.name)
-        for entry in entries:
-            xml = '/'.join(names + (entry.name,))
-            if entry.name.startswith('.'):
-                continue
-            if entry.is_symlink():
-                if fold(entry.name).endswith('.xml') or entry.is_dir():
-                    link = Refused("is a symbolic link, so it isn't read", xml)
-                    found.append((xml, entry.path, link))
-            elif entry.is_dir(follow_symlinks=False):
-                todo.append((names + (entry.name,), entry.path))
-            elif entry.is_file(follow_symlinks=False) and fold(entry.name).endswith('.xml'):
-                try:
-                    package = read_package(entry.path, xml)
-                except Refused as e:
-                    found.append((xml, entry.path, e))
-                else:
-                    if package is not None:
-                        found.append((xml, entry.path, package))
-    return sorted(found, key=lambda f: f[0])
+    with os.scandir(folder) as it:
+        entries = sorted(it, key=lambda e: e.name)
+    for entry in entries:
+        if entry.name.startswith('.') or not fold(entry.name).endswith('.xml'):
+            continue
+        if entry.is_symlink():
+            link = Refused("is a symbolic link, so it isn't read", entry.name)
+            found.append((entry.name, entry.path, link))
+        elif entry.is_file(follow_symlinks=False):
+            try:
+                package = read_package(entry.path, entry.name)
+            except Refused as e:
+                found.append((entry.name, entry.path, e))
+            else:
+                if package is not None:
+                    found.append((entry.name, entry.path, package))
+    return found
 
 
 def list_packages(root: str) -> Dict[str, object]:
@@ -104,30 +108,34 @@ def parse_picks(specs: Sequence[str],
                 found: Dict[str, Union[Package, Refused]]) -> Dict[str, Dict[str, int]]:
     """The choices from --choice XML:OPTION=CHOICE, by package and option.
 
-    The XML is the longest package path the argument starts with, so a colon in a path or an
-    option id doesn't confuse it.
+    The XML is the longest package name the argument starts with, so a colon in a name or an
+    option id doesn't confuse it. A choice of 0 for a package with an error is allowed and does
+    nothing, so an off that was saved for a package that later broke doesn't stop the rest.
     """
     picks: Dict[str, Dict[str, int]] = {}
     for spec in specs:
         parts = re.fullmatch(r'(.*)=([0-9]+)', spec)
         if not parts:
-            raise UsageError(f"--choice {spec!r} isn't XML:OPTION=CHOICE with a choice number")
+            raise UsageError(f"--choice {cut(spec)!r} isn't XML:OPTION=CHOICE with a choice "
+                             'number')
         head, number = parts.group(1), int(parts.group(2))
         xml = max((x for x in found if head.startswith(x + ':')), key=len, default=None)
         if xml is None:
-            raise UsageError(f'--choice {spec!r} names no package under riivolution/')
+            raise UsageError(f'--choice {cut(spec)!r} names no package under riivolution/')
         package = found[xml]
         if isinstance(package, Refused):
-            raise package
+            if number:
+                raise package
+            continue
         key = head[len(xml) + 1:]
         option = next((o for o in package.options if o.key == key), None)
         if option is None:
-            raise UsageError(f'--choice {spec!r} names no option {key!r} in {xml}')
+            raise UsageError(f'--choice {cut(spec)!r} names no option {cut(key)!r} in {xml}')
         if number > len(option.choices):
-            raise UsageError(f'--choice {spec!r} is past the {len(option.choices)} choices of '
-                             f'{key!r}')
+            raise UsageError(f'--choice {cut(spec)!r} is past the {len(option.choices)} '
+                             f'choices of {cut(key)!r}')
         if key in picks.setdefault(xml, {}):
-            raise UsageError(f'--choice names {key!r} in {xml} twice')
+            raise UsageError(f'--choice names {cut(key)!r} in {xml} twice')
         picks[xml][key] = number
     return picks
 
@@ -140,22 +148,61 @@ def ram_text(disc_id: str, patches: Sequence[RamPatch]) -> bytes:
     return ('\n'.join(lines) + '\n').encode('ascii')
 
 
+def check_out(out: str) -> None:
+    """Refuse an OUT, or an output name in it, that a write could be steered through.
+
+    OUT is usually a folder inside ROOT, which a release fills, so a release could leave a link
+    where OUT or an output goes. A link in a folder above OUT is the player's own and is followed.
+    """
+    parent, name = os.path.split(out.rstrip('/' + os.sep) or out)
+    last = os.path.join(os.path.realpath(parent or '.'), name)
+    if name not in ('', '.', '..') and os.path.islink(last):
+        raise Refused(f"The output folder {cut(out)!r} is a symbolic link, so it isn't written to")
+    for output in OUTPUT_NAMES:
+        path = os.path.join(out, output)
+        if os.path.islink(path):
+            raise Refused(f'The output {output} is a symbolic link, so nothing is written there')
+        if os.path.isdir(path):
+            raise Refused(f'The output {output} is a folder, so nothing is written there')
+
+
+def temp_name(name: str) -> str:
+    """A name for the temp file of an output, which nothing can have planned for."""
+    return f'.{name}.{secrets.token_hex(8)}.tmp'
+
+
 def publish(out: str, files: Dict[str, Optional[bytes]]) -> None:
-    """Write each file that has bytes and remove each that has None."""
+    """Replace each output that has bytes and remove each that has None.
+
+    Every temp file is made, new and never through a link, before any output changes, so a
+    write that can't be made leaves the old outputs as they were.
+    """
     if any(data is not None for data in files.values()):
         os.makedirs(out, exist_ok=True)
+    made: List[Tuple[str, str]] = []
+    try:
+        for name, data in files.items():
+            if data is not None:
+                temp = os.path.join(out, temp_name(name))
+                fd = os.open(temp, NEW_FILE, 0o644)
+                made.append((temp, os.path.join(out, name)))
+                with os.fdopen(fd, 'wb') as f:
+                    f.write(data)
+        for temp, path in made:
+            os.replace(temp, path)
+    except BaseException:
+        for temp, _ in made:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temp)
+        raise
     for name, data in files.items():
         path = os.path.join(out, name)
-        if data is None:
-            if os.path.lexists(path):
-                os.unlink(path)
-        else:
-            with open(path + '.tmp', 'wb') as f:
-                f.write(data)
-            os.replace(path + '.tmp', path)
+        if data is None and os.path.lexists(path):
+            os.unlink(path)
 
 
 def apply_packages(image: str, root: str, out: str, specs: Sequence[str]) -> Dict[str, object]:
+    check_out(out)
     sd_root = os.path.realpath(root)
     out_dir = os.path.realpath(out)
     entries = scan(sd_root)
@@ -221,6 +268,8 @@ def main(argv: Optional[Sequence[str]] = None) -> None:
     except UsageError as e:
         parser.error(str(e))
     except (Refused, OverlayError, fst.FstError, OSError) as e:
+        packages = e.packages if isinstance(e, Refused) else []
+        print(json.dumps({'error': str(e), 'packages': packages}, sort_keys=True))
         sys.exit(f'error: {e}')
 
 

@@ -11,9 +11,11 @@ import json
 import os
 import shutil
 import struct
+import re
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 import xml.etree.ElementTree as ET
@@ -98,10 +100,14 @@ class SdCase(unittest.TestCase):
         return self.write(self.tmp, 'other.iso', bytes(data))
 
     def run_main(self, argv):
+        """The JSON line main prints. What it printed stays in self.printed, exit or not."""
         buf = io.StringIO()
-        with contextlib.redirect_stdout(buf):
-            rv.main(argv)
-        return json.loads(buf.getvalue())
+        try:
+            with contextlib.redirect_stdout(buf):
+                rv.main(argv)
+        finally:
+            self.printed = buf.getvalue()
+        return json.loads(self.printed)
 
     def apply(self, *extra, image=None, out=None, root=None):
         return self.run_main(['apply', image or self.image, root or self.root, out or self.out]
@@ -111,13 +117,23 @@ class SdCase(unittest.TestCase):
         return self.run_main(['list', self.root])['packages']
 
     def refused(self, pattern, *extra, **kw):
-        """apply exits 1 with `error: ` and a message that matches, and writes nothing."""
+        """apply exits 1 with `error: ` and a message that matches, and writes nothing.
+
+        It returns what apply printed on stdout, which refusal() reads as JSON.
+        """
         with self.assertRaises(SystemExit) as cm:
             self.apply(*extra, **kw)
         self.assertRegex(str(cm.exception.code), r'^error: ')
         self.assertRegex(str(cm.exception.code), pattern)
         if 'out' not in kw:
             self.assertFalse(os.path.exists(self.out))
+        return self.printed
+
+    def refusal(self, pattern, *extra, **kw):
+        """Like refused, and gives back the one JSON line apply printed before it exited."""
+        shown = self.refused(pattern, *extra, **kw)
+        self.assertEqual(len(shown.splitlines()), 1, shown)
+        return json.loads(shown)
 
     def bad_arguments(self, pattern, *extra, **kw):
         err = io.StringIO()
@@ -155,12 +171,12 @@ class SdCase(unittest.TestCase):
 
 class TestList(SdCase):
     def test_a_package_lists_its_options_with_choices_and_defaults(self):
-        self.xml('mods/two.xml', '''<wiidisc version="1"><id game="TEST"/><options>
+        self.xml('two.xml', '''<wiidisc version="1"><id game="TEST"/><options>
           <section name="First"><option name="Music" id="music" default="2">
             <choice name="Off"/><choice name="Loud"/></option></section>
           <section name="Second"><option name="Speed" id="speed">
             <choice name="Fast"/></option></section></options></wiidisc>''')
-        self.assertEqual(self.listing(), [{'xml': 'mods/two.xml', 'options': [
+        self.assertEqual(self.listing(), [{'xml': 'two.xml', 'options': [
             {'id': 'music', 'name': 'Music', 'section': 'First', 'default': 2,
              'choices': ['Off', 'Loud']},
             {'id': 'speed', 'name': 'Speed', 'section': 'Second', 'default': 0,
@@ -175,21 +191,52 @@ class TestList(SdCase):
         self.xml('a.xml', '<wiidisc version="1"><patch id="p"/></wiidisc>')
         self.assertEqual(self.listing(), [{'xml': 'a.xml', 'options': []}])
 
-    def test_packages_come_in_path_order_with_slashes(self):
-        for rel in ('z.xml', 'mods/inner/b.xml', 'mods/a.XML', 'B.xml'):
+    def test_packages_come_in_name_order(self):
+        for rel in ('z.xml', 'b b.xml', 'a.XML', 'B.xml'):
             self.package(rel, '')
         self.assertEqual([p['xml'] for p in self.listing()],
-                         ['B.xml', 'mods/a.XML', 'mods/inner/b.xml', 'z.xml'])
+                         ['B.xml', 'a.XML', 'b b.xml', 'z.xml'])
 
     def test_files_that_are_not_packages_are_left_out(self):
         self.package('real.xml', '')
-        self.xml('config/TEST.xml', '<riivolution version="2"><option id="x" default="1"/>'
+        self.xml('TEST.xml', '<riivolution version="2"><option id="x" default="1"/>'
                  '</riivolution>')
         self.xml('.hidden.xml', '<wiidisc version="1"/>')
         self.xml('._real.xml', 'not xml at all')
-        self.xml('.git/inner.xml', '<wiidisc version="1"/>')
         self.xml('notes.txt', '<wiidisc version="1"/>')
         self.assertEqual([p['xml'] for p in self.listing()], ['real.xml'])
+
+    def test_only_the_top_of_the_riivolution_folder_is_read(self):
+        self.package('top.xml', '')
+        self.package('config/TEST.xml', '')
+        self.package('mods/inner/b.xml', '')
+        self.xml('.git/inner.xml', '<wiidisc version="1"/>')
+        self.assertEqual([p['xml'] for p in self.listing()], ['top.xml'])
+        self.assertEqual(self.apply()['packages'], ['top.xml'])
+
+    def test_a_folder_that_cannot_be_read_does_not_stop_the_listing(self):
+        if hasattr(os, 'geteuid') and os.geteuid() == 0:
+            self.skipTest('root can read any folder')
+        self.package('good.xml', '')
+        locked = os.path.join(self.root, 'riivolution', 'locked')
+        os.mkdir(locked)
+        os.chmod(locked, 0)
+        self.addCleanup(os.chmod, locked, 0o755)
+        self.assertEqual([p['xml'] for p in self.listing()], ['good.xml'])
+
+    def test_a_symbolic_link_for_the_riivolution_folder_is_refused(self):
+        elsewhere = os.path.join(self.tmp, 'elsewhere')
+        self.write(elsewhere, 'a.xml', b'<wiidisc version="1"/>')
+        shutil.rmtree(os.path.join(self.root, 'riivolution'))
+        self.link(elsewhere, os.path.join(self.root, 'riivolution'))
+        with self.assertRaises(SystemExit) as cm:
+            self.run_main(['list', self.root])
+        self.assertEqual(str(cm.exception.code),
+                         "error: The folder 'riivolution' is a symbolic link, so it isn't read")
+        self.assertEqual(json.loads(self.printed), {
+            'error': "The folder 'riivolution' is a symbolic link, so it isn't read",
+            'packages': []})
+        self.refused(r"The folder 'riivolution' is a symbolic link")
 
     def test_no_riivolution_folder_lists_nothing(self):
         os.rmdir(os.path.join(self.root, 'riivolution'))
@@ -247,15 +294,15 @@ class TestList(SdCase):
         self.assertRegex(self.listing()[0]['error'], r"^<wiidisc> in a\.xml isn't version 1")
         self.assertRegex(self.listing()[1]['error'], r"^<wiidisc> in b\.xml isn't version 1")
 
-    def test_a_symbolic_link_to_an_xml_or_a_folder_is_an_error(self):
-        real = self.package('real/a.xml', '')
+    def test_a_symbolic_link_to_an_xml_is_an_error_and_one_to_a_folder_is_not_entered(self):
+        real = self.package('real.xml', '')
+        elsewhere = self.write(self.tmp, 'elsewhere/b.xml', b'<wiidisc version="1"/>')
         self.link(real, os.path.join(self.root, 'riivolution', 'link.xml'))
-        self.link(os.path.dirname(real), os.path.join(self.root, 'riivolution', 'linked'))
+        self.link(os.path.dirname(elsewhere), os.path.join(self.root, 'riivolution', 'linked'))
         found = {p['xml']: p for p in self.listing()}
-        self.assertEqual(sorted(found), ['link.xml', 'linked', 'real/a.xml'])
+        self.assertEqual(sorted(found), ['link.xml', 'real.xml'])
         self.assertIn('symbolic link', found['link.xml']['error'])
-        self.assertIn('symbolic link', found['linked']['error'])
-        self.assertIn('options', found['real/a.xml'])
+        self.assertIn('options', found['real.xml'])
 
     def test_a_malformed_or_odd_file_is_an_error(self):
         self.xml('open.xml', '<wiidisc version="1">')
@@ -304,6 +351,48 @@ class TestXmlSafety(SdCase):
         with self.assertRaisesRegex(rxml.Refused, "isn't UTF-8"):
             self.read(text.encode('utf-16'))
 
+    def test_utf_16_and_utf_32_with_no_byte_order_mark_are_refused_whatever_they_hold(self):
+        # Their bytes are valid UTF-8 with NULs in, so the scan for a DOCTYPE can't see inside.
+        text = ('<!DOCTYPE wiidisc [<!ENTITY a "EXPANDED">]><wiidisc version="1"><options>'
+                '<section name="s"><option name="&a;&a;"/></section></options></wiidisc>')
+        for codec in ('utf-16-le', 'utf-16-be', 'utf-32-le', 'utf-32-be'):
+            with self.subTest(codec):
+                with self.assertRaisesRegex(
+                        rxml.Refused, r'^one\.xml has a NUL or another control character'):
+                    self.read(text.encode(codec))
+
+    def test_a_listing_never_shows_what_an_entity_in_such_a_file_would_expand_to(self):
+        text = ('<!DOCTYPE wiidisc [<!ENTITY a "EXPANDED">]><wiidisc version="1"><options>'
+                '<section name="s"><option name="&a;&a;"/></section></options></wiidisc>')
+        self.write(self.root, 'riivolution/le.xml', text.encode('utf-16-le'))
+        self.write(self.root, 'riivolution/be.xml', text.encode('utf-16-be'))
+        found = {p['xml']: p for p in self.listing()}
+        self.assertEqual(sorted(found), ['be.xml', 'le.xml'])
+        for name in found:
+            self.assertRegex(found[name]['error'], 'control character')
+            self.assertNotIn('EXPANDED', json.dumps(found[name]))
+
+    def test_an_entity_bomb_in_utf_16_with_no_byte_order_mark_is_refused_fast(self):
+        # Six levels expand to a few MB, which is enough to show a parse that wasn't stopped.
+        lol = '<!ENTITY l0 "lol">' + ''.join(
+            f'<!ENTITY l{i} "' + f'&l{i - 1};' * 10 + '">' for i in range(1, 7))
+        text = f'<!DOCTYPE wiidisc [{lol}]><wiidisc version="1">&l6;</wiidisc>'
+        for codec in ('utf-16-le', 'utf-16-be'):
+            with self.subTest(codec):
+                started = time.monotonic()
+                with self.assertRaisesRegex(rxml.Refused, 'control character'):
+                    self.read(text.encode(codec))
+                self.assertLess(time.monotonic() - started, 1.0)
+
+    def test_a_nul_or_a_control_character_is_refused_but_tab_cr_and_lf_are_not(self):
+        for char in ('\x00', '\x01', '\x08', '\x0b', '\x0c', '\x0e', '\x1f'):
+            with self.subTest(repr(char)):
+                with self.assertRaisesRegex(rxml.Refused, 'control character'):
+                    self.read(f'<wiidisc version="1"/>{char}'.encode())
+                with self.assertRaisesRegex(rxml.Refused, 'control character'):
+                    self.read(f'<wiidisc version="1" a="{char}"/>'.encode())
+        self.assertIsNotNone(self.read(b'<wiidisc\tversion="1"\r\n>\r\n\t</wiidisc>\n'))
+
     def test_a_byte_order_mark_is_allowed(self):
         self.assertIsNotNone(self.read(b'\xef\xbb\xbf<wiidisc version="1"/>'))
 
@@ -322,10 +411,66 @@ class TestXmlSafety(SdCase):
         self.xml('bad.xml', '<!DOCTYPE wiidisc []><wiidisc version="1"/>')
         self.refused(r'bad\.xml has a DOCTYPE', '--choice', 'bad.xml:opt=1')
 
+    def test_choice_zero_for_a_package_with_an_error_is_allowed_and_does_nothing(self):
+        self.xml('bad.xml', '<!DOCTYPE wiidisc []><wiidisc version="1"/>')
+        self.package('good.xml', '<memory offset="0x80001000" value="aa"/>')
+        self.assertEqual(self.apply('--choice', 'bad.xml:opt=0')['packages'], ['good.xml'])
+        self.assertEqual(self.apply('--choice', 'bad.xml:no such option=0')['packages'],
+                         ['good.xml'])
+        self.refused(r'bad\.xml has a DOCTYPE', '--choice', 'bad.xml:opt=1', out=self.out)
+
     def test_apply_leaves_a_package_with_an_error_off_when_no_choice_names_it(self):
         self.xml('bad.xml', '<!DOCTYPE wiidisc []><wiidisc version="1"/>')
         self.package('good.xml', '<memory offset="0x80001000" value="aa"/>')
         self.assertEqual(self.apply()['packages'], ['good.xml'])
+
+
+class TestDtdWall(unittest.TestCase):
+    """The parser's own refusal of a DOCTYPE, which holds if the scan before it is fooled."""
+
+    def test_a_doctype_that_got_past_the_scan_still_stops_the_parse(self):
+        lol = '<!ENTITY l0 "lol">' + ''.join(
+            f'<!ENTITY l{i} "' + f'&l{i - 1};' * 10 + '">' for i in range(1, 6))
+        for text in ('<!DOCTYPE wiidisc><wiidisc version="1"/>',
+                     '<!DOCTYPE wiidisc [<!ENTITY a "b">]><wiidisc version="1">&a;</wiidisc>',
+                     '<!DOCTYPE wiidisc SYSTEM "file:///nowhere"><wiidisc version="1"/>',
+                     f'<!DOCTYPE wiidisc [{lol}]><wiidisc version="1" a="&l5;"/>'):
+            with self.subTest(text[:40]):
+                with self.assertRaisesRegex(
+                        rxml.Refused, r'^f\.xml has a DOCTYPE or an entity, and neither is read'):
+                    rxml.parse_text(text, 'f.xml')
+
+    def test_every_declaration_handler_refuses(self):
+        made = []
+        real = rxml.expat.ParserCreate
+
+        def create(*args, **kw):
+            made.append(real(*args, **kw))
+            return made[-1]
+
+        with mock.patch.object(rxml.expat, 'ParserCreate', create):
+            rxml.parse_text('<wiidisc version="1"/>', 'f.xml')
+        for name in ('StartDoctypeDeclHandler', 'EntityDeclHandler',
+                     'UnparsedEntityDeclHandler', 'ExternalEntityRefHandler'):
+            with self.subTest(name):
+                handler = getattr(made[0], name)
+                self.assertIsNotNone(handler)
+                with self.assertRaisesRegex(rxml.Refused, '^f.xml has a DOCTYPE or an entity'):
+                    handler('x', 'y', 'z')
+
+    def test_a_plain_document_comes_out_as_elements_with_no_namespaces_read(self):
+        root = rxml.parse_text('<wiidisc version="1" xmlns:q="u"><q:a id="1">text<b/></q:a>'
+                               '<!-- note --><?pi x?></wiidisc>', 'f.xml')
+        self.assertEqual((root.tag, root.get('version'), root.get('xmlns:q')),
+                         ('wiidisc', '1', 'u'))
+        self.assertEqual([c.tag for c in root], ['q:a'])
+        self.assertEqual([c.tag for c in root[0]], ['b'])
+
+    def test_a_document_that_is_not_well_formed_is_refused_naming_the_file(self):
+        for text in ('<wiidisc version="1">', '<a></b>', '', 'plain text', '<a>&nope;</a>'):
+            with self.subTest(text):
+                with self.assertRaisesRegex(rxml.Refused, r"^f\.xml isn't well-formed XML"):
+                    rxml.parse_text(text, 'f.xml')
 
 
 class TestAttributes(unittest.TestCase):
@@ -338,6 +483,28 @@ class TestAttributes(unittest.TestCase):
         self.assertEqual(el.number('w', 0, signed=True), -3)
         self.assertEqual(el.number('v', 0), 5)
         self.assertEqual(el.number('missing', 99), 99)
+
+    def test_a_leading_zero_is_decimal_as_pugixml_reads_it(self):
+        el = self.el('<a v="01" w="0100" x="010" y="00" z="0x0100" u="0009"/>')
+        self.assertEqual([el.number(n, 99) for n in 'vwxyzu'], [1, 100, 10, 0, 256, 9])
+
+    def test_a_number_is_at_most_10_digits_after_any_0x(self):
+        el = self.el('<a x="4294967295" y="0x00000000ff" z="0000000009" w="0xFFFFFFFF"/>')
+        self.assertEqual([el.number(n, 99) for n in 'xyzw'], [4294967295, 255, 9, 4294967295])
+        for bad in ('1' * 11, '0' * 11, '0x' + '0' * 11, '1' * 5000, '0x' + 'f' * 5000,
+                    '-' + '1' * 11, '+' + '1' * 5000):
+            with self.subTest(len(bad)):
+                with self.assertRaisesRegex(rxml.Refused, r'^<a id="q"> in f\.xml has x=') as cm:
+                    self.el(f'<a id="q" x="{bad}"/>').number('x', 0, signed=True)
+                self.assertLess(len(str(cm.exception)), 200)
+
+    def test_a_conversion_error_is_a_refusal_and_never_a_crash(self):
+        # Python 3.11 and later stop int() at 4300 digits whatever the cap here says.
+        with mock.patch.object(rxml, 'MAX_DIGITS', 10 ** 6):
+            for text in ('9' * 5000, '0x' + 'f' * 5000):
+                with self.subTest(len(text)):
+                    with self.assertRaisesRegex(rxml.Refused, r'^<a id="q"> in f\.xml has x='):
+                        self.el(f'<a id="q" x="{text}"/>').number('x', 0)
 
     def test_a_number_that_is_not_one_is_refused_naming_the_element(self):
         for bad in ('abc', '', '1 2', '0x', '1.5', '-1', '0x100000000', '4294967296'):
@@ -383,6 +550,17 @@ class TestAttributes(unittest.TestCase):
         self.assertEqual(rxml.expand('no variables {here', 'ABCDEF'), 'no variables {here')
         with self.assertRaisesRegex(rxml.VariableError, r'uses \{\$speed\}'):
             rxml.expand('/{$speed}/x', 'ABCDEF')
+
+    def test_a_variable_that_never_closes_is_left_alone_and_the_next_one_still_fills(self):
+        self.assertEqual(rxml.expand('{$a{$__gameid}', 'ABCDEF'), '{$aABC')
+        self.assertEqual(rxml.expand('{$$__gameid}', 'ABCDEF'), '{$$__gameid}')
+        self.assertEqual(rxml.expand('{$__gameid', 'ABCDEF'), '{$__gameid')
+        self.assertEqual(rxml.expand('{$' * 1000 + '{$__region}', 'ABCDEF'), '{$' * 1000 + 'D')
+
+    def test_a_long_variable_name_is_refused_with_a_short_message(self):
+        with self.assertRaisesRegex(rxml.VariableError, r'^uses \{\$x+\.\.\.') as cm:
+            rxml.expand('{$' + 'x' * 100000 + '}', 'ABCDEF')
+        self.assertLess(len(str(cm.exception)), 100)
 
     def test_a_variable_is_filled_in_one_pass(self):
         # An ID whose first characters finish a variable's name can't make a second one.
@@ -457,7 +635,7 @@ class TestChoices(SdCase):
       <patch id="c"><memory offset="0x80001001" value="cc"/></patch></wiidisc>'''
 
     def two(self, default=0):
-        self.xml('sub dir/two.xml', self.TWO.format(default=default))
+        self.xml('two mod.xml', self.TWO.format(default=default))
 
     def lines(self):
         return self.ram().splitlines()[2:]
@@ -469,14 +647,14 @@ class TestChoices(SdCase):
 
     def test_the_default_applies_without_a_choice(self):
         self.two(default=2)
-        self.assertEqual(self.apply()['packages'], ['sub dir/two.xml'])
+        self.assertEqual(self.apply()['packages'], ['two mod.xml'])
         self.assertEqual(self.lines(), ['patch 80001000 bb', 'patch 80001001 cc'])
 
     def test_a_choice_beats_the_default_and_zero_turns_it_off(self):
         self.two(default=2)
-        self.apply('--choice', 'sub dir/two.xml:pick=1')
+        self.apply('--choice', 'two mod.xml:pick=1')
         self.assertEqual(self.lines(), ['patch 80001000 aa'])
-        self.assertEqual(self.apply('--choice', 'sub dir/two.xml:pick=0')['packages'], [])
+        self.assertEqual(self.apply('--choice', 'two mod.xml:pick=0')['packages'], [])
         self.assertEqual(self.outputs(), [])
 
     def test_a_default_past_the_choices_is_off(self):
@@ -490,8 +668,8 @@ class TestChoices(SdCase):
         self.assertEqual(self.apply()['packages'], [])
 
     def test_a_colon_in_a_path_or_an_option_id_is_read_right(self):
-        self.xml('odd:dir/x.xml', self.TWO.format(default=0).replace('id="pick"', 'id="a:b=c"'))
-        self.apply('--choice', 'odd:dir/x.xml:a:b=c=1')
+        self.xml('odd:x.xml', self.TWO.format(default=0).replace('id="pick"', 'id="a:b=c"'))
+        self.apply('--choice', 'odd:x.xml:a:b=c=1')
         self.assertEqual(self.lines(), ['patch 80001000 aa'])
 
     def test_an_option_with_no_id_is_chosen_by_its_section_and_name(self):
@@ -539,19 +717,19 @@ class TestChoices(SdCase):
         self.two()
         for spec, pattern in (
                 ('none.xml:pick=1', 'names no package'),
-                ('sub dir/two.xml:nope=1', "names no option 'nope'"),
-                ('sub dir/two.xml:pick=3', r'past the 2 choices'),
-                ('sub dir/two.xml:pick', 'isn.t XML:OPTION=CHOICE'),
-                ('sub dir/two.xml:pick=-1', 'isn.t XML:OPTION=CHOICE'),
-                ('sub dir/two.xml:pick=x', 'isn.t XML:OPTION=CHOICE'),
+                ('two mod.xml:nope=1', "names no option 'nope'"),
+                ('two mod.xml:pick=3', r'past the 2 choices'),
+                ('two mod.xml:pick', 'isn.t XML:OPTION=CHOICE'),
+                ('two mod.xml:pick=-1', 'isn.t XML:OPTION=CHOICE'),
+                ('two mod.xml:pick=x', 'isn.t XML:OPTION=CHOICE'),
                 ('pick=1', 'names no package')):
             with self.subTest(spec):
                 self.bad_arguments(pattern, '--choice', spec)
 
     def test_naming_one_option_twice_is_a_bad_argument(self):
         self.two()
-        self.bad_arguments('twice', '--choice', 'sub dir/two.xml:pick=1',
-                           '--choice', 'sub dir/two.xml:pick=2')
+        self.bad_arguments('twice', '--choice', 'two mod.xml:pick=1',
+                           '--choice', 'two mod.xml:pick=2')
 
     def test_a_missing_image_and_a_bad_out_are_bad_arguments(self):
         self.bad_arguments("isn't a file", image=os.path.join(self.tmp, 'none.iso'))
@@ -814,26 +992,26 @@ class TestPaths(SdCase):
         return self.placed()['Zeta.bin'][0]
 
     def test_a_path_with_no_slash_starts_at_the_xml_folder(self):
-        self.put('riivolution/sub/n.bin', b'n')
-        self.package('sub/a.xml', '<file disc="/Zeta.bin" external="n.bin"/>')
+        self.put('riivolution/n.bin', b'n')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="n.bin"/>')
         self.apply()
-        self.assertEqual(self.placed_from(), '../riivolution/sub/n.bin')
+        self.assertEqual(self.placed_from(), '../riivolution/n.bin')
 
     def test_a_path_with_a_leading_slash_starts_at_the_sd_root(self):
         self.put('mod/n.bin', b'n')
-        self.package('sub/a.xml', '<file disc="/Zeta.bin" external="/mod/n.bin"/>')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="/mod/n.bin"/>')
         self.apply()
         self.assertEqual(self.placed_from(), '../mod/n.bin')
 
     def test_a_root_with_no_slash_starts_at_the_xml_folder(self):
-        self.put('riivolution/sub/pack/n.bin', b'n')
-        self.package('sub/a.xml', '<file disc="/Zeta.bin" external="n.bin"/>', root='pack')
+        self.put('riivolution/pack/n.bin', b'n')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="n.bin"/>', root='pack')
         self.apply()
-        self.assertEqual(self.placed_from(), '../riivolution/sub/pack/n.bin')
+        self.assertEqual(self.placed_from(), '../riivolution/pack/n.bin')
 
     def test_a_root_with_a_slash_starts_at_the_sd_root(self):
         self.put('pack/n.bin', b'n')
-        self.package('sub/a.xml', '<file disc="/Zeta.bin" external="n.bin"/>', root='/pack')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="n.bin"/>', root='/pack')
         self.apply()
         self.assertEqual(self.placed_from(), '../pack/n.bin')
 
@@ -933,7 +1111,7 @@ class TestPaths(SdCase):
     def test_an_absolute_host_path_is_read_from_the_sd_root_not_from_the_host(self):
         outside = self.write(self.tmp, 'outside/n.bin', b'n')
         self.package('a.xml', f'<file disc="/Zeta.bin" external="{outside}"/>')
-        self.refused(r"<file .*> in a\.xml has the path '.*outside/n\.bin', which has no ")
+        self.refused(r"<file .*> in a\.xml has the path '.*', which has no ")
 
     def test_a_symbolic_link_to_a_file_is_refused(self):
         self.link(self.put('real/n.bin'), os.path.join(self.root, 'mod.bin'))
@@ -1437,11 +1615,23 @@ class TestOutputs(SdCase):
         self.package('a.xml', '<file disc="/Zeta.bin" external="/mod/big.bin"/>')
         self.refused(r'the layout would end past 4 GiB, at Zeta\.bin')
 
-    def test_a_path_with_a_control_character_is_refused_naming_the_package(self):
+    def test_a_path_with_a_control_character_is_refused_on_one_line_naming_the_package(self):
         self.put('mod/two\nlines.bin', b'x')
         self.package('a.xml', '<file disc="/Zeta.bin" external="/mod/two&#10;lines.bin"/>')
-        self.refused(r"a\.xml has the file '\.\./mod/two\\nlines\.bin', whose path holds a control "
-                     r"character")
+        self.refused(r'^error: <file disc="/Zeta.bin" external="/mod/two\\nlines\.bin"> in a\.xml '
+                     r"has the path '/mod/two\\nlines\.bin', which has a part with a control "
+                     r"character$")
+
+    def test_a_control_character_in_a_folder_above_the_sd_root_is_refused(self):
+        # The manifest reaches the files from OUT, so the folders between them show in its paths.
+        self.put('mod/n.bin', b'x')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="/mod/n.bin"/>')
+        above = os.path.join(self.tmp, 'new\nline')
+        os.mkdir(above)
+        moved = os.path.join(above, 'sd')
+        os.rename(self.root, moved)
+        self.refused(r"^error: a\.xml has the file '\.\./new\\nline/sd/mod/n\.bin', whose path "
+                     r"holds a control character$", root=moved, out=os.path.join(self.tmp, 'out'))
 
     def test_an_image_that_is_not_a_disc_is_refused(self):
         self.package('a.xml', self.MEM)
@@ -1453,10 +1643,235 @@ class TestOutputs(SdCase):
                      image=self.write(self.tmp, 'junk.iso', bytes(junk)))
 
 
+class TestOutputGuards(SdCase):
+    """OUT sits in a folder a release can fill, so nothing in it may steer where a write goes."""
+
+    FILE = '<file disc="/Zeta.bin" external="/mod/n.bin"/>'
+    MEM = '<memory offset="0x80001000" value="aa"/>'
+
+    def setUp(self):
+        super().setUp()
+        self.put('mod/n.bin', b'n')
+        self.outside = self.write(self.tmp, 'outside/target.txt', b'keep')
+
+    def kept(self):
+        with open(self.outside, 'rb') as f:
+            self.assertEqual(f.read(), b'keep')
+
+    def fixed(self):
+        """Temp names that a package could plan for, so a collision can be made."""
+        return mock.patch.object(rv, 'temp_name', lambda name: f'.{name}.fixed.tmp')
+
+    def test_a_link_at_the_old_temp_name_is_not_written_through(self):
+        self.package('a.xml', self.MEM)
+        os.makedirs(self.out)
+        self.link(self.outside, os.path.join(self.out, 'ram-patches.txt.tmp'))
+        self.apply()
+        self.kept()
+        self.assertTrue(os.path.isfile(os.path.join(self.out, 'ram-patches.txt')))
+
+    def test_a_link_at_the_manifest_temp_name_and_a_shell_name_stay_inside_out(self):
+        self.put('mod/x;echo PWNED;.bin', b'n')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="/mod/x;echo PWNED;.bin"/>')
+        os.makedirs(self.out)
+        self.link(self.outside, os.path.join(self.out, 'disc-overlay.txt.tmp'))
+        self.apply()
+        self.kept()
+        with open(os.path.join(self.out, 'disc-overlay.txt'), 'rb') as f:
+            self.assertIn(b' ../mod/x;echo PWNED;.bin\n', f.read())
+
+    def test_a_link_at_the_temp_name_stops_the_write_and_is_not_followed(self):
+        self.package('a.xml', self.MEM)
+        os.makedirs(self.out)
+        self.link(self.outside, os.path.join(self.out, '.ram-patches.txt.fixed.tmp'))
+        with self.fixed():
+            self.refused('File exists', out=self.out)
+        self.kept()
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'ram-patches.txt')))
+
+    def test_a_file_at_the_temp_name_stops_the_write_and_is_not_overwritten(self):
+        self.package('a.xml', self.MEM)
+        precious = self.write(self.out, '.ram-patches.txt.fixed.tmp', b'precious')
+        with self.fixed():
+            self.refused('File exists', out=self.out)
+        with open(precious, 'rb') as f:
+            self.assertEqual(f.read(), b'precious')
+        self.assertFalse(os.path.exists(os.path.join(self.out, 'ram-patches.txt')))
+
+    def test_nothing_is_replaced_when_a_later_temp_file_cannot_be_made(self):
+        self.package('a.xml', self.FILE + self.MEM)
+        self.stale()
+        self.write(self.out, '.disc-overlay.txt.fixed.tmp', b'precious')
+        with self.fixed():
+            self.refused('File exists', out=self.out)
+        for name in OUTPUTS:
+            with open(os.path.join(self.out, name), 'rb') as f:
+                self.assertEqual(f.read(), b'old', name)
+        self.assertEqual(self.outputs(), sorted(OUTPUTS + ['.disc-overlay.txt.fixed.tmp']))
+
+    def test_a_failed_replace_leaves_no_temp_file(self):
+        self.package('a.xml', self.MEM)
+        with mock.patch.object(rv.os, 'replace', side_effect=OSError('no space')):
+            self.refused('no space', out=self.out)
+        self.assertEqual(self.outputs(), [])
+
+    def test_out_as_a_symbolic_link_is_refused_and_nothing_is_written(self):
+        folder = os.path.join(self.tmp, 'elsewhere')
+        os.makedirs(folder)
+        dangling = os.path.join(self.tmp, 'dangling')
+        self.package('a.xml', self.FILE + self.MEM)
+        for target, spelling in ((folder, self.out), (folder, self.out + '/'),
+                                 (dangling, self.out)):
+            with self.subTest(os.path.basename(target) + spelling[-1]):
+                if os.path.lexists(self.out):
+                    os.unlink(self.out)
+                self.link(target, self.out)
+                self.refused(r"^error: The output folder '.*' is a symbolic link, so it isn't "
+                             r"written to$", out=spelling)
+                self.assertEqual(os.listdir(folder), [])
+                self.assertFalse(os.path.exists(dangling))
+
+    def test_an_output_name_that_is_a_link_or_a_folder_is_refused_and_nothing_is_touched(self):
+        self.package('a.xml', self.FILE + self.MEM)
+        for name in OUTPUTS:
+            for kind in ('link to a file', 'link to a folder', 'folder'):
+                with self.subTest(name=name, kind=kind):
+                    shutil.rmtree(self.out, ignore_errors=True)
+                    self.stale()
+                    path = os.path.join(self.out, name)
+                    os.unlink(path)
+                    if kind == 'folder':
+                        os.mkdir(path)
+                    else:
+                        self.link(self.outside if kind == 'link to a file'
+                                  else os.path.dirname(self.outside), path)
+                    self.refused(rf"The output {re.escape(name)} is a (symbolic link|folder), "
+                                 r"so nothing is written", out=self.out)
+                    self.kept()
+                    self.assertEqual(os.listdir(os.path.dirname(self.outside)), ['target.txt'])
+                    for other in OUTPUTS:
+                        if other != name:
+                            with open(os.path.join(self.out, other), 'rb') as f:
+                                self.assertEqual(f.read(), b'old', other)
+
+    def test_a_host_name_with_a_control_character_is_refused_whatever_finds_it(self):
+        for char in ('\n', '\r', '\t', '\x01', '\x1f', '\x7f'):
+            with self.subTest(repr(char)):
+                shutil.rmtree(os.path.join(self.root, 'mod', 'dir'), ignore_errors=True)
+                self.put(f'mod/dir/a{char}b.bin', b'x')
+                self.package('a.xml', '<folder disc="/" external="/mod/dir" create="true"/>')
+                self.refused(r"holds the name 'a.*b\.bin', which has a control character")
+
+    def test_a_new_disc_name_with_a_control_character_is_refused(self):
+        for ref in ('&#10;', '&#13;', '&#9;', '&#127;'):
+            with self.subTest(ref):
+                self.package('a.xml', f'<file disc="/new{ref}line.bin" external="/mod/n.bin" '
+                                      'create="true"/>')
+                self.refused(r"would add the name '.*' to the disc, and a disc name has to be "
+                             r"plain ASCII")
+
+
+class TestRefusalReport(SdCase):
+    """What apply prints on stdout when it exits 1, so a caller can tell which package failed."""
+
+    FILE = '<file disc="/Zeta.bin" external="/mod/n.bin"/>'
+    MEM = '<memory offset="0x80001000" value="aa"/>'
+
+    def test_a_refused_package_is_named(self):
+        self.package('a b.xml', '<savegame external="x"/>')
+        line = self.refusal(r"^error: <savegame external=\"x\"> in a b\.xml isn't supported")
+        self.assertEqual(sorted(line), ['error', 'packages'])
+        self.assertEqual(line['packages'], ['a b.xml'])
+        self.assertEqual(line['error'], "<savegame external=\"x\"> in a b.xml isn't supported, "
+                                        "since the engine doesn't redirect saves")
+
+    def test_a_conflict_names_both_packages_whole(self):
+        self.put('mod/n.bin')
+        self.package('b in c.xml', self.FILE)
+        self.package('a and b.xml', self.FILE)
+        line = self.refusal(r"a and b\.xml and b in c\.xml both patch the disc file /Zeta\.bin")
+        self.assertEqual(line['packages'], ['a and b.xml', 'b in c.xml'])
+        self.package('b in c.xml', self.MEM)
+        self.package('a and b.xml', self.MEM)
+        line = self.refusal(r"both write RAM at 80001000")
+        self.assertEqual(line['packages'], ['a and b.xml', 'b in c.xml'])
+
+    def test_an_errored_package_named_by_a_choice_is_named(self):
+        self.xml('bad.xml', '<!DOCTYPE wiidisc []><wiidisc version="1"/>')
+        line = self.refusal(r'bad\.xml has a DOCTYPE', '--choice', 'bad.xml:opt=1')
+        self.assertEqual(line['packages'], ['bad.xml'])
+
+    def test_a_control_character_in_a_host_path_names_its_package(self):
+        self.put('mod/two\nlines.bin', b'x')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="/mod/two&#10;lines.bin"/>')
+        self.assertEqual(self.refusal('control character')['packages'], ['a.xml'])
+
+    def test_a_failure_with_no_package_gives_an_empty_list(self):
+        self.package('a.xml', self.MEM)
+        line = self.refusal("the image's disc ID isn't printable ASCII",
+                            image=self.write(self.tmp, 'junk.iso', bytes(0x3000)))
+        self.assertEqual(line['packages'], [])
+        self.assertIn("the image's disc ID", line['error'])
+
+    def test_bad_arguments_print_no_json(self):
+        self.bad_arguments('names no package', '--choice', 'nope.xml:x=1')
+        self.assertEqual(self.printed, '')
+
+
+class TestLongValues(SdCase):
+    """No message repeats a long value, since a line of one goes to a player and a log."""
+
+    def test_a_long_value_is_cut_in_every_message(self):
+        long = 'v' * 100000
+        self.put('mod/n.bin')
+        cases = {
+            'number': f'<memory offset="{"9" * 100000}" value="aa"/>',
+            'hex': f'<memory offset="0x80001000" value="{"z" * 100000}"/>',
+            'path': f'<file disc="/Zeta.bin" external="/{long}"/>',
+            'disc path': f'<file disc="/{long}//x" external="/mod/n.bin"/>',
+            'valuefile': f'<memory offset="0x80001000" valuefile="/{long}"/>',
+            'variable': f'<file disc="/Zeta.bin" external="/{{${long}}}"/>',
+            'new name': f'<file disc="/{"é" * 100000}" external="/mod/n.bin" create="true"/>',
+        }
+        for name, body in cases.items():
+            with self.subTest(name):
+                self.package('a.xml', body)
+                with self.assertRaises(SystemExit) as cm:
+                    self.apply()
+                self.assertLess(len(str(cm.exception.code)), 600)
+                self.assertLess(len(self.printed), 1200)
+
+    def test_a_long_root_is_cut(self):
+        self.put('mod/n.bin')
+        self.package('a.xml', '<file disc="/Zeta.bin" external="n.bin"/>', root='/' + 'r' * 100000)
+        with self.assertRaises(SystemExit) as cm:
+            self.apply()
+        self.assertLess(len(str(cm.exception.code)), 600)
+
+    def test_a_long_value_in_a_listing_is_cut(self):
+        self.xml('a.xml', f'<wiidisc version="1"><options><section name="s">'
+                          f'<option name="a" id="{"i" * 100000}" default="{"9" * 100000}"/>'
+                          '</section></options></wiidisc>')
+        self.xml('b.xml', f'<wiidisc version="1"><options><section name="s">'
+                          f'<option name="a" id="{"i" * 100000}"/><option name="b" '
+                          f'id="{"i" * 100000}"/></section></options></wiidisc>')
+        found = self.listing()
+        self.assertEqual([p['xml'] for p in found], ['a.xml', 'b.xml'])
+        for package in found:
+            self.assertLess(len(package['error']), 400)
+
+    def test_a_long_choice_argument_is_cut(self):
+        err = io.StringIO()
+        with self.assertRaises(SystemExit) as cm, contextlib.redirect_stderr(err):
+            self.apply('--choice', 'x' * 100000 + '=1')
+        self.assertEqual(cm.exception.code, 2)
+        self.assertLess(len(err.getvalue()), 600)
+
+
 class TestScript(SdCase):
-    def run_script(self, *argv):
+    def run_script(self, *argv, timeout=None):
         return subprocess.run([sys.executable, '-B', RIIVOLUTION_PY] + list(argv),
-                              capture_output=True, text=True)
+                              capture_output=True, text=True, timeout=timeout)
 
     def test_apply_prints_one_json_line_and_exits_0(self):
         self.package('a.xml', '<memory offset="0x80001000" value="aa"/>')
@@ -1473,13 +1888,27 @@ class TestScript(SdCase):
         self.assertEqual(len(done.stdout.splitlines()), 1)
         self.assertEqual(json.loads(done.stdout)['packages'][0]['xml'], 'a.xml')
 
-    def test_a_refused_package_exits_1_with_an_error_line_and_no_output(self):
+    def test_a_refused_package_exits_1_with_an_error_line_and_a_json_line(self):
         self.package('a.xml', '<savegame external="x"/>')
         done = self.run_script('apply', self.image, self.root, self.out)
         self.assertEqual(done.returncode, 1)
         self.assertRegex(done.stderr, r"^error: <savegame external=\"x\"> in a\.xml isn't "
                                       r"supported.*\n$")
-        self.assertEqual(done.stdout, '')
+        self.assertEqual(len(done.stdout.splitlines()), 1)
+        self.assertEqual(json.loads(done.stdout), {
+            'error': done.stderr[len('error: '):].rstrip('\n'), 'packages': ['a.xml']})
+        self.assertFalse(os.path.exists(self.out))
+
+    def test_a_megabyte_of_unclosed_variables_is_refused_in_seconds(self):
+        # A pattern that rescanned from each {$ would take about 17 minutes on this.
+        run = '{$' * 500000
+        self.package('a.xml', f'<file disc="/Zeta.bin" external="{run}"/>')
+        started = time.monotonic()
+        done = self.run_script('apply', self.image, self.root, self.out, timeout=20)
+        self.assertLess(time.monotonic() - started, 5.0)
+        self.assertEqual(done.returncode, 1, done.stderr[:300])
+        self.assertRegex(done.stderr, r"^error: <file .*> in a\.xml has the path '\{\$\{\$")
+        self.assertLess(len(done.stderr), 600)
 
     def test_bad_arguments_exit_2(self):
         for argv in ([], ['apply'], ['apply', self.image, self.root], ['bogus'],

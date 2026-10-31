@@ -14,7 +14,7 @@ from typing import Callable, List, Optional, Tuple
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fst  # noqa: E402
 from disc_overlay import Item  # noqa: E402
-from riivolution_paths import PathError, fold, resolve  # noqa: E402
+from riivolution_paths import PathError, control, cut, fold, resolve  # noqa: E402
 from riivolution_xml import Element, Package, Patch, Refused, VariableError, expand  # noqa: E402
 
 RAM_START = 0x80000000
@@ -167,9 +167,9 @@ class Patcher:
                 todo.extend(reversed(node.children))
             elif node.host is not None:
                 rel = os.path.relpath(node.host, out_dir).replace(os.sep, '/')
-                if any(ord(c) < 0x20 or ord(c) == 0x7F for c in rel):
-                    raise Refused(f'has the file {rel!r}, whose path holds a control character',
-                                  node.owner or '')
+                if control(rel):
+                    raise Refused(f'has the file {cut(rel)!r}, whose path holds a control '
+                                  'character', node.owner or '')
                 items.append(Item(rel, node.size, node.parts()))
         return items
 
@@ -189,7 +189,8 @@ class Patcher:
         for before, after in zip(spans, spans[1:]):
             if after[0] < before[1]:
                 first, second = sorted((before[2], after[2]))
-                raise Refused(f'{first} and {second} both write RAM at {after[0]:08x}')
+                raise Refused(f'{first} and {second} both write RAM at {after[0]:08x}',
+                              packages=[first, second])
         return self.ram
 
     # Text and paths
@@ -212,9 +213,9 @@ class Patcher:
             try:
                 path = resolve(self.sd_root, self.folder, text) if text else self.folder
             except PathError as e:
-                raise element.refuse(f'has the root {text!r}, which {e}') from None
+                raise element.refuse(f'has the root {cut(text)!r}, which {e}') from None
             if not os.path.isdir(path):
-                raise element.refuse(f"has the root {text!r}, which isn't a folder")
+                raise element.refuse(f"has the root {cut(text)!r}, which isn't a folder")
             self.root_dir = path
         return self.root_dir
 
@@ -223,10 +224,10 @@ class Patcher:
         try:
             return resolve(self.sd_root, here, text)
         except PathError as e:
-            raise el.refuse(f'has the path {text!r}, which {e}') from None
+            raise el.refuse(f'has the path {cut(text)!r}, which {e}') from None
 
     def _shown(self, host: str) -> str:
-        return os.path.relpath(host, self.sd_root)
+        return cut(os.path.relpath(host, self.sd_root))
 
     # Files and folders
 
@@ -241,7 +242,7 @@ class Patcher:
             raise el.refuse('has no disc path')
         host = self._host(el, external)
         if not os.path.isfile(host):
-            raise el.refuse(f"has the path {external!r}, which isn't a file")
+            raise el.refuse(f"has the path {cut(external)!r}, which isn't a file")
         self._put(el, disc, host, el.flag('resize', True), el.flag('create', False),
                   el.number('length', 0))
 
@@ -249,7 +250,7 @@ class Patcher:
         external = self._text(el, 'external')
         host = self._host(el, external)
         if not os.path.isdir(host):
-            raise el.refuse(f"has the path {external!r}, which isn't a folder")
+            raise el.refuse(f"has the path {cut(external)!r}, which isn't a folder")
         self._walk(el, self._text(el, 'disc'), host, el.flag('resize', True),
                    el.flag('create', False), el.flag('recursive', True), el.number('length', 0))
 
@@ -265,6 +266,9 @@ class Patcher:
         for entry in entries:
             if entry.name.startswith('.'):
                 continue
+            if control(entry.name):
+                raise el.refuse(f"holds the name {cut(entry.name)!r}, which has a control "
+                                'character')
             here = join_disc(disc, entry.name)
             if entry.is_symlink():
                 raise el.refuse(f"holds the symbolic link {self._shown(entry.path)!r}, "
@@ -296,12 +300,14 @@ class Patcher:
         size = length or have
         if not resize and node.size > size:
             raise el.refuse(f'has resize="false", and {self._shown(host)!r} (size {size}) is '
-                            f"smaller than {disc!r} (size {node.size}), which isn't supported")
+                            f"smaller than {cut(disc)!r} (size {node.size}), which isn't "
+                            'supported')
         if node.owner not in (None, self.xml):
             assert node.owner is not None
             first, second = sorted((node.owner, self.xml))
             where = '/'.join(node.parts())
-            raise Refused(f'{first} and {second} both patch the disc file /{where}')
+            raise Refused(f'{first} and {second} both patch the disc file /{where}',
+                          packages=[first, second])
         node.owner = self.xml
         node.host = host
         node.size = size
@@ -310,7 +316,8 @@ class Patcher:
         if disc.startswith('/'):
             parts = disc[1:].split('/')
             if any(p in ('', '.', '..') for p in parts):
-                raise el.refuse(f'has the disc path {disc!r}, which has an empty or dot part')
+                raise el.refuse(f'has the disc path {cut(disc)!r}, which has an empty or dot '
+                                'part')
             return find_path(self.root, parts, (lambda name: self._new_name(el, name))
                              if create else None)
         if fold(disc) == 'main.dol':
@@ -318,9 +325,9 @@ class Patcher:
         return find_name(self.root, disc)
 
     def _new_name(self, el: Element, name: str) -> None:
-        if not name.isascii() or any(ord(c) < 0x20 or ord(c) == 0x7F for c in name):
-            raise el.refuse(f"would add the name {name!r} to the disc, and a disc name has to be "
-                            'plain ASCII')
+        if not name.isascii() or control(name):
+            raise el.refuse(f"would add the name {cut(name)!r} to the disc, and a disc name has "
+                            'to be plain ASCII')
 
     # Memory
 
@@ -351,8 +358,8 @@ class Patcher:
     def _blob(self, el: Element, name: str) -> bytes:
         host = self._host(el, name)
         if not os.path.isfile(host):
-            raise el.refuse(f"has the path {name!r}, which isn't a file")
+            raise el.refuse(f"has the path {cut(name)!r}, which isn't a file")
         if os.stat(host).st_size > RAM_END - RAM_START:
-            raise el.refuse(f'has a valuefile, {name!r}, that is bigger than main RAM')
+            raise el.refuse(f'has a valuefile, {cut(name)!r}, that is bigger than main RAM')
         with open(host, 'rb') as f:
             return f.read()

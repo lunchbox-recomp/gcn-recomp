@@ -4,7 +4,8 @@ An external path is read the way Dolphin reads it (DiscIO/RiivolutionPatcher.cpp
 that starts with / is relative to the SD root, and any other is relative to the folder the caller
 gives, which is the patch's root or its XML's folder. A `.` part is skipped. A `..` part goes back
 up the path so far and is refused past where the path started. A part made only of dots with three
-or more is refused, since some file systems read it as several `..`.
+or more is refused, since some file systems read it as several `..`. So is a part with a control
+character, since a manifest line can't hold one.
 
 Riivolution assumes a file system that ignores case, so a part matches the host's spelling of
 it. This reader also refuses a symbolic link in the path, so a package can't point outside its
@@ -16,6 +17,16 @@ from typing import Optional
 
 class PathError(ValueError):
     """A path that can't be used. The message finishes the sentence `the path ..., which`."""
+
+
+def cut(value: str, limit: int = 60) -> str:
+    """A value as a message shows it, ended with ... when it is long."""
+    return value if len(value) <= limit else value[:limit - 3] + '...'
+
+
+def control(name: str) -> bool:
+    """Whether a name holds a C0 control character or DEL, which no manifest line can carry."""
+    return any(ord(c) < 0x20 or ord(c) == 0x7F for c in name)
 
 
 def fold(name: str) -> str:
@@ -39,7 +50,7 @@ def match(directory: str, name: str) -> Optional[str]:
     key = fold(name)
     twins = [n for n in names if fold(n) == key]
     if len(twins) > 1:
-        raise PathError(f"matches {', '.join(repr(n) for n in twins)} by case alone")
+        raise PathError(f"matches {', '.join(repr(cut(n)) for n in twins)} by case alone")
     if twins:
         return twins[0]
     # A file system that folds more than ASCII case can hold a name its listing spells another way.
@@ -56,6 +67,8 @@ def resolve(sd_root: str, here: str, text: str) -> str:
     for part in text.split('/'):
         if not part or part == '.':
             continue
+        if control(part):
+            raise PathError('has a part with a control character')
         if part == '..':
             if depth == 0:
                 raise PathError('goes above the folder it starts from')
@@ -66,9 +79,9 @@ def resolve(sd_root: str, here: str, text: str) -> str:
         else:
             found = match(path, part)
             if found is None:
-                raise PathError(f'has no {part!r}')
+                raise PathError(f'has no {cut(part)!r}')
             depth += 1
             path = os.path.join(path, found)
             if os.path.islink(path):
-                raise PathError(f'passes the symbolic link {found!r}')
+                raise PathError(f'passes the symbolic link {cut(found)!r}')
     return path

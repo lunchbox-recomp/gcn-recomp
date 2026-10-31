@@ -6,7 +6,7 @@ The rules are the ones Dolphin follows for a GameCube disc (`DiscIO/RiivolutionP
 
 ## The layout
 
-ROOT is the SD root a release unzips into. The XMLs sit under `ROOT/riivolution/` at any depth, and their files sit wherever the XMLs point.
+ROOT is the SD root a release unzips into. The XMLs sit directly in `ROOT/riivolution/`, which is where Dolphin reads them. Their files sit wherever the XMLs point.
 
 ```
 ROOT/
@@ -17,9 +17,11 @@ ROOT/
     payload.bin
 ```
 
-An XML is a package when its root element is `wiidisc`. Other XMLs, like the settings Riivolution keeps under `riivolution/config/`, aren't packages and are left alone. A symbolic link to an XML or a folder isn't followed, and it shows up in the list with an error.
+An XML is a package when its root element is `wiidisc`. Other XMLs, like the settings Riivolution keeps in a `config` folder, aren't packages and are left alone. No folder in `riivolution/` is entered, so XMLs inside a release's data folders are never read as packages.
 
-A name that starts with a dot is skipped everywhere, so `.DS_Store` and the `._` files of a macOS zip never get in. That also keeps an OUT folder named `.out` inside ROOT from being scanned.
+A symbolic link to an XML isn't followed, and it shows up in the list with an error. A symbolic link for `riivolution/` itself is refused by both `list` and `apply`, since it could point anywhere.
+
+A name that starts with a dot is skipped, so `.DS_Store` and the `._` files of a macOS zip never get in. A folder patch with `external="/"` skips an OUT folder named `.out` the same way.
 
 ## Running it
 
@@ -28,7 +30,7 @@ python3 recomp/riivolution.py list ROOT
 python3 recomp/riivolution.py apply IMAGE ROOT OUT [--choice XML:OPTION=CHOICE ...]
 ```
 
-`list` prints one JSON line, `{"packages": [...]}`. Each package has `xml`, its path under `ROOT/riivolution/`. It also has `options`, or an `error` when its XML can't be used.
+`list` prints one JSON line, `{"packages": [...]}`. Each package has `xml`, its file name in `ROOT/riivolution/`. It also has `options`, or an `error` when its XML can't be used.
 
 An option has an `id`, a `name`, the `section` it sits in and its `default`. It also has `choices`, the names of its choices in order. The `id` is the one the XML gives, or its section's name and its own name joined when the XML gives none, and two options in one package can't share one.
 
@@ -40,7 +42,7 @@ Then it prints one JSON line.
 
 | Key | Holds |
 |---|---|
-| `packages` | the XML paths of the packages that are on |
+| `packages` | the XML names of the packages that are on |
 | `files_added`, `files_replaced` | the disc files the overlay adds and replaces |
 | `ram_patches`, `ram_bytes` | the lines in the list and the bytes they write |
 | `overlay` | `disc_overlay.py`'s summary, or null with no file patch |
@@ -51,17 +53,29 @@ Then it prints one JSON line.
 | 1 | a package was refused or the overlay couldn't be built, with one `error:` line on stderr naming the XML and the element |
 | 2 | bad arguments, including a `--choice` that names no package, no option or a number past the choices |
 
+On exit 1 the command also prints one JSON line on stdout, `{"error": "...", "packages": [...]}`. The `error` is the stderr message without `error: `, and `packages` holds the XML names at fault, both for a conflict. It's empty when no package is at fault, and `list` prints the same line when `riivolution/` is a link.
+
 Nothing is written when anything is refused, so earlier outputs stay as they were. The same inputs give the same bytes.
+
+## Where apply writes
+
+OUT usually sits inside ROOT, which a release fills, so `apply` checks it before it writes. It refuses when OUT is a symbolic link, or when one of its three output names is a symbolic link or a folder. A link in a folder above OUT is the player's own and is followed.
+
+Each output goes to a new temp file that's never opened through a link. Every temp file is made before any output is replaced, so a write that fails leaves the old outputs as they were.
+
+A name with a control character (C0 or DEL) is refused, since a manifest line can't hold one. That covers a part of an `external` path, a name in the host folder of a folder patch and a new disc name. It also covers the folders above ROOT that show in a manifest path.
 
 ## Choices
 
-A package offers options, and an option offers choices. `--choice` takes the XML path as `list` prints it, the option's `id` and a choice number, as in `--choice pack.xml:music=2`. Choice 1 is the first choice. Choice 0 turns the option off.
+A package offers options, and an option offers choices. `--choice` takes the XML name as `list` prints it, the option's `id` and a choice number, as in `--choice pack.xml:music=2`. Choice 1 is the first choice. Choice 0 turns the option off.
 
 An option with no `--choice` uses its `default`, which is 0 when the XML gives none. A package is on when its chosen choices name a patch. Settings that Riivolution saves in `riivolution/config/` aren't read.
 
 A choice names patches by id. They apply in option order, and a patch that several choices name applies once, where it first comes. When two `patch` elements share an id, the first is the one a choice reaches.
 
-A package that fits another disc is never on, whatever its choices say. A package with an error is left out. A `--choice` that names one stops `apply` with that error.
+A package that fits another disc is never on, whatever its choices say. A package with an error is left out.
+
+A `--choice` above 0 that names a package with an error stops `apply` with that error. Choice 0 is allowed and does nothing, so an off that was saved for a package that later broke doesn't stop the rest.
 
 ## Which disc a package fits
 
@@ -122,9 +136,10 @@ A path in `external`, `valuefile` or `root` follows Dolphin (`RiivolutionPatcher
 - A part made of three or more dots is refused, since some file systems read it as several `..`.
 - Each part matches the host's spelling ignoring ASCII case. An exact spelling wins, and two names that differ only by case are refused when nothing matches exactly.
 - A symbolic link anywhere in the path is refused. Every part has to exist.
+- A part with a control character is refused.
 - A `file` has to be a file, and a `folder` or a `root` has to be a folder.
 
-The variables `{$__gameid}`, `{$__region}` and `{$__maker}` are filled from the disc ID in a `root`, a `disc`, an `external` and a `valuefile`, as Dolphin does (`RiivolutionParser.cpp:311-316`). Any other variable is refused.
+The variables `{$__gameid}`, `{$__region}` and `{$__maker}` are filled from the disc ID in a `root`, a `disc`, an `external` and a `valuefile`, as Dolphin does (`RiivolutionParser.cpp:311-316`). Any other variable is refused, and a `{$` that never closes is left as it is.
 
 ## Why the manifest's paths can start with `..`
 
@@ -150,6 +165,8 @@ Nothing in a refused package is used. The message names the XML and the element,
 
 An overlay item is one host file, or its first bytes. A patch that needs more is refused.
 
+A message cuts any long value it quotes to 60 characters, so a package can't make a line as long as its XML.
+
 The reader also stops where Dolphin quietly skips.
 
 - A path that can't be resolved or doesn't exist.
@@ -161,7 +178,11 @@ The reader also stops where Dolphin quietly skips.
 
 ## The XML itself
 
-A file over 1 MiB is refused before it's read in full. A file that isn't UTF-8, or has a DOCTYPE or an entity, is refused before it's parsed, so no entity is ever expanded.
+A file over 1 MiB is refused. A file that isn't UTF-8, holds a NUL or a control character other than tab, CR and LF, or has a DOCTYPE or an entity is refused before it's parsed.
+
+The NUL rule is what stops UTF-16 and UTF-32 text with no byte order mark, since its bytes pass as UTF-8 and the scan for a DOCTYPE can't read them. The parser also refuses a DOCTYPE, an entity declaration and an external entity itself, in case one gets past the scan. No entity is ever expanded.
+
+A number is decimal or `0x` hex, with at most 10 digits after any `0x`. A leading zero doesn't make it octal, so `010` is ten. A longer number, or one that doesn't fit in 32 bits, is refused.
 
 An XML whose root isn't `wiidisc` is left out of the list. A `wiidisc` XML that isn't version 1 is listed with an error. Elements in a patch that the reader doesn't know are ignored.
 
