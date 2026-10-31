@@ -69,6 +69,9 @@ bool input_pad_poll(int chan, PadState& s);
 
 // Whether a replay is in progress (loaded and not yet past its last poll).
 bool input_replay_active();
+// Whether the run started from a replay's log, which stays so once the log runs out: a
+// relaunch would replay the log again from its start.
+bool input_replay_loaded();
 
 // Poses the game's hooks read on the guest thread (vr::hand_pose and vr::eye_views in
 // vr_game.h) are input too: a game that aims from a controller or culls to the viewer's

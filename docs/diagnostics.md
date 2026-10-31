@@ -771,9 +771,9 @@ at most, after Quit, Restart, Escape or the window's close button. A run that wa
 and one with no card or no write lately ends at once, as `--exit-after` always does.
 
 Restart then prints `[reset] the overlay's Restart game starts the game again` and relaunches
-the game as a console reset does (`on_reset`). A tool reading the run's output sees a restart
-in that line, as it does in a console reset's `[reset]` line. A replay's menu has no Restart
-game, since the log can't hold one.
+the game as a console reset does (`on_reset`), so a tool reading the run's output sees a
+restart in that line as it does in a console reset's own. A replay's menu has no Restart game,
+since the log can't hold one. Nothing relaunches a replay, even after `[input] replay finished`.
 
 A relaunch, by a console reset or Restart game, starts `--record`, `--input-log`, `GCN_WAV` and
 `GCN_AIDWAV` over in the same place.
@@ -784,7 +784,7 @@ restart to the relaunch, with the game resetting the console (`guest_reset`) in 
 again in `end_run`. Its own at-exit function checks for one `# end` and Restart's one
 `[reset]` line, then ends the process. `--quit` does the same for a quit, which has no
 `[reset]` line and no relaunch, and `--restart-replay` finds no Restart game in a replay's
-menu.
+menu once its log has run out.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under

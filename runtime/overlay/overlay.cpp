@@ -261,11 +261,11 @@ void quit() {
     SDL_PushEvent(&e);
 }
 
-// Below the pages, so on every one. A replay has no Restart game: the log can't hold one, and
-// a relaunch would replay the log from its start (frontend_restart).
+// Below the pages, so on every one. A replay has no Restart game, even once its log runs out:
+// the log can't hold one, and a relaunch would replay the log from its start (frontend_restart).
 void actions() {
     ImGui::Separator();
-    if (!input_replay_active()) {
+    if (!input_replay_loaded()) {
         if (ImGui::Button("Restart game")) ask(OverlayAsk::restart);
         if (g_asked == OverlayAsk::restart) ImGui::FocusItem();
         ImGui::SameLine();

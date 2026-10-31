@@ -342,6 +342,11 @@ bool input_replay_active() {
     return g_replay_loaded && replay_key() <= g_replay_last_key;
 }
 
+bool input_replay_loaded() {
+    std::lock_guard<std::mutex> lk(g_mutex);
+    return g_replay_loaded;
+}
+
 bool input_pose(const char* kind, bool* valid, float* v, int n) {
     std::lock_guard<std::mutex> lk(g_mutex);
     PoseChannel& ch = pose_channel(kind);

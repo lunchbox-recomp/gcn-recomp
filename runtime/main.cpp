@@ -329,7 +329,7 @@ static void show_frame(SDL_Window* win) {
 // (guest_reset).
 static char** g_argv;  // main()'s
 static void relaunch(const char* why = nullptr) {
-    if (input_replay_active()) return;
+    if (input_replay_loaded()) return;
     if (why) fprintf(stderr, "[reset] %s\n", why);
     session_relaunching();
     plat_relaunch(g_argv);

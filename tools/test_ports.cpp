@@ -46,7 +46,7 @@
 //                                                console as the run ends
 //        test_ports --quit <empty work dir>   the same with a quit
 //        test_ports --restart-replay <empty work dir>   the menu, then a restart asked for,
-//                                                       in a replay
+//                                                       in a replay past its log's end
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -2589,8 +2589,9 @@ int run_quit(const std::string& dir) {
 }
 
 // ---- In a replay the menu has no Restart game, as a relaunch would replay the log from its
-// start, which the log doesn't hold. A restart asked for all the same only ends the run, as a
-// console reset does in a replay, with no relaunch and no [reset] line.
+// start, which the log doesn't hold. That holds after the log runs out too. A restart asked
+// for all the same only ends the run, as a console reset does in a replay, with no relaunch
+// and no [reset] line.
 void after_restart_replay() {
     fflush(stderr);
     dup2(g_stderr, 2);
@@ -2638,6 +2639,14 @@ int run_restart_replay(const std::string& dir) {
                                         "# epoch 1792000000\n0 0 0 1 0000 80 80 80 80 00 00\n# end 4 0\n");
     std::string card, sram;
     if (!input_replay_load(dir + "/log", card, sram) || !input_replay_active()) return 1;
+    // Polled past the log's end, which hands the ports to live input. The run is a replay's
+    // still, and a relaunch would replay it again.
+    const std::string finished = dir + "/finished-stderr.txt";
+    capture(finished, [] {
+        for (int i = 0; i < 8; i++) read(0);
+    });
+    check(lines_with(finished, "[input] replay finished at poll ") == 1 && !input_replay_active(),
+          "the replay runs out, and live input takes over");
 #ifdef GCN_OVERLAY
     replay_menu(dir);
 #endif

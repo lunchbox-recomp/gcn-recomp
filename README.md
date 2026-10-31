@@ -92,8 +92,8 @@ Each change applies at once and is saved to `settings.txt`, which the window rea
 With `--eye` or `GCN_THEATER_STEREO` the aspect choices are there but can't be picked.
 
 Restart game and Quit game sit below every page, and each asks first, with Cancel picked.
-Cancel, B or Escape goes back with nothing done. A replay has no Restart game, since its log
-can't hold one.
+Cancel, B or Escape goes back with nothing done. A replay has no Restart game, even once its
+log runs out, since the log can't hold one.
 
 Quit ends the run as Escape does with the menu closed, saving the memory card on the way out.
 Either way, a save the game is part way through gets up to 3 seconds to finish first. Restart
