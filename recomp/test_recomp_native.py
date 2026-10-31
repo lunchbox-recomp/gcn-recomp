@@ -18,7 +18,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import ppc  # noqa: E402
-from test_recomp_interp import BLR, RECOMP, RUNTIME, addi, read, write, write_dol  # noqa: E402
+from test_recomp_interp import BLR, NOP, RECOMP, RUNTIME, addi, read, write, write_dol  # noqa: E402
 
 T = 0x80104000
 MFLR_R3 = 0x7C6802A6
@@ -271,6 +271,70 @@ class Mulli(Fixture):
             self.skipTest('the C compiler cannot build with -fsanitize=undefined')
         problem, _ = self.build_and_run('ubsan', UBSAN)
         self.assertEqual(problem, '')
+
+
+# bcl to the next word as (BO, BI): the PIC idiom bcl 20,31, then bdnzl, bdzl, beql, bnel, bdnztl and
+# bdzfl, which decrement CTR or test a CR bit or both. Each function reads LR into r3 and counts
+# how many times the word after the branch runs in r4.
+NEXT_BCL = [(20, 31), (16, 0), (18, 0), (12, 2), (4, 2), (8, 2), (2, 2)]
+NEXT_FUNCS = [('f_bl', [b(4, lk=1), MFLR_R3, addi(4, 1), BLR])] + [
+    (f'f_bcl_{bo}_{bi}', [bc(bo, bi, 4, lk=1), MFLR_R3, addi(4, 1), BLR]) for bo, bi in NEXT_BCL]
+DECREMENTS = dict([('f_bl', False)] + [(f'f_bcl_{bo}_{bi}', not bo & 4) for bo, bi in NEXT_BCL])
+NEXT_STATES = [(ctr, cr0) for ctr in (0, 1, 2) for cr0 in (0, 2)]  # CTR, and EQ clear or set in cr0
+# bl and bcl into the body that are not the next word. They are called, and none is run here.
+OTHER_FUNCS = [
+    ('f_over', [b(8, lk=1), 0, BLR]),              # bl over a data word, to the blr
+    ('f_back', [NOP, NOP, b(-4, lk=1), BLR]),      # bl back to the second nop
+    ('f_bcl_over', [bc(12, 2, 8, lk=1), 0, BLR]),  # bcl over a data word, to the blr
+]
+
+
+class NextWordCall(Fixture):
+    """A bl or bcl to the next word sets LR and runs on, taken or not, so the rest of the function
+    runs once. A bcl still decrements CTR where its BO says to."""
+
+    FUNCS = NEXT_FUNCS
+    CASES = [Case(f'{fn}_{ctr}_{cr0}', fn, lr=0xDEAD0000, ctr=ctr, cr0=cr0)
+             for fn, _ in NEXT_FUNCS for ctr, cr0 in NEXT_STATES]
+
+    def test_the_rest_of_the_function_runs_once_with_lr_and_ctr_as_the_hardware_leaves_them(self):
+        for fn, _ in self.FUNCS:
+            for ctr, cr0 in NEXT_STATES:
+                with self.subTest(fn=fn, ctr=ctr, cr0=cr0):
+                    pc = self.addr[fn]
+                    r = self.got(f'{fn}_{ctr}_{cr0}')
+                    want_ctr = (ctr - 1) & 0xFFFFFFFF if DECREMENTS[fn] else ctr
+                    self.assertEqual({k: r[k] for k in ('r3', 'r4', 'lr', 'ctr', 'depth', 'calls')},
+                                     {'r3': pc + 4, 'r4': 1, 'lr': pc + 4, 'ctr': want_ctr, 'depth': 0, 'calls': 0})
+
+    def test_the_next_word_is_not_an_entry(self):
+        for fn, _ in self.FUNCS:
+            with self.subTest(fn=fn):
+                next_word = f'fn_{self.addr[fn] + 4:08X}'
+                self.assertEqual((self.c.count(next_word), self.header.count(next_word),
+                                  self.c.count(f'body_{self.addr[fn]:08X}')), (0, 0, 0))
+
+
+class OtherOwnBodyCalls(Fixture):
+    """A bl or bcl into the body that is not the next word is still a call to that word, which is
+    an entry."""
+
+    FUNCS = OTHER_FUNCS
+    # (function, index of the call, index of its target) in words
+    CALLS = [('f_over', 0, 2), ('f_back', 2, 1), ('f_bcl_over', 0, 2)]
+
+    def test_each_is_still_a_call_to_an_entry(self):
+        for fn, at, to in self.CALLS:
+            with self.subTest(fn=fn):
+                pc, t = self.addr[fn] + 4 * at, self.addr[fn] + 4 * to
+                self.assertIn(f'c->lr = 0x{pc + 4:08X}u; fn_{t:08X}(c);', self.c)
+                self.assertIn(f'void fn_{t:08X}(CPU* c);', self.header)
+
+    def test_each_still_warns(self):
+        for fn, at, to in self.CALLS:
+            with self.subTest(fn=fn):
+                self.assertIn(f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X}',
+                              self.stderr)
 
 
 if __name__ == '__main__':

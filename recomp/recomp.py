@@ -299,6 +299,8 @@ def main():
                 if g is f and br.link:
                     stats['local_bl'] += 1
                     print(f'warning: {pc:08X} bl to own body {t:08X}', file=sys.stderr)
+                    if t == pc + 4:
+                        continue  # emit_body sets LR and runs on, so nothing calls it
                 if t not in g.entries:
                     g.entries.append(t)
                     g.labels.add(t)
@@ -428,7 +430,11 @@ def main():
             s = pre
             if br.kind in ('b', 'bc'):
                 t = br.target
-                if br.link:
+                if br.link and t == pc + 4 and in_range(t):
+                    # The next word, as in the `bl $+4` that reads the PC: set LR and run on. A
+                    # call would run the rest of the function in the callee and again here.
+                    s += f'c->lr = 0x{pc + 4:08X}u;'
+                elif br.link:
                     kind = special_calls.get(t)
                     if kind == 'setjmp':
                         call = (f'c->lr = 0x{pc + 4:08X}u; if (GCN_SETJMP(*hle_setjmp_jmpbuf(c)) == 0) {cname(t)}(c);')
