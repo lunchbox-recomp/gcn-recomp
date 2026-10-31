@@ -36,7 +36,7 @@ uint64_t fp_value(Rng& r) {
     case 1:
     case 2: return kFpEdges[r.below(sizeof kFpEdges / sizeof *kFpEdges)];
     case 3:
-    case 4: {  // within 2^20 of 1, and in case 4 a single exactly
+    case 4: {  // either sign, at least 2^-20 and under 2^21, and a single exactly half the time
         const uint64_t u = (uint64_t)r.below(2) << 63 | (uint64_t)(1003 + r.below(41)) << 52 |
                            (r.next() & 0xFFFFFFFFFFFFFull);
         return r.below(2) ? u : u & ~0x1FFFFFFFull;
