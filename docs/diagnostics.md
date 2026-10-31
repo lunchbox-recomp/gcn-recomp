@@ -1453,7 +1453,7 @@ Each line that names no recompiled function's start prints
 `GCN_INTERPRET: line N of <file> is "<line>", which isn't a recompiled function's start`.
 Once the file's read, any such line stops the game with
 `GCN_INTERPRET: <file> names no recompiled function's start on K lines, listed above`. A
-file that can't be read stops it with `GCN_INTERPRET: can't read <file>`.
+file that can't be read, a directory included, stops it with `GCN_INTERPRET: can't read <file>`.
 
 `GCN_INTERPRET_STATS=1` prints on stderr at exit the 30 functions that ran the most
 interpreted instructions, after a line with the total. A fatal stop prints it too, and an

@@ -104,12 +104,15 @@ std::string code_table_force(const char* spec) {
     FILE* f = fopen(spec, "r");
     if (!f) fatal("GCN_INTERPRET: can't read %s", spec);
     unsigned bad;
+    bool unread;
     {
         std::string said;
         bad = force_file(f, spec, &said);
+        unread = ferror(f) != 0;  // a directory opens, and then its first read fails
         fclose(f);
-        if (!bad) return said;
+        if (!bad && !unread) return said;
     }
+    if (unread) fatal("GCN_INTERPRET: can't read %s", spec);
     fatal("GCN_INTERPRET: %s names no recompiled function's start on %u line%s, listed above", spec, bad,
           bad == 1 ? "" : "s");
 }

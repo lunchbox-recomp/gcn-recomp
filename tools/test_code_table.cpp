@@ -222,6 +222,12 @@ void check_interpret(const std::string& dir) {
     if (guarded(force_spec, (void*)missing.c_str()) || g_fatal.find(want) != 0)
         fail("GCN_INTERPRET with no such file: \"" + g_fatal + "\"");
     else printf("match  GCN_INTERPRET stops when its file isn't there\n");
+    snprintf(want, sizeof want, "GCN_INTERPRET: can't read %s", dir.c_str());
+    if (guarded(force_spec, (void*)dir.c_str()))
+        fail("GCN_INTERPRET took a directory, and printed \"" + g_forced + "\"");
+    else if (g_fatal != want) fail("GCN_INTERPRET with a directory stopped with \"" + g_fatal + "\", not \"" + want + "\"");
+    else printf("match  GCN_INTERPRET stops when its file is a directory\n");
+    force_none();
 
     uint32_t guarded_count = 0;
     std::vector<uint32_t> all_bits;
