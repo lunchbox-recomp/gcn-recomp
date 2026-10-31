@@ -24,6 +24,7 @@ T = 0x80104000
 MFLR_R3 = 0x7C6802A6
 MFLR_R0 = 0x7C0802A6
 MTLR_R0 = 0x7C0803A6
+LR_SENTINEL = 0xDEAD0000  # an LR no instruction here writes
 
 
 def b(li, aa=0, lk=0):
@@ -350,6 +351,38 @@ class OtherOwnBodyCalls(Fixture):
         want = [f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X} (other)'
                 for fn, at, to in self.CALLS]
         self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
+
+
+class LinkOffBranches(Fixture):
+    """Branches without the link bit leave LR alone, even to the next word and even when not taken."""
+
+    FUNCS = [
+        ('f_b', [b(4), addi(4, 1), BLR]),                # b .+4
+        ('f_bdnz', [bc(16, 0, 4), addi(4, 1), BLR]),     # bdnz .+4
+        ('f_beqctr', [bcctr(12, 2, 0), addi(4, 1), BLR]),
+    ]
+    CTRS = (0, 1, 2)
+    CASES = ([Case('b', 'f_b', lr=LR_SENTINEL)]
+             + [Case(f'bdnz_{ctr}', 'f_bdnz', lr=LR_SENTINEL, ctr=ctr) for ctr in CTRS]
+             + [Case('beqctr_clear', 'f_beqctr', lr=LR_SENTINEL, ctr=T + 0x1000, cr0=0),
+                Case('beqctr_set', 'f_beqctr', lr=LR_SENTINEL, ctr=T + 0x1000, cr0=2)])
+
+    def test_b_to_the_next_word_leaves_lr_and_runs_the_rest_once(self):
+        r = self.got('b')
+        self.assertEqual((r['lr'], r['r4'], r['calls']), (LR_SENTINEL, 1, 0))
+
+    def test_bdnz_to_the_next_word_decrements_ctr_and_leaves_lr(self):
+        for ctr in self.CTRS:
+            with self.subTest(ctr=ctr):
+                r = self.got(f'bdnz_{ctr}')
+                self.assertEqual((r['lr'], r['ctr'], r['r4'], r['calls']),
+                                 (LR_SENTINEL, (ctr - 1) & 0xFFFFFFFF, 1, 0))
+
+    def test_a_beqctr_leaves_lr_taken_or_not(self):
+        r = self.got('beqctr_clear')
+        self.assertEqual((r['lr'], r['r4'], r['calls']), (LR_SENTINEL, 1, 0))
+        r = self.got('beqctr_set')
+        self.assertEqual((r['lr'], r['r4'], r['calls'], r['target']), (LR_SENTINEL, 0, 1, T + 0x1000))
 
 
 class LastWordCall(Fixture):
