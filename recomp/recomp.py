@@ -481,6 +481,8 @@ def main():
                         body = 'call_indirect(c, c->ctr); RET();'
                 if cond:
                     s += f'if ({cond}) {{ {body} }}'
+                    if br.link:
+                        s += f' else c->lr = 0x{pc + 4:08X}u;'
                 else:
                     s += body
                     last_uncond = not br.link
