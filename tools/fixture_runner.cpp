@@ -107,7 +107,8 @@ void call_indirect(CPU* c, uint32_t addr) {
     }
     fatal("call_indirect: no function at %08X (lr=%08X)", addr, c->lr);
 }
-void unimpl(CPU*, uint32_t pc, uint32_t inst) { note("unimpl", pc, inst); }
+// The runtime's stops the game, so native code never runs on past it.
+void unimpl(CPU*, uint32_t pc, uint32_t inst) { fatal("unimplemented instruction %08X at %08X", inst, pc); }
 
 void irq_poll(CPU* c) {
     note("irq_poll", (uint32_t)g_vcount, c->r[3], c->msr);
@@ -446,10 +447,13 @@ std::string differ(const Outcome& n, const Outcome& o) {
 void check_case(const Case& k) {
     const Outcome nat = run(k, NATIVE);
     int before = g_failed;
-    if (!nat.stop.empty()) fail(std::string(k.name) + ": the native run stopped with \"" + nat.stop + "\"");
-    if (depth_of(&nat.cpu)) fail(std::string(k.name) + ": the native run left the call stack unbalanced");
+    // A stop doesn't unwind the call stack, so only a run that finished has to balance it.
+    const bool stop_needed = k.needs && !nat.stop.empty() && nat.stop.rfind(k.needs, 0) == 0;
+    if (!nat.stop.empty() && !stop_needed)
+        fail(std::string(k.name) + ": the native run stopped with \"" + nat.stop + "\"");
+    if (nat.stop.empty() && depth_of(&nat.cpu)) fail(std::string(k.name) + ": the native run left the call stack unbalanced");
     if (k.needs) {
-        bool seen = !strcmp(k.needs, "IRQ_CHECK") && nat.vcount > 0;
+        bool seen = stop_needed || (!strcmp(k.needs, "IRQ_CHECK") && nat.vcount > 0);
         for (const Call& c : nat.calls) seen = seen || c.fn == k.needs;
         if (!seen) fail(std::string(k.name) + ": the native run never made the " + k.needs + " it's for");
     }

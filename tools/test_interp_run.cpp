@@ -55,6 +55,11 @@ const Case kCases[] = {
     // This pins native's behaviour today, which calls the next word as a mid-entry and then runs it again
     // once that returns. F2a changes native to set LR and run on, which flips this case.
     {"a function's bl to the next word, which native runs twice", FX_F_BL_NEXT, 0, nullptr, nullptr, false},
+    {"an rfi, which returns", FX_F_RFI, 0, nullptr, "hle_rfi", false},
+    {"a bdnz to itself, with an IRQ_CHECK each time", FX_F_BDNZ, 0, nullptr, "IRQ_CHECK", false},
+    {"a loose frame's branch onto a patch site", FX_BLOB_SITE, FX_F_BLOB_SITE_TWIN, nullptr, "heap_trace_alloc", true},
+    {"running off the end into a gap no function holds", FX_F_GAP_FALLS, 0, nullptr, "unimplemented instruction",
+     false},
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to

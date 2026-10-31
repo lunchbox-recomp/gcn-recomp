@@ -33,8 +33,8 @@ void check_setter() {
 }
 
 // Runs filler k forced k + 1 times, each two words, so the 30 that ran the most are 39 down to 10.
-// It runs first, while every count is still 0.
-void check_stats() {
+// It runs first, while every count is still 0, and returns the total.
+uint64_t check_stats() {
     std::vector<uint32_t> starts(FX_FILLER_COUNT);
     for (uint32_t k = 0; k < FX_FILLER_COUNT; k++) {
         char name[16];
@@ -68,6 +68,25 @@ void check_stats() {
     const std::string got = code_table_stats();
     if (got != want) fail("GCN_INTERPRET_STATS printed\n" + got + "where it should print\n" + want);
     else printf("match  GCN_INTERPRET_STATS's 30 functions and its total\n");
+    return total;
+}
+
+void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc); }
+
+// A loose frame's words count in the total as well as on their own.
+void check_loose_stats(uint64_t total) {
+    reset_ram();
+    base_cpu(&g_cpu);
+    uint32_t pc = FX_BLOB_LOOP;
+    if (!guarded(run_loose, &pc)) fail("the loose run for GCN_INTERPRET_STATS stopped with \"" + g_fatal + "\"");
+    const uint64_t loose = *code_table_counter(g_recomp_range_count);
+    char want[160];
+    snprintf(want, sizeof want, "[interp] GCN_INTERPRET_STATS: %llu instructions interpreted, %llu of them in loose frames\n",
+             (unsigned long long)(total + loose), (unsigned long long)loose);
+    const std::string got = code_table_stats();
+    const std::string first = got.substr(0, got.find('\n') + 1);
+    if (!loose || first != want) fail("after a loose run, GCN_INTERPRET_STATS printed\n" + first + "where it should print\n" + want);
+    else printf("match  GCN_INTERPRET_STATS's total after a loose run\n");
 }
 
 std::string g_forced;
@@ -197,7 +216,7 @@ int main(int argc, char** argv) {
     }
     if (!runner_init("test_code_table")) return 2;
 
-    check_stats();
+    check_loose_stats(check_stats());
     check_setter();
     check_interpret(dir);
     return runner_finish();

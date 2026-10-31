@@ -114,7 +114,7 @@ def mtmsr(s):
     return x_form(s, 0, 0, 146)
 
 
-BLR, BLRL, BCTR, BCTRL = 0x4E800020, 0x4E800021, 0x4E800420, 0x4E800421
+BLR, BLRL, BCTR, BCTRL, RFI = 0x4E800020, 0x4E800021, 0x4E800420, 0x4E800421, 0x4C000064
 
 
 # A word that names a label is a function of the pc it's at and `at`, which gives a label's address.
@@ -147,6 +147,10 @@ def bnel(t):
 def bcl(t):
     """bcl 20,31, which always branches and links."""
     return bc(20, 31, t, 1)
+
+
+def bdnz(t):
+    return bc(16, 0, t)
 
 
 def address(r, t):
@@ -208,6 +212,9 @@ BLOB_NEXT = (P16 + address(12, '.n1') + [bl('.n1'), 'n1:', mflr(3)]
              + address(12, '.n2') + [bcl('.n2'), 'n2:', mflr(4)] + E16)
 NEXT_TWIN = (P16 + address(12, 'blob_next.n1') + [mtlr(12), mflr(3)]
              + address(12, 'blob_next.n2') + [mtlr(12), mflr(4)] + E16)
+# A mod's branch onto a patch site in a function's middle.
+BLOB_SITE = [li(3, 1), b('f_patch.site')]
+GAP_WORD = li(3, 99)  # what fills a gap no symbol holds
 
 FUNCS = [
     Code('f_loop', [li(3, 3), li(4, 0), 'loop:', add(4, 4, 3), addi(3, 3, -1), cmpwi(3, 0), bne('.loop'), BLR]),
@@ -264,10 +271,16 @@ FUNCS = [
     Code('f_blob_next_twin', NEXT_TWIN),
     # recomp.py makes .n1 a mid-entry and warns, and native code calls it and then runs on from it.
     Code('f_bl_next', P16 + [li(3, 0), bl('.n1'), 'n1:', addi(3, 3, 1)] + E16),
+    Code('f_rfi', [li(3, 5), RFI, li(3, 6), BLR]),
+    Code('f_bdnz', [li(0, 4), mtctr(0), 'spin:', bdnz('.spin'), BLR]),
+    Code('f_blob_site_twin', BLOB_SITE),
+    # It runs off its end into two words that no symbol holds.
+    Code('f_gap_falls', [addi(3, 3, 1)], gap=8),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
 BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')])),
-         (BLOB + 0x200, Code('blob_tail', BLOB_TAIL)), (BLOB + 0x300, Code('blob_next', BLOB_NEXT))]
+         (BLOB + 0x200, Code('blob_tail', BLOB_TAIL)), (BLOB + 0x300, Code('blob_next', BLOB_NEXT)),
+         (BLOB + 0x400, Code('blob_site', BLOB_SITE))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}
@@ -277,16 +290,17 @@ DATA_SIZE = 0x100
 
 
 def layout():
-    """Places everything, and returns the labels with each section's words."""
+    """Places everything, and returns the labels with each section's words. A function's gap is that
+    many bytes of GAP_WORD after it."""
     labels = dict(DATA_LABELS)
     for codes, base in ((FUNCS, TEXT), (MODULE_FUNCS, MODULE)):
         a = base
         for f in codes:
             f.place(a, labels)
-            a += f.size()
+            a += f.size() + f.opts.get('gap', 0)
     for a, blob in BLOBS:
         blob.place(a, labels)
-    text = [w for f in FUNCS for w in f.words(labels)]
+    text = [w for f in FUNCS for w in f.words(labels) + [GAP_WORD] * (f.opts.get('gap', 0) // 4)]
     module = [w for f in MODULE_FUNCS for w in f.words(labels)]
     data = [0] * (DATA_SIZE // 4)
     for table, func, cases in JUMP_TABLES:
