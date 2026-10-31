@@ -8,13 +8,13 @@ patches.txt, special_calls.txt, idle.txt and steps.txt (any may be absent).
 """
 import collections
 import os
-import re
 import struct
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from dol import Dol, load_symbols  # noqa: E402
 import ppc  # noqa: E402
+import interp_tables  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FUNCS_PER_FILE = 150
@@ -190,54 +190,9 @@ def translate_reloc(pc, i, reloc):
     return code
 
 
-FNV64_BASIS = 0xCBF29CE484222325
-
-
-def fnv1a64(data, h=FNV64_BASIS):
-    """64-bit FNV-1a of data, carrying on from h."""
-    for b in data:
-        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
-    return h
-
-
 def guard_line(f, entry):
     """The entry guard. A body whose function's bit is set hands its entry to the interpreter."""
     return f'\tif (UNLIKELY(GCN_CODE_CHANGED({f.index}))) {{ interp_enter(c, {entry}); RET(); }}'
-
-
-SPECIAL_KINDS = {'setjmp': 'RECOMP_SPECIAL_SETJMP', 'longjmp': 'RECOMP_SPECIAL_LONGJMP'}
-
-
-def interp_source(funcs, sites, idle_loops, special_calls, text):
-    """The text of recomp_interp.c, the tables the interpreter reads (runtime/recomp.h). funcs
-    and sites, as (addr, original word, kind, C text), come sorted by address. So does text, the
-    (start, bytes) of each text section whose code is in RAM at its own address."""
-    out = ['/* The tables the interpreter reads (runtime/recomp.h), from recomp.py. */',
-           '#include "recomp_funcs.h"', '#include <setjmp.h>', '', 'const RecompRange g_recomp_ranges[] = {']
-    out += [f'\t{{0x{f.addr:08X}u, 0x{f.end:08X}u, {f.flags}}},' for f in funcs]
-    out += ['\t{0, 0, 0}};', f'const uint32_t g_recomp_range_count = {len(funcs)};',
-            f'uint8_t g_code_changed_bits[{max(1, (len(funcs) + 7) // 8)}] = {{0}};', '',
-            '/* A site returns 1 when its patch returns from the guest function. */',
-            '#undef RET', '#define RET() return 1']
-    for a, word, kind, code in sites:
-        out += [f'static int site_{a:08X}(CPU* c) {{', f'\t/* {a:08X} {word:08X} {kind} */ {code}', '\treturn 0;', '}']
-    out += ['const RecompSite g_recomp_sites[] = {']
-    out += [f'\t{{0x{a:08X}u, 0x{word:08X}u, site_{a:08X}}},' for a, word, _, _ in sites]
-    out += ['\t{0, 0, 0}};', f'const uint32_t g_recomp_site_count = {len(sites)};', '',
-            'const uint32_t g_recomp_idle[] = {']
-    out += [f'\t0x{a:08X}u,' for a in sorted(idle_loops)]
-    out += ['\t0};', f'const uint32_t g_recomp_idle_count = {len(idle_loops)};',
-            'const RecompSpecial g_recomp_specials[] = {']
-    out += [f'\t{{0x{a:08X}u, {SPECIAL_KINDS.get(n, "RECOMP_SPECIAL_CONTEXT")}}},' for a, n in sorted(special_calls.items())]
-    out += ['\t{0, 0}};', f'const uint32_t g_recomp_special_count = {len(special_calls)};', '',
-            'const RecompText g_recomp_text[] = {']
-    out += [f'\t{{0x{a:08X}u, 0x{len(b):X}u}},' for a, b in text]
-    h = FNV64_BASIS
-    for _, b in text:
-        h = fnv1a64(b, h)
-    out += ['\t{0, 0}};', f'const uint32_t g_recomp_text_count = {len(text)};',
-            f'const uint64_t g_recomp_text_fnv = 0x{h:016X}ull;']
-    return '\n'.join(out) + '\n'
 
 
 def main():
@@ -542,9 +497,6 @@ def main():
     for k, f in enumerate(funcs):
         f.index = k
         f.guarded = not (in_module(f.addr) or in_rel(f.addr))
-        flags = [name for name, on in (('RECOMP_RANGE_HLE', f.hle), ('RECOMP_RANGE_LONGJMP', f.addr in longjmps),
-                                       ('RECOMP_RANGE_NO_GUARD', not f.guarded)) if on]
-        f.flags = ' | '.join(flags) or '0'
 
     # Emit files
     header = ['#pragma once', '#include "recomp.h"', '']
@@ -631,29 +583,11 @@ def main():
                      ', '.join(f'{{{s}u, 0x{c:08X}u, 0x{sz:X}u, {int(e)}u}}' for s, c, sz, e in secs) + '}},')
     table.append('\t{0, 0, 0, {{0, 0, 0, 0}}}};')
     table.append(f'const uint32_t g_recomp_rel_count = {len(rels)};')
-    # The interpreter calls each patch and step as a function of its own. Only those inside a
-    # function count, since native code has no others.
-    sites = []
-    for a in sorted(set(patches) | set(steps)):
-        if func_containing(a) is None:
-            continue
-        word = dol.read32(a)
-        if a in patches:
-            code = patches[a]
-            if re.search(r'\bgoto\b', code):
-                print(f'warning: patches.txt {a:08X} has a goto, which works only inside its function, '
-                      'so an interpreted run stops there', file=sys.stderr)
-                code = f'interp_site_unusable(c, 0x{a:08X}u);'
-            sites.append((a, word, 'PATCHED', code))
-        else:
-            sites.append((a, word, 'STEP', ppc.translate_step(a, word, *steps[a])))
     loaded = [(c, c + sz) for c, sz, _, _ in modules] + [(c, c + sz) for c, sz in rel_text]
-    text = [(a, dol.read_bytes(a, sz)) for a, sz, _ in sorted(dol.text_sections())
-            if not any(lo < a + sz and a < hi for lo, hi in loaded)]
 
     write('recomp_funcs.h', '\n'.join(header) + '\n')
     write('recomp_table.c', '\n'.join(table) + '\n')
-    write('recomp_interp.c', interp_source(funcs, sites, idle_loops, special_calls, text))
+    write('recomp_interp.c', interp_tables.source(dol, funcs, patches, steps, idle_loops, special_calls, loaded))
     write('sources.cmake', 'set(RECOMP_SOURCES\n' + '\n'.join(
         f'  ${{RECOMP_GEN_DIR}}/{f}' for f in files + ['recomp_table.c', 'recomp_interp.c']) + '\n)\n')
 

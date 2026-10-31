@@ -15,11 +15,14 @@ import sys
 import tempfile
 import unittest
 import warnings
+from types import SimpleNamespace
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import interp_tables  # noqa: E402
 import ppc  # noqa: E402
 import rel  # noqa: E402
+from dol import Dol  # noqa: E402
 from recomp import FUNCS_PER_FILE  # noqa: E402
 
 RECOMP = os.path.join(HERE, 'recomp.py')
@@ -160,13 +163,6 @@ def write_fixture(d):
     # The step at T shares its address with a patch, which wins.
     write(os.path.join(tables, 'steps.txt'), f'{STEP:08X} A\n{T:08X} A\n{OUTSIDE[1]:08X} A\n')
     return dol, symbols, tables
-
-
-def fnv1a64(data):
-    h = 0xCBF29CE484222325
-    for b in data:
-        h = ((h ^ b) * 0x100000001B3) & 0xFFFFFFFFFFFFFFFF
-    return h
 
 
 def guard(n, entry):
@@ -320,43 +316,63 @@ class Tables(Recompiled):
         self.assertEqual(count(self.interp, 'g_recomp_special_count'), 3)
 
     def test_the_text_is_the_sections_in_ram_sorted_with_their_fnv(self):
-        self.assertEqual(fnv1a64(b''), 0xCBF29CE484222325)
-        self.assertEqual(fnv1a64(b'a'), 0xAF63DC4C8601EC8C)
+        self.assertEqual(interp_tables.fnv1a64(b''), 0xCBF29CE484222325)
+        self.assertEqual(interp_tables.fnv1a64(b'a'), 0xAF63DC4C8601EC8C)
         in_ram = ((T, T_WORDS), (T2, T2_WORDS), (T3, T3_WORDS))
         self.assertEqual(rows(self.interp, 'g_recomp_text'),
                          [[f'0x{a:08X}u', f'0x{len(w) * 4:X}u'] for a, w in in_ram] + [['0', '0']])
         self.assertEqual(count(self.interp, 'g_recomp_text_count'), 3)
-        fnv = fnv1a64(b''.join(section_bytes(w) for _, w in in_ram))
+        fnv = interp_tables.fnv1a64(b''.join(section_bytes(w) for _, w in in_ram))
         self.assertIn(f'const uint64_t g_recomp_text_fnv = 0x{fnv:016X}ull;', self.interp)
 
 
-class Empty(unittest.TestCase):
-    """One function and no steering files, so every list holds only its end marker."""
+def func(addr, size, hle=False, guarded=True):
+    """A stand-in for recomp.py's Func, with what interp_tables reads."""
+    return SimpleNamespace(addr=addr, end=addr + size, hle=hle, guarded=guarded)
 
-    def test_the_lists_are_empty(self):
-        with tempfile.TemporaryDirectory() as d:
-            dol = os.path.join(d, 'main.dol')
-            write_dol(dol, [(T, [li(3, 1), BLR])])
-            symbols = os.path.join(d, 'symbols.txt')
-            write(symbols, f'only = .text:0x{T:08X}; // type:function size:0x8 scope:global\n')
-            os.mkdir(os.path.join(d, 'tables'))
-            out = os.path.join(d, 'out')
-            r = subprocess.run([sys.executable, '-B', RECOMP, dol, symbols, out, os.path.join(d, 'tables')],
-                               capture_output=True, text=True)
+
+class Direct(unittest.TestCase):
+    """interp_tables.source called on its own, with no recompile."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.dir = tmp.name
+
+    def dol(self, text):
+        path = os.path.join(self.dir, 'main.dol')
+        write_dol(path, text)
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', ResourceWarning)
+            return Dol(path)
+
+    def test_with_one_function_and_no_tables_the_lists_are_empty(self):
+        text = interp_tables.source(self.dol([(T, [li(3, 1), BLR])]), [func(T, 8)], {}, {}, set(), {}, [])
+        for table, end in (('g_recomp_sites', ['0', '0', '0']), ('g_recomp_idle', ['0']),
+                           ('g_recomp_specials', ['0', '0'])):
+            self.assertEqual(rows(text, table), [end])
+        for name in ('g_recomp_site_count', 'g_recomp_idle_count', 'g_recomp_special_count'):
+            self.assertEqual(count(text, name), 0)
+        self.assertEqual(rows(text, 'g_recomp_ranges'), [[f'0x{T:08X}u', f'0x{T + 8:08X}u', '0'], ['0', '0', '0']])
+        self.assertIn('uint8_t g_code_changed_bits[1] = {0};', text)
+        cc = shutil.which(os.environ.get('CC', 'cc'))
+        if cc:
+            out = os.path.join(self.dir, 'out')
+            write(os.path.join(out, 'recomp_funcs.h'), '#pragma once\n#include "recomp.h"\n')
+            write(os.path.join(out, 'recomp_interp.c'), text)
+            r = subprocess.run([cc, '-std=gnu11', '-fsyntax-only', '-I', RUNTIME, '-I', out,
+                                os.path.join(out, 'recomp_interp.c')], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
-            text = read(os.path.join(out, 'recomp_interp.c'))
-            for table, end in (('g_recomp_sites', ['0', '0', '0']), ('g_recomp_idle', ['0']),
-                               ('g_recomp_specials', ['0', '0'])):
-                self.assertEqual(rows(text, table), [end])
-            for name in ('g_recomp_site_count', 'g_recomp_idle_count', 'g_recomp_special_count'):
-                self.assertEqual(count(text, name), 0)
-            self.assertEqual(rows(text, 'g_recomp_ranges'), [[f'0x{T:08X}u', f'0x{T + 8:08X}u', '0'], ['0', '0', '0']])
-            self.assertIn('uint8_t g_code_changed_bits[1] = {0};', text)
-            cc = shutil.which(os.environ.get('CC', 'cc'))
-            if cc:
-                r = subprocess.run([cc, '-std=gnu11', '-fsyntax-only', '-I', RUNTIME, '-I', out,
-                                    os.path.join(out, 'recomp_interp.c')], capture_output=True, text=True)
-                self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_a_text_section_that_overlaps_loaded_code_is_left_out(self):
+        words = [li(3, 1), BLR]
+        dol = self.dol([(T, words), (T2, words), (T3, words)])
+        # One range ends where T starts, one covers T2's last word and one T3's first.
+        loaded = [(T - 0x10, T), (T2 + 4, T2 + 0x100), (T3 - 4, T3 + 4)]
+        text = interp_tables.source(dol, [func(T, 8)], {}, {}, set(), {}, loaded)
+        self.assertEqual(rows(text, 'g_recomp_text'), [[f'0x{T:08X}u', '0x8u'], ['0', '0']])
+        fnv = interp_tables.fnv1a64(section_bytes(words))
+        self.assertIn(f'const uint64_t g_recomp_text_fnv = 0x{fnv:016X}ull;', text)
 
 
 # Calls every entry of the fixture once with each function's bit set alone, and once with none
