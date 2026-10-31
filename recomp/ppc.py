@@ -167,7 +167,7 @@ def translate(pc, i):
     if op == 8:  # subfic
         return f'{{ uint64_t t = (uint64_t)(uint32_t)~c->r[{a}] + (uint32_t){simm} + 1; c->r[{d}] = (uint32_t)t; c->xer_ca = (uint8_t)(t >> 32); }}'
     if op == 7:  # mulli
-        return f'c->r[{d}] = (uint32_t)((int32_t)c->r[{a}] * {simm});'
+        return f'c->r[{d}] = c->r[{a}] * (uint32_t){simm};'
     if op == 11:  # cmpi
         crf = d >> 2
         return f'c->cr[{crf}] = CMPS((int32_t)c->r[{a}], {simm});'

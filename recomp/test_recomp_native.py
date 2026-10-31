@@ -36,6 +36,10 @@ def bcctr(bo, bi, lk):
     return 0x4C000420 | bo << 21 | bi << 16 | lk
 
 
+def mulli(d, a, simm):
+    return 0x1C000000 | d << 21 | a << 16 | (simm & 0xFFFF)
+
+
 # A set-up state for one run of a function: the registers it starts with. A field left None is zero.
 Case = collections.namedtuple('Case', 'label fn regs lr ctr cr0', defaults=(None, None, None, None))
 
@@ -238,6 +242,35 @@ class AbsoluteBranchEmitted(Fixture):
                 self.assertEqual((r['calls'], r['target'] if calls else 0, r['depth']),
                                  (calls, 0xFFFFFFFC if calls else 0, 0))
         self.assertEqual(self.got('bla')['lr'], self.addr['f_bla'] + 4)
+
+
+UBSAN = ['-fsanitize=undefined', '-fno-sanitize-recover=all']
+
+
+class Mulli(Fixture):
+    """mulli by values that overflow a signed int: the product is the low 32 bits of the true one."""
+
+    MULLI = [(5, 3, 2), (6, 4, -1), (7, 3, -32768), (8, 3, 32767)]  # rD, rA, SIMM
+    FUNCS = [('f_mulli', [mulli(d, a, simm) for d, a, simm in MULLI] + [BLR])]
+    STATES = [('edge', {3: 0x7FFFFFFF, 4: 0x80000000}), ('negative', {3: 0xFFFF8000, 4: 0x12345678}),
+              ('small', {3: 3, 4: 5})]
+    CASES = [Case(label, 'f_mulli', regs=regs) for label, regs in STATES]
+
+    def test_the_products_wrap_to_32_bits(self):
+        for label, regs in self.STATES:
+            for d, a, simm in self.MULLI:
+                with self.subTest(label=label, rD=d):
+                    signed = regs[a] - (1 << 32 if regs[a] & 0x80000000 else 0)
+                    self.assertEqual(f"{self.got(label)[f'r{d}']:08X}", f'{(signed * simm) & 0xFFFFFFFF:08X}')
+
+    def test_no_product_overflows_a_signed_int(self):
+        probe = os.path.join(self.dir, 'probe')
+        write(probe + '.c', 'int main(void) { return 0; }\n')
+        r = subprocess.run([self.compiler()] + UBSAN + [probe + '.c', '-o', probe], capture_output=True, text=True)
+        if r.returncode or subprocess.run([probe]).returncode:
+            self.skipTest('the C compiler cannot build with -fsanitize=undefined')
+        problem, _ = self.build_and_run('ubsan', UBSAN)
+        self.assertEqual(problem, '')
 
 
 if __name__ == '__main__':
