@@ -27,6 +27,16 @@ InterpStep pair(CPU* c, uint32_t i, double v0, double v1, bool round) {
 
 }  // namespace
 
+// Lane 0 and then lane 1, each in a full expression of its own, as translate's `double v0 = e0, v1 = e1;`
+// has them. As two arguments to one call they'd be read in whatever order the compiler picks, and clang
+// targeting MSVC reads the second first.
+#define PAIR(e0, e1, round)                 \
+    do {                                    \
+        const double v0 = (e0);             \
+        const double v1 = (e1);             \
+        return pair(c, i, v0, v1, (round)); \
+    } while (0)
+
 InterpStep interp_ps(CPU* c, uint32_t i) {
     if (i >> 26 != 4) return INTERP_UNIMPL;
     const uint32_t xo6 = (i >> 1) & 0x3F;
@@ -39,23 +49,23 @@ InterpStep interp_ps(CPU* c, uint32_t i) {
     const auto C0 = [=] { return c->f[cc].d; };
     const auto C1 = [=] { return c->ps1[cc]; };
     switch (insn_xo5(i)) {
-    case 18: return pair(c, i, A0() / B0(), A1() / B1(), true);                          // ps_div
-    case 20: return pair(c, i, A0() - B0(), A1() - B1(), true);                          // ps_sub
-    case 21: return pair(c, i, A0() + B0(), A1() + B1(), true);                          // ps_add
-    case 25: return pair(c, i, A0() * C0(), A1() * C1(), true);                          // ps_mul
-    case 24: return pair(c, i, 1.0 / B0(), 1.0 / B1(), true);                            // ps_res
-    case 26: return pair(c, i, 1.0 / sqrt(B0()), 1.0 / sqrt(B1()), true);                // ps_rsqrte
-    case 23: return pair(c, i, (A0() >= 0.0) ? C0() : B0(), (A1() >= 0.0) ? C1() : B1(), false);  // ps_sel
-    case 28: return pair(c, i, fma(A0(), C0(), -B0()), fma(A1(), C1(), -B1()), true);    // ps_msub
-    case 29: return pair(c, i, fma(A0(), C0(), B0()), fma(A1(), C1(), B1()), true);      // ps_madd
-    case 30: return pair(c, i, -fma(A0(), C0(), -B0()), -fma(A1(), C1(), -B1()), true);  // ps_nmsub
-    case 31: return pair(c, i, -fma(A0(), C0(), B0()), -fma(A1(), C1(), B1()), true);    // ps_nmadd
-    case 10: return pair(c, i, A0() + B1(), C1(), true);                                 // ps_sum0
-    case 11: return pair(c, i, C0(), A0() + B1(), true);                                 // ps_sum1
-    case 12: return pair(c, i, A0() * C0(), A1() * C0(), true);                          // ps_muls0
-    case 13: return pair(c, i, A0() * C1(), A1() * C1(), true);                          // ps_muls1
-    case 14: return pair(c, i, fma(A0(), C0(), B0()), fma(A1(), C0(), B1()), true);      // ps_madds0
-    case 15: return pair(c, i, fma(A0(), C1(), B0()), fma(A1(), C1(), B1()), true);      // ps_madds1
+    case 18: PAIR(A0() / B0(), A1() / B1(), true);                          // ps_div
+    case 20: PAIR(A0() - B0(), A1() - B1(), true);                          // ps_sub
+    case 21: PAIR(A0() + B0(), A1() + B1(), true);                          // ps_add
+    case 25: PAIR(A0() * C0(), A1() * C1(), true);                          // ps_mul
+    case 24: PAIR(1.0 / B0(), 1.0 / B1(), true);                            // ps_res
+    case 26: PAIR(1.0 / sqrt(B0()), 1.0 / sqrt(B1()), true);                // ps_rsqrte
+    case 23: PAIR((A0() >= 0.0) ? C0() : B0(), (A1() >= 0.0) ? C1() : B1(), false);  // ps_sel
+    case 28: PAIR(fma(A0(), C0(), -B0()), fma(A1(), C1(), -B1()), true);    // ps_msub
+    case 29: PAIR(fma(A0(), C0(), B0()), fma(A1(), C1(), B1()), true);      // ps_madd
+    case 30: PAIR(-fma(A0(), C0(), -B0()), -fma(A1(), C1(), -B1()), true);  // ps_nmsub
+    case 31: PAIR(-fma(A0(), C0(), B0()), -fma(A1(), C1(), B1()), true);    // ps_nmadd
+    case 10: PAIR(A0() + B1(), C1(), true);                                 // ps_sum0
+    case 11: PAIR(C0(), A0() + B1(), true);                                 // ps_sum1
+    case 12: PAIR(A0() * C0(), A1() * C0(), true);                          // ps_muls0
+    case 13: PAIR(A0() * C1(), A1() * C1(), true);                          // ps_muls1
+    case 14: PAIR(fma(A0(), C0(), B0()), fma(A1(), C0(), B1()), true);      // ps_madds0
+    case 15: PAIR(fma(A0(), C1(), B0()), fma(A1(), C1(), B1()), true);      // ps_madds1
     }
     const uint32_t crf = insn_d(i) >> 2;
     switch (insn_xo(i)) {
@@ -63,15 +73,17 @@ InterpStep interp_ps(CPU* c, uint32_t i) {
     case 32: c->cr[crf] = FCMP(A0(), B0()); return INTERP_NEXT;  // ps_cmpu0, ps_cmpo0
     case 64:
     case 96: c->cr[crf] = FCMP(A1(), B1()); return INTERP_NEXT;  // ps_cmpu1, ps_cmpo1
-    case 40: return pair(c, i, -B0(), -B1(), false);                    // ps_neg
-    case 72: return pair(c, i, B0(), B1(), false);                      // ps_mr
-    case 136: return pair(c, i, -fabs(B0()), -fabs(B1()), false);       // ps_nabs
-    case 264: return pair(c, i, fabs(B0()), fabs(B1()), false);         // ps_abs
-    case 528: return pair(c, i, A0(), B0(), false);                     // ps_merge00
-    case 560: return pair(c, i, A0(), B1(), false);                     // ps_merge01
-    case 592: return pair(c, i, A1(), B0(), false);                     // ps_merge10
-    case 624: return pair(c, i, A1(), B1(), false);                     // ps_merge11
+    case 40: PAIR(-B0(), -B1(), false);                    // ps_neg
+    case 72: PAIR(B0(), B1(), false);                      // ps_mr
+    case 136: PAIR(-fabs(B0()), -fabs(B1()), false);       // ps_nabs
+    case 264: PAIR(fabs(B0()), fabs(B1()), false);         // ps_abs
+    case 528: PAIR(A0(), B0(), false);                     // ps_merge00
+    case 560: PAIR(A0(), B1(), false);                     // ps_merge01
+    case 592: PAIR(A1(), B0(), false);                     // ps_merge10
+    case 624: PAIR(A1(), B1(), false);                     // ps_merge11
     case 1014: hle_dcbz_l(c, (a ? c->r[a] : 0) + c->r[b]); return INTERP_NEXT;  // dcbz_l
     default: return INTERP_UNIMPL;
     }
 }
+
+#undef PAIR
