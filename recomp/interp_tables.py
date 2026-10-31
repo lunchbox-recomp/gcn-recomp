@@ -61,10 +61,10 @@ def source(dol, funcs, patches, steps, idle_loops, special_calls, loaded):
     sites = _sites(dol, funcs, patches, steps)
     text = _text(dol, loaded)
     out = ['/* The tables the interpreter reads (runtime/recomp.h), from recomp.py. */',
-           '#include "recomp_funcs.h"', '#include <setjmp.h>', '', 'const RecompRange g_recomp_ranges[] = {']
+           '#include "recomp_funcs.h"', '', 'const RecompRange g_recomp_ranges[] = {']
     out += [f'\t{{0x{f.addr:08X}u, 0x{f.end:08X}u, {_flags(f, longjmps)}}},' for f in funcs]
     out += ['\t{0, 0, 0}};', f'const uint32_t g_recomp_range_count = {len(funcs)};',
-            f'uint8_t g_code_changed_bits[{max(1, (len(funcs) + 7) // 8)}] = {{0}};', '',
+            f'uint8_t g_code_changed_bits[{(len(funcs) + 7) // 8}] = {{0}};', '',
             '/* A site returns 1 when its patch returns from the guest function. */',
             '#undef RET', '#define RET() return 1']
     for a, word, kind, code in sites:
