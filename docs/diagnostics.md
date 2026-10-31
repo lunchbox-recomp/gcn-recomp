@@ -756,7 +756,8 @@ dumps never include it, so a run that opened it writes the same frame dumps as o
 The menu's Restart game and Quit game close it before they act, so the run prints
 `[overlay] closed` and the guest goes on before the end. Both end the run at `end_run` in
 `runtime/main.cpp`, whose at-exit functions write the memory card and wait for a write under
-way.
+way. If the game resets the console as the run ends, whichever of the two comes first ends
+the run while the other waits.
 
 Restart then prints `[reset] the overlay's Restart game starts the game again` and relaunches
 the game as a console reset does (`on_reset`). A tool reading the run's output sees a restart

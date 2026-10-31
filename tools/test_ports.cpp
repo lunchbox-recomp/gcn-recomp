@@ -86,8 +86,8 @@ void fatal(const char* fmt, ...) {
     fputc('\n', stderr);
     exit(1);
 }
-static bool g_relaunching;  // session_relaunching has been called
-void session_relaunching() { g_relaunching = true; }
+static std::atomic<int> g_relaunching{0};  // how many times session_relaunching has been called
+void session_relaunching() { g_relaunching++; }
 uint64_t host_ns() { return 0; }
 void clock_hold(uint64_t) {}
 namespace record {
@@ -2376,10 +2376,15 @@ void after_restart() {
     dup2(g_stderr, 2);
     const std::string out = g_restart_dir + "/restart-stderr.txt";
     printf("---- stderr\n%s----\n", read_file(out).c_str());
-    check(g_relaunching, "the run ends through the exit's at-exit functions on the way to a relaunch");
+    check(g_relaunching == 1, "the run ends through the exit's at-exit functions on the way to a relaunch");
     check(!lines_starting(g_restart_dir + "/log/inputs.txt", "# end ").empty(), "the input log has its end");
     check(lines_starting(out, "[reset] ") == "[reset] the overlay's Restart game starts the game again\n",
           "one [reset] line, not a shutdown's, says the game starts again");
+    // A game reset on the guest's thread as the run ends, as in the frame after Restart game is
+    // confirmed, is a second caller: it ends nothing again and relaunches nothing, and waits.
+    std::thread(on_reset, 0u, 0u).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    check(g_relaunching == 1, "a game reset as the run ends doesn't relaunch the game a second time");
     printf("test_ports --restart: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     fflush(stdout);
     _exit(g_failed ? 1 : 0);

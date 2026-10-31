@@ -334,9 +334,19 @@ static void relaunch(const char* why = nullptr) {
     plat_relaunch(g_argv);
 }
 
+// A run ends once, at end_run or at a game reset (on_reset, on the guest's thread), whichever
+// comes first, as both can in the frame after Restart game is confirmed. The other caller
+// waits for the first to end the process.
+static std::atomic<bool> g_run_ending{false};
+static void end_once() {
+    if (!g_run_ending.exchange(true)) return;
+    for (;;) std::this_thread::sleep_for(std::chrono::seconds(1));
+}
+
 // The game resetting the console relaunches it, and either way this process ends
 // (guest_reset), so the gamepads and a wheel are shut down first, as at any other exit.
 static void on_reset(uint32_t, uint32_t) {
+    end_once();
     pads_down();
     relaunch();
 }
@@ -345,6 +355,7 @@ static void on_reset(uint32_t, uint32_t) {
 // the same way and then relaunches the game. The memory card is written by the exit's
 // plat_at_exit functions, which a relaunch runs too, waiting for a write under way.
 [[noreturn]] static void end_run() {
+    end_once();
     record::finish();
     input_log_end();
     pads_down();
