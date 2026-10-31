@@ -17,10 +17,19 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import ppc  # noqa: E402
 from test_recomp_interp import BLR, RECOMP, RUNTIME, addi, read, write, write_dol  # noqa: E402
 
 T = 0x80104000
 MFLR_R3 = 0x7C6802A6
+
+
+def b(li, aa=0, lk=0):
+    return 0x48000000 | (li & 0x03FFFFFC) | aa << 1 | lk
+
+
+def bc(bo, bi, bd, aa=0, lk=0):
+    return 0x40000000 | bo << 21 | bi << 16 | (bd & 0xFFFC) | aa << 1 | lk
 
 
 def bcctr(bo, bi, lk):
@@ -175,6 +184,60 @@ class ConditionalBcctrl(Fixture):
                 r = self.got(f'{fn}_{cr0}')
                 self.assertEqual((r['calls'], r['target'] if taken else 0), (int(taken), self.CTR if taken else 0))
                 self.assertEqual((r['r4'], r['depth']), (1, 0))
+
+
+class AbsoluteTargets(unittest.TestCase):
+    """decode_branch gives the address an absolute branch names as a 32-bit one, never a negative."""
+
+    def target(self, word, pc=T):
+        return ppc.decode_branch(pc, word).target
+
+    def test_a_b_whose_li_has_its_sign_bit_set_names_a_high_address(self):
+        for word, want in ((b(-4, aa=1), 0xFFFFFFFC), (b(-4, aa=1, lk=1), 0xFFFFFFFC),
+                           (b(-0x2000000, aa=1), 0xFE000000), (b(-0x2000000, aa=1, lk=1), 0xFE000000)):
+            with self.subTest(word=f'{word:08X}'):
+                self.assertEqual(self.target(word), want)
+
+    def test_a_b_whose_li_has_its_sign_bit_clear_names_a_low_address(self):
+        for word, want in ((b(0x100, aa=1), 0x100), (b(0x1FFFFFC, aa=1, lk=1), 0x1FFFFFC)):
+            with self.subTest(word=f'{word:08X}'):
+                self.assertEqual(self.target(word), want)
+
+    def test_a_bc_masks_its_displacement_too(self):
+        for word, want in ((bc(12, 2, -4, aa=1), 0xFFFFFFFC), (bc(12, 2, 0x7FFC, aa=1, lk=1), 0x7FFC)):
+            with self.subTest(word=f'{word:08X}'):
+                self.assertEqual(self.target(word), want)
+
+    def test_a_relative_target_wraps_at_32_bits(self):
+        self.assertEqual(self.target(b(0x20), 0xFFFFFFF0), 0x10)
+        self.assertEqual(self.target(b(-0x20), 0x10), 0xFFFFFFF0)
+
+
+class AbsoluteBranchEmitted(Fixture):
+    """ba, bla and bca to the top of the address space, which no function holds."""
+
+    FUNCS = [
+        ('f_ba', [b(-4, aa=1)]),
+        ('f_bla', [b(-4, aa=1, lk=1), BLR]),
+        ('f_bca', [bc(12, 2, -4, aa=1), BLR]),
+    ]
+    CASES = [Case('ba', 'f_ba'), Case('bla', 'f_bla'), Case('bca_taken', 'f_bca', cr0=2),
+             Case('bca_clear', 'f_bca', cr0=0)]
+
+    def test_the_target_is_written_as_a_32_bit_literal(self):
+        self.assertNotIn('0x-', self.c)
+        self.assertEqual(self.c.count('call_indirect(c, 0xFFFFFFFCu)'), 3)
+
+    def test_the_warning_names_the_32_bit_address(self):
+        self.assertEqual(self.stderr.count('branches to non-code FFFFFFFC'), 3, self.stderr)
+
+    def test_each_branch_calls_the_top_address_and_the_function_returns(self):
+        for label, calls in (('ba', 1), ('bla', 1), ('bca_taken', 1), ('bca_clear', 0)):
+            with self.subTest(label=label):
+                r = self.got(label)
+                self.assertEqual((r['calls'], r['target'] if calls else 0, r['depth']),
+                                 (calls, 0xFFFFFFFC if calls else 0, 0))
+        self.assertEqual(self.got('bla')['lr'], self.addr['f_bla'] + 4)
 
 
 if __name__ == '__main__':

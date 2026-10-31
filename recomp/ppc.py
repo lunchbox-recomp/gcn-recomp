@@ -63,7 +63,7 @@ def decode_branch(pc, i):
         li = i & 0x03FFFFFC
         if li & 0x02000000:
             li -= 0x04000000
-        tgt = li if (i & 2) else (pc + li) & 0xFFFFFFFF
+        tgt = (li if (i & 2) else pc + li) & 0xFFFFFFFF
         return Branch('b', target=tgt, link=bool(i & 1))
     if op == 16:
         bo, bi = (i >> 21) & 31, (i >> 16) & 31
