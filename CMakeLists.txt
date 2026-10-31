@@ -965,8 +965,8 @@ function(gcn_add_game)
       add_executable(${_t} EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_interp_run.cpp
         ${RT}/interp/interp_step.cpp ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp
         ${RT}/interp/interp_sys.cpp ${RT}/interp/interp_branch.cpp ${RT}/interp/interp_fp.cpp
-        ${RT}/interp/interp_ps.cpp ${RT}/interp/interp_run.cpp ${RT}/interp/code_table.cpp
-        ${_fx_dir}/fixture_programs.h ${_fx_c})
+        ${RT}/interp/interp_ps.cpp ${RT}/interp/interp_run.cpp ${RT}/interp/interp_setjmp.cpp
+        ${RT}/interp/code_table.cpp ${_fx_dir}/fixture_programs.h ${_fx_c})
       add_dependencies(${_t} interp_fixtures)
       _gcn_set_standards(${_t})
       target_include_directories(${_t} PRIVATE ${RT} ${_fx_dir} ${_fx_dir}/out)

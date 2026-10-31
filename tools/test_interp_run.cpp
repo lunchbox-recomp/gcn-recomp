@@ -699,7 +699,8 @@ void check_interpret(const std::string& dir) {
     g_forced.clear();
     char want[256];
     snprintf(want, sizeof want, "[interp] GCN_INTERPRET=%s: forced 5 of the 6 starts listed (1 with no guard)", list.c_str());
-    const std::vector<uint32_t> want_bits = {FX_F_LOOP, FX_F_IDLE, FX_F_CALL, FX_F_TAIL, FX_MADE_UP_SAVE};
+    std::vector<uint32_t> want_bits = {FX_F_LOOP, FX_F_IDLE, FX_F_CALL, FX_F_TAIL, FX_MADE_UP_SAVE};
+    std::sort(want_bits.begin(), want_bits.end());  // set_bits goes by start
     if (!guarded(force_spec, (void*)list.c_str())) fail("GCN_INTERPRET=FILE stopped with \"" + g_fatal + "\"");
     else if (g_forced != want) fail("GCN_INTERPRET=FILE printed \"" + g_forced + "\", not \"" + want + "\"");
     else if (set_bits() != want_bits) fail("GCN_INTERPRET=FILE set other bits than the five guarded starts'");
