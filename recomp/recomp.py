@@ -298,7 +298,8 @@ def main():
                     continue
                 if g is f and br.link:
                     stats['local_bl'] += 1
-                    print(f'warning: {pc:08X} bl to own body {t:08X}', file=sys.stderr)
+                    print(f'warning: {pc:08X} bl to own body {t:08X} ({"next word" if t == pc + 4 else "other"})',
+                          file=sys.stderr)
                     if t == pc + 4:
                         continue  # emit_body sets LR and runs on, so nothing calls it
                 if t not in g.entries:

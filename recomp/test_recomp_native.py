@@ -307,6 +307,11 @@ class NextWordCall(Fixture):
                     self.assertEqual({k: r[k] for k in ('r3', 'r4', 'lr', 'ctr', 'depth', 'calls')},
                                      {'r3': pc + 4, 'r4': 1, 'lr': pc + 4, 'ctr': want_ctr, 'depth': 0, 'calls': 0})
 
+    def test_each_warns_that_it_is_the_next_word(self):
+        want = [f'warning: {self.addr[fn]:08X} bl to own body {self.addr[fn] + 4:08X} (next word)'
+                for fn, _ in self.FUNCS]
+        self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
+
     def test_the_next_word_is_not_an_entry(self):
         for fn, _ in self.FUNCS:
             with self.subTest(fn=fn):
@@ -330,11 +335,10 @@ class OtherOwnBodyCalls(Fixture):
                 self.assertIn(f'c->lr = 0x{pc + 4:08X}u; fn_{t:08X}(c);', self.c)
                 self.assertIn(f'void fn_{t:08X}(CPU* c);', self.header)
 
-    def test_each_still_warns(self):
-        for fn, at, to in self.CALLS:
-            with self.subTest(fn=fn):
-                self.assertIn(f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X}',
-                              self.stderr)
+    def test_each_still_warns_that_it_is_another_word(self):
+        want = [f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X} (other)'
+                for fn, at, to in self.CALLS]
+        self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
 
 
 if __name__ == '__main__':
