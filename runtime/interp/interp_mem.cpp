@@ -1,6 +1,10 @@
 // Integer loads and stores, the string and multiple-word forms and the cache operations, each as
 // ppc.translate writes it, through recomp.h's LD and ST. An update form loads or stores first and
 // then sets rA to the address, even when rA is 0 or rD.
+//
+// The FP and quantized loads and stores are here too, through LDF32, STF32, LD64, ST64 and the
+// psq_load and psq_store that translate's text calls. A quantized type and its scale are theirs to
+// read from the GQR, so nothing here works one out.
 #include "interp.h"
 
 namespace {
@@ -42,6 +46,34 @@ InterpStep st(CPU* c, uint32_t i, uint32_t ea, Width w, bool update) {
     return INTERP_NEXT;
 }
 
+// lfs and the rest, by the primary opcode's offset from 48 or the X-form's extended opcode's from
+// 535 in steps of 32. Both run lfs lfsu lfd lfdu stfs stfsu stfd stfdu in that order, so bit 0 says
+// update.
+InterpStep fp(CPU* c, uint32_t i, uint32_t ea, uint32_t kind) {
+    const uint32_t d = insn_d(i);
+    switch (kind >> 1) {
+    case 0: {
+        const double v = LDF32(ea);
+        c->f[d].d = v;
+        c->ps1[d] = v;
+        break;
+    }
+    case 1: c->f[d].u = LD64(ea); break;
+    case 2: STF32(ea, c->f[d].d); break;
+    case 3: ST64(ea, c->f[d].u); break;
+    }
+    if (kind & 1) c->r[insn_a(i)] = ea;
+    return INTERP_NEXT;
+}
+
+// psq_l and the rest, W and I where the form keeps them.
+InterpStep psq(CPU* c, uint32_t i, uint32_t ea, bool store, bool update, uint32_t w, uint32_t gq) {
+    if (store) psq_store(c, ea, (int)insn_d(i), (int)w, (int)gq);
+    else psq_load(c, ea, (int)insn_d(i), (int)w, (int)gq);
+    if (update) c->r[insn_a(i)] = ea;
+    return INTERP_NEXT;
+}
+
 InterpStep op31(CPU* c, uint32_t i) {
     const uint32_t d = insn_d(i), a = insn_a(i), b = insn_b(i);
     const uint32_t ea = (a ? c->r[a] : 0) + c->r[b];
@@ -73,8 +105,21 @@ InterpStep op31(CPU* c, uint32_t i) {
     case 1014: hle_dcbz(c, ea); return INTERP_NEXT;
     case 470: hle_dcbi(c, ea); return INTERP_NEXT;
     case 54: case 86: case 246: case 278: case 982: return INTERP_NEXT;  // dcbst dcbf dcbtst dcbt icbi
+    case 535: case 567: case 599: case 631: case 663: case 695: case 727: case 759:
+        return fp(c, i, ea, (insn_xo(i) - 535) / 32);  // lfsx and the rest, 32 apart
+    case 983: ST32(ea, (uint32_t)c->f[d].u); return INTERP_NEXT;  // stfiwx
     default: return INTERP_UNIMPL;
     }
+}
+
+// Op 4's indexed quantized loads and stores, which bits 1-6 give as psq_lx 6, psq_stx 7, psq_lux 38
+// and psq_stux 39.
+InterpStep op4(CPU* c, uint32_t i) {
+    const uint32_t xo6 = (i >> 1) & 0x3F;
+    if (xo6 != 6 && xo6 != 7 && xo6 != 38 && xo6 != 39) return INTERP_UNIMPL;
+    const uint32_t a = insn_a(i);
+    const uint32_t ea = (a ? c->r[a] : 0) + c->r[insn_b(i)];
+    return psq(c, i, ea, xo6 & 1, xo6 & 32, (i >> 10) & 1, (i >> 7) & 7);
 }
 
 }  // namespace
@@ -97,7 +142,14 @@ InterpStep interp_mem(CPU* c, uint32_t i) {
     case 47:  // stmw
         for (uint32_t n = insn_d(i); n < 32; n++) ST32(ea + (n - insn_d(i)) * 4, c->r[n]);
         return INTERP_NEXT;
+    case 48: case 49: case 50: case 51: case 52: case 53: case 54: case 55:
+        return fp(c, i, ea, op - 48);  // lfs and the rest
+    case 56: case 57: case 60: case 61: {  // psq_l psq_lu psq_st psq_stu, with a 12-bit displacement
+        const uint32_t qea = (a ? c->r[a] : 0) + (uint32_t)((int32_t)(i << 20) >> 20);
+        return psq(c, i, qea, op >= 60, update, (i >> 15) & 1, (i >> 12) & 7);
+    }
     case 31: return op31(c, i);
+    case 4: return op4(c, i);
     default: return INTERP_UNIMPL;
     }
 }

@@ -27,6 +27,8 @@ bool interp_branch(CPU* c, uint32_t pc, uint32_t insn, InterpBranch* out);
 InterpStep interp_int(CPU* c, uint32_t insn);
 InterpStep interp_mem(CPU* c, uint32_t insn);
 InterpStep interp_sys(CPU* c, uint32_t pc, uint32_t insn);
+InterpStep interp_fp(CPU* c, uint32_t insn);
+InterpStep interp_ps(CPU* c, uint32_t insn);
 
 // A word's fields.
 inline uint32_t insn_d(uint32_t i) { return (i >> 21) & 31; }
@@ -34,3 +36,17 @@ inline uint32_t insn_a(uint32_t i) { return (i >> 16) & 31; }
 inline uint32_t insn_b(uint32_t i) { return (i >> 11) & 31; }
 inline uint32_t insn_xo(uint32_t i) { return (i >> 1) & 0x3FF; }
 inline uint32_t insn_simm(uint32_t i) { return (uint32_t)(int32_t)(int16_t)i; }
+inline uint32_t insn_c(uint32_t i) { return (i >> 6) & 31; }
+inline uint32_t insn_xo5(uint32_t i) { return (i >> 1) & 31; }
+
+// An FP result's FPSCR[FPRF], kept for FPSCR_READ to work out, as translate's FPRF_S and FPRF_D
+// record it. single says the result was rounded to single.
+inline void interp_fprf(CPU* c, double v, bool single) {
+    c->fprf_v = v;
+    c->fprf_pending = single ? 2 : 1;
+}
+
+// An FP form's record bit, which copies FPSCR's top four bits to CR1 as translate's cr1 does.
+inline void interp_cr1(CPU* c, uint32_t i) {
+    if (i & 1) c->cr[1] = (uint8_t)(c->fpscr >> 28);
+}

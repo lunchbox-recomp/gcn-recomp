@@ -111,11 +111,6 @@ void gp_flush_line(void) {
 
 namespace {
 
-// The families the interpreter doesn't run yet: floating point (ops 59 and 63), paired singles
-// (op 4) and the floating-point and quantized loads and stores. Their words are still checked as
-// branches, and interp_step refuses them for now.
-const char* const kSkipped[] = {"fp", "ps", "fpmem"};
-
 constexpr uint32_t kWindowBase = 0x80000000u;  // and so physical 0, where an rA 0 load lands
 constexpr uint32_t kWindow = 0x10000;
 
@@ -156,12 +151,50 @@ uint32_t value(Rng& r) {
     }
 }
 
+// FP values as bits, starting with NaNs quiet and signaling of both signs, whose payloads rounding to
+// single keeps or loses. Then both infinities and zeros, denormals of both formats, single's least
+// normal and a negative just under it, single's largest, 2^128 and double's largest. Then ones, ties,
+// fctiw's ends and 1 + 2^-27 and 1 - 2^-27, whose product rounds to 1 unless it's fused.
+const uint64_t kFpEdges[] = {
+    0x7FFC000020000000ull, 0xFFF8000000000001ull, 0x7FF4000020000000ull, 0xFFF0000000000001ull,
+    0x7FF0000000000000ull, 0xFFF0000000000000ull, 0x0000000000000000ull, 0x8000000000000000ull,
+    0x0000000000000001ull, 0x800FFFFFFFFFFFFFull, 0x36A0000000000000ull, 0x3810000000000000ull,
+    0xB80FFFFFFFFFFFFFull, 0x47EFFFFFE0000000ull, 0x47F0000000000000ull, 0x7FEFFFFFFFFFFFFFull,
+    0x3FF0000000000000ull, 0xBFF0000000000000ull, 0x3FE0000000000000ull, 0x4004000000000000ull,
+    0xBFF8000000000000ull, 0x41DFFFFFFFE00000ull, 0xC1E0000000100000ull, 0x41E0000000000000ull,
+    0x3FF0000002000000ull, 0x3FEFFFFFFC000000ull,
+};
+constexpr uint64_t kQnan = 0x7FFC000020000000ull, kQnanNeg = 0xFFF8000000000001ull;
+constexpr uint64_t kSnan = 0x7FF4000020000000ull, kSnanNeg = 0xFFF0000000000001ull;
+constexpr uint64_t kInf = 0x7FF0000000000000ull, kInfNeg = 0xFFF0000000000000ull;
+constexpr uint64_t kZero = 0, kZeroNeg = 0x8000000000000000ull;
+constexpr uint64_t kOne = 0x3FF0000000000000ull, kOneNeg = 0xBFF0000000000000ull;
+constexpr uint64_t kOneUp = 0x3FF0000002000000ull, kOneDown = 0x3FEFFFFFFC000000ull;
+
+// FPSCRs with each rounding mode, every enable bit, the sticky exception bits or all of it.
+const uint32_t kFpscrEdges[] = {0, 1, 2, 3, 0xF8, 0xFB, 0x9FF80700u, 0x60000004u, 0xFFFFFFFFu};
+
+uint64_t fp_value(Rng& r) {
+    switch (r.below(8)) {
+    case 0:
+    case 1:
+    case 2: return kFpEdges[r.below(sizeof kFpEdges / sizeof *kFpEdges)];
+    case 3:
+    case 4: {  // within 2^20 of 1, and in case 4 a single exactly
+        const uint64_t u = (uint64_t)r.below(2) << 63 | (uint64_t)(1003 + r.below(41)) << 52 |
+                           (r.next() & 0xFFFFFFFFFFFFFull);
+        return r.below(2) ? u : u & ~0x1FFFFFFFull;
+    }
+    default: return r.next();
+    }
+}
+
 void random_cpu(CPU* c, Rng& r) {
     memset(c, 0, sizeof *c);
     for (uint32_t& v : c->r) v = value(r);
-    for (FPR& f : c->f) f.u = r.next();
+    for (FPR& f : c->f) f.u = fp_value(r);
     for (double& d : c->ps1) {
-        const uint64_t u = r.next();
+        const uint64_t u = fp_value(r);
         memcpy(&d, &u, 8);
     }
     for (uint8_t& f : c->cr) f = (uint8_t)r.below(16);
@@ -172,8 +205,8 @@ void random_cpu(CPU* c, Rng& r) {
     c->lr = value(r);
     c->ctr = r.below(4) ? value(r) : r.below(3);
     c->msr = r.u32();
-    c->fpscr = r.u32();
-    const uint64_t u = r.next();
+    c->fpscr = r.below(4) ? r.u32() : kFpscrEdges[r.below(sizeof kFpscrEdges / sizeof *kFpscrEdges)];
+    const uint64_t u = fp_value(r);
     memcpy(&c->fprf_v, &u, 8);
     c->fprf_pending = (uint8_t)r.below(3);
     for (uint32_t& g : c->gqr) g = r.u32();
@@ -204,6 +237,55 @@ void fix(CPU* c, uint32_t insn, const Fixed& f) {
     c->r[insn >> 16 & 31] = f.x;
     c->r[insn >> 11 & 31] = f.y;
     c->xer_ca = f.ca;
+}
+
+// A GQR whose loads and stores both use one type and scale.
+constexpr uint32_t gqr(uint32_t type, uint32_t scale) { return scale << 24 | type << 16 | scale << 8 | type; }
+
+// FP operands a result turns on together. A fixed FP state gives a to fD and fA, then b to fB and c
+// to fC, both lanes of each, over a random state. Its FPSCR and every GQR are its own too, so between
+// them the states cover each rounding mode, the enables, the sticky bits and every quantized type.
+struct FixedFp {
+    uint64_t a, b, c;
+    uint32_t fpscr, gqr;
+};
+const FixedFp kFixedFp[] = {
+    {kOneUp, kOneNeg, kOneDown, 0, gqr(0, 0)},                    // a*c + b fused or not
+    {kOneUp, kOne, kOneDown, 1, gqr(4, 1)},                       // a*c - b fused or not
+    {kQnan, kSnan, kQnanNeg, 2, gqr(5, 31)},                      // which NaN comes out
+    {kSnan, kQnan, kSnanNeg, 3, gqr(6, 32)},
+    {kInf, kInf, kZero, 0xF8, gqr(7, 63)},                        // inf - inf and inf * 0
+    {kInfNeg, kInf, kInfNeg, 0xFFFFFFFFu, gqr(1, 0)},             // inf + -inf
+    {kZero, kZeroNeg, kZeroNeg, 0x9FF80700u, gqr(2, 1)},          // the signs of zero results
+    {kZeroNeg, kZeroNeg, kZero, 0xFB, gqr(3, 31)},
+    {0x1ull, 0x800FFFFFFFFFFFFFull, 0x36A0000000000000ull, 0x60000004u, gqr(4, 32)},  // denormals
+    {0xB80FFFFFFFFFFFFFull, 0x3810000000000000ull, 0x36A0000000000000ull, 0, gqr(5, 63)},  // single's least
+    {0x47EFFFFFE0000000ull, 0x47F0000000000000ull, 0x7FEFFFFFFFFFFFFFull, 1, gqr(6, 0)},   // overflow
+    {0x4004000000000000ull, 0x41DFFFFFFFE00000ull, 0xBFF8000000000000ull, 2, gqr(7, 1)},   // fctiw's top
+    {0x3FE0000000000000ull, 0xC1E0000000100000ull, 0x41E0000000000000ull, 3, gqr(0, 31)},  // its bottom
+    {kOne, kZero, kZeroNeg, 0xF8, gqr(1, 32)},                    // 1 / 0, and 1 / sqrt(0)
+    {kOneNeg, kOneNeg, kZero, 0, gqr(2, 63)},                     // 1 / sqrt(-1)
+};
+constexpr int kFixedFpCount = sizeof kFixedFp / sizeof *kFixedFp;
+
+void fix_fp(CPU* c, uint32_t insn, const FixedFp& f) {
+    const uint64_t v[] = {f.a, f.a, f.b, f.c};
+    const int at[] = {21, 16, 11, 6};
+    for (int k = 0; k < 4; k++) {
+        const uint32_t n = insn >> at[k] & 31;
+        c->f[n].u = v[k];
+        memcpy(&c->ps1[n], &v[k], 8);
+    }
+    c->fpscr = f.fpscr;
+    for (uint32_t& g : c->gqr) g = f.gqr;
+}
+
+// A state below 0 is fixed state kFixedAll + state, the integer ones first and then the FP ones.
+constexpr int kFixedAll = kFixedCount + kFixedFpCount;
+
+void fix_state(CPU* c, uint32_t insn, int k) {
+    if (k < kFixedCount) fix(c, insn, kFixed[k]);
+    else fix_fp(c, insn, kFixedFp[k - kFixedCount]);
 }
 
 // A memory form's registers, set so its whole reach is inside the window.
@@ -327,13 +409,13 @@ std::string fields(uint32_t i) {
     return b;
 }
 
-// form is the word's form, or -1 for a refused word. A state below 0 is kFixed[kFixedCount + state].
+// form is the word's form, or -1 for a refused word. A state below 0 is fixed state kFixedAll + state.
 void fail(int form, uint32_t insn, uint32_t pc, int state, const std::string& what) {
     g_failed++;
     int& shown = form < 0 ? g_refused_fails : g_form_fails[form];
     if (shown++ >= 2) return;
     printf("FAIL %08X at %08X (%s; %s) %s %d: %s\n", insn, pc, form < 0 ? "refused" : g_case_forms[form].name,
-           fields(insn).c_str(), state < 0 ? "fixed state" : "state", state < 0 ? kFixedCount + state : state,
+           fields(insn).c_str(), state < 0 ? "fixed state" : "state", state < 0 ? kFixedAll + state : state,
            what.c_str());
 }
 
@@ -374,12 +456,12 @@ bool branch_refuses(int form, uint32_t insn, uint32_t pc, const char* who) {
     return false;
 }
 
-// A state s below 0 is kFixed[kFixedCount + s], run over window 0.
+// A state s below 0 is fixed state kFixedAll + s, run over window 0.
 bool run_step(const CaseStep& k, int s) {
     Rng r = rng_for(k.insn, k.pc, s);
     CPU st;
     random_cpu(&st, r);
-    if (s < 0) fix(&st, k.insn, kFixed[kFixedCount + s]);
+    if (s < 0) fix_state(&st, k.insn, kFixedAll + s);
     point(&st, k, r);
     const uint8_t* w = g_windows[s < 0 ? 0 : s].data();
 
@@ -449,10 +531,16 @@ bool run_branch(const CaseBranch& k, int s) {
     return false;
 }
 
-bool skipped(const char* family) {
-    for (const char* s : kSkipped)
-        if (!strcmp(s, family)) return true;
-    return false;
+// The family's forms, and how many of them differed somewhere.
+void count_forms(const CaseFamily& fam, uint32_t* forms, uint32_t* differ) {
+    std::vector<bool> in(g_case_form_count);
+    for (uint32_t k = 0; k < fam.step_count; k++) in[fam.steps[k].form] = true;
+    for (uint32_t k = 0; k < fam.branch_count; k++) in[fam.branches[k].form] = true;
+    *forms = *differ = 0;
+    for (uint32_t f = 0; f < g_case_form_count; f++) {
+        *forms += in[f];
+        *differ += in[f] && g_form_fails[f];
+    }
 }
 
 }  // namespace
@@ -486,27 +574,25 @@ int main(int argc, char** argv) {
     g_link_not_taken.assign(g_case_form_count, 0);
     g_link_taken.assign(g_case_form_count, 0);
     printf("cases from ppc_cases.py --seed %u --per-form %u, %d states each and %d fixed ones for a step\n",
-           g_case_seed, g_case_per_form, states, kFixedCount);
+           g_case_seed, g_case_per_form, states, kFixedAll);
 
     for (uint32_t f = 0; f < g_case_family_count; f++) {
         const CaseFamily& fam = *g_case_families[f];
-        const int before = g_failed;
         uint64_t runs = 0;
         for (uint32_t k = 0; k < fam.step_count; k++)
             branch_refuses(fam.steps[k].form, fam.steps[k].insn, fam.steps[k].pc, "decode_branch refuses");
         for (uint32_t k = 0; k < fam.branch_count; k++)
             step_refuses(fam.branches[k].form, fam.branches[k].insn, fam.branches[k].pc, "translate refuses");
-        if (skipped(fam.name)) {
-            printf("%-7s %5u cases skipped, as the interpreter doesn't run them yet\n", fam.name,
-                   fam.step_count + fam.branch_count);
-            continue;
-        }
         for (uint32_t k = 0; k < fam.step_count; k++)
-            for (int s = -kFixedCount; s < states; s++, runs++) run_step(fam.steps[k], s);
+            for (int s = -kFixedAll; s < states; s++, runs++) run_step(fam.steps[k], s);
         for (uint32_t k = 0; k < fam.branch_count; k++)
             for (int s = 0; s < states; s++, runs++) run_branch(fam.branches[k], s);
-        printf("%-7s %5u cases %7llu runs  %s\n", fam.name, fam.step_count + fam.branch_count,
-               (unsigned long long)runs, g_failed == before ? "all match" : "DIFFER");
+        uint32_t forms, differ;
+        count_forms(fam, &forms, &differ);
+        printf("%-7s %5u cases %3u forms %7llu runs  ", fam.name, fam.step_count + fam.branch_count, forms,
+               (unsigned long long)runs);
+        if (differ) printf("DIFFER in %u forms\n", differ);
+        else printf("all match\n");
     }
 
     int refused_bad = 0;

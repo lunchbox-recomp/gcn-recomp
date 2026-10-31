@@ -934,7 +934,8 @@ function(gcn_add_game)
     set_source_files_properties(${_cases_c} PROPERTIES COMPILE_OPTIONS "${GCN_GAME_C_FLAGS}")
     add_executable(test_interp EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_interp.cpp
       ${RT}/interp/interp_step.cpp ${RT}/interp/interp_int.cpp ${RT}/interp/interp_mem.cpp
-      ${RT}/interp/interp_sys.cpp ${RT}/interp/interp_branch.cpp ${_cases_dir}/interp_cases.h ${_cases_c})
+      ${RT}/interp/interp_sys.cpp ${RT}/interp/interp_branch.cpp ${RT}/interp/interp_fp.cpp
+      ${RT}/interp/interp_ps.cpp ${_cases_dir}/interp_cases.h ${_cases_c})
     _gcn_set_standards(test_interp)
     target_include_directories(test_interp PRIVATE ${RT} ${_cases_dir})
     target_compile_options(test_interp PRIVATE ${GCN_RUNTIME_WARNINGS})

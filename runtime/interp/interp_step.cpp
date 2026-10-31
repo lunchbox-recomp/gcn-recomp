@@ -7,5 +7,9 @@ InterpStep interp_step(CPU* c, uint32_t pc, uint32_t insn) {
     if (r != INTERP_UNIMPL) return r;
     r = interp_mem(c, insn);
     if (r != INTERP_UNIMPL) return r;
+    r = interp_fp(c, insn);
+    if (r != INTERP_UNIMPL) return r;
+    r = interp_ps(c, insn);
+    if (r != INTERP_UNIMPL) return r;
     return interp_sys(c, pc, insn);
 }
