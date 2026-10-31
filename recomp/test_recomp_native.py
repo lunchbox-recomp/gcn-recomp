@@ -49,11 +49,17 @@ Case = collections.namedtuple('Case', 'label fn regs lr ctr cr0', defaults=(None
 HARNESS = r'''
 #include "recomp_funcs.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 volatile uint64_t g_vcount, g_vlimit = ~0ull;
 void irq_poll(CPU* c) { (void)c; }
 void idle_hint(CPU* c) { (void)c; }
-void unimpl(CPU* c, uint32_t pc, uint32_t i) { (void)c; (void)pc; (void)i; }
+/* The runtime's stops the game. */
+void unimpl(CPU* c, uint32_t pc, uint32_t i) {
+    (void)c; (void)i;
+    fprintf(stderr, "unimpl at %08X\n", (unsigned)pc);
+    exit(3);
+}
 void interp_enter(CPU* c, uint32_t entry) { (void)c; (void)entry; }
 void interp_site_unusable(CPU* c, uint32_t addr) { (void)c; (void)addr; }
 static jmp_buf setjmp_buf;
@@ -351,6 +357,28 @@ class OtherOwnBodyCalls(Fixture):
         want = [f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X} (other)'
                 for fn, at, to in self.CALLS]
         self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
+
+
+class UnimplDataWord(Fixture):
+    """A run that reaches a word recomp.py refused stops, as the runtime's unimpl does."""
+
+    FUNCS = [('f_data', [addi(4, 1), 0, BLR])]
+    CASES = [Case('data', 'f_data')]
+
+    def test_the_run_stops_at_the_word(self):
+        self.assertIn('the run exited 3', self.problem)
+        self.assertIn(f'unimpl at {self.addr["f_data"] + 4:08X}', self.problem)
+
+
+class UnimplOffTheEnd(Fixture):
+    """A function with no return runs off its end into code recomp.py has no function for."""
+
+    FUNCS = [('f_off', [addi(4, 1)])]
+    CASES = [Case('off', 'f_off')]
+
+    def test_the_run_stops_at_the_end(self):
+        self.assertIn('the run exited 3', self.problem)
+        self.assertIn(f'unimpl at {self.addr["f_off"] + 4:08X}', self.problem)
 
 
 class LinkOffBranches(Fixture):
