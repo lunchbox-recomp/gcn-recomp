@@ -1794,8 +1794,11 @@ void overlay(const std::string& dir) {
     const bool two_of_three = !overlay_open();
     hold(cube, true, true, true);
     const bool chord_opens = overlay_open() && paused();
+    // Still held, the chord sees the stick move, and that closes nothing.
+    set_axis(cube, SDL_GAMEPAD_AXIS_LEFTX, 20000);
     hold(cube, true, true, true);
     const bool held_stays = overlay_open();
+    set_axis(cube, SDL_GAMEPAD_AXIS_LEFTX, 0);
     hold(cube, false, false, false);
     hold(cube, true, true, true);
     const bool chord_closes = !overlay_open() && !paused();
