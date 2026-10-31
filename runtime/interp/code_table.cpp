@@ -20,8 +20,8 @@ std::vector<uint8_t>& marks() {
 }
 
 // Interpreted instructions by function, with loose frames' last.
-std::vector<uint64_t>& counts() {
-    static std::vector<uint64_t> v(g_recomp_range_count + 1);
+std::vector<std::atomic<uint64_t>>& counts() {
+    static std::vector<std::atomic<uint64_t>> v(g_recomp_range_count + 1);
     return v;
 }
 
@@ -87,7 +87,7 @@ bool code_table_find(uint32_t addr, uint32_t* n) {
     return true;
 }
 
-uint64_t* code_table_counter(uint32_t n) { return &counts()[n]; }
+std::atomic<uint64_t>* code_table_counter(uint32_t n) { return &counts()[n]; }
 
 std::string code_table_force(const char* spec) {
     char line[1024];
@@ -118,7 +118,9 @@ std::string code_table_force(const char* spec) {
 }
 
 std::string code_table_stats() {
-    const std::vector<uint64_t>& v = counts();
+    // It runs at exit, on whichever thread exits, while a guest thread may still be in a frame.
+    std::vector<uint64_t> v(counts().size());
+    for (size_t n = 0; n < v.size(); n++) v[n] = counts()[n].load(std::memory_order_relaxed);
     std::vector<uint32_t> order;
     uint64_t total = 0;
     for (uint32_t n = 0; n <= g_recomp_range_count; n++) {

@@ -4,6 +4,7 @@
 // tools/test_interp_run.cpp holds the frames to what recomp.py's C does with them.
 #pragma once
 #include "recomp.h"
+#include <atomic>
 #include <string>
 
 enum InterpStep { INTERP_NEXT, INTERP_RFI, INTERP_UNIMPL };
@@ -63,7 +64,8 @@ struct InterpFrame {
     uint32_t entry_lr;          // LR as the frame was entered
     uint32_t jb;                // r3 as a longjmp frame was entered, the guest jmp_buf
     uint32_t site_lo, site_hi;  // the rows of g_recomp_sites it can reach
-    uint64_t* ran;              // where its interpreted instructions are counted
+    // Where its interpreted instructions are counted.
+    std::atomic<uint64_t>* ran;
 };
 
 // Runs f's code from pc, and returns false when the guest returns from it. It returns true instead when
@@ -86,7 +88,9 @@ void code_table_mark(uint32_t n, CodeMark mark, bool on);
 // The index of the range holding addr, or false when no recompiled function holds it.
 bool code_table_find(uint32_t addr, uint32_t* n);
 // Where function n's interpreted instructions are counted. Loose frames count at g_recomp_range_count.
-uint64_t* code_table_counter(uint32_t n);
+// Only the guest thread running a frame adds to a count, with a relaxed load and store, and the report
+// at exit reads them from another thread.
+std::atomic<uint64_t>* code_table_counter(uint32_t n);
 // Forces what GCN_INTERPRET's value names, "all" or a file of starts, and returns the line saying how
 // many functions that was. Each line of the file that isn't a recompiled function's start is printed,
 // and then the game stops.
