@@ -77,26 +77,32 @@ constexpr uint32_t gqr(uint32_t type, uint32_t scale) { return scale << 24 | typ
 // FP operands a result turns on together. A fixed FP state gives a to fD and fA, then b to fB and c
 // to fC, both lanes of each, over a random state. Its FPSCR and every GQR are its own too, so between
 // them the states cover each rounding mode, the enables, the sticky bits and every quantized type.
+//
+// A memory form whose reach is 4 bytes finds single where the reach starts, and a longer one finds a
+// there. Random RAM seldom holds a signaling NaN, which a single has to be for lfs to quiet it.
 struct FixedFp {
     uint64_t a, b, c;
     uint32_t fpscr, gqr;
+    uint32_t single;
 };
+constexpr uint32_t kSingleSnan = 0x7FA00001u, kSingleSnanNeg = 0xFF800001u;
+constexpr uint32_t kSingleQnan = 0x7FC00001u, kSingleQnanNeg = 0xFFC00002u;
 const FixedFp kFixedFp[] = {
-    {kOneUp, kOneNeg, kOneDown, 0, gqr(0, 0)},                    // a*c + b fused or not
-    {kOneUp, kOne, kOneDown, 1, gqr(4, 1)},                       // a*c - b fused or not
-    {kQnan, kSnan, kQnanNeg, 2, gqr(5, 31)},                      // which NaN comes out
-    {kSnan, kQnan, kSnanNeg, 3, gqr(6, 32)},
-    {kInf, kInf, kZero, 0xF8, gqr(7, 63)},                        // inf - inf and inf * 0
-    {kInfNeg, kInf, kInfNeg, 0xFFFFFFFFu, gqr(1, 0)},             // inf + -inf
-    {kZero, kZeroNeg, kZeroNeg, 0x9FF80700u, gqr(2, 1)},          // the signs of zero results
-    {kZeroNeg, kZeroNeg, kZero, 0xFB, gqr(3, 31)},
-    {0x1ull, 0x800FFFFFFFFFFFFFull, 0x36A0000000000000ull, 0x60000004u, gqr(4, 32)},  // denormals
-    {0xB80FFFFFFFFFFFFFull, 0x3810000000000000ull, 0x36A0000000000000ull, 0, gqr(5, 63)},  // single's least
-    {0x47EFFFFFE0000000ull, 0x47F0000000000000ull, 0x7FEFFFFFFFFFFFFFull, 1, gqr(6, 0)},   // overflow
-    {0x4004000000000000ull, 0x41DFFFFFFFE00000ull, 0xBFF8000000000000ull, 2, gqr(7, 1)},   // fctiw's top
-    {0x3FE0000000000000ull, 0xC1E0000000100000ull, 0x41E0000000000000ull, 3, gqr(0, 31)},  // its bottom
-    {kOne, kZero, kZeroNeg, 0xF8, gqr(1, 32)},                    // 1 / 0, and 1 / sqrt(0)
-    {kOneNeg, kOneNeg, kZero, 0, gqr(2, 63)},                     // 1 / sqrt(-1)
+    {kOneUp, kOneNeg, kOneDown, 0, gqr(0, 0), kSingleSnan},          // a*c + b fused or not
+    {kOneUp, kOne, kOneDown, 1, gqr(4, 1), kSingleSnanNeg},          // a*c - b fused or not
+    {kQnan, kSnan, kQnanNeg, 2, gqr(5, 31), kSingleQnan},            // which NaN comes out
+    {kSnan, kQnan, kSnanNeg, 3, gqr(6, 32), kSingleQnanNeg},
+    {kInf, kInf, kZero, 0xF8, gqr(7, 63), 0x7F800000u},              // inf - inf and inf * 0
+    {kInfNeg, kInf, kInfNeg, 0xFFFFFFFFu, gqr(1, 0), 0xFF800000u},   // inf + -inf
+    {kZero, kZeroNeg, kZeroNeg, 0x9FF80700u, gqr(2, 1), 0x80000000u},  // the signs of zero results
+    {kZeroNeg, kZeroNeg, kZero, 0xFB, gqr(3, 31), 0},
+    {0x1ull, 0x800FFFFFFFFFFFFFull, 0x36A0000000000000ull, 0x60000004u, gqr(4, 32), 0x00000001u},  // denormals
+    {0xB80FFFFFFFFFFFFFull, 0x3810000000000000ull, 0x36A0000000000000ull, 0, gqr(5, 63), 0x807FFFFFu},  // single's least
+    {0x47EFFFFFE0000000ull, 0x47F0000000000000ull, 0x7FEFFFFFFFFFFFFFull, 1, gqr(6, 0), 0x7F7FFFFFu},   // overflow
+    {0x4004000000000000ull, 0x41DFFFFFFFE00000ull, 0xBFF8000000000000ull, 2, gqr(7, 1), kSingleSnan},   // fctiw's top
+    {0x3FE0000000000000ull, 0xC1E0000000100000ull, 0x41E0000000000000ull, 3, gqr(0, 31), kSingleSnanNeg},  // its bottom
+    {kOne, kZero, kZeroNeg, 0xF8, gqr(1, 32), kSingleQnan},          // 1 / 0, and 1 / sqrt(0)
+    {kOneNeg, kOneNeg, kZero, 0, gqr(2, 63), kSingleQnanNeg},        // 1 / sqrt(-1)
 };
 constexpr int kFixedFpCount = sizeof kFixedFp / sizeof *kFixedFp;
 
@@ -159,4 +165,13 @@ const int kFixedAll = kFixedCount + kFixedFpCount;
 void fix_state(CPU* c, uint32_t insn, int k) {
     if (k < kFixedCount) fix(c, insn, kFixed[k]);
     else fix_fp(c, insn, kFixedFp[k - kFixedCount]);
+}
+
+uint32_t fixed_memory(int k, uint32_t span, uint8_t out[8]) {
+    if (k < kFixedCount || span < 4) return 0;
+    const FixedFp& f = kFixedFp[k - kFixedCount];
+    const uint32_t n = span == 4 ? 4 : 8;
+    const uint64_t v = n == 4 ? (uint64_t)f.single << 32 : f.a;
+    for (uint32_t b = 0; b < n; b++) out[b] = (uint8_t)(v >> (56 - 8 * b));  // big-endian, as the guest has it
+    return n;
 }

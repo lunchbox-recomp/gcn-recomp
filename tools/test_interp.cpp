@@ -140,6 +140,12 @@ void point(CPU* c, const CaseStep& k, Rng& r) {
     }
 }
 
+// The physical address a memory form's reach starts at, from the registers point() set.
+uint32_t reach(const CPU& c, const CaseStep& k) {
+    const uint32_t base = k.base ? c.r[k.base] : 0;
+    return (base + (k.index == CASE_NO_REG ? (uint32_t)k.disp : c.r[k.index])) & 0x3FFFFFFFu;
+}
+
 std::string differ(const CPU& n, const CPU& i) {
     char b[200];
     auto u32 = [&](const char* name, int k, uint32_t x, uint32_t y) {
@@ -297,8 +303,16 @@ bool run_step(const CaseStep& k, int s) {
     if (s < 0) fix_state(&st, k.insn, kFixedAll + s);
     point(&st, k, r);
     const uint8_t* w = g_windows[s < 0 ? 0 : s].data();
+    // A fixed FP state's value goes where the reach starts, over the window, for both runs.
+    uint8_t image[8];
+    const uint32_t image_len = s < 0 && k.base != CASE_NO_REG ? fixed_memory(kFixedAll + s, k.span, image) : 0;
+    const uint32_t image_at = image_len ? reach(st, k) : 0;
+    const auto start_ram = [&] {
+        load_ram(w);
+        memcpy(g_mem + image_at, image, image_len);
+    };
 
-    load_ram(w);
+    start_ram();
     g_calls.clear();
     CPU nat = st;
     k.fn(&nat);
@@ -308,7 +322,7 @@ bool run_step(const CaseStep& k, int s) {
     bool rfi = false;
     for (const Call& call : nat_calls) rfi |= !strcmp(call.fn, "hle_rfi");
 
-    load_ram(w);
+    start_ram();
     g_calls.clear();
     CPU in = st;
     const InterpStep ret = interp_step(&in, k.pc, k.insn);

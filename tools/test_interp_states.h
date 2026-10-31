@@ -30,3 +30,7 @@ extern const int kFixedAll;
 
 // Fixed state k, from 0 to kFixedAll - 1, given to insn's registers over a random state.
 void fix_state(CPU* c, uint32_t insn, int k);
+
+// What fixed state k puts where a memory form's reach of span bytes starts, as the guest's bytes in
+// out. It returns how many it wrote, which is 4 for a single, 8 for a double or 0 for none.
+uint32_t fixed_memory(int k, uint32_t span, uint8_t out[8]);
