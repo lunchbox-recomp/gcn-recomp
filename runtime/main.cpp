@@ -351,18 +351,21 @@ static void on_reset(uint32_t, uint32_t) {
     relaunch();
 }
 
-// The window loop's end, put off while the game may be part way through a save, so that a quit
-// or a restart doesn't cut one short: from the first ask until a quiet period after the game's
-// last write to the memory card (exi_card_unsaved), and kSaveWait at most. A run with no card,
-// or no write lately, ends at the first ask.
+// The window loop's end, put off while the game may be part way through a save, so that a
+// player's quit or restart doesn't cut one short: from the first ask until a quiet period after
+// the game's last write to the memory card (exi_card_unsaved), and kSaveWait at most. A run
+// with no card, or no write lately, ends at the first ask, and --exit-after's at once.
 class RunEnd {
 public:
     using Clock = std::chrono::steady_clock;
     static constexpr std::chrono::milliseconds kSaveWait{3000};
+    // The run is --exit-after's to end, at its frame: a scripted run waits on no wall clock,
+    // which would end it at a different frame on each host.
+    void scripted() { scripted_ = true; }
     // Whether the run may end at `now`, `unsaved` being exi_card_unsaved's answer then. The
     // first ask that has to wait says so on stderr.
     bool may_end(Clock::time_point now, bool unsaved) {
-        if (!unsaved) return true;
+        if (scripted_ || !unsaved) return true;
         if (!waiting_) {
             waiting_ = true;
             since_ = now;
@@ -372,6 +375,7 @@ public:
     }
 
 private:
+    bool scripted_ = false;
     bool waiting_ = false;
     Clock::time_point since_;
 };
@@ -837,8 +841,12 @@ int main(int argc, char** argv) {
         if (presented) {
             show_frame(win);
             frames++;
-            // The window-close path: the loop ends and the shutdown below runs as usual.
-            if (exit_after && ++presented_total >= exit_after) stop();
+            // The window-close path: the loop ends and the shutdown below runs as usual, at
+            // once, with no wait for a save.
+            if (exit_after && ++presented_total >= exit_after) {
+                stop();
+                run_end.scripted();
+            }
             auto now = std::chrono::steady_clock::now();
             double secs = std::chrono::duration<double>(now - t0).count();
             if (secs >= 2.0) {

@@ -1575,8 +1575,11 @@ void run_end(const std::string& dir) {
     using std::chrono::milliseconds;
     const Clock::time_point t0 = Clock::time_point{} + std::chrono::hours(1);
     const std::string out = dir + "/run-end-stderr.txt";
-    bool at_once = false, waits = false, saved = false, most = false;
+    bool at_once = false, waits = false, saved = false, most = false, scripted = false;
     capture(out, [&] {
+        RunEnd script;
+        script.scripted();
+        scripted = script.may_end(t0, true);
         RunEnd idle;
         at_once = idle.may_end(t0, false);
         RunEnd saving;
@@ -1589,7 +1592,8 @@ void run_end(const std::string& dir) {
     check(at_once, "a run whose memory card has no write unsaved, or no card, ends at the first ask");
     check(waits && saved, "one whose card has a write unsaved goes on until the card's saver has taken it");
     check(most, "and 3 s from the first ask is the most it goes on");
-    check(lines_with(out, "[quit] ") == 2, "each run that has to wait says so once");
+    check(scripted, "--exit-after's end is at its frame, whatever the card has unsaved");
+    check(lines_with(out, "[quit] ") == 2, "each run that has to wait says so once, and --exit-after's says nothing");
 }
 
 #ifdef GCN_OVERLAY
