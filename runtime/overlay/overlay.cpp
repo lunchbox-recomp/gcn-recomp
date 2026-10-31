@@ -1,6 +1,7 @@
 // The overlay's set-up, opening and closing, and the input it holds back; see overlay.h. The
 // Display page is overlay_display.cpp.
 #include "overlay/overlay.h"
+#include "frontend.h"
 #include "gamepads.h"
 #include "input_log.h"
 #include "input_map.h"

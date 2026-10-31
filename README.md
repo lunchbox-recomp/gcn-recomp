@@ -225,7 +225,7 @@ hundreds of milliseconds (`f19f98d`).
   back, and a save rewrites only the owned keys' lines and adds any that are missing.
 - `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. It pauses the game and
   holds the game's input back while it's open. Its Display page sets the picture and saves
-  what it changes to `settings.txt`. Its Restart calls `frontend_restart` in `main.cpp`, as a
+  what it changes to `settings.txt`. Its Restart calls `frontend_restart` (`frontend.h`), as a
   game's own page can.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;

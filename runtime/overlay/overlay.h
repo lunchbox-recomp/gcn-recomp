@@ -17,7 +17,8 @@
 //
 // Below the pages, on every one of them, are Restart game and Quit game. Each asks first, with
 // Cancel focused, and Cancel, B or Escape goes back to the page with nothing done. Quit closes
-// the overlay and quits the way an Escape with it closed does, and Restart is frontend_restart.
+// the overlay and quits the way an Escape with it closed does, and Restart is frontend_restart
+// (frontend.h).
 // A replay has no Restart game, since its log can't hold one (input_log.h).
 //
 // While it's open nothing reaches the game. Each port keeps what it had as it opened until the
@@ -58,11 +59,6 @@ struct OverlayPicture {
 // What the menu is asking before it does it, if anything.
 enum class OverlayAsk { none, restart, quit };
 
-// The frontend's (main.cpp), which the menu's Restart calls, as a game's own page may: the overlay
-// closes and the guest goes on, the run ends as a quit ends it, memory card and all, and the game
-// starts again as it does when it resets the console. In a replay that ends the run, as there.
-void frontend_restart();
-
 #ifdef GCN_OVERLAY
 // Once the window's GL context is current, with the menu's title. A null window draws no menu,
 // for tests: the overlay still opens, closes and holds input back. A window with no GL context,
@@ -76,7 +72,7 @@ bool overlay_event(const SDL_Event& e);
 bool overlay_open();
 // Closes it if it's open, and the guest goes on.
 void overlay_close();
-// What the menu is asking, none when it isn't.
+// What the menu is asking, none when it isn't. For the tests (tools/test_ports.cpp).
 OverlayAsk overlay_asking();
 // Port `port`'s state (0 is port 1) as the game gets it, after everything that drives the port
 // is merged into `p`.
@@ -85,7 +81,7 @@ void overlay_gate(int port, PadState& p);
 // swap.
 void overlay_draw();
 // What overlay_draw does short of drawing, for a window with no GL context: while it's open, the
-// menu takes its input and lays out its frame.
+// menu takes its input and lays out its frame. For the tests (tools/test_ports.cpp).
 void overlay_menu_frame();
 // What the Display page does with `next`, the picture with its change made: the frontend applies
 // it, and each key where it differs from the picture now is saved.

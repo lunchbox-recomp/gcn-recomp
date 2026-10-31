@@ -3,6 +3,7 @@
 #include "runtime.h"
 #include "platform.h"
 #include "bot_link.h"
+#include "frontend.h"
 #include "input_script.h"
 #include "input_log.h"
 #include "input_map.h"
