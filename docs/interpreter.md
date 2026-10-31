@@ -100,5 +100,6 @@ The runtime doesn't call it, and `tools/test_interp_run.cpp` does.
   don't see an interpreted function's accesses.
 - A setjmp site in a loop nests one more C frame each time round, until the guest function
   returns.
-- A loose frame's `bl` is a call like any other. Code that uses a `bl` to the next word to
-  read its own address runs from there as a call, and then again once that call returns.
+- A loose frame's `bl` or `bcl` to the next word sets LR and runs on. recomp.py's C, and a
+  function frame with it, calls the next word as a mid-entry and runs the rest again once
+  that call returns.
