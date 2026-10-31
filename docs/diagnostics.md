@@ -771,6 +771,9 @@ the game as a console reset does (`on_reset`). A tool reading the run's output s
 in that line, as it does in a console reset's `[reset]` line. A replay's menu has no Restart
 game, since the log can't hold one.
 
+A relaunch, by a console reset or Restart game, starts `--record`, `--input-log`, `GCN_WAV` and
+`GCN_AIDWAV` over in the same place.
+
 `test_ports` presses both through the menu on a virtual gamepad and on the keyboard, over a
 window from SDL's dummy video driver, which has no GL context. Its `--restart` run follows a
 restart to the relaunch, and its own at-exit function checks the input log's `# end` and the

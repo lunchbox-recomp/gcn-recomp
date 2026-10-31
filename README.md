@@ -99,6 +99,9 @@ Quit ends the run as Escape does with the menu closed, saving the memory card on
 Either way, a save the game is part way through gets up to 3 seconds to finish first. Restart
 ends the run the same way, then starts the game again as the game's own reset does.
 
+A game built through an engine kit from `runtime_check`'s objects has no menu, since they leave
+the overlay out.
+
 ## Audio
 
 This fork changes the audio path from upstream `9b0a2fe` in the commits below. Nothing in it
