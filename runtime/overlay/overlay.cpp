@@ -13,6 +13,7 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
+#include "imgui_internal.h"  // ImGui::FocusItem
 
 bool write_png(const char* path, const uint8_t* rgba, int w, int h);
 // overlay_display.cpp's.
@@ -23,7 +24,11 @@ namespace {
 
 bool g_ready, g_open;
 SDL_Window* g_window;  // null in tests, which draw nothing
+bool g_gl;             // the window has a GL context to draw the menu with, which tests' don't
 std::string g_title;
+OverlayAsk g_ask;         // what the menu is asking before it does it
+OverlayAsk g_asked;       // the button that asked, which takes the focus back at the next draw
+bool g_focus_cancel;      // Cancel takes the focus at the next draw, as the menu starts asking
 uint16_t g_held_over[4];  // the buttons held as the overlay closed, kept from the game until let go
 bool g_focus;             // the menu takes the keyboard's and the gamepads' focus at its next draw
 bool g_dumped;            // since it opened, under --dump-output
@@ -33,6 +38,7 @@ long g_at_left;             // draws over the held frame left before GCN_OVERLAY
 void set_open(bool on) {
     if (on == g_open) return;
     g_open = on;
+    g_ask = g_asked = OverlayAsk::none;
     pause_request(on);
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
     if (!on || !g_window) return;
@@ -103,6 +109,53 @@ void dump() {
     glDeleteTextures(1, &tex);
 }
 
+// The menu asks before it restarts or quits, with Cancel focused, and goes back to the button
+// that asked. FocusItem moves the focus without pressing what it lands on, which
+// SetKeyboardFocusHere does.
+void ask(OverlayAsk what) {
+    g_ask = what;
+    g_focus_cancel = true;
+}
+
+void back() {
+    g_asked = g_ask;
+    g_ask = OverlayAsk::none;
+}
+
+// Closes the overlay and asks SDL to quit, as the window's close button does, so the frontend's
+// loop stops and the run ends the way it does for an Escape.
+void quit() {
+    set_open(false);
+    SDL_Event e{};
+    e.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&e);
+}
+
+// Below the pages, so on every one.
+void actions() {
+    ImGui::Separator();
+    if (ImGui::Button("Restart game")) ask(OverlayAsk::restart);
+    if (g_asked == OverlayAsk::restart) ImGui::FocusItem();
+    ImGui::SameLine();
+    if (ImGui::Button("Quit game")) ask(OverlayAsk::quit);
+    if (g_asked == OverlayAsk::quit) ImGui::FocusItem();
+    g_asked = OverlayAsk::none;
+}
+
+void asking() {
+    const bool restart = g_ask == OverlayAsk::restart;
+    ImGui::TextUnformatted(restart ? "Restart the game? Anything it hasn't saved is lost."
+                                   : "Quit the game? Anything it hasn't saved is lost.");
+    if (ImGui::Button("Cancel")) back();
+    if (g_focus_cancel) ImGui::FocusItem();
+    g_focus_cancel = false;
+    ImGui::SameLine();
+    if (ImGui::Button(restart ? "Restart" : "Quit")) {
+        if (restart) frontend_restart();
+        else quit();
+    }
+}
+
 void draw_menu() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -111,14 +164,27 @@ void draw_menu() {
     ImGui::Begin(g_title.c_str(), nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
-    if (ImGui::BeginTabBar("pages")) {
-        if (ImGui::BeginTabItem("Display")) {
-            display_page(g_window);
-            ImGui::EndTabItem();
+    if (g_ask != OverlayAsk::none) {
+        asking();
+    } else {
+        if (ImGui::BeginTabBar("pages")) {
+            if (ImGui::BeginTabItem("Display")) {
+                display_page(g_window);
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
         }
-        ImGui::EndTabBar();
+        actions();
     }
     ImGui::End();
+}
+
+// The menu's frame: its input taken and its windows laid out, ready to draw.
+void menu_frame() {
+    ImGui_ImplSDL3_NewFrame();
+    ImGui::NewFrame();
+    draw_menu();
+    ImGui::Render();
 }
 
 }  // namespace
@@ -142,18 +208,34 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     style.FontScaleMain = 2.0f;
     style.FontScaleDpi = content > 0.0f ? content : 1.0f;
     style.ScaleAllSizes(style.FontScaleMain * style.FontScaleDpi);
-    ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
-    ImGui_ImplOpenGL3_Init();
+    g_gl = SDL_GL_GetCurrentContext() != nullptr;
+    if (g_gl) {
+        ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
+        ImGui_ImplOpenGL3_Init();
+        return;
+    }
+    // Nothing draws the menu, so the texture its font is baked into is never made.
+    ImGui_ImplSDL3_InitForOther(window);
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
 }
 
 bool overlay_open() { return g_open; }
+
+void overlay_close() { set_open(false); }
+
+OverlayAsk overlay_asking() { return g_ask; }
 
 bool overlay_event(const SDL_Event& e) {
     if (!g_ready) return false;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
     const int button = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN ? e.gbutton.button : -1;
-    if (key == SDL_SCANCODE_F1 || button == SDL_GAMEPAD_BUTTON_BACK ||
-        (g_open && (key == SDL_SCANCODE_ESCAPE || button == SDL_GAMEPAD_BUTTON_EAST))) {
+    const bool cancel = key == SDL_SCANCODE_ESCAPE || button == SDL_GAMEPAD_BUTTON_EAST;
+    // While the menu asks, B or Escape goes back to it instead of closing it.
+    if (g_open && g_ask != OverlayAsk::none && cancel) {
+        back();
+        return true;
+    }
+    if (key == SDL_SCANCODE_F1 || button == SDL_GAMEPAD_BUTTON_BACK || (g_open && cancel)) {
         set_open(!g_open);
         return true;
     }
@@ -176,18 +258,19 @@ void overlay_gate(int port, PadState& p) {
     p.buttons &= ~g_held_over[port];
 }
 
+void overlay_menu_frame() {
+    if (g_window && g_open) menu_frame();
+}
+
 void overlay_draw() {
-    if (!g_window) return;
+    if (!g_window || !g_gl) return;
     if (g_at_frame >= 0 && gx::present_count() >= g_at_frame) {
         g_at_frame = -1;
         set_open(true);
     }
     if (!g_open) return;
     ImGui_ImplOpenGL3_NewFrame();
-    ImGui_ImplSDL3_NewFrame();
-    ImGui::NewFrame();
-    draw_menu();
-    ImGui::Render();
+    menu_frame();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     if (!paused()) return;
     // A menu's first frame only lays it out and draws nothing, so the dump waits for one that drew.

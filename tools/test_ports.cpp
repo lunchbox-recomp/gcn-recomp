@@ -13,8 +13,10 @@
 // irq_request), and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a
 // check sets by hand. The interrupt handler's thread dump (debug_dump_threads) and guest
 // memory (g_mem) are stubbed too, and fatal, which says why and exits 1, and the session's
-// note that the game is starting again (session_relaunching) and the clock's hold for a bot
-// (host_ns, clock_hold), which no check reaches. The disc
+// note that the game is starting again (session_relaunching), which notes it was called, and
+// the clock's hold for a bot (host_ns, clock_hold), which no check reaches. So are the end of
+// a movie (record::finish) and the guest threads' quit (threads_request_quit), which only
+// --restart's end of the run reaches. The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
 // With GCN_OVERLAY, overlay/*.cpp and pause.cpp are linked as well, and pause.cpp's clock
@@ -36,6 +38,8 @@
 //                                              replay, with a gamepad rumbling
 //        test_ports --shutdown <empty work dir>   the game shutting the console down,
 //                                                 with a gamepad rumbling
+//        test_ports --restart <work dir>   a restart asked for (frontend_restart), to the
+//                                          relaunch, which writes nothing there
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -80,9 +84,14 @@ void fatal(const char* fmt, ...) {
     fputc('\n', stderr);
     exit(1);
 }
-void session_relaunching() {}
+static bool g_relaunching;  // session_relaunching has been called
+void session_relaunching() { g_relaunching = true; }
 uint64_t host_ns() { return 0; }
 void clock_hold(uint64_t) {}
+namespace record {
+void finish() {}
+}
+void threads_request_quit() {}
 bool g_fast_disc = true;
 #ifdef GCN_OVERLAY
 uint64_t audio_frames_out() { return 0; }
@@ -1570,10 +1579,12 @@ struct Guest {
     }
 };
 
-// One host frame, then the guest on past its next boundary, or held there. pump_events' answer.
+// One host frame, the menu's included where there's a window, then the guest on past its next
+// boundary, or held there. pump_events' answer.
 bool host_frame(Guest& g) {
     const bool running = pump_events();
     update_pads(0);
+    overlay_menu_frame();
     uint32_t want;
     {
         std::lock_guard<std::mutex> lk(g.m);
@@ -1702,6 +1713,110 @@ void overlay(const std::string& dir) {
     unplug({&pad});
     gamepads_shutdown();
 }
+
+// ---- The overlay's Restart game and Quit game, over a window from SDL's dummy video driver.
+// It has no GL context, so the menu is driven but not drawn (overlay_menu_frame). A gamepad
+// alone goes through Restart and the keyboard alone through Quit. Neither ends this process:
+// each stops pump_events, the frontend's loop, and --restart follows a restart from there.
+SDL_WindowID g_window_id;  // the test window's, which the menu takes keys from
+
+// A key pressed and let go over the window, a host frame each. False if pump_events was.
+bool tap(Guest& g, SDL_Scancode scancode, SDL_Keycode key) {
+    bool running = true;
+    for (const bool down : {true, false}) {
+        SDL_Event e{};
+        e.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+        e.key.windowID = g_window_id;
+        e.key.scancode = scancode;
+        e.key.key = key;
+        e.key.down = down;
+        SDL_PushEvent(&e);
+        running = host_frame(g) && running;
+    }
+    return running;
+}
+
+// A gamepad's button pressed and let go, a host frame each.
+void tap(Guest& g, const Virtual& v, int button) {
+    set_button(v, button, true);
+    host_frame(g);
+    set_button(v, button, false);
+    host_frame(g);
+}
+
+// The menu open over the held game, asking `asking`, and no restart on its way.
+bool waiting(OverlayAsk asking) { return overlay_open() && paused() && overlay_asking() == asking && !g_restart; }
+
+void overlay_buttons(const std::string& dir) {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
+    SDL_Window* window = SDL_InitSubSystem(SDL_INIT_VIDEO) ? SDL_CreateWindow("test_ports", 1280, 960, SDL_WINDOW_HIDDEN) : nullptr;
+    check(window != nullptr, "SDL's dummy video driver makes a window for the menu");
+    if (!window) return;
+    g_window_id = SDL_GetWindowID(window);
+    OverlayPicture picture;
+    picture.path = dir + "/buttons-settings.txt";
+    picture.apply = record_apply;
+    const int applies = g_applies;
+    overlay_init(window, "Test title", picture);
+    gamepads_init();
+    Virtual pad{"virtual pad buttons"};
+    attach(pad);
+    Guest guest;
+    host_frame(guest);
+
+    // From the top of the page down past every row and left past every column is Restart game.
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    for (int i = 0; i < 8; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    for (int i = 0; i < 2; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(waiting(OverlayAsk::restart), "on a gamepad, Restart game is at the bottom of the page, and pressing it asks first");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(waiting(OverlayAsk::none) && host_frame(guest), "Cancel is focused as it asks, and pressing it goes back with nothing done");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool again = waiting(OverlayAsk::restart);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
+    check(again && waiting(OverlayAsk::none) && host_frame(guest),
+          "Restart game is focused again after, and B goes back with nothing done, the overlay still open");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(waiting(OverlayAsk::restart), "Restart game is focused again after B too");
+    // Dear ImGui sizes a window to what it held the frame before, so the question is laid out
+    // where it stays a frame after it's asked, and a move from Cancel starts from there.
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    host_frame(guest);
+    const bool closed = !overlay_open() && !pause_requested() && !paused() && guest.passed == guest.asked;
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    check(closed && g_restart && !host_frame(guest),
+          "confirming Restart closes the overlay and lets the guest go, then the frontend's loop stops to restart");
+    g_restart = false;  // as the relaunched process starts
+
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    for (int i = 0; i < 8; i++) tap(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
+    for (int i = 0; i < 2; i++) tap(guest, SDL_SCANCODE_LEFT, SDLK_LEFT);
+    tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    check(waiting(OverlayAsk::quit), "on the keyboard, Quit game is right of Restart game, and Enter on it asks first");
+    tap(guest, SDL_SCANCODE_SPACE, SDLK_SPACE);
+    check(waiting(OverlayAsk::none) && host_frame(guest), "Cancel is focused as it asks, and Space on it goes back with nothing done");
+    tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    const bool asks = waiting(OverlayAsk::quit);
+    const bool stays = tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+    check(asks && stays && waiting(OverlayAsk::none) && host_frame(guest),
+          "Quit game is focused again after, and Escape goes back with nothing done, without quitting");
+    tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    host_frame(guest);  // the question laid out where it stays, as above
+    tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    const bool running = tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    check(!running && !g_restart && !overlay_open() && !pause_requested(),
+          "confirming Quit closes the overlay, and the frontend's loop stops as for a quit, not a restart");
+    check(g_applies == applies, "no press on the way to either button changed the picture");
+
+    unplug({&pad});
+    gamepads_shutdown();
+    SDL_DestroyWindow(window);
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+}
 #endif
 
 int run_ports(const std::string& dir) {
@@ -1747,6 +1862,7 @@ int run_ports(const std::string& dir) {
     bot_flags(dir);
 #ifdef GCN_OVERLAY
     overlay(dir);
+    overlay_buttons(dir);
 #endif
     return finish("ports");
 }
@@ -2101,6 +2217,25 @@ int run_shutdown(const std::string& dir) {
     plat_exit_now(0);
 }
 
+// ---- A restart asked for (frontend_restart, which the overlay's Restart calls) stops the
+// frontend's loop as a quit does, and the window path's end (end_run) ends the run as for a
+// quit, with the exit's at-exit functions, then relaunches. This process isn't started again:
+// the at-exit function added here runs last, and ends it, before the relaunch would.
+void after_restart() {
+    check(g_relaunching, "the run ends through the exit's at-exit functions, the memory card's among them, on the way to a relaunch");
+    printf("test_ports --restart: %d of %d checks passed\n", g_checks - g_failed, g_checks);
+    fflush(stdout);
+    _exit(g_failed ? 1 : 0);
+}
+
+int run_restart() {
+    if (!sdl_up()) return 1;
+    frontend_restart();
+    check(!pump_events() && !g_relaunching, "after a restart is asked for, the frontend's loop stops, as for a quit");
+    plat_at_exit(after_restart);
+    end_run();
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -2118,7 +2253,8 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "--restart")) return run_restart();
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown|--restart] <work dir>\n");
     return 2;
 }

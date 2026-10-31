@@ -85,6 +85,13 @@ Escape closes the menu too, and quits the game when the menu is closed.
 The menu's Display page sets the aspect and the internal scale and turns fullscreen on or off.
 Each change applies at once and is saved to `settings.txt`, which the window reads at start.
 
+Restart game and Quit game sit below every page, and each asks first, with Cancel picked.
+Cancel, B or Escape goes back with nothing done.
+
+Quit ends the run as Escape does with the menu closed, saving the memory card on the way out.
+Restart ends it the same way, then starts the game again as the game's own reset does. In a
+replay it only ends the run, since that reset ends a replay too.
+
 ## Audio
 
 This fork changes the audio path from upstream `9b0a2fe` in the commits below. Nothing in it
@@ -212,7 +219,8 @@ hundreds of milliseconds (`f19f98d`).
   back, and a save rewrites only the owned keys' lines and adds any that are missing.
 - `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. It pauses the game and
   holds the game's input back while it's open. Its Display page sets the picture and saves
-  the setting it changes to `settings.txt`.
+  what it changes to `settings.txt`. Its Restart calls `frontend_restart` in `main.cpp`, as a
+  game's own page can.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;
   `xr_desktop.cpp` puts it on the desktop's GL context for PC VR (`--vr`, Windows).

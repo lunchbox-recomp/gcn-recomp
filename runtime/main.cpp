@@ -254,7 +254,10 @@ static void update_pads(int first) {
     }
 }
 
-// The window's events, the overlay's first (overlay.h). False once the user has asked to quit.
+static bool g_restart;  // frontend_restart's
+
+// The window's events, the overlay's first (overlay.h). False once the user has asked to quit,
+// or to restart (frontend_restart).
 static bool pump_events() {
     SDL_Event e;
     bool running = true;
@@ -278,7 +281,7 @@ static bool pump_events() {
                 SDL_SetWindowFullscreen(w, !(SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN));
         }
     }
-    return running;
+    return running && !g_restart;
 }
 
 // What main() starts SDL with: no joystick, gamepad or haptic subsystem, which
@@ -318,16 +321,37 @@ static void show_frame(SDL_Window* win) {
     SDL_GL_SwapWindow(win);
 }
 
-// The game resetting the console starts it again in a fresh process, as a power cycle
-// would -- except in a replay, which would only replay itself from the start again.
-// Either way this process ends (guest_reset), so the gamepads and a wheel are shut down
-// first, as at any other exit.
+// The game started again in a fresh process, as a power cycle would -- except in a replay,
+// which would only replay itself from the start again, so there the caller's exit follows.
 static char** g_argv;  // main()'s
-static void on_reset(uint32_t, uint32_t) {
-    pads_down();
+static void relaunch() {
     if (input_replay_active()) return;
     session_relaunching();
     plat_relaunch(g_argv);
+}
+
+// The game resetting the console relaunches it, and either way this process ends
+// (guest_reset), so the gamepads and a wheel are shut down first, as at any other exit.
+static void on_reset(uint32_t, uint32_t) {
+    pads_down();
+    relaunch();
+}
+
+// The window path's end, once its loop has stopped: a quit, or a restart, which ends the run
+// the same way and then relaunches the game. The memory card is written by the exit's
+// plat_at_exit functions, which a relaunch runs too, waiting for a write under way.
+[[noreturn]] static void end_run() {
+    record::finish();
+    input_log_end();
+    pads_down();
+    threads_request_quit();
+    if (g_restart) relaunch();
+    plat_exit_now(0);
+}
+
+void frontend_restart() {
+    overlay_close();
+    g_restart = true;
 }
 
 // Sets g_fast_disc to settings.txt's `disc`, which --disc=fast or --disc=console beats for
@@ -776,9 +800,5 @@ int main(int argc, char** argv) {
             }
         }
     }
-    record::finish();
-    input_log_end();
-    pads_down();
-    threads_request_quit();
-    plat_exit_now(0);
+    end_run();
 }

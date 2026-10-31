@@ -815,8 +815,9 @@ function(gcn_add_game)
       target_compile_options(test_ports PRIVATE -ffunction-sections)
       target_link_options(test_ports PRIVATE -Wl,--gc-sections)
     endif()
-    # The overlay's checks, with no window: opening it pauses the guest, which pause.cpp holds,
-    # and its Display page saves through settings.cpp, which is linked above.
+    # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
+    # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page
+    # saves through settings.cpp, which is linked above.
     if(_gcn_overlay)
       target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp)
       target_link_libraries(test_ports PRIVATE gcn_imgui)
