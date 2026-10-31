@@ -759,6 +759,13 @@ The menu's Restart game and Quit game close it before they act, so the run print
 way. If the game resets the console as the run ends, whichever of the two comes first ends
 the run while the other waits.
 
+Before `end_run`, the window's loop lets the guest run on while the memory card has a write
+its saver hasn't taken, as it has for a quiet period after the game's last write. It waits 3 s
+at most, after Quit, Restart, Escape, the window's close button or `--exit-after`. A run that
+waits prints
+`[quit] the game is writing to the memory card, so the run ends once it's done, 3 s at most`,
+and one with no card or no write lately ends at once.
+
 Restart then prints `[reset] the overlay's Restart game starts the game again` and relaunches
 the game as a console reset does (`on_reset`). A tool reading the run's output sees a restart
 in that line, as it does in a console reset's `[reset]` line. A replay's menu has no Restart

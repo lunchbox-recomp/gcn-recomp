@@ -351,9 +351,34 @@ static void on_reset(uint32_t, uint32_t) {
     relaunch();
 }
 
-// The window path's end, once its loop has stopped: a quit, or a restart, which ends the run
-// the same way and then relaunches the game. The memory card is written by the exit's
-// plat_at_exit functions, which a relaunch runs too, waiting for a write under way.
+// The window loop's end, put off while the game may be part way through a save, so that a quit
+// or a restart doesn't cut one short: from the first ask until the memory card has no write
+// its saver hasn't taken (exi_card_unsaved), which is a quiet period after the game's last
+// write, and kSaveWait at most. A run with no card, or no write lately, ends at the first ask.
+class RunEnd {
+public:
+    using Clock = std::chrono::steady_clock;
+    static constexpr std::chrono::milliseconds kSaveWait{3000};
+    // Whether the run may end at `now`, `unsaved` being exi_card_unsaved's answer then. The
+    // first ask that has to wait says so on stderr.
+    bool may_end(Clock::time_point now, bool unsaved) {
+        if (!unsaved) return true;
+        if (!waiting_) {
+            waiting_ = true;
+            since_ = now;
+            fprintf(stderr, "[quit] the game is writing to the memory card, so the run ends once it's done, 3 s at most\n");
+        }
+        return now - since_ >= kSaveWait;
+    }
+
+private:
+    bool waiting_ = false;
+    Clock::time_point since_;
+};
+
+// The window path's end, once its loop has stopped and RunEnd has let it: a quit, or a restart,
+// which ends the run the same way and then relaunches the game. The memory card is written by
+// the exit's plat_at_exit functions, which a relaunch runs too, waiting for a write under way.
 [[noreturn]] static void end_run() {
     end_once();
     record::finish();
@@ -739,11 +764,15 @@ int main(int argc, char** argv) {
     threads_start_boot(entry);
 
     bool running = true;
+    RunEnd run_end;
     uint32_t frames = 0;
     uint32_t presented_total = 0;
     auto t0 = std::chrono::steady_clock::now();
-    while (running) {
-        running = pump_events();
+    // Once the loop is asked to stop, the guest runs on while the game may be saving, which it
+    // can't while the overlay holds it.
+    while (running || !run_end.may_end(std::chrono::steady_clock::now(), exi_card_unsaved())) {
+        running = pump_events() && running;
+        if (!running) overlay_close();
         g_guest_held = paused();
         update_pads(0);
         int dw, dh;

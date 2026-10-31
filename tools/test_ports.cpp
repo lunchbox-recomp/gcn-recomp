@@ -1548,6 +1548,31 @@ void drivers_stay_off() {
           "the variable that lets Steam's virtual gamepads past the allow list is cleared before SDL starts");
 }
 
+// ---- The window loop's end waits for a save the game may be part way through (RunEnd), here
+// on a fake clock with a fake card's answers: none written lately ends at once, a recent write
+// waits for the card's quiet period, and 3 s is the most it waits.
+void run_end(const std::string& dir) {
+    using Clock = RunEnd::Clock;
+    using std::chrono::milliseconds;
+    const Clock::time_point t0 = Clock::time_point{} + std::chrono::hours(1);
+    const std::string out = dir + "/run-end-stderr.txt";
+    bool at_once = false, waits = false, saved = false, most = false;
+    capture(out, [&] {
+        RunEnd idle;
+        at_once = idle.may_end(t0, false);
+        RunEnd saving;
+        waits = !saving.may_end(t0, true) && !saving.may_end(t0 + milliseconds(1500), true);
+        saved = saving.may_end(t0 + milliseconds(1600), false);
+        RunEnd busy;
+        most = !busy.may_end(t0, true) && !busy.may_end(t0 + milliseconds(2999), true) &&
+               busy.may_end(t0 + milliseconds(3000), true);
+    });
+    check(at_once, "a run whose memory card has no write unsaved, or no card, ends at the first ask");
+    check(waits && saved, "one whose card has a write unsaved goes on until the card's saver has taken it");
+    check(most, "and 3 s from the first ask is the most it goes on");
+    check(lines_with(out, "[quit] ") == 2, "each run that has to wait says so once");
+}
+
 #ifdef GCN_OVERLAY
 // ---- The overlay (overlay/overlay.h) with no window, so no menu is drawn. A thread stands in
 // for the guest. Each host frame lets it reach one more frame boundary (pause_gate), after the
@@ -2006,6 +2031,7 @@ int run_ports(const std::string& dir) {
     headset_layout();
     disc_speed(dir);
     bot_flags(dir);
+    run_end(dir);
 #ifdef GCN_OVERLAY
     overlay(dir);
     overlay_buttons(dir);

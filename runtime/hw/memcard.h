@@ -32,6 +32,9 @@ public:
     void shutdown();
     // How many times the card's file has been written.
     uint64_t saves() const { return saves_.load(); }
+    // Whether the card has a write the saver hasn't taken for the file yet, as it does from a
+    // write until a quiet period after the last one: the game may be part way through a save.
+    bool unsaved();
     void format();
     void write_serial(uint8_t* header);
     // Tests only: called at the start of each write of the file, on the thread writing it,

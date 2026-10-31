@@ -187,6 +187,11 @@ void exi_init() {
     g_card_a = std::make_unique<MemCard>(path, 4);
 }
 
+bool exi_card_unsaved() {
+    std::lock_guard<std::mutex> lk(g_card_mutex);
+    return g_card_a && g_card_a->unsaved();
+}
+
 uint32_t exi_read32(uint32_t off) {
     int ch = off / 0x14;
     if (ch > 2) return 0;

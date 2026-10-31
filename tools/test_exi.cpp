@@ -17,7 +17,8 @@
 // period after the last write, and at shutdown if it still lacks one. A write that fails,
 // at the open or cut short by a file size limit, leaves the file as it was and is tried
 // again. A gate MemCard calls before each write holds one so a page or a shutdown can land
-// during it. Running exi_init again makes a new card from the same file, and the new card
+// during it. A card has a write unsaved until the saver takes it, which exi_card_unsaved
+// passes on. Running exi_init again makes a new card from the same file, and the new card
 // has to hold a page the old one hadn't written yet.
 //
 // The exit checks each run in a child process. Two write a page through the EXI registers
@@ -500,6 +501,33 @@ void exi_write_page() {
     deselect();
 }
 
+// Whether the game may be part way through a save, as a run's end asks before it ends: a
+// card has a write the saver hasn't taken from the write until a quiet period after it.
+void card_unsaved() {
+    const std::string p = path_of("unsaved.raw");
+    MemCard card(p, 4, kQuiet);
+    const uint64_t made = card.saves();
+    const bool fresh = !card.unsaved();
+    program_page(card, 0);
+    const bool written = card.unsaved();
+    wait_for_save(card, made);
+    check(fresh && written && !card.unsaved(), "a card has a write unsaved from the write until the saver takes it");
+}
+
+// exi_card_unsaved is the slot A card's answer, and no with no card.
+void exi_card_answers() {
+    const std::string p = path_of("asked.raw");
+    const char* was = g_memcard_path;
+    g_memcard_path = p.c_str();
+    exi_init();
+    const bool fresh = !exi_card_unsaved();
+    exi_write_page();
+    const bool written = exi_card_unsaved();
+    g_card_a.reset();
+    check(fresh && written && !exi_card_unsaved(), "exi_card_unsaved asks the card in slot A, and with no card it's no");
+    g_memcard_path = was;
+}
+
 // A reset runs exi_init again, which makes a new card from the same file while the old one
 // still has a page to write.
 void card_made_again() {
@@ -656,6 +684,8 @@ int main(int argc, char** argv) {
     MemCard::before_write_for_tests = gate;
     card_page_during_save();
     card_shutdown_during_save();
+    card_unsaved();
+    exi_card_answers();
     card_made_again();
     card_saved_at_exit();
     card_saved_at_hangup();

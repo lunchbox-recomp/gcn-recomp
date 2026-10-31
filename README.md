@@ -88,11 +88,12 @@ The menu's Display page sets the aspect and the internal scale and turns fullscr
 Each change applies at once and is saved to `settings.txt`, which the window reads at start.
 
 Restart game and Quit game sit below every page, and each asks first, with Cancel picked.
-Cancel, B or Escape goes back with nothing done.
+Cancel, B or Escape goes back with nothing done. A replay has no Restart game, since its log
+can't hold one.
 
 Quit ends the run as Escape does with the menu closed, saving the memory card on the way out.
-Restart ends it the same way, then starts the game again as the game's own reset does. A
-replay has no Restart game, since its log can't hold one.
+Either way, a save the game is part way through gets up to 3 seconds to finish first. Restart
+ends the run the same way, then starts the game again as the game's own reset does.
 
 ## Audio
 

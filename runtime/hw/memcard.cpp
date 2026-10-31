@@ -193,6 +193,11 @@ void MemCard::saver_main() {
     }
 }
 
+bool MemCard::unsaved() {
+    std::lock_guard<std::mutex> lk(mutex_);
+    return dirty_;
+}
+
 void MemCard::shutdown() {
     std::unique_lock<std::mutex> lk(mutex_);
     if (stop_) return;
