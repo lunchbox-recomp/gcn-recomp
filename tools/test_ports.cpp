@@ -12,12 +12,14 @@
 // given), the RTC (rtc_set_base), the event queue and interrupt request (event_schedule_in,
 // irq_request), and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a
 // check sets by hand. The renderer's aspect and internal scale (gx::render_set_output_aspect,
-// gx::render_set_internal_scale) keep what they were last given. The interrupt handler's thread dump (debug_dump_threads) and guest
-// memory (g_mem) are stubbed too, and fatal, which says why and exits 1, and the session's
-// note that the game is starting again (session_relaunching), which notes it was called, and
-// the clock's hold for a bot (host_ns, clock_hold), which no check reaches. So are the end of
-// a movie (record::finish) and the guest threads' quit (threads_request_quit), which only
-// --restart's end of the run reaches. The disc
+// gx::render_set_internal_scale) keep what they were last given. The interrupt handler's
+// thread dump (debug_dump_threads) and guest memory (g_mem) are stubbed too, and fatal, which
+// says why and exits 1, and the session's note that the game is starting again
+// (session_relaunching), which notes it was called, and the clock's hold for a bot (host_ns,
+// clock_hold), which no check reaches. So are the end of a movie (record::finish) and the
+// guest threads' quit (threads_request_quit), which only --restart's and --quit's ends of the
+// run reach, and where the first resets the console on another thread for them
+// (g_reset_in_finish). reset.cpp is linked, for the game's reset (guest_reset). The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
 // With GCN_OVERLAY, overlay/*.cpp and pause.cpp are linked as well, and pause.cpp's clock
@@ -40,7 +42,9 @@
 //        test_ports --shutdown <empty work dir>   the game shutting the console down,
 //                                                 with a gamepad rumbling
 //        test_ports --restart <empty work dir>   a restart asked for (frontend_restart), to
-//                                                the relaunch
+//                                                the relaunch, with the game resetting the
+//                                                console as the run ends
+//        test_ports --quit <empty work dir>   the same with a quit
 //        test_ports --restart-replay <empty work dir>   the menu, then a restart asked for,
 //                                                       in a replay
 // Files are written into the work dir and left there.
@@ -95,8 +99,15 @@ static std::atomic<int> g_relaunching{0};  // how many times session_relaunching
 void session_relaunching() { g_relaunching++; }
 uint64_t host_ns() { return 0; }
 void clock_hold(uint64_t) {}
+// Set, the end of a movie resets the console on another thread first, as a game may while
+// end_run runs, and gives that reset time to act.
+static std::atomic<bool> g_reset_in_finish{false};
 namespace record {
-void finish() {}
+void finish() {
+    if (!g_reset_in_finish) return;
+    std::thread(guest_reset, 0u, 0u).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+}
 }
 void threads_request_quit() {}
 bool g_fast_disc = true;
@@ -2486,25 +2497,51 @@ int run_shutdown(const std::string& dir) {
 // [reset] line, as a console reset does, and relaunches. This process isn't started again:
 // the at-exit function added here runs last, and ends it, before the relaunch would. No memory
 // card is made here (exi_init), so none is written.
+//
+// The loop claims the run's end as it stops (claim_end), so the game resetting the console
+// after that (guest_reset, on another thread, with main()'s reset handler) says nothing, ends
+// nothing and waits, as the loop waits for a save and as end_run runs. A restart's own [reset]
+// line is the run's one, and --quit, the same with a quit, has none and no relaunch.
 std::string g_restart_dir;
+
+// The input log's `# end` lines, and the [reset] lines the run printed.
+int log_ends() {
+    const std::string ends = lines_starting(g_restart_dir + "/log/inputs.txt", "# end ");
+    return (int)std::count(ends.begin(), ends.end(), '\n');
+}
+std::string resets() { return lines_starting(g_restart_dir + "/restart-stderr.txt", "[reset] "); }
 
 void after_restart() {
     fflush(stderr);
     dup2(g_stderr, 2);
-    const std::string out = g_restart_dir + "/restart-stderr.txt";
-    printf("---- stderr\n%s----\n", read_file(out).c_str());
-    check(g_relaunching == 1, "the run ends through the exit's at-exit functions on the way to a relaunch");
-    check(!lines_starting(g_restart_dir + "/log/inputs.txt", "# end ").empty(), "the input log has its end");
-    check(lines_starting(out, "[reset] ") == "[reset] the overlay's Restart game starts the game again\n",
-          "one [reset] line, not a shutdown's, says the game starts again");
-    // A game reset on the guest's thread as the run ends, as in the frame after Restart game is
-    // confirmed, is a second caller: it ends nothing again and relaunches nothing, and waits.
-    std::thread(on_reset, 0u, 0u).detach();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    check(g_relaunching == 1, "a game reset as the run ends doesn't relaunch the game a second time");
+    printf("---- stderr\n%s----\n", read_file(g_restart_dir + "/restart-stderr.txt").c_str());
+    check(g_relaunching == 1, "the run ends through the exit's at-exit functions on the way to one relaunch");
+    check(log_ends() == 1, "the input log has one end");
+    check(resets() == "[reset] the overlay's Restart game starts the game again\n",
+          "one [reset] line, Restart's: the game's resets in the wait and in end_run say nothing");
     printf("test_ports --restart: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     fflush(stdout);
     _exit(g_failed ? 1 : 0);
+}
+
+void after_quit() {
+    fflush(stderr);
+    dup2(g_stderr, 2);
+    printf("---- stderr\n%s----\n", read_file(g_restart_dir + "/restart-stderr.txt").c_str());
+    check(!g_relaunching && log_ends() == 1,
+          "a quit ends the run with no relaunch, though the game resets the console in the wait and in end_run");
+    check(resets().empty(), "and no [reset] line");
+    printf("test_ports --quit: %d of %d checks passed\n", g_checks - g_failed, g_checks);
+    fflush(stdout);
+    _exit(g_failed ? 1 : 0);
+}
+
+// The game resetting the console on the guest's thread as the run waits for a save, and again
+// as end_run runs (record::finish's stub).
+void resets_as_it_ends() {
+    std::thread(guest_reset, 0u, 0u).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    g_reset_in_finish = true;
 }
 
 // From here stderr goes to <dir>/restart-stderr.txt, and g_stderr is the test's.
@@ -2521,10 +2558,29 @@ int run_restart(const std::string& dir) {
     if (!sdl_up()) return 1;
     g_restart_dir = dir;
     if (!input_log_start(dir + "/log", dir + "/no-card.raw", dir + "/no-sram.raw")) return 1;
+    set_reset_handler(on_reset);
     frontend_restart();
     check(!pump_events() && !g_relaunching, "after a restart is asked for, the frontend's loop stops, as for a quit");
+    claim_end();
     stderr_to_file(dir);
     plat_at_exit(after_restart);
+    resets_as_it_ends();
+    end_run();
+}
+
+int run_quit(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    g_restart_dir = dir;
+    if (!input_log_start(dir + "/log", dir + "/no-card.raw", dir + "/no-sram.raw")) return 1;
+    set_reset_handler(on_reset);
+    SDL_Event e{};
+    e.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&e);
+    check(!pump_events() && !g_restart, "a quit stops the frontend's loop");
+    claim_end();
+    stderr_to_file(dir);
+    plat_at_exit(after_quit);
+    resets_as_it_ends();
     end_run();
 }
 
@@ -2605,8 +2661,9 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--restart")) return run_restart(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "--quit")) return run_quit(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--restart-replay")) return run_restart_replay(argv[2]);
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown|--restart|--restart-replay] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown|--restart|--quit|--restart-replay] <work dir>\n");
     return 2;
 }

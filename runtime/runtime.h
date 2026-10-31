@@ -127,6 +127,13 @@ void rtc_set_base(time_t utc);  // what the RTC reads at guest time zero (hw/exi
 using ResetHandler = void (*)(uint32_t kind, uint32_t code);
 void set_reset_handler(ResetHandler fn);
 [[noreturn]] void guest_reset(uint32_t kind, uint32_t code);
+// The end of the run, which a game's reset and a frontend's own end (a player quitting, say)
+// can reach for at once from two threads: true for the first caller, false for any after.
+// guest_reset claims it before it says or ends anything, and one that finds it claimed says
+// and ends nothing and waits for the frontend to end the process, relaunching only if the
+// frontend means to. A frontend claims it as the player ends the run, before anything else it
+// does to end it, and one that finds it claimed waits for the reset's end the same way.
+bool claim_run_end();
 
 using GuestCheck = const char* (*)();
 void debug_set_guest_check(GuestCheck fn);

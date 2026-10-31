@@ -155,18 +155,6 @@ extern "C" void hle_OSPanic(CPU* c) {
 // tables and loads the apploader) or resets the hardware. Neither is emulated, and a game
 // left to carry on after its own reboot has begun dies on the next interrupt, through the
 // table it has just cleared. So the call ends the run here, and the frontend starts the
-// game again (guest_reset). The memory card needs nothing: it is written out at the end
-// of each card command.
-static ResetHandler g_reset_handler;
-void set_reset_handler(ResetHandler fn) { g_reset_handler = fn; }
-
-void guest_reset(uint32_t kind, uint32_t code) {
-    static const char* const kinds[] = {"restart", "hot reset", "shutdown"};
-    fprintf(stderr, "[reset] the game reset the console (%s, code %u)\n", kind < 3 ? kinds[kind] : "unknown", code);
-    input_log_end();
-    fflush(nullptr);
-    if (g_reset_handler && kind != 2) g_reset_handler(kind, code);
-    plat_exit_now(0);
-}
-
+// game again (guest_reset, in reset.cpp). The memory card needs nothing: it is written out
+// at the end of each card command.
 extern "C" void hle_OSResetSystem(CPU* c) { guest_reset(c->r[3], c->r[4]); }

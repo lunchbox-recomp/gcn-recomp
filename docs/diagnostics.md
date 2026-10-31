@@ -756,8 +756,13 @@ dumps never include it, so a run that opened it writes the same frame dumps as o
 The menu's Restart game and Quit game close it before they act, so the run prints
 `[overlay] closed` and the guest goes on before the end. Both end the run at `end_run` in
 `runtime/main.cpp`, whose at-exit functions write the memory card and wait for a write under
-way. If the game resets the console as the run ends, whichever of the two comes first ends
-the run while the other waits.
+way.
+
+The window's loop claims the run's end the moment it stops, before anything else
+(`claim_run_end` in `runtime/runtime.h`). A console reset after that prints no `[reset]` line
+and writes no second `# end`, and the run ends as the player asked, relaunching only for
+Restart. A console reset that comes first ends the run as it always does, and the loop waits
+for it.
 
 Before `end_run`, the window's loop lets the guest run on for a quiet period after the game's
 last write to the memory card, even when the card's file can't be written. It waits 3 s
@@ -776,9 +781,11 @@ A relaunch, by a console reset or Restart game, starts `--record`, `--input-log`
 
 `test_ports` presses both through the menu on a virtual gamepad and on the keyboard, over a
 window from SDL's dummy video driver, which has no GL context. Its `--restart` run follows a
-restart to the relaunch, and its own at-exit function checks the input log's `# end` and the
-`[reset]` line there, then ends the process. Its `--restart-replay` run finds no Restart game
-in a replay's menu.
+restart to the relaunch, with the game resetting the console (`guest_reset`) in the wait and
+again in `end_run`. Its own at-exit function checks for one `# end` and Restart's one
+`[reset]` line, then ends the process. `--quit` does the same for a quit, which has no
+`[reset]` line and no relaunch, and `--restart-replay` finds no Restart game in a replay's
+menu.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under

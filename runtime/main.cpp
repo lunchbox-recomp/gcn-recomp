@@ -335,26 +335,26 @@ static void relaunch(const char* why = nullptr) {
     plat_relaunch(g_argv);
 }
 
-// A run ends once, at end_run or at a game reset (on_reset, on the guest's thread), whichever
-// comes first, as both can in the frame after Restart game is confirmed. The other caller
-// waits for the first to end the process.
-static std::atomic<bool> g_run_ending{false};
-static void end_once() {
-    if (!g_run_ending.exchange(true)) return;
+// The window loop's run is over, by a quit or a restart: its end is claimed at once
+// (claim_run_end), before the wait for a save and end_run, so a game reset from here on says
+// and ends nothing and waits for end_run's exit or relaunch (guest_reset). If a game reset
+// claimed it first, the reset is ending the run and maybe relaunching, so this waits for it.
+static void claim_end() {
+    if (claim_run_end()) return;
     for (;;) std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
 // The game resetting the console relaunches it, and either way this process ends
 // (guest_reset), so the gamepads and a wheel are shut down first, as at any other exit.
 static void on_reset(uint32_t, uint32_t) {
-    end_once();
     pads_down();
     relaunch();
 }
 
 // The window loop's end, put off while the game may be part way through a save, so that a quit
 // or a restart doesn't cut one short: from the first ask until a quiet period after the game's
-// last write to the memory card (exi_card_unsaved), and kSaveWait at most. A run with no card, or no write lately, ends at the first ask.
+// last write to the memory card (exi_card_unsaved), and kSaveWait at most. A run with no card,
+// or no write lately, ends at the first ask.
 class RunEnd {
 public:
     using Clock = std::chrono::steady_clock;
@@ -376,11 +376,11 @@ private:
     Clock::time_point since_;
 };
 
-// The window path's end, once its loop has stopped and RunEnd has let it: a quit, or a restart,
-// which ends the run the same way and then relaunches the game. The memory card is written by
-// the exit's plat_at_exit functions, which a relaunch runs too, waiting for a write under way.
+// The window path's end, once its loop has stopped and claimed the end (claim_end) and RunEnd
+// has let it: a quit, or a restart, which ends the run the same way and then relaunches the
+// game. The memory card is written by the exit's plat_at_exit functions, which a relaunch runs
+// too, waiting for a write under way.
 [[noreturn]] static void end_run() {
-    end_once();
     record::finish();
     input_log_end();
     pads_down();
@@ -766,13 +766,18 @@ int main(int argc, char** argv) {
 
     bool running = true;
     RunEnd run_end;
+    // The loop is asked to stop, and the run's end is claimed then (claim_end).
+    const auto stop = [&] {
+        if (running) claim_end();
+        running = false;
+    };
     uint32_t frames = 0;
     uint32_t presented_total = 0;
     auto t0 = std::chrono::steady_clock::now();
     // Once the loop is asked to stop, the guest runs on while the game may be saving, which it
     // can't while the overlay holds it.
     while (running || !run_end.may_end(std::chrono::steady_clock::now(), exi_card_unsaved())) {
-        running = pump_events() && running;
+        if (!pump_events()) stop();
         if (!running) overlay_close();
         g_guest_held = paused();
         update_pads(0);
@@ -833,7 +838,7 @@ int main(int argc, char** argv) {
             show_frame(win);
             frames++;
             // The window-close path: the loop ends and the shutdown below runs as usual.
-            if (exit_after && ++presented_total >= exit_after) running = false;
+            if (exit_after && ++presented_total >= exit_after) stop();
             auto now = std::chrono::steady_clock::now();
             double secs = std::chrono::duration<double>(now - t0).count();
             if (secs >= 2.0) {
