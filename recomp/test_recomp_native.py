@@ -22,6 +22,8 @@ from test_recomp_interp import BLR, NOP, RECOMP, RUNTIME, addi, read, write, wri
 
 T = 0x80104000
 MFLR_R3 = 0x7C6802A6
+MFLR_R0 = 0x7C0802A6
+MTLR_R0 = 0x7C0803A6
 
 
 def b(li, aa=0, lk=0):
@@ -53,6 +55,8 @@ void idle_hint(CPU* c) { (void)c; }
 void unimpl(CPU* c, uint32_t pc, uint32_t i) { (void)c; (void)pc; (void)i; }
 void interp_enter(CPU* c, uint32_t entry) { (void)c; (void)entry; }
 void interp_site_unusable(CPU* c, uint32_t addr) { (void)c; (void)addr; }
+static jmp_buf setjmp_buf;
+jmp_buf* hle_setjmp_jmpbuf(CPU* c) { (void)c; return &setjmp_buf; }
 
 static int calls;
 static uint32_t last_target;
@@ -86,6 +90,11 @@ class Fixture(unittest.TestCase):
     CASES = ()
 
     @classmethod
+    def tables(cls):
+        """The tables directory's files as {name: text}, for a class that needs one. cls.addr is set."""
+        return {}
+
+    @classmethod
     def compiler(cls):
         cc = shutil.which(os.environ.get('CC', 'cc'))
         if not cc:
@@ -109,6 +118,8 @@ class Fixture(unittest.TestCase):
         write(sym_path, ''.join(symbols))
         tables = os.path.join(cls.dir, 'tables')
         os.makedirs(tables)
+        for name, text in cls.tables().items():
+            write(os.path.join(tables, name), text)
         r = subprocess.run([sys.executable, '-B', RECOMP, dol, sym_path, cls.out, tables],
                            capture_output=True, text=True)
         assert r.returncode == 0, r.stderr
@@ -339,6 +350,46 @@ class OtherOwnBodyCalls(Fixture):
         want = [f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X} (other)'
                 for fn, at, to in self.CALLS]
         self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
+
+
+class LastWordCall(Fixture):
+    """A bl or bcl to the next word in a function's last word sets LR and falls into the next function,
+    which runs once. The next function reads LR into r3 and restores the caller's from r0."""
+
+    FUNCS = [
+        ('f_a', [MFLR_R0, b(4, lk=1)]),
+        ('f_b', [MFLR_R3, MTLR_R0, addi(4, 1), BLR]),
+        ('f_c', [MFLR_R0, bc(16, 0, 4, lk=1)]),  # bdnzl
+        ('f_d', [MFLR_R3, MTLR_R0, addi(4, 1), BLR]),
+    ]
+    CASES = [Case('bl', 'f_a', lr=0xDEAD0000), Case('bdnzl', 'f_c', lr=0xDEAD0000, ctr=5)]
+
+    def test_the_next_function_runs_once_with_lr_pointing_at_it(self):
+        for label, caller, callee, ctr in (('bl', 'f_a', 'f_b', 0), ('bdnzl', 'f_c', 'f_d', 4)):
+            with self.subTest(label=label):
+                r = self.got(label)
+                self.assertEqual({k: r[k] for k in ('r3', 'r4', 'lr', 'ctr', 'depth', 'calls')},
+                                 {'r3': self.addr[callee], 'r4': 1, 'lr': 0xDEAD0000, 'ctr': ctr, 'depth': 0,
+                                  'calls': 0})
+
+    def test_each_warns_that_the_target_is_the_next_function(self):
+        want = [f'warning: {self.addr[fn] + 4:08X} bl to own body {self.addr[nxt]:08X} (next function)'
+                for fn, nxt in (('f_a', 'f_b'), ('f_c', 'f_d'))]
+        self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
+
+
+class LastWordSpecialCall(Fixture):
+    """A bl to the next word in a last word whose target is a setjmp keeps its resume point."""
+
+    FUNCS = [('f_s', [MFLR_R0, b(4, lk=1)]), ('f_setjmp', [BLR])]
+
+    @classmethod
+    def tables(cls):
+        return {'special_calls.txt': f'{cls.addr["f_setjmp"]:08X} setjmp\n'}
+
+    def test_the_call_site_still_sets_the_resume_point(self):
+        self.assertIn(f'c->lr = 0x{self.addr["f_setjmp"]:08X}u; if (GCN_SETJMP(*hle_setjmp_jmpbuf(c)) == 0) '
+                      f'fn_{self.addr["f_setjmp"]:08X}(c);', self.c)
 
 
 if __name__ == '__main__':

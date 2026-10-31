@@ -290,6 +290,10 @@ def main():
             t = br.target
             if f.addr <= t < f.end and not br.link:
                 f.labels.add(t)
+            elif br.link and t == pc + 4 == f.end and t in by_addr:
+                # The last word, so the next word is the next function: emit_body sets LR and
+                # falls into it, as it does for a next word in the body.
+                print(f'warning: {pc:08X} bl to own body {t:08X} (next function)', file=sys.stderr)
             elif t not in by_addr:
                 g = func_containing(t)
                 if g is None:
@@ -431,9 +435,10 @@ def main():
             s = pre
             if br.kind in ('b', 'bc'):
                 t = br.target
-                if br.link and t == pc + 4 and in_range(t):
+                if br.link and t == pc + 4 and t not in special_calls:
                     # The next word, as in the `bl $+4` that reads the PC: set LR and run on. A
-                    # call would run the rest of the function in the callee and again here.
+                    # call would run the rest of the function in the callee and again here. In a
+                    # last word it runs on into the next function, through the fallthrough below.
                     s += f'c->lr = 0x{pc + 4:08X}u;'
                 elif br.link:
                     kind = special_calls.get(t)
