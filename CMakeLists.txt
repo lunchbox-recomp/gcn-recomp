@@ -136,6 +136,14 @@ option(GCN_SYSTEM_SDL "Use an installed SDL3 instead of building the pinned rele
 # "which guest function did that?" and gives a crash dump something to print.
 option(GCN_TRACE_CALLS "Maintain a guest call stack (diagnostics)" OFF)
 option(GCN_GUEST_CHECKS "Call the game project's consistency checks at every poll, DMA and frame (diagnostics)" OFF)
+# The in-game overlay (runtime/overlay/), a menu drawn with Dear ImGui over the desktop
+# window. A build with no desktop window has none.
+if(ANDROID OR GCN_BENCH_ONLY OR CMAKE_SYSTEM_NAME STREQUAL "visionOS")
+  set(_gcn_overlay_default OFF)
+else()
+  set(_gcn_overlay_default ON)
+endif()
+option(GCN_OVERLAY "Build the in-game overlay (Dear ImGui) into the desktop executable" ${_gcn_overlay_default})
 
 # PC VR: the desktop executable's --vr. Windows only for now: the frontend binds OpenXR to
 # the window's WGL context (openxr/xr_desktop.cpp), and no other desktop binding is written.
@@ -215,6 +223,29 @@ macro(_gcn_fetch_sdl3)
     else()
       message(STATUS "SDL3: no libusb found, so no controllers over libusb")
     endif()
+  endif()
+endmacro()
+
+# Dear ImGui from its release archive, pinned by hash, as the gcn_imgui library. That's its core
+# and its own SDL3 and OpenGL 3 backends, which load GL themselves at run time. Nothing else in
+# the archive is built.
+macro(_gcn_fetch_imgui)
+  if(NOT TARGET gcn_imgui)
+    include(FetchContent)
+    FetchContent_Declare(imgui
+      URL https://github.com/ocornut/imgui/archive/refs/tags/v1.92.9b.tar.gz
+      URL_HASH SHA256=21d8a0a565e85dce943e375db00812c2f3f0ab21f3f0f7964e364a63422d7f99
+      DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+    FetchContent_MakeAvailable(imgui)
+    set(_imgui ${imgui_SOURCE_DIR})
+    add_library(gcn_imgui STATIC ${_imgui}/imgui.cpp ${_imgui}/imgui_draw.cpp ${_imgui}/imgui_tables.cpp
+      ${_imgui}/imgui_widgets.cpp ${_imgui}/backends/imgui_impl_sdl3.cpp ${_imgui}/backends/imgui_impl_opengl3.cpp)
+    _gcn_set_standards(gcn_imgui)
+    target_include_directories(gcn_imgui PUBLIC ${_imgui} ${_imgui}/backends)
+    # SDL's headers only: what links this links SDL itself, and a second copy on the link
+    # line makes Apple's linker warn.
+    target_include_directories(gcn_imgui PRIVATE
+      $<TARGET_PROPERTY:${GCN_SDL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>)
   endif()
 endmacro()
 
@@ -538,6 +569,11 @@ function(gcn_add_game)
   # Alternative entry points and the stubs: none of these may land in a target that
   # already has main.cpp, audio.cpp or the renderer.
   list(REMOVE_ITEM RUNTIME_SOURCES ${RT}/bench_main.cpp ${RT}/audio_stub.cpp ${RT}/gx/render_stub.cpp)
+  # The overlay goes in the desktop executable and test_ports alone, with GCN_OVERLAY on, so
+  # nothing else links Dear ImGui. runtime_check leaves it out too, as an engine built from
+  # runtime_check's objects carries no Dear ImGui to link it with.
+  file(GLOB OVERLAY_SOURCES ${RT}/overlay/*.cpp)
+  list(REMOVE_ITEM RUNTIME_SOURCES ${OVERLAY_SOURCES})
 
   # Everything below the renderer and the SDL frontend -- the CPU, OS, hardware and GX
   # front end, including the batch queue in gx/xf.cpp -- is free of both GL and SDL.
@@ -611,6 +647,11 @@ function(gcn_add_game)
   else()
     _gcn_fetch_sdl3()
     set(GCN_SDL_TARGET SDL3::SDL3)
+  endif()
+  set(_gcn_overlay OFF)
+  if(GCN_OVERLAY AND GCN_SDL_TARGET)
+    _gcn_fetch_imgui()
+    set(_gcn_overlay ON)
   endif()
 
   if(MSVC)
@@ -773,6 +814,13 @@ function(gcn_add_game)
     elseif(NOT MSVC)
       target_compile_options(test_ports PRIVATE -ffunction-sections)
       target_link_options(test_ports PRIVATE -Wl,--gc-sections)
+    endif()
+    # The overlay's checks, with no window: opening it pauses the guest, which pause.cpp holds,
+    # and its Display page saves through settings.cpp, which is linked above.
+    if(_gcn_overlay)
+      target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp)
+      target_link_libraries(test_ports PRIVATE gcn_imgui)
+      target_compile_definitions(test_ports PRIVATE GCN_OVERLAY)
     endif()
   endif()
 
@@ -1143,6 +1191,12 @@ function(gcn_add_game)
     # The engine's commit (gcn_engine_sha, above).
     add_dependencies(${G_NAME} gcn_engine_sha)
     target_include_directories(${G_NAME} PRIVATE ${_sha_dir})
+
+    if(_gcn_overlay)
+      target_sources(${G_NAME} PRIVATE ${OVERLAY_SOURCES})
+      target_link_libraries(${G_NAME} PRIVATE gcn_imgui)
+      target_compile_definitions(${G_NAME} PRIVATE GCN_OVERLAY)
+    endif()
 
     # PC VR (--vr): the headset frontend in openxr/, on the window's own GL context. The
     # loader is Khronos' own, built from source and linked statically, so the executable

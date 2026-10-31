@@ -17,6 +17,8 @@
 // (host_ns, clock_hold), which no check reaches. The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
+// With GCN_OVERLAY, overlay/*.cpp and pause.cpp are linked as well, and pause.cpp's clock
+// (host_ns and clock_hold above, and audio_frames_out) is stubbed.
 //
 // usage: test_ports <empty work dir>            the port checks
 //        test_ports --record <empty work dir>   two gamepads, played and logged
@@ -49,6 +51,7 @@
 #include "gx/render.h"
 #include "vr_game.h"
 #include <climits>
+#include <condition_variable>
 #include <functional>
 #include <initializer_list>
 #include <string>
@@ -81,6 +84,9 @@ void session_relaunching() {}
 uint64_t host_ns() { return 0; }
 void clock_hold(uint64_t) {}
 bool g_fast_disc = true;
+#ifdef GCN_OVERLAY
+uint64_t audio_frames_out() { return 0; }
+#endif
 
 namespace {
 
@@ -1531,6 +1537,173 @@ void drivers_stay_off() {
           "the variable that lets Steam's virtual gamepads past the allow list is cleared before SDL starts");
 }
 
+#ifdef GCN_OVERLAY
+// ---- The overlay (overlay/overlay.h) with no window, so no menu is drawn. A thread stands in
+// for the guest. Each host frame lets it reach one more frame boundary (pause_gate), after the
+// frontend has taken its events and set the ports.
+struct Guest {
+    std::mutex m;
+    std::condition_variable cv;
+    uint32_t asked = 0;               // the boundaries it may reach
+    std::atomic<uint32_t> passed{0};  // the boundaries it's gone past
+    bool quit = false;
+    std::thread t{[this] { run(); }};
+    void run() {
+        for (uint32_t n = 0;; n++) {
+            {
+                std::unique_lock<std::mutex> lk(m);
+                cv.wait(lk, [&] { return quit || asked > n; });
+                if (quit) return;
+            }
+            pause_gate(n);
+            passed = n + 1;
+        }
+    }
+    ~Guest() {
+        pause_request(false);
+        {
+            std::lock_guard<std::mutex> lk(m);
+            quit = true;
+        }
+        cv.notify_all();
+        t.join();
+    }
+};
+
+// One host frame, then the guest on past its next boundary, or held there. pump_events' answer.
+bool host_frame(Guest& g) {
+    const bool running = pump_events();
+    update_pads(0);
+    uint32_t want;
+    {
+        std::lock_guard<std::mutex> lk(g.m);
+        want = ++g.asked;
+    }
+    g.cv.notify_all();
+    for (int i = 0; i < 2000 && g.passed < want && !(pause_requested() && paused()); i++)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    return running;
+}
+
+void key_down(SDL_Scancode key, bool repeat = false) {
+    SDL_Event e{};
+    e.type = SDL_EVENT_KEY_DOWN;
+    e.key.scancode = key;
+    e.key.down = true;
+    e.key.repeat = repeat;
+    SDL_PushEvent(&e);
+}
+
+void set_button(const Virtual& v, int button, bool down) {
+    if (SDL_Joystick* j = SDL_GetJoystickFromID(v.id)) SDL_SetJoystickVirtualButton(j, button, down);
+}
+
+Settings g_applied;  // what the Display page last had the frontend apply
+int g_applies;
+void record_apply(const Settings& s) {
+    g_applied = s;
+    g_applies++;
+}
+
+void overlay(const std::string& dir) {
+    const std::string path = dir + "/settings.txt";
+    write_file(path, "# The picture\naspect 4:3\nvsync on\nfullscreen 0\n\nscale 2\ndisc console\n# the end\n");
+    OverlayPicture picture;
+    picture.saved = picture.now = settings_load(path);
+    picture.now.scale = 3;  // as --scale=3 makes it for this run
+    picture.path = path;
+    picture.apply = record_apply;
+    overlay_init(nullptr, "Test title", picture);
+    power_on(1);
+    gamepads_init();
+    Virtual pad{"virtual pad overlay"};
+    attach(pad);
+    Guest guest;
+    host_frame(guest);
+    check(!overlay_open() && !paused() && guest.passed == 1, "with the overlay closed, the guest goes past its frame boundary");
+
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
+    int frames = 0;
+    while (frames < 4 && !(overlay_open() && paused())) {
+        host_frame(guest);
+        frames++;
+    }
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
+    host_frame(guest);
+    check(frames <= 2 && overlay_open() && paused(), "a gamepad's Back opens the overlay, and the guest is held within 2 host frames");
+
+    if (SDL_Joystick* j = SDL_GetJoystickFromID(pad.id)) SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFTX, 32767);
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    host_frame(guest);
+    const PadState gated = read(0);
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    if (SDL_Joystick* j = SDL_GetJoystickFromID(pad.id)) SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFTX, 0);
+    host_frame(guest);
+    check(gated.connected && at_rest(gated) && overlay_open(), "while it's open, the gamepad's A and stick don't reach port 1, which stays plugged in");
+
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
+    host_frame(guest);
+    const bool closed = !overlay_open() && !pause_requested();
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
+    host_frame(guest);
+    check(closed && !paused() && guest.passed == guest.asked, "Back again closes it, and the guest goes on");
+
+    key_down(SDL_SCANCODE_F1);
+    host_frame(guest);
+    const bool f1_opens = overlay_open() && paused();
+    key_down(SDL_SCANCODE_F1);
+    host_frame(guest);
+    check(f1_opens && !overlay_open() && !paused(), "F1 opens it and F1 closes it");
+
+    key_down(SDL_SCANCODE_F1);
+    host_frame(guest);
+    key_down(SDL_SCANCODE_ESCAPE);
+    const bool stays = host_frame(guest);
+    const bool escape_closes = stays && !overlay_open() && !paused();
+    key_down(SDL_SCANCODE_ESCAPE, true);
+    const bool repeat_stays = host_frame(guest);
+    key_down(SDL_SCANCODE_ESCAPE);
+    check(escape_closes && repeat_stays && !host_frame(guest) && !overlay_open(),
+          "Escape closes it without quitting; with it closed, Escape quits, though a held Escape's repeat doesn't");
+
+    key_down(SDL_SCANCODE_F1);
+    host_frame(guest);
+    set_button(pad, SDL_GAMEPAD_BUTTON_EAST, true);
+    host_frame(guest);
+    const bool b_closes = !overlay_open() && !paused();
+    const PadState held = read(0);
+    set_button(pad, SDL_GAMEPAD_BUTTON_EAST, false);
+    host_frame(guest);
+    set_button(pad, SDL_GAMEPAD_BUTTON_EAST, true);
+    host_frame(guest);
+    const PadState again = read(0);
+    set_button(pad, SDL_GAMEPAD_BUTTON_EAST, false);
+    host_frame(guest);
+    check(b_closes && !held.buttons && again.buttons == PAD_B && !overlay_open(),
+          "B closes it and stays out of the game until it's let go; pressed with it closed, it's the game's B and opens nothing");
+
+    Settings next = picture.now;
+    next.aspect = "16:9";
+    overlay_display_change(next);
+    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 0\n\nscale 2\ndisc console\n# the end\n" &&
+              g_applied.aspect == "16:9" && g_applied.scale == 3,
+          "the Display page's aspect applies at once and is saved, every other line as it was and the flag's scale left out");
+    next.fullscreen = true;
+    overlay_display_change(next);
+    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 1\n\nscale 2\ndisc console\n# the end\n" &&
+              g_applied.fullscreen,
+          "its fullscreen applies at once and is saved, every other line as it was");
+    next.scale = 5;
+    overlay_display_change(next);
+    overlay_display_change(next);
+    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 1\n\nscale 5\ndisc console\n# the end\n" &&
+              g_applied.scale == 5 && g_applies == 3,
+          "its scale applies at once and is saved, every other line as it was, and a picture with no change does nothing");
+    unplug({&pad});
+    gamepads_shutdown();
+}
+#endif
+
 int run_ports(const std::string& dir) {
     drivers_stay_off();
     if (!sdl_up()) return 1;
@@ -1572,6 +1745,9 @@ int run_ports(const std::string& dir) {
     headset_layout();
     disc_speed(dir);
     bot_flags(dir);
+#ifdef GCN_OVERLAY
+    overlay(dir);
+#endif
     return finish("ports");
 }
 
