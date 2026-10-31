@@ -482,6 +482,10 @@ frame, and the right image was whole because the left pass's display copy had cl
 EFB. EFB copies are still dropped at a change of scale, so a copy made before the change
 and sampled after it is missing for a frame.
 
+The XFBs that frames copied in strips are assembled in are dropped too. Each is sized at the
+scale it was made at, so one kept from scale 2 holds only a corner of a frame copied at 3.
+The next frame shows once all its strips have been copied at the new scale.
+
 
 **What the panel leaves out.** The panel is the flat frame, so the game's eye filter has no
 say over it, with one exception: a draw it calls `EyeHideEverywhere` is left out of the

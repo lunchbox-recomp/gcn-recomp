@@ -1144,9 +1144,11 @@ void render_set_window_size(int w, int h) { g_win_w = w; g_win_h = h; }
 // Nothing in the EFB has to survive the change: it is cleared and redrawn every frame.
 // The textures EFB copies land in do not get off so lightly -- they are allocated at
 // dst * scale but matched for reuse by their logical size alone, so a survivor would be
-// reused at the old resolution and quietly sample wrong. They go with the EFB.
+// reused at the old resolution and quietly sample wrong. They go with the EFB, and so do
+// the XFBs display copies are assembled in, which are sized and found again the same way.
 static void gl_state_invalidate();
 static void uniforms_invalidate();
+static void xfbs_free();
 void render_set_internal_scale(int scale) {
     if (scale < 1) scale = 1;
     if (scale > kMaxInternalScale) scale = kMaxInternalScale;
@@ -1206,6 +1208,7 @@ void render_set_internal_scale(int scale) {
             ++it;
         }
     }
+    xfbs_free();
     glBindFramebuffer(GL_FRAMEBUFFER, g_efb_fbo);
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         fatal("EFB framebuffer incomplete at internal scale %d", g_scale);
@@ -2812,6 +2815,16 @@ static Xfb& xfb_for(uint32_t dest, uint32_t w, uint32_t stride, uint32_t h) {
     g_xfbs.push_back(x);
     if (g_xfbs.size() > 8) g_xfbs.erase(g_xfbs.begin());
     return g_xfbs.back();
+}
+
+// Each is sized at the scale it was made at, so a change of scale frees them all
+// (render_set_internal_scale) and the next display copies make them again.
+static void xfbs_free() {
+    for (const Xfb& x : g_xfbs) {
+        glDeleteFramebuffers(1, &x.fbo);
+        glDeleteTextures(1, &x.tex);
+    }
+    g_xfbs.clear();
 }
 
 static void dump_xfb(const Xfb& x, uint32_t w) { dump_png(x.fbo, 0, 0, w * g_scale, x.h * g_scale, "frame"); }
