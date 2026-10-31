@@ -64,6 +64,8 @@ const Case kCases[] = {
      false},
     {"a setjmp site taken 10,000 times in a loop, in one C frame", FX_F_SJ_LOOP, 0, nullptr, "hle_setjmp_jmpbuf",
      false},
+    {"a setjmp site's function calling one with a context site", FX_F_TWO_SITES, 0, nullptr, "hle_context_jmpbuf",
+     false},
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to

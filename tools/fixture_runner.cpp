@@ -37,12 +37,14 @@ jmp_buf g_irq_jb;
 
 std::vector<uint8_t> g_image;  // the RAM window as each run starts
 
-// The lowest and highest host stack frames that asked for a setjmp or context site's jmp_buf in a run.
-uintptr_t g_site_frame_lo, g_site_frame_hi;
+// The host stack frame that first asked for a setjmp or context site's jmp_buf in a run, by the guest's
+// LR and r1 at the site, and how many later calls with the same LR and r1 asked from another frame.
+std::map<std::pair<uint32_t, uint32_t>, uintptr_t> g_site_frames;
+uint64_t g_site_moves;
 
-void site_frame(uintptr_t at) {
-    g_site_frame_lo = std::min(g_site_frame_lo, at);
-    g_site_frame_hi = std::max(g_site_frame_hi, at);
+void site_frame(const CPU* c, uintptr_t at) {
+    const auto [it, first] = g_site_frames.emplace(std::make_pair(c->lr, c->r[1]), at);
+    if (!first && it->second != at) g_site_moves++;
 }
 
 }  // namespace
@@ -139,7 +141,7 @@ void idle_hint(CPU* c) { note("idle_hint", c->r[3]); }
 
 jmp_buf* hle_setjmp_jmpbuf(CPU* c) {
     note("hle_setjmp_jmpbuf", c->r[3], c->lr, c->r[1]);
-    site_frame((uintptr_t)__builtin_frame_address(0));
+    site_frame(c, (uintptr_t)__builtin_frame_address(0));
     GuestJmp& g = g_jmps[c->r[3]];
     g.lr = c->lr;
     g.sp = c->r[1];
@@ -159,7 +161,7 @@ void hle_longjmp_resume(CPU* c, uint32_t buf) {
 }
 jmp_buf* hle_context_jmpbuf(CPU* c) {
     note("hle_context_jmpbuf", c->r[3]);
-    site_frame((uintptr_t)__builtin_frame_address(0));
+    site_frame(c, (uintptr_t)__builtin_frame_address(0));
     return &g_bindings[c->r[3]].jb;
 }
 // made_up_save and made_up_load are HLE'd, and stand in for OSSaveContext and OSLoadContext.
@@ -402,8 +404,8 @@ Outcome run(const Case& k, Mode m) {
     g_jmps.clear();
     g_bindings.clear();
     g_irq_armed = g_longjmp_returns = false;
-    g_site_frame_lo = UINTPTR_MAX;
-    g_site_frame_hi = 0;
+    g_site_frames.clear();
+    g_site_moves = 0;
     force_none();
     if (k.setup) k.setup(&g_cpu);
     const uint32_t n = k.loose ? g_recomp_range_count : range_of(k.entry);
@@ -418,7 +420,7 @@ Outcome run(const Case& k, Mode m) {
     o.vcount = g_vcount;
     o.calls = g_calls;
     o.ran = *code_table_counter(n) - before;
-    o.site_spread = g_site_frame_hi >= g_site_frame_lo ? g_site_frame_hi - g_site_frame_lo : 0;
+    o.site_moves = g_site_moves;
     force_none();
     return o;
 }
@@ -450,7 +452,7 @@ std::string differ(const Outcome& n, const Outcome& o) {
         {"FPSCR", x.fpscr, y.fpscr}, {"the FPRF value", bits_of(x.fprf_v), bits_of(y.fprf_v)},
         {"the FPRF kind", x.fprf_pending, y.fprf_pending}, {"host", bits_of(x.host), bits_of(y.host)},
         {"the call stack's depth", depth_of(&x), depth_of(&y)}, {"the guest clock", n.vcount, o.vcount},
-        {"the host stack's spread at the setjmp and context sites", n.site_spread, o.site_spread},
+        {"the site calls taken in a host frame their LR and r1 weren't first taken in", n.site_moves, o.site_moves},
     };
     for (const auto& f : fields)
         if (f.a != f.b) return hex(f.what, f.a, f.b);
@@ -475,6 +477,7 @@ void check_case(const Case& k) {
     if (!nat.stop.empty() && !stop_needed)
         fail(std::string(k.name) + ": the native run stopped with \"" + nat.stop + "\"");
     if (nat.stop.empty() && depth_of(&nat.cpu)) fail(std::string(k.name) + ": the native run left the call stack unbalanced");
+    if (nat.site_moves) fail(std::string(k.name) + ": the native run took a site in a host frame its LR and r1 weren't first taken in");
     if (k.needs) {
         bool seen = stop_needed || (!strcmp(k.needs, "IRQ_CHECK") && nat.vcount > 0);
         for (const Call& c : nat.calls) seen = seen || c.fn == k.needs;

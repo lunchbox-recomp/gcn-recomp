@@ -279,6 +279,9 @@ FUNCS = [
     # A setjmp site in a loop, taken 10,000 times.
     Code('f_sj_loop', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf')
          + [bl('made_up_setjmp'), addi(31, 31, 1), cmpwi(31, 10000), bne('.again'), mr(3, 31)] + E32),
+    # A setjmp site, then a call to a function with a context site, each in a C frame of its own.
+    Code('f_two_sites', P32 + address(3, 'jmp_buf') + [bl('made_up_setjmp'), bl('f_ctx_site')] + E32),
+    Code('f_ctx_site', P16 + address(3, 'context') + [bl('made_up_save')] + E16),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
 BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')])),
