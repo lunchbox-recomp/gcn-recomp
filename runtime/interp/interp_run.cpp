@@ -80,7 +80,12 @@ void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc) {
         InterpBranch br;
         if (interp_branch(c, pc, insn, &br)) {
             if (br.link) {
-                // LR is pc + 4 already, taken or not.
+                // LR is pc + 4 already, taken or not. In a loose frame, a bl or bcl to the next word reads
+                // its own address and runs on, as the hardware does.
+                if (br.taken && f->loose && br.target == pc + 4) {
+                    pc += 4;
+                    continue;
+                }
                 if (br.taken) {
                     const uint32_t kind = br.kind <= INTERP_BC ? special_kind(br.target) : 0;
                     if (kind == RECOMP_SPECIAL_SETJMP || kind == RECOMP_SPECIAL_CONTEXT) {

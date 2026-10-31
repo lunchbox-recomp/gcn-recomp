@@ -50,23 +50,33 @@ const Case kCases[] = {
     {"a blr to an LR its frame wasn't entered with", FX_F_LR, 0, nullptr, nullptr, false},
     {"a loose frame's tail call to an HLE'd function", FX_BLOB_TAIL, FX_F_BLOB_TAIL_TWIN, nullptr, "hle_made_up_save",
      true},
+    {"a loose frame's bl and bcl to the next word, against the hardware's", FX_BLOB_NEXT, FX_F_BLOB_NEXT_TWIN,
+     nullptr, nullptr, true},
+    // This pins native's behaviour today, which calls the next word as a mid-entry and then runs it again
+    // once that returns. F2a changes native to set LR and run on, which flips this case.
+    {"a function's bl to the next word, which native runs twice", FX_F_BL_NEXT, 0, nullptr, nullptr, false},
 };
 
-// The cases' runs left one line for the blr that returned to an LR its frame wasn't entered with, and
-// one for the site whose word changed, though each ran twice interpreted.
+// The cases' runs left one line for the site whose word changed and one for the blr that returned to
+// an LR its frame wasn't entered with, though each ran twice interpreted. The mid-entry frame that a
+// function's bl to the next word starts returns to its caller's LR, which leaves a third.
 void check_logs() {
-    char blr[160], site[160];
-    snprintf(blr, sizeof blr, "blr at %08X returns to %08X, and its frame was entered with LR %08X", FX_F_LR_RET,
-             kLR + 8, kLR);
+    char blr[160], site[160], next[160];
     snprintf(site, sizeof site, "site at %08X holds %08X, not the %08X its patch replaced, so that word runs",
              FX_F_SITE2_SITE, FX_SITE2_WORD, peek(FX_F_SITE2_SITE));
-    const std::vector<std::string> want = {site, blr};
+    snprintf(blr, sizeof blr, "blr at %08X returns to %08X, and its frame was entered with LR %08X", FX_F_LR_RET,
+             kLR + 8, kLR);
+    // f_bl_next's blr is four words after the mid-entry.
+    snprintf(next, sizeof next, "blr at %08X returns to %08X, and its frame was entered with LR %08X",
+             FX_F_BL_NEXT_N1 + 16, kLR, FX_F_BL_NEXT_N1);
+    const std::vector<std::string> want = {site, blr, next};
     if (g_logs != want) {
-        std::string got;
+        std::string got, wanted;
         for (const std::string& s : g_logs) got += "  " + s + "\n";
-        fail("--log=interp printed\n" + got + "where it should print\n  " + site + "\n  " + blr);
+        for (const std::string& s : want) wanted += (wanted.empty() ? "  " : "\n  ") + s;
+        fail("--log=interp printed\n" + got + "where it should print\n" + wanted);
     } else {
-        printf("match  --log=interp's two lines, once each\n");
+        printf("match  --log=interp's three lines, once each\n");
     }
 }
 

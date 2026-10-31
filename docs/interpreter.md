@@ -73,6 +73,11 @@ A loose frame has no range. A branch that doesn't link is a call and then a retu
 lands on a recompiled function's start, as a mod's tail call does. Anywhere else, a
 function's middle included, it goes on in the same frame.
 
+A taken `bl` or `bcl` to the next word sets LR and runs on, as the hardware does, so code can
+read its own address. Any other `bl` is a call through `call_indirect`, a `bl` over data
+included. The runtime's `call_indirect` stops the game at a target that isn't a recompiled
+entry, so a loose frame's `bl` over data stops it there.
+
 The runtime doesn't call it, and `tools/test_interp_run.cpp` does.
 
 ## What stays native

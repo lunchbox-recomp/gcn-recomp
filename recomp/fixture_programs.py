@@ -144,6 +144,11 @@ def bnel(t):
     return bc(4, 2, t, 1)
 
 
+def bcl(t):
+    """bcl 20,31, which always branches and links."""
+    return bc(20, 31, t, 1)
+
+
 def address(r, t):
     """lis and ori that put t's address in r."""
     return [lambda pc, at: d_form(15, r, 0, at(t) >> 16), lambda pc, at: d_form(24, r, r, at(t) & 0xFFFF)]
@@ -198,6 +203,11 @@ HOOK = [li(4, 3), 'loop:', addi(3, 3, 10), addi(4, 4, -1), cmpwi(4, 0), bne('.lo
 HOOKED_TAIL = [mulli(3, 3, 3), addi(3, 3, 2), BLR]
 # A mod's tail call to an HLE'd function.
 BLOB_TAIL = address(3, 'context') + [b('made_up_save')]
+# A bl and a bcl to the next word, which read their own address, and what the hardware does with them.
+BLOB_NEXT = (P16 + address(12, '.n1') + [bl('.n1'), 'n1:', mflr(3)]
+             + address(12, '.n2') + [bcl('.n2'), 'n2:', mflr(4)] + E16)
+NEXT_TWIN = (P16 + address(12, 'blob_next.n1') + [mtlr(12), mflr(3)]
+             + address(12, 'blob_next.n2') + [mtlr(12), mflr(4)] + E16)
 
 FUNCS = [
     Code('f_loop', [li(3, 3), li(4, 0), 'loop:', add(4, 4, 3), addi(3, 3, -1), cmpwi(3, 0), bne('.loop'), BLR]),
@@ -251,10 +261,13 @@ FUNCS = [
     Code('f_hooked', [addi(3, 3, 1), 'after:'] + HOOKED_TAIL),
     Code('f_hooked_twin', HOOK + HOOKED_TAIL),
     Code('f_blob_tail_twin', BLOB_TAIL),
+    Code('f_blob_next_twin', NEXT_TWIN),
+    # recomp.py makes .n1 a mid-entry and warns, and native code calls it and then runs on from it.
+    Code('f_bl_next', P16 + [li(3, 0), bl('.n1'), 'n1:', addi(3, 3, 1)] + E16),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
 BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')])),
-         (BLOB + 0x200, Code('blob_tail', BLOB_TAIL))]
+         (BLOB + 0x200, Code('blob_tail', BLOB_TAIL)), (BLOB + 0x300, Code('blob_next', BLOB_NEXT))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}
