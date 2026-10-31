@@ -196,6 +196,8 @@ BLOB_LOOP = P16 + [li(3, 4), li(4, 0), 'loop:', addi(4, 4, 3), addi(3, 3, -1), c
 # The hook's code. It runs the word it replaced last, then goes back into the hooked function.
 HOOK = [li(4, 3), 'loop:', addi(3, 3, 10), addi(4, 4, -1), cmpwi(4, 0), bne('.loop'), addi(3, 3, 1)]
 HOOKED_TAIL = [mulli(3, 3, 3), addi(3, 3, 2), BLR]
+# A mod's tail call to an HLE'd function.
+BLOB_TAIL = address(3, 'context') + [b('made_up_save')]
 
 FUNCS = [
     Code('f_loop', [li(3, 3), li(4, 0), 'loop:', add(4, 4, 3), addi(3, 3, -1), cmpwi(3, 0), bne('.loop'), BLR]),
@@ -248,9 +250,11 @@ FUNCS = [
     Code('f_blob_twin', BLOB_LOOP),
     Code('f_hooked', [addi(3, 3, 1), 'after:'] + HOOKED_TAIL),
     Code('f_hooked_twin', HOOK + HOOKED_TAIL),
+    Code('f_blob_tail_twin', BLOB_TAIL),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
-BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')]))]
+BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')])),
+         (BLOB + 0x200, Code('blob_tail', BLOB_TAIL))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}

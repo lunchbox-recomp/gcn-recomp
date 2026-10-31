@@ -66,9 +66,12 @@ address (`interp_site_unusable`).
 ## Loose frames
 
 `interp_run_loose` runs code that no function's range holds, such as a blob the game wrote
-into RAM, with its own `ENTER` and `EXIT`. A loose frame has no range, so a branch that
-doesn't link goes on in the same frame wherever it lands, a function's middle included. Its
-backward branches run the same checks and its sites apply. A `blr` returns from it.
+into RAM, with its own `ENTER` and `EXIT`. Its backward branches run the same checks and its
+sites apply. A `blr` returns from it.
+
+A loose frame has no range. A branch that doesn't link is a call and then a return when it
+lands on a recompiled function's start, as a mod's tail call does. Anywhere else, a
+function's middle included, it goes on in the same frame.
 
 The runtime doesn't call it, and `tools/test_interp_run.cpp` does.
 

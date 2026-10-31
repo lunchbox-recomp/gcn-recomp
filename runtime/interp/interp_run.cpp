@@ -1,7 +1,7 @@
 // The interpreter's frames. A recompiled body's entry guard calls interp_enter while its function's bit
 // in g_code_changed_bits is set (runtime/recomp.h), and the function frame it runs does with each word
 // what recomp.py's emit_body made that word's C do, call for call. A loose frame runs code that no
-// function holds, so every branch that doesn't link stays inside it.
+// function holds, and a branch that doesn't link stays inside it unless it lands on a function's start.
 //
 // Each word goes to its site first, then to interp_branch, then to interp_step. The frame reads the CPU
 // again for every word, since an interrupt or a context switch comes back through a longjmp with the
@@ -106,8 +106,9 @@ void interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc) {
                             br.target, f->entry_lr);
                 return;
             }
-            // Out of the function's range, a branch that doesn't link is a call and then a return.
-            if (!f->loose && (br.target < f->start || br.target >= f->end)) {
+            // Out of the function's range, a branch that doesn't link is a call and then a return. A loose
+            // frame has no range, so its tail call is a branch onto a function's start.
+            if (f->loose ? starts_function(br.target) : (br.target < f->start || br.target >= f->end)) {
                 call_indirect(c, br.target);
                 return;
             }

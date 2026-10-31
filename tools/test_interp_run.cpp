@@ -48,6 +48,8 @@ const Case kCases[] = {
     {"a trampoline into a function's middle and its return", FX_F_HOOKED, FX_F_HOOKED_TWIN,
      [](CPU*) { poke(FX_F_HOOKED, FX_HOOK_WORD); }, "IRQ_CHECK", false},
     {"a blr to an LR its frame wasn't entered with", FX_F_LR, 0, nullptr, nullptr, false},
+    {"a loose frame's tail call to an HLE'd function", FX_BLOB_TAIL, FX_F_BLOB_TAIL_TWIN, nullptr, "hle_made_up_save",
+     true},
 };
 
 // The cases' runs left one line for the blr that returned to an LR its frame wasn't entered with, and
