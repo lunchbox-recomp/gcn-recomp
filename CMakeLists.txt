@@ -373,16 +373,16 @@ function(gcn_add_game)
   # no disc has them too and writes them out (game_cflags.txt, below) for a build that
   # compiles the generated C elsewhere against a prebuilt runtime. GCN_GAME_FP_FLAGS are the
   # ones that decide what floating point and aliasing compute, for runtime code that has to
-  # compute what the game's C does (runtime/interp/, below).
+  # compute what the game's C does (runtime/interp/, below), and the game's C has them too.
   if(MSVC)
     # Generated code is enormous and machine-written: keep the optimizer honest about
     # aliasing and floating point, and silence the noise it legitimately produces.
-    set(GCN_GAME_C_FLAGS /O2 /fp:precise /fp:except- /wd4101 /wd4102 /wd4723 /bigobj)
     set(GCN_GAME_FP_FLAGS /fp:precise /fp:except-)
+    set(GCN_GAME_C_FLAGS /O2 ${GCN_GAME_FP_FLAGS} /wd4101 /wd4102 /wd4723 /bigobj)
   else()
-    set(GCN_GAME_C_FLAGS -O2 -fno-strict-aliasing -Wno-unused-label -Wno-unused-variable
-                         -Wno-parentheses-equality -ffp-contract=off)
     set(GCN_GAME_FP_FLAGS -ffp-contract=off -fno-strict-aliasing)
+    set(GCN_GAME_C_FLAGS -O2 ${GCN_GAME_FP_FLAGS} -Wno-unused-label -Wno-unused-variable
+                         -Wno-parentheses-equality)
     # Line tables only, where the build has debug info at all: a crash's frames still
     # resolve to a line (addr2line, a symbolized backtrace), and nobody reads a
     # recompiled function's locals. Full debug info took about 15% longer to compile and
@@ -1241,9 +1241,9 @@ function(gcn_add_game)
   endif()
 
   # The interpreter computes what the game's C computes, so it compiles with the game's floating
-  # point flags in every target. A contracted a*b+c rounds once where the game's C rounds twice.
-  # Appended last, since the visionOS sources' options above replace what was there.
-  file(GLOB _gcn_interp_sources CONFIGURE_DEPENDS ${RT}/interp/*.cpp)
+  # point flags in every target here. A contracted a*b+c rounds once where the game's C rounds
+  # twice. Appended last, since the visionOS sources' options above replace what was there.
+  file(GLOB_RECURSE _gcn_interp_sources CONFIGURE_DEPENDS ${RT}/interp/*.cpp)
   set_property(SOURCE ${_gcn_interp_sources} APPEND PROPERTY COMPILE_OPTIONS ${GCN_GAME_FP_FLAGS})
 
   # For a game project that adds frontends of its own -- a headset app, a headless harness
@@ -1253,6 +1253,10 @@ function(gcn_add_game)
   # GCN_RENDER_SOURCES is the GL renderer. Every target also needs ${GCN_GLAD_SOURCE} off
   # Apple, the include directories GCN_RT, GCN_GEN_DIR and GCN_GLAD_INCLUDE_DIR, and the
   # definitions GCN_GAME_DEFS and GCN_GL_DEFS; it links game_recomp.
+  #
+  # A source property reaches only the targets of the directory that set it. So a frontend
+  # made in another directory has to put GCN_GAME_FP_FLAGS on the runtime/interp/ sources in
+  # GCN_CORE_SOURCES itself, or they compute what the game's C doesn't.
   set(GCN_RT ${RT} PARENT_SCOPE)
   set(GCN_GEN_DIR ${RECOMP_GEN_DIR} PARENT_SCOPE)
   set(GCN_HAVE_GAME_ISO ${HAVE_GAME_ISO} PARENT_SCOPE)
@@ -1262,6 +1266,7 @@ function(gcn_add_game)
   set(GCN_GLAD_INCLUDE_DIR ${GLAD_INCLUDE_DIR} PARENT_SCOPE)
   set(GCN_GLAD_SOURCE ${GLAD_SOURCE} PARENT_SCOPE)
   set(GCN_RUNTIME_WARNINGS ${GCN_RUNTIME_WARNINGS} PARENT_SCOPE)
+  set(GCN_GAME_FP_FLAGS ${GCN_GAME_FP_FLAGS} PARENT_SCOPE)
   set(GCN_GAME_DEFS ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} PARENT_SCOPE)
   set(GCN_GL_DEFS ${GCN_GL_DEFS} PARENT_SCOPE)
 endfunction()
