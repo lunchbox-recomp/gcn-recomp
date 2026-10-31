@@ -236,10 +236,11 @@ no bot. The protocol is text, so a person can stand in for the bot with `nc -U` 
 
 The engine connects last, just before the guest starts. By then the window, the renderer and
 the sound device are up in a run that has them, and `boot_load` has read the disc and checked
-it's the one the build was made from, so a run that fails to start never takes the bot's
-connection. Under `--vr` the headset frontend reads the disc itself, so the engine connects
-before the headset comes up, and on any path a connect that fails stops the game with the path
-and the error.
+it's the one the build was made from. So a run that fails to start doesn't take the bot's
+connection.
+
+Under `--vr` the headset frontend reads the disc itself, so the engine connects before the
+headset comes up. On any path a connect that fails stops the game with the path and the error.
 
 At the first pad poll of each new submitted frame, the count `GCN_INPUT` keys on, the engine
 sends `frame N` and waits. The bot may send any number of `read ADDR LEN` lines, and the
@@ -272,8 +273,8 @@ console starts again in a new run that connects again.
 
 A bot can't go with `--replay`, which already decides the pads. Nor can it go with
 `--list-controls` or `--test-ffb`, which are there to open a controller. A bare `--bot` and a
-`--bot=` with no path are refused as well, which keeps the word after a bare one from being
-read as the disc image.
+`--bot=` with no path are refused too. Otherwise the word after a bare `--bot` would be read as
+the disc image.
 
 The link only reads memory. A line it doesn't take stops the game with the line quoted on
 stderr, and so does a read outside RAM or a `done` that leaves out a port the bot drives. The
@@ -307,8 +308,9 @@ python3 tools/bot_script.py build/bot.sock "900:START:10,1200:A:5" -- build/<gam
 
 While it listens, `bot_script.py` holds a lock on `SOCKET.lock`, a file it leaves in place. A
 second start that finds the lock taken exits 2 and leaves both files alone, since two bots on
-one socket would take each other's games, and one that takes the lock replaces any socket file
-an earlier run left at SOCKET. When COMMAND can't be run at all, `bot_script.py` exits 127.
+one socket would take each other's games. One that takes the lock replaces any socket file at
+SOCKET, even one another kind of program listens on. When COMMAND can't be run at all,
+`bot_script.py` exits 127.
 
 `--late=MS:N` has `bot_script.py` wait MS milliseconds before it answers each frame whose
 number is a multiple of N. The same bot with and without it leaves the same input log

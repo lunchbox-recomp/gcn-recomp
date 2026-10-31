@@ -337,12 +337,11 @@ static bool take_disc_speed(const Settings& settings, int argc, char** argv) {
     return true;
 }
 
-// Sets `bot` to the socket of the bot that drives the pads (bot_link.h): --bot=PATH, the last
-// one winning, or else GCN_BOT, and none when neither names one. A bot opens no controller, as
-// under --no-gamepads. A bare --bot, one with no path, or a bot with a replay (`replaying`),
-// which already decides the pads, or with --list-controls or --test-ffb (`opening`), which are
-// there to open a controller, is refused, naming the flag or variable that brought the bot,
-// and the result is false.
+// Sets `bot` to the socket of the bot that drives the pads (bot_link.h). The last --bot=PATH wins,
+// then GCN_BOT, and there's none when neither names one. A bot opens no controller, as under
+// --no-gamepads. The result is false, naming the flag or variable that brought the bot, for a bare
+// --bot or one with no path. It's false too beside a replay (`replaying`), which already decides
+// the pads, and beside --list-controls or --test-ffb (`opening`), which are there to open one.
 static bool take_bot(int argc, char** argv, bool replaying, bool opening, std::string& bot) {
     const char* from = "GCN_BOT";
     const char* env = getenv("GCN_BOT");
@@ -374,11 +373,15 @@ static bool take_bot(int argc, char** argv, bool replaying, bool opening, std::s
 }
 
 // Connects the bot take_bot found, if there's one, to drive ports 1 to `pads` from the guest's
-// first poll. The window and headless paths call it last, after boot_load has read the disc and
-// checked it's the one this build was made from and just before threads_start_boot starts the
-// guest, so a run that fails to start never takes the bot's connection. False, saying why on
-// stderr, if the connect fails.
-static bool link_bot(const std::string& bot, int pads) { return bot.empty() || bot_link_start(bot.c_str(), pads); }
+// first poll. The window and headless paths call it after boot_load has read the disc and checked
+// it's the one this build was made from, just before threads_start_boot starts the guest. So on
+// those paths a run that fails to start doesn't take the bot's connection. A failed connect says
+// why on stderr and exits 1 the way a fault does, since audio may already be running.
+static void link_bot(const std::string& bot, int pads) {
+    if (bot.empty() || bot_link_start(bot.c_str(), pads)) return;
+    input_log_end();
+    plat_exit_now(1);
+}
 
 // ---------------------------------------------------------------------------
 int main(int argc, char** argv) {
@@ -534,7 +537,7 @@ int main(int argc, char** argv) {
         // is written all the same: a reset relaunches into the next run-N by finding it.
         session_write(0, GCN_ENGINE_SHA, g_fast_disc);
         uint32_t entry = boot_load(iso);
-        if (!link_bot(bot, pads)) return 1;
+        link_bot(bot, pads);
         threads_start_boot(entry);
         for (;;) {
             auto b = gx::take_batch(5);  // discard
@@ -633,7 +636,7 @@ int main(int argc, char** argv) {
         // The headset frontend opens the sound device, so it is told to write session.json then.
         // It reads the disc and starts the guest itself, so here the bot is connected before
         // the headset comes up, not after boot_load as on the other paths.
-        if (!link_bot(bot, pads)) return 1;
+        link_bot(bot, pads);
         const int rc = xr_desktop_main({win, pump, merge_desktop_pad,
                                         [](SDL_Window* w) { session_write(display_hz(w), GCN_ENGINE_SHA, g_fast_disc); }},
                                        iso);
@@ -659,7 +662,7 @@ int main(int argc, char** argv) {
     session_write(display_hz(win), GCN_ENGINE_SHA, g_fast_disc);
 
     uint32_t entry = boot_load(iso);
-    if (!link_bot(bot, pads)) return 1;
+    link_bot(bot, pads);
     threads_start_boot(entry);
 
     bool running = true;

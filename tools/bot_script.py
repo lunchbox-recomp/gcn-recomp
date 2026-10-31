@@ -18,13 +18,14 @@ COMMAND can't be run.
 
 A bad script or a SOCKET it can't listen on exits 2 before COMMAND runs. While it listens it
 holds a lock on SOCKET.lock, a file it leaves in place, so a second bot_script.py on the same
-SOCKET exits 2 and leaves both files alone. One that takes the lock replaces any socket file an
-earlier run left at SOCKET.
+SOCKET exits 2 and leaves both files alone. One that takes the lock replaces any socket file at
+SOCKET, even one another kind of program listens on.
 
 --late=MS:N waits MS milliseconds before it answers each frame whose number is a multiple of N.
-It's there to check that how long a bot takes to answer changes nothing in a run. The same bot
-with and without it leaves the same input log unpaced or paced under GCN_CATCHUP=0. Only the
-end line can differ, since it says where --exit-after caught the guest.
+It's there to check that how long a bot takes to answer changes nothing in a run.
+
+The same bot with and without --late leaves the same input log unpaced or paced under
+GCN_CATCHUP=0. Only the end line can differ, since it says where --exit-after caught the guest.
 """
 from __future__ import annotations
 
