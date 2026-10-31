@@ -1,4 +1,5 @@
-// The runtime's fakes and the case runner, for tools/fixture_runner.h.
+// The runtime's fakes and the case runner, for tools/fixture_runner.h. The fakes have the runtime's
+// names, and everything they keep is in fx.
 #include "fixture_runner.h"
 #include "platform.h"
 #include <algorithm>
@@ -7,6 +8,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+
+namespace fx {
 
 std::vector<Call> g_calls;
 
@@ -57,6 +60,10 @@ uint32_t depth_of(const CPU* c) {
     return 0;
 #endif
 }
+
+}  // namespace fx
+
+using namespace fx;
 
 uint8_t* g_mem;
 uint8_t g_gp_buf[64];
@@ -256,6 +263,8 @@ void gp_flush_line(void) {
     g_gp_len = 0;
 }
 }
+
+namespace fx {
 
 CPU g_cpu;
 
@@ -506,3 +515,5 @@ int runner_finish() {
     else printf("everything matches\n");
     return g_failed ? 1 : 0;
 }
+
+}  // namespace fx

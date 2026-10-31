@@ -9,7 +9,7 @@
 //
 // A case whose code was changed in RAM runs a twin natively instead, a function holding the code as
 // RAM now has it. The runtime's services are fakes that record each call, and the ones that resume a
-// guest do it as threads.cpp does.
+// guest do it as threads.cpp does. What the fakes keep is in fx, apart from the runtime's own names.
 #pragma once
 #include "interp/interp.h"
 #include "fixture_programs.h"
@@ -17,6 +17,8 @@
 #include <map>
 #include <string>
 #include <vector>
+
+namespace fx {
 
 struct Call {
     std::string fn;
@@ -112,3 +114,5 @@ void check_case(const Case& k);
 bool runner_init(const char* program);
 // Prints the result, and returns the exit code.
 int runner_finish();
+
+}  // namespace fx

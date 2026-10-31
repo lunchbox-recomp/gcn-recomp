@@ -16,6 +16,8 @@
 #include <unistd.h>
 #include <vector>
 
+using namespace fx;
+
 namespace {
 
 void check_setter() {

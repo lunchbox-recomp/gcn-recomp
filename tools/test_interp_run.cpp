@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+using namespace fx;
+
 namespace {
 
 const Case kCases[] = {
