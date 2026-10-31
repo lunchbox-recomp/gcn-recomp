@@ -304,6 +304,7 @@ OTHER_FUNCS = [
     ('f_over', [b(8, lk=1), 0, BLR]),              # bl over a data word, to the blr
     ('f_back', [NOP, NOP, b(-4, lk=1), BLR]),      # bl back to the second nop
     ('f_bcl_over', [bc(12, 2, 8, lk=1), 0, BLR]),  # bcl over a data word, to the blr
+    ('f_far_back', [NOP] * 17 + [b(-0x40, lk=1), BLR]),  # bl back 16 words, to the second nop
 ]
 
 
@@ -343,19 +344,20 @@ class OtherOwnBodyCalls(Fixture):
     an entry."""
 
     FUNCS = OTHER_FUNCS
-    # (function, index of the call, index of its target) in words
-    CALLS = [('f_over', 0, 2), ('f_back', 2, 1), ('f_bcl_over', 0, 2)]
+    # (function, index of the call, index of its target in words, the offset the warning prints)
+    CALLS = [('f_over', 0, 2, '+0x8'), ('f_back', 2, 1, '-0x4'), ('f_bcl_over', 0, 2, '+0x8'),
+             ('f_far_back', 17, 1, '-0x40')]
 
     def test_each_is_still_a_call_to_an_entry(self):
-        for fn, at, to in self.CALLS:
+        for fn, at, to, _ in self.CALLS:
             with self.subTest(fn=fn):
                 pc, t = self.addr[fn] + 4 * at, self.addr[fn] + 4 * to
                 self.assertIn(f'c->lr = 0x{pc + 4:08X}u; fn_{t:08X}(c);', self.c)
                 self.assertIn(f'void fn_{t:08X}(CPU* c);', self.header)
 
-    def test_each_still_warns_that_it_is_another_word(self):
-        want = [f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X} (other)'
-                for fn, at, to in self.CALLS]
+    def test_each_warns_that_it_is_another_word_with_its_offset(self):
+        want = [f'warning: {self.addr[fn] + 4 * at:08X} bl to own body {self.addr[fn] + 4 * to:08X} (other {off})'
+                for fn, at, to, off in self.CALLS]
         self.assertEqual(sorted(line for line in self.stderr.splitlines() if 'bl to own body' in line), sorted(want))
 
 
