@@ -85,7 +85,7 @@ Any other `bl` is a call through `call_indirect`, a `bl` over data included. The
 `call_indirect` stops the game at a target that isn't a recompiled entry, so a loose frame's
 `bl` over data stops it there.
 
-The runtime doesn't call it, and `tools/test_interp_run.cpp` does.
+The runtime doesn't call it, and `tools/fixture_runner.cpp` and `tools/test_code_table.cpp` do.
 
 ## What stays native
 
