@@ -153,6 +153,10 @@ def bdnz(t):
     return bc(16, 0, t)
 
 
+def bdnzl(t):
+    return bc(16, 0, t, 1)
+
+
 def address(r, t):
     """lis and ori that put t's address in r."""
     return [lambda pc, at: d_form(15, r, 0, at(t) >> 16), lambda pc, at: d_form(24, r, r, at(t) & 0xFFFF)]
@@ -212,6 +216,15 @@ BLOB_NEXT = (P16 + address(12, '.n1') + [bl('.n1'), 'n1:', mflr(3)]
              + address(12, '.n2') + [bcl('.n2'), 'n2:', mflr(4)] + E16)
 NEXT_TWIN = (P16 + address(12, 'blob_next.n1') + [mtlr(12), mflr(3)]
              + address(12, 'blob_next.n2') + [mtlr(12), mflr(4)] + E16)
+# A taken bdnzl and a bcl not taken, each to the next word, and what the hardware does with them.
+BLOB_NEXT2 = (P16 + [li(0, 2), mtctr(0)] + address(12, '.n1') + [bdnzl('.n1'), 'n1:', mflr(3), li(5, 0), cmpwi(5, 0)]
+              + address(12, '.n2') + [bnel('.n2'), 'n2:', mflr(4)] + E16)
+NEXT2_TWIN = (P16 + [li(0, 2), mtctr(0)] + address(12, 'blob_next2.n1')
+              + [mtlr(12), li(0, 1), mtctr(0), mflr(3), li(5, 0), cmpwi(5, 0)]
+              + address(12, 'blob_next2.n2') + [mtlr(12), mflr(4)] + E16)
+# A mod's branch onto f_multi's mid-entry, which f_midcaller's bl makes, once the word there changed.
+MID_WORD = mulli(3, 3, 7)
+BLOB_MID = [li(3, 5), b('f_multi.mid')]
 # A blrl and a bctrl whose LR and CTR hold the next word, and what the hardware does with each.
 BLOB_BLRL_NEXT = P16 + address(12, '.n') + [mtlr(12), BLRL, 'n:', mflr(3)] + E16
 BLRL_TWIN = P16 + address(12, 'blob_blrl_next.n') + [mtlr(12), mtlr(12), mflr(3)] + E16
@@ -293,12 +306,24 @@ FUNCS = [
     Code('f_two_site_loop', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf') + ['a:', bl('made_up_setjmp')]
          + address(3, 'context') + ['b:', bl('made_up_save'), addi(31, 31, 1), cmpwi(31, 16000), bne('.again'),
                                     mr(3, 31)] + E32),
+    # A setjmp site taken five times round a loop, then a longjmp back to it.
+    Code('f_sj_again', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf')
+         + [bl('made_up_setjmp'), addi(31, 31, 1), cmpwi(3, 0), bne('.done'), cmpwi(31, 5), bne('.again'), li(4, 7)]
+         + address(3, 'jmp_buf') + [bl('f_sj_deeper'), 'done:', mr(5, 31)] + E32),
+    # A setjmp site in a loop that returns from its middle on the third time round.
+    Code('f_sj_midret', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf')
+         + [bl('made_up_setjmp'), addi(31, 31, 1), cmpwi(31, 3), bne('.more'), mr(3, 31)] + E32
+         + ['more:', b('.again')]),
+    Code('f_next2_twin', NEXT2_TWIN),
+    Code('f_mid_twin', [li(3, 1), 'mid:', MID_WORD, BLR]),
+    Code('f_blob_mid_twin', [li(3, 5), b('f_mid_twin.mid')]),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
 BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')])),
          (BLOB + 0x200, Code('blob_tail', BLOB_TAIL)), (BLOB + 0x300, Code('blob_next', BLOB_NEXT)),
          (BLOB + 0x400, Code('blob_site', BLOB_SITE)), (BLOB + 0x500, Code('blob_blrl_next', BLOB_BLRL_NEXT)),
-         (BLOB + 0x600, Code('blob_bctrl_next', BLOB_BCTRL_NEXT))]
+         (BLOB + 0x600, Code('blob_bctrl_next', BLOB_BCTRL_NEXT)), (BLOB + 0x700, Code('blob_next2', BLOB_NEXT2)),
+         (BLOB + 0x800, Code('blob_mid', BLOB_MID))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}
@@ -367,9 +392,9 @@ def header(labels, text, module, data):
     out += ['', f'#define FX_STACK 0x{STACK:08X}u', f'#define FX_WINDOW_BASE 0x{WINDOW[0]:08X}u',
             f'#define FX_WINDOW_SIZE 0x{WINDOW[1]:X}u', f'#define FX_BLOB_BASE 0x{BLOB:08X}u',
             f'#define FX_BLOB_END 0x{TEXT:08X}u', f'#define FX_FILLER_COUNT {FILLERS}u',
-            "/* The words the test writes over f_hooked's first and f_site2's site. */",
+            "/* The words the test writes over f_hooked's first, f_site2's site and f_multi's mid-entry. */",
             f'#define FX_HOOK_WORD 0x{b("blob_hook")(labels["f_hooked"], labels.get):08X}u',
-            f'#define FX_SITE2_WORD 0x{SITE2_WORD:08X}u', '',
+            f'#define FX_SITE2_WORD 0x{SITE2_WORD:08X}u', f'#define FX_MID_WORD 0x{MID_WORD:08X}u', '',
             'typedef struct { uint32_t addr, count; const uint32_t* words; } FxWords;']
     image = [('fx_text', TEXT, text), ('fx_module', MODULE, module), ('fx_data', DATA, data)]
     image += [(f'fx_{blob.name}', a, blob.words(labels)) for a, blob in BLOBS]

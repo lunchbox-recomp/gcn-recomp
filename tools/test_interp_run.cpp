@@ -76,6 +76,20 @@ const Case kCases[] = {
      false},
     {"a setjmp site's function calling one with a context site", FX_F_TWO_SITES, 0, nullptr, "hle_context_jmpbuf",
      false},
+    {"a setjmp site taken again round a loop, then longjmped to", FX_F_SJ_AGAIN, 0, nullptr, "hle_longjmp_resume",
+     false},
+    {"a setjmp site's loop taking an interrupt", FX_F_SJ_LOOP, 0,
+     [](CPU*) {
+         g_vlimit = 3;
+         g_irq_armed = true;
+     },
+     "hle_made_up_resume", false},
+    {"a setjmp site's loop returning from its middle", FX_F_SJ_MIDRET, 0, nullptr, "hle_setjmp_jmpbuf", false},
+    {"a loose frame's taken bdnzl and untaken bcl to the next word, against the hardware's", FX_BLOB_NEXT2,
+     FX_F_NEXT2_TWIN, nullptr, nullptr, true},
+    // The loose frame runs RAM's word at the mid-entry, where a call would run the compiled one.
+    {"a loose frame's branch onto a mid-entry, whose word changed in RAM", FX_BLOB_MID, FX_F_BLOB_MID_TWIN,
+     [](CPU*) { poke(FX_F_MULTI_MID, FX_MID_WORD); }, nullptr, true},
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to
