@@ -757,6 +757,9 @@ dumps never include it, so a run that opened it writes the same frame dumps as o
 window's close button does (`runtime/main.cpp`). It says so in a `[quit]` line as it asks. The
 run then waits for a save under way as a player's end does, which `--exit-after` doesn't.
 
+Only a windowed run reads `GCN_QUIT_AT`, so `--vr` and `--headless` ignore it. A value that
+isn't a whole number in range prints a `[quit]` line saying so and ends nothing.
+
 The menu's Restart game and Quit game close it before they act, so the run prints
 `[overlay] closed` and the guest goes on before the end. Both end the run at `end_run` in
 `runtime/main.cpp`, whose at-exit functions write the memory card and wait for a write under
