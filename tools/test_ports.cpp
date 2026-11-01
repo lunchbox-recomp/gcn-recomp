@@ -2005,6 +2005,19 @@ void overlay(const std::string& dir) {
           "on a gamepad with a Back, Guide, the left shoulder and the GameCube's chord open nothing");
     unplug({&cube, &bare, &nso});
 
+    // Guide opens and closes it on any gamepad SDL maps with Guide and no Back, as it maps a
+    // single Switch 2 Joy-Con. ZL is the Switch 2 GameCube controller's alone. This one is made
+    // up, with neither's USB IDs, and it takes a port the others left.
+    Virtual home_only{"home only pad overlay"};
+    home_only.button_mask = kCubeButtons | 1u << SDL_GAMEPAD_BUTTON_GUIDE | 1u << SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    attach(home_only);
+    host_frame(guest);
+    const bool home_only_opens =
+        pressed(home_only, SDL_GAMEPAD_BUTTON_GUIDE) && !pressed(home_only, SDL_GAMEPAD_BUTTON_GUIDE);
+    check(home_only_opens && !pressed(home_only, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER),
+          "on another gamepad with Guide and no Back, Guide opens it and closes it, and its left shoulder doesn't");
+    unplug({&home_only});
+
     Settings next = picture.now;
     next.aspect = "16:9";
     overlay_display_change(next);

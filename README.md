@@ -79,12 +79,13 @@ wider to match. A headset's view stays 4:3, so `--eye` and `GCN_THEATER_STEREO` 
 Control-Command-F on a Mac, from the Window menu SDL adds, where F11 is Show Desktop by
 default.
 
-F1 or a gamepad's Back opens a menu over the game and pauses it until F1, Back or B closes it.
-Escape closes the menu too, and quits the game when the menu is closed.
+F1 opens a menu over the game and pauses it until F1 or a gamepad's B closes it. Escape closes
+the menu too, and quits the game when the menu is closed.
 
-SDL maps no Back on a GameCube controller. On a Switch 2 GameCube controller ZL or Home opens
-and closes the menu instead. One with only the GameCube's buttons, as on an adapter, does it
-with Z and both triggers clicked all the way in, held for a second with nothing else.
+A gamepad opens and closes the menu with Back where SDL maps one. A gamepad with no Back uses
+Guide (Home) instead, and on a Switch 2 GameCube controller ZL does it too. A gamepad with
+neither, as SDL maps a GameCube controller on an adapter, does it with Z and both triggers
+clicked all the way in, held for a second with nothing else.
 
 On a gamepad A picks and B goes back, the buttons the game takes as A and B, so a Switch Pro's
 are the other way round from an Xbox pad's.

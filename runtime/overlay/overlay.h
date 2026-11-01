@@ -4,11 +4,12 @@
 //
 // F1 or a gamepad's Back opens it, and the guest is paused (pause.h) at its next frame
 // boundary. F1, Back or B closes it and the guest goes on. Escape closes it too, and the
-// frontend quits on an Escape while it's closed. SDL maps no Back on a GameCube controller. On
-// Nintendo's Switch 2 one, ZL and Home, which the GameCube's pad lacks, open and close it as
-// Back does. A gamepad with only the GameCube's buttons, as on Nintendo's adapter, opens and
-// closes it with Z and both triggers clicked in, held for a second with nothing else, once a
-// hold (overlay_poll). The clicks are SDL's MISC3 and MISC4 where SDL maps them, and where it
+// frontend quits on an Escape while it's closed. A gamepad SDL maps no Back on opens and closes
+// it with Guide (Home) instead, as a Switch 2 GameCube controller or a single Switch 2 Joy-Con,
+// and that GameCube controller's ZL, which the GameCube's own pad lacks, does too. A gamepad
+// with neither Back nor Guide, as SDL maps a GameCube controller on Nintendo's adapter, opens
+// and closes it with Z and both triggers clicked in, held for a second with nothing else, once
+// a hold (overlay_poll). The clicks are SDL's MISC3 and MISC4 where SDL maps them, and where it
 // doesn't the triggers past kGamepadTriggerClick, as gamepads_merge takes them. A device
 // controls.txt binds is the file's alone (input_map.h), so the menu never reads it.
 //
@@ -75,9 +76,9 @@ enum class OverlayAsk { none, restart, quit };
 // (overlay_menu_frame).
 void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& picture);
 // Each of the window's events, before the frontend's own. True for one the overlay takes, which
-// nothing else should see: F1, Back (ZL or Home on a Switch 2 GameCube controller), B or Escape
-// opening or closing it or going back from a question, and every key, mouse and gamepad button
-// or axis event while it's open.
+// nothing else should see: F1, Back (Guide on a gamepad with no Back, and ZL on a Switch 2
+// GameCube controller), B or Escape opening or closing it or going back from a question, and
+// every key, mouse and gamepad button or axis event while it's open.
 bool overlay_event(const SDL_Event& e);
 // Once a host frame, after the window's events: the GameCube chord opens or closes it once it's
 // been held its second, which no event marks.

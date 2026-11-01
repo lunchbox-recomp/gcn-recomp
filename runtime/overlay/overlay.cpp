@@ -172,13 +172,16 @@ bool is_b(const SDL_GamepadButtonEvent& b) {
 // ZL, a button the GameCube's pad lacks, and Home: SDL's left shoulder and Guide.
 constexpr Uint16 kNintendo = 0x057e, kSwitch2GameCube = 0x2073;
 
-// Whether the press `b` opens or closes the overlay: Back wherever SDL maps it, and ZL or Home
-// on a Switch 2 GameCube controller.
+// Whether the press `b` opens or closes the overlay: Back wherever SDL maps it, Guide (Home) on
+// a gamepad SDL maps no Back on, as a Switch 2 GameCube controller or a single Switch 2 Joy-Con,
+// and ZL on a Switch 2 GameCube controller.
 bool opens(const SDL_GamepadButtonEvent& b) {
     if (b.button == SDL_GAMEPAD_BUTTON_BACK) return true;
-    if (b.button != SDL_GAMEPAD_BUTTON_LEFT_SHOULDER && b.button != SDL_GAMEPAD_BUTTON_GUIDE) return false;
     SDL_Gamepad* p = SDL_GetGamepadFromID(b.which);
-    return p && SDL_GetGamepadVendor(p) == kNintendo && SDL_GetGamepadProduct(p) == kSwitch2GameCube;
+    if (!p) return false;
+    if (b.button == SDL_GAMEPAD_BUTTON_GUIDE) return !SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_BACK);
+    return b.button == SDL_GAMEPAD_BUTTON_LEFT_SHOULDER && SDL_GetGamepadVendor(p) == kNintendo &&
+           SDL_GetGamepadProduct(p) == kSwitch2GameCube;
 }
 
 // The chord on a gamepad with only the GameCube's own buttons, which SDL maps no Back or Guide
