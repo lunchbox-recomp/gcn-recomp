@@ -26,12 +26,14 @@ const std::string kGapStop = [] {
     return std::string(s);
 }();
 
-// The stop native code makes when f_blrl_next calls the word after its blrl, which no function starts.
-const std::string kNextWordStop = [] {
+// The stop native code makes when it calls the word after a blrl or bctrl, which no function starts.
+std::string next_word_stop(uint32_t next) {
     char s[96];
-    snprintf(s, sizeof s, "call_indirect: no function at %08X (lr=%08X)", FX_F_BLRL_NEXT_N, FX_F_BLRL_NEXT_N);
+    snprintf(s, sizeof s, "call_indirect: no function at %08X (lr=%08X)", next, next);
     return std::string(s);
-}();
+}
+const std::string kBlrlStop = next_word_stop(FX_F_BLRL_NEXT_N);
+const std::string kBctrlStop = next_word_stop(FX_F_BCTRL_NEXT_N);
 
 const Case kCases[] = {
     {"an in-range loop", FX_F_LOOP, 0, nullptr, "IRQ_CHECK", false},
@@ -80,8 +82,9 @@ const Case kCases[] = {
     {"a function's bcl to the next word", FX_F_BCL_NEXT, 0, nullptr, nullptr, false},
     {"a function's taken bdnzl and untaken bnel to the next word", FX_F_BDNZL_NEXT, 0, nullptr, nullptr, false},
     {"a function's last word, a bl to the function after it", FX_F_LAST_BL, 0, nullptr, nullptr, false},
-    // Native code calls a blrl's LR, which is no function's entry here, and stops there.
-    {"a function's blrl to the next word", FX_F_BLRL_NEXT, 0, nullptr, kNextWordStop.c_str(), false},
+    // Native code calls a blrl's LR and a bctrl's CTR, which are no function's entry here, and stops there.
+    {"a function's blrl to the next word", FX_F_BLRL_NEXT, 0, nullptr, kBlrlStop.c_str(), false},
+    {"a function's bctrl to the next word", FX_F_BCTRL_NEXT, 0, nullptr, kBctrlStop.c_str(), false},
     {"a bcctrl not taken, which sets LR all the same", FX_F_BCCTRL_SKIP, 0, nullptr, nullptr, false},
     {"a function's last word, a bl to the setjmp function after it", FX_F_SJ_NEXT, 0, nullptr, "hle_setjmp_jmpbuf",
      false},

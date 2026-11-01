@@ -13,6 +13,7 @@ enum InterpStep { INTERP_NEXT, INTERP_RFI, INTERP_UNIMPL };
 // the recompiled function returns. INTERP_UNIMPL says translate refuses the word, and nothing changed.
 InterpStep interp_step(CPU* c, uint32_t pc, uint32_t insn);
 
+// interp_run.cpp tests kind <= INTERP_BC for a b or bc, so B and BC have to come before BLR and BCTR.
 enum InterpBranchKind : uint8_t { INTERP_B, INTERP_BC, INTERP_BLR, INTERP_BCTR };
 struct InterpBranch {
     InterpBranchKind kind;
