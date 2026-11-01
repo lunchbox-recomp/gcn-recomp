@@ -103,8 +103,9 @@ The runtime doesn't call it, and `tools/test_interp_run.cpp` does.
   doesn't. `GCN_STORE_HIST`, `GCN_READERS` and `GCN_WATCH_ADDR`'s check after each store
   don't see an interpreted function's accesses.
 - A loop through more than one setjmp or context site nests a C frame for each site every
-  time round, until the guest function returns. Each site's frame has to stay live for a longjmp
-  to its jmp_buf, as the function's one C frame does natively.
+  time round, since each has to stay live for a longjmp to its jmp_buf. Once they hold 4 MiB
+  of host stack, the game stops with `<function>'s setjmp and context sites nested past 4 MiB
+  of the host stack, at the site at <pc>`.
 - A loose frame's `bl` or `bcl` to the next word sets LR and runs on. recomp.py's C, and a
   function frame with it, calls the next word as a mid-entry and runs the rest again once
   that call returns.

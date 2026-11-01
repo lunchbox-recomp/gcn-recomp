@@ -97,11 +97,13 @@ void check_logs() {
     }
 }
 
-void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std::string& want) {
+// Runs entry forced, and checks that it stopped with a message holding one of wants.
+void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std::vector<std::string>& wants) {
     reset_ram();
     base_cpu(&g_cpu);
     g_calls.clear();
     g_jmps.clear();
+    g_bindings.clear();
     g_longjmp_returns = false;
     if (setup) setup(&g_cpu);
     const uint32_t n = range_of(entry);
@@ -109,7 +111,9 @@ void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std:
     const std::string stop = call(entry);
     code_table_mark(n, CODE_FORCED, false);
     g_longjmp_returns = false;
-    if (stop.find(want) == std::string::npos) fail(std::string(what) + ": stopped with \"" + stop + "\", not \"" + want + "\"");
+    bool found = false;
+    for (const std::string& want : wants) found = found || stop.find(want) != std::string::npos;
+    if (!found) fail(std::string(what) + ": stopped with \"" + stop + "\", not \"" + wants[0] + "\"");
     else printf("match  %s\n", what);
 }
 
@@ -121,9 +125,18 @@ void check_stops() {
                   g_longjmp_returns = true;
                   c->r[3] = FX_JMP_BUF;
               },
-              want);
+              {want});
     snprintf(want, sizeof want, "the patch at %08X has a goto", FX_F_GOTO_SITE);
-    stop_case("a patch with a goto stops", FX_F_GOTO, nullptr, want);
+    stop_case("a patch with a goto stops", FX_F_GOTO, nullptr, {want});
+    // Which of the two sites crosses the bound depends on the frames' sizes.
+    std::vector<std::string> sites;
+    for (uint32_t pc : {FX_F_TWO_SITE_LOOP_A, FX_F_TWO_SITE_LOOP_B}) {
+        snprintf(want, sizeof want,
+                 "f_two_site_loop's setjmp and context sites nested past 4 MiB of the host stack, at the site at %08X",
+                 pc);
+        sites.push_back(want);
+    }
+    stop_case("a loop through two sites stops once they nest past 4 MiB", FX_F_TWO_SITE_LOOP, nullptr, sites);
 }
 
 }  // namespace

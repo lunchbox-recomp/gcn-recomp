@@ -66,6 +66,9 @@ struct InterpFrame {
     uint32_t site_lo, site_hi;  // the rows of g_recomp_sites it can reach
     // Where its interpreted instructions are counted.
     std::atomic<uint64_t>* ran;
+    // The host stack frame of the interp_enter or interp_run_loose that made it, which every frame
+    // running its code is under.
+    uintptr_t host;
 };
 
 // Runs f's code from pc, and returns false when the guest returns from it. It returns true instead when
