@@ -86,7 +86,8 @@ call through `call_indirect`, a `bl` over data included. The runtime's `call_ind
 the game at a target that isn't a recompiled entry, so a loose frame's `bl` over data stops it
 there.
 
-The runtime doesn't call it, and `tools/fixture_runner.cpp` and `tools/test_code_table.cpp` do.
+The runtime doesn't call `interp_run_loose`, and `tools/fixture_runner.cpp` and
+`tools/test_code_table.cpp` do.
 
 ## What stays native
 
