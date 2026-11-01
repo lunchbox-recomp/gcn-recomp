@@ -110,6 +110,10 @@ The runtime doesn't call it, and `tools/fixture_runner.cpp` and `tools/test_code
   of host stack, the game stops with `<function>'s setjmp and context sites nested past 4 MiB
   of the host stack, at the site at <pc>, since a loop through more than one setjmp or context
   site nests a C frame for each`. In a loose frame, `<function>` is `a loose frame`.
+- In a build without `GCN_TRACE_CALLS`, clang compiles recomp.py's C for a tail call as a
+  sibling call, which takes no new host frame. An interpreted tail call keeps its frame's host
+  frames live until the callee returns, so a long chain of guest tail calls uses host stack
+  only when interpreted.
 - A loose frame's `bl` or `bcl` to the next word sets LR and runs on. recomp.py's C, and a
   function frame with it, calls the next word as a mid-entry and runs the rest again once
   that call returns.
