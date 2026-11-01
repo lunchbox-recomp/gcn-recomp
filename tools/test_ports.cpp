@@ -2247,14 +2247,20 @@ void overlay_buttons(const std::string& dir) {
     g_window = nullptr;
 
     // A gamepad plugged in while the menu is open, holding A, has the A kept from the menu as one
-    // held at the open is. A gamepad already in keeps its own latch, so a D-pad it holds stays
-    // down for the menu. Down from Restart game, the bottom row, moves nothing.
+    // held at the open is. A gamepad already in keeps its own latch: an A it held through the
+    // open still presses nothing, and a D-pad it pressed since stays down for the menu. The
+    // focus is on Restart game first, the bottom row, where down moves nothing.
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     for (int i = 0; i < 8; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     for (int i = 0; i < 2; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
     host_frame(guest);
     const bool dpad_down = ImGui::IsKeyDown(ImGuiKey_GamepadDpadDown);
+    const bool held_a_out = waiting(OverlayAsk::none);
     Virtual late{"late pad buttons"};
     attach(late);
     // Opened here, so that its A is down before the frontend hears of it.
@@ -2263,14 +2269,22 @@ void overlay_buttons(const std::string& dir) {
     host_frame(guest);
     host_frame(guest);
     const bool dpad_kept = ImGui::IsKeyDown(ImGuiKey_GamepadDpadDown);
-    const bool late_a_out = waiting(OverlayAsk::none);
+    const bool arrived = waiting(OverlayAsk::none);
     set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false);
     SDL_SetJoystickVirtualButton(late_joystick, SDL_GAMEPAD_BUTTON_SOUTH, false);
     host_frame(guest);
     const bool late_let_go = waiting(OverlayAsk::none);
+    set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    host_frame(guest);
+    const bool held_let_go = waiting(OverlayAsk::none);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool held_presses = waiting(OverlayAsk::restart);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
     tap(guest, late, SDL_GAMEPAD_BUTTON_SOUTH);
     check(dpad_down && dpad_kept, "a gamepad plugged in while the menu is open leaves another's held D-pad down for it");
-    check(late_a_out && late_let_go && waiting(OverlayAsk::restart),
+    check(held_a_out && arrived && held_let_go && held_presses,
+          "an A held through the open still presses nothing as another gamepad comes, until it's let go and pressed");
+    check(arrived && late_let_go && waiting(OverlayAsk::restart),
           "an A the new gamepad holds as it comes presses nothing, nor does letting it go, and its next press does");
     tap(guest, late, SDL_GAMEPAD_BUTTON_EAST);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
