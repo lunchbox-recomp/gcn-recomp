@@ -24,9 +24,9 @@
 // While it's open nothing reaches the game. Each port keeps what it had as it opened until the
 // guest is held, so the game sees nothing let go before it stops. Then each port stays plugged
 // in or not, at rest, and a button still held as it closes stays out of the game until it's
-// let go, a clicked-in trigger's travel too, so the press that closed it isn't the game's as
-// well. Any gamepad, the keyboard or
-// the mouse drives the menu. A key or a gamepad's button held as it opens stays out of the
+// let go, so the press that closed it isn't the game's as well. A trigger in as it closes keeps
+// its travel out until it's back at rest, though its click lets go on the way. Any gamepad, the
+// keyboard or the mouse drives the menu. A key or a gamepad's button held as it opens stays out of the
 // menu the same way, so it presses nothing there, and a held key's repeats never reach the
 // menu.
 //

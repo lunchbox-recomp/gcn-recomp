@@ -35,6 +35,10 @@ OverlayAsk g_ask;         // what the menu is asking before it does it
 OverlayAsk g_asked;       // the button that asked, which takes the focus back at the next draw
 bool g_focus_cancel;      // Cancel takes the focus at the next draw, as the menu starts asking
 uint16_t g_held_over[4];  // the buttons held as the overlay closed, kept from the game until let go
+// The triggers whose travel is kept from the game since the overlay closed, until each is back
+// at rest: kTravelL and kTravelR.
+uint8_t g_travel_held[4];
+constexpr uint8_t kTravelL = 1, kTravelR = 2;
 PadState g_before[4];     // each port as the game last had it with the overlay closed
 bool g_focus;             // the menu takes the keyboard's and the gamepads' focus at its next draw
 bool g_dumped;            // since it opened, under --dump-output
@@ -386,6 +390,7 @@ void overlay_gate(int port, PadState& p) {
     if (port < 0 || port > 3) return;
     if (g_open) {
         g_held_over[port] = 0xFFFF;
+        g_travel_held[port] = kTravelL | kTravelR;
         const bool connected = p.connected;
         // Until the guest is held at its frame boundary it may poll again, and a port at rest
         // would be a press let go, which a game may act on.
@@ -395,9 +400,12 @@ void overlay_gate(int port, PadState& p) {
     }
     g_held_over[port] &= p.buttons;
     p.buttons &= ~g_held_over[port];
-    // A trigger clicked in as it closed, as the chord does, stays out with its travel.
-    if (g_held_over[port] & PAD_L) p.trig_l = 0;
-    if (g_held_over[port] & PAD_R) p.trig_r = 0;
+    // A trigger in as it closed, as the chord's are, keeps its travel out until it's back at rest
+    // (gamepads_merge's dead zone), though its click lets go on the way.
+    if (!p.trig_l) g_travel_held[port] &= ~kTravelL;
+    if (!p.trig_r) g_travel_held[port] &= ~kTravelR;
+    if (g_travel_held[port] & kTravelL) p.trig_l = 0;
+    if (g_travel_held[port] & kTravelR) p.trig_r = 0;
     g_before[port] = p;
 }
 

@@ -1818,6 +1818,35 @@ void overlay(const std::string& dir) {
     set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
     host_frame(guest);
 
+    // A trigger in as it closes stays out of the game with its travel until it's back at rest,
+    // though it's let out past its click (kGamepadTriggerClick) on the way.
+    const auto back = [&] {
+        set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
+        host_frame(guest);
+        set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
+        host_frame(guest);
+    };
+    back();
+    set_axis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 32767);
+    set_axis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 32767);
+    host_frame(guest);
+    back();
+    const bool shut = !overlay_open();
+    set_axis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 20000);
+    host_frame(guest);
+    const PadState eased = read(0);
+    set_axis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, -32768);
+    set_axis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, -32768);
+    host_frame(guest);
+    set_axis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 20000);
+    host_frame(guest);
+    const PadState rested = read(0);
+    set_axis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, -32768);
+    host_frame(guest);
+    check(shut && eased.connected && !eased.trig_l && !eased.trig_r && !(eased.buttons & (PAD_L | PAD_R)),
+          "a trigger in as it closes stays out of the game with its travel, eased out past its click too");
+    check(rested.trig_l > 0 && !(rested.buttons & PAD_L), "once it's been back at rest, its travel is the game's again");
+
     // A gamepad with no Back, as SDL maps GameCube controllers, opens and closes it with L and
     // R clicked in and Start, all held, once each time they're held together.
     // SDL keeps a virtual gamepad's mapping under the first nine characters of its name, so
