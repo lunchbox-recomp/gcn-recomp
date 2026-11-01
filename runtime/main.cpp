@@ -398,6 +398,31 @@ void frontend_restart() {
     g_restart = true;
 }
 
+// GCN_QUIT_AT=N ends the run once N frames have been presented, the way the window's close
+// button does, so through RunEnd's wait for a save, which --exit-after's end skips.
+static long long g_quit_at = -1;  // the frame, -1 for none or once it's asked SDL to quit
+
+static void quit_at_load() {
+    g_quit_at = -1;
+    const char* e = getenv("GCN_QUIT_AT");
+    if (!e) return;
+    char* end = nullptr;
+    const unsigned long long n = strtoull(e, &end, 10);
+    if (*e >= '0' && *e <= '9' && !*end && n <= UINT32_MAX) g_quit_at = (long long)n;
+    else fprintf(stderr, "[quit] GCN_QUIT_AT=%s isn't a frame number, so it ends nothing\n", e);
+}
+
+// After each presented frame, with how many have been.
+static void quit_at_presented(uint32_t presented) {
+    if (g_quit_at < 0 || presented < g_quit_at) return;
+    fprintf(stderr, "[quit] GCN_QUIT_AT=%lld ends the run at presented frame %u, as the window's close button does\n",
+            g_quit_at, presented);
+    g_quit_at = -1;
+    SDL_Event e{};
+    e.type = SDL_EVENT_QUIT;
+    SDL_PushEvent(&e);
+}
+
 // Sets g_fast_disc to settings.txt's `disc`, which --disc=fast or --disc=console beats for
 // the run, the last one winning as with the other flags. A bad --disc says what it takes,
 // and the result is false.
@@ -777,6 +802,7 @@ int main(int argc, char** argv) {
     };
     uint32_t frames = 0;
     uint32_t presented_total = 0;
+    quit_at_load();
     auto t0 = std::chrono::steady_clock::now();
     // Once the loop is asked to stop, the guest runs on while the game may be saving, which it
     // can't while the overlay holds it.
@@ -847,6 +873,7 @@ int main(int argc, char** argv) {
                 stop();
                 run_end.scripted();
             }
+            quit_at_presented(gx::present_count());
             auto now = std::chrono::steady_clock::now();
             double secs = std::chrono::duration<double>(now - t0).count();
             if (secs >= 2.0) {

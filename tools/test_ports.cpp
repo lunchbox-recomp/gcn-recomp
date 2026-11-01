@@ -1596,6 +1596,35 @@ void run_end(const std::string& dir) {
     check(lines_with(out, "[quit] ") == 2, "each run that has to wait says so once, and --exit-after's says nothing");
 }
 
+// ---- GCN_QUIT_AT=N asks SDL to quit at presented frame N, as the window's close button does,
+// so the window loop stops (pump_events) and the run ends through RunEnd's wait. It asks once.
+void quit_at_frame(const std::string& dir) {
+    const std::string out = dir + "/quit-at-stderr.txt";
+    bool before = false, at = false, once = false, bad = false;
+    capture(out, [&] {
+        frame();
+        setenv("GCN_QUIT_AT", "3", 1);
+        quit_at_load();
+        quit_at_presented(2);
+        before = pump_events();
+        quit_at_presented(3);
+        at = !pump_events();
+        quit_at_presented(4);
+        once = pump_events();
+        setenv("GCN_QUIT_AT", "3x", 1);
+        quit_at_load();
+        quit_at_presented(3);
+        bad = pump_events();
+        unsetenv("GCN_QUIT_AT");
+        quit_at_load();
+    });
+    check(before && at, "GCN_QUIT_AT=3 stops the window loop at presented frame 3, as the close button does");
+    check(once && lines_with(out, "[quit] GCN_QUIT_AT=3 ends the run at presented frame 3") == 1,
+          "and only then, which it says once");
+    check(bad && lines_with(out, "[quit] GCN_QUIT_AT=3x isn't a frame number, so it ends nothing") == 1,
+          "a GCN_QUIT_AT that isn't a frame number ends nothing, and says so");
+}
+
 #ifdef GCN_OVERLAY
 // ---- The overlay (overlay/overlay.h) with no window, so no menu is drawn. A thread stands in
 // for the guest. Each host frame lets it reach one more frame boundary (pause_gate), after the
@@ -2138,6 +2167,7 @@ int run_ports(const std::string& dir) {
     disc_speed(dir);
     bot_flags(dir);
     run_end(dir);
+    quit_at_frame(dir);
 #ifdef GCN_OVERLAY
     overlay(dir);
     overlay_buttons(dir);

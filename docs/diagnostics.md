@@ -753,6 +753,10 @@ frame `<host frames>` times. With `--dump-output` the first draw over the held f
 the menu goes to `overlay_NNNNN.png` too, which is how a hidden run shows it. Frame and output
 dumps never include it, so a run that opened it writes the same frame dumps as one that didn't.
 
+`GCN_QUIT_AT=<frame>` ends the run once `<frame>` frames have been presented, the way the
+window's close button does (`runtime/main.cpp`). It says so in a `[quit]` line as it asks. The
+run then waits for a save under way as a player's end does, which `--exit-after` doesn't.
+
 The menu's Restart game and Quit game close it before they act, so the run prints
 `[overlay] closed` and the guest goes on before the end. Both end the run at `end_run` in
 `runtime/main.cpp`, whose at-exit functions write the memory card and wait for a write under
