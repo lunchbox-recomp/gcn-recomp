@@ -202,21 +202,23 @@ void check_interpret(const std::string& dir) {
     char mid[16], extra[32];
     snprintf(mid, sizeof mid, "%08X", FX_F_LOOP + 4);
     snprintf(extra, sizeof extra, "%08X 1", FX_F_LOOP);
-    const char* const bad[] = {mid, "f_loop", extra, "0x", "-8010000"};
+    const char* const bad[] = {mid, "  f_loop  # x", extra, "0x", "-8010000"};
+    // How each is printed, without the spaces around it or its comment.
+    const char* const shown[] = {mid, "f_loop", extra, "0x", "-8010000"};
     const unsigned bad_at[] = {2, 3, 5, 6, 7};
     snprintf(text, sizeof text, "%08X\n%s\n%s\n%08X\n%s\n%s\n%s\n", FX_F_IDLE, bad[0], bad[1], FX_F_LOOP, bad[2],
              bad[3], bad[4]);
     const std::string five = dir + "/bad.txt";
     write_file(five, text);
     std::string lines;
-    for (int k = 0; k < 5; k++) lines += bad_line(five, bad_at[k], bad[k]);
+    for (int k = 0; k < 5; k++) lines += bad_line(five, bad_at[k], shown[k]);
     check_bad_file("each of a file's 5 bad lines", five, lines,
                    "GCN_INTERPRET: " + five + " names no recompiled function's start on 5 lines, listed above",
                    dir + "/bad.err");
     snprintf(text, sizeof text, "%08X\n%s\n", FX_F_IDLE, bad[1]);
     const std::string one = dir + "/bad1.txt";
     write_file(one, text);
-    check_bad_file("a file's one bad line", one, bad_line(one, 2, bad[1]),
+    check_bad_file("a file's one bad line", one, bad_line(one, 2, shown[1]),
                    "GCN_INTERPRET: " + one + " names no recompiled function's start on 1 line, listed above",
                    dir + "/bad1.err");
     const std::string missing = dir + "/missing.txt";
