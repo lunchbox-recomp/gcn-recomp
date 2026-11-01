@@ -103,6 +103,10 @@ The runtime doesn't call it, and `tools/fixture_runner.cpp` and `tools/test_code
   interpreter sets it either way, as the hardware does.
 - A `bctr` to an address in the range that isn't one of its jump table's targets jumps
   there. recomp.py's C calls it with `call_indirect` and returns.
+- With two different NaNs as the operands of an `fadd`, `fadds`, `fmul` or `fmuls`, or of a
+  paired-single add, mul, muls or sum form, which one native code gives depends on the order
+  clang puts the operands in. That order follows where their values come from in the function
+  around the word, so the interpreter can give the other one.
 - In a `-DGCN_WATCH` build, recomp.py's C reports each load and store, and the interpreter
   doesn't. `GCN_STORE_HIST`, `GCN_READERS` and `GCN_WATCH_ADDR`'s check after each store
   don't see an interpreted function's accesses.
