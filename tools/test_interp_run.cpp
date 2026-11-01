@@ -115,7 +115,7 @@ void check_logs() {
     }
 }
 
-// Runs entry forced, and checks that it stopped with a message holding one of wants.
+// Runs entry forced, and checks that its stop's whole message is one of wants.
 void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std::vector<std::string>& wants) {
     reset_ram();
     base_cpu(&g_cpu);
@@ -130,27 +130,30 @@ void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std:
     code_table_mark(n, CODE_FORCED, false);
     g_longjmp_returns = false;
     bool found = false;
-    for (const std::string& want : wants) found = found || stop.find(want) != std::string::npos;
+    for (const std::string& want : wants) found = found || stop == want;
     if (!found) fail(std::string(what) + ": stopped with \"" + stop + "\", not \"" + wants[0] + "\"");
     else printf("match  %s\n", what);
 }
 
 void check_stops() {
-    char want[160];
-    snprintf(want, sizeof want, "the interpreted longjmp made_up_longjmp at %08X returned", FX_MADE_UP_LONGJMP);
+    char want[256];
+    snprintf(want, sizeof want,
+             "the interpreted longjmp made_up_longjmp at %08X returned, and its guard would return to longjmp's caller",
+             FX_MADE_UP_LONGJMP);
     stop_case("a longjmp frame that would return stops", FX_MADE_UP_LONGJMP,
               [](CPU* c) {
                   g_longjmp_returns = true;
                   c->r[3] = FX_JMP_BUF;
               },
               {want});
-    snprintf(want, sizeof want, "the patch at %08X has a goto", FX_F_GOTO_SITE);
+    snprintf(want, sizeof want, "the patch at %08X has a goto, which works only inside its function", FX_F_GOTO_SITE);
     stop_case("a patch with a goto stops", FX_F_GOTO, nullptr, {want});
     // Which of the two sites crosses the bound depends on the frames' sizes.
     std::vector<std::string> sites;
     for (uint32_t pc : {FX_F_TWO_SITE_LOOP_A, FX_F_TWO_SITE_LOOP_B}) {
         snprintf(want, sizeof want,
-                 "f_two_site_loop's setjmp and context sites nested past 4 MiB of the host stack, at the site at %08X",
+                 "f_two_site_loop's setjmp and context sites nested past 4 MiB of the host stack, at the site at %08X, "
+                 "since a loop through more than one setjmp or context site nests a C frame for each",
                  pc);
         sites.push_back(want);
     }

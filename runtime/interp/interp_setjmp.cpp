@@ -19,7 +19,8 @@ constexpr uintptr_t kNestLimit = 4u << 20;
 
 void interp_setjmp_site(CPU* c, const InterpFrame* f, uint32_t kind, uint32_t target, uint32_t site_pc) {
     if (f->host - (uintptr_t)GCN_FRAME_ADDRESS() > kNestLimit)
-        fatal("%s's setjmp and context sites nested past 4 MiB of the host stack, at the site at %08X",
+        fatal("%s's setjmp and context sites nested past 4 MiB of the host stack, at the site at %08X, since a loop "
+              "through more than one setjmp or context site nests a C frame for each",
               f->loose ? "a loose frame" : func_name(f->start), site_pc);
     do {
         jmp_buf* jb = kind == RECOMP_SPECIAL_SETJMP ? hle_setjmp_jmpbuf(c) : hle_context_jmpbuf(c);

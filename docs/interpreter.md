@@ -108,7 +108,8 @@ The runtime doesn't call it, and `tools/fixture_runner.cpp` and `tools/test_code
 - A loop through more than one setjmp or context site nests a C frame for each site every
   time round, since each has to stay live for a longjmp to its jmp_buf. Once they hold 4 MiB
   of host stack, the game stops with `<function>'s setjmp and context sites nested past 4 MiB
-  of the host stack, at the site at <pc>`.
+  of the host stack, at the site at <pc>, since a loop through more than one setjmp or context
+  site nests a C frame for each`. In a loose frame, `<function>` is `a loose frame`.
 - A loose frame's `bl` or `bcl` to the next word sets LR and runs on. recomp.py's C, and a
   function frame with it, calls the next word as a mid-entry and runs the rest again once
   that call returns.
