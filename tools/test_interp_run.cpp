@@ -59,6 +59,8 @@ const Case kCases[] = {
     {"a blr to an LR its frame wasn't entered with", FX_F_LR, 0, nullptr, nullptr, false},
     {"a loose frame's tail call to an HLE'd function", FX_BLOB_TAIL, FX_F_BLOB_TAIL_TWIN, nullptr, "hle_made_up_save",
      true},
+    {"a loose frame's mtctr and bctr tail call to an HLE'd function", FX_BLOB_BCTR_TAIL, FX_F_BLOB_BCTR_TAIL_TWIN,
+     nullptr, "hle_made_up_save", true},
     {"a loose frame's bl and bcl to the next word, against the hardware's", FX_BLOB_NEXT, FX_F_BLOB_NEXT_TWIN,
      nullptr, nullptr, true},
     {"a loose frame's blrl to the next word, against the hardware's", FX_BLOB_BLRL_NEXT, FX_F_BLRL_NEXT_TWIN,

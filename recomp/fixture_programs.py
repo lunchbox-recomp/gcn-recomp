@@ -209,8 +209,9 @@ BLOB_LOOP = P16 + [li(3, 4), li(4, 0), 'loop:', addi(4, 4, 3), addi(3, 3, -1), c
 # The hook's code. It runs the word it replaced last, then goes back into the hooked function.
 HOOK = [li(4, 3), 'loop:', addi(3, 3, 10), addi(4, 4, -1), cmpwi(4, 0), bne('.loop'), addi(3, 3, 1)]
 HOOKED_TAIL = [mulli(3, 3, 3), addi(3, 3, 2), BLR]
-# A mod's tail call to an HLE'd function.
+# A mod's tail call to an HLE'd function, with a b and then with a bctr.
 BLOB_TAIL = address(3, 'context') + [b('made_up_save')]
+BLOB_BCTR_TAIL = address(3, 'context') + address(12, 'made_up_save') + [mtctr(12), BCTR]
 # A bl and a bcl to the next word, which read their own address, and what the hardware does with them.
 BLOB_NEXT = (P16 + address(12, '.n1') + [bl('.n1'), 'n1:', mflr(3)]
              + address(12, '.n2') + [bcl('.n2'), 'n2:', mflr(4)] + E16)
@@ -290,6 +291,7 @@ FUNCS = [
     Code('f_hooked', [addi(3, 3, 1), 'after:'] + HOOKED_TAIL),
     Code('f_hooked_twin', HOOK + HOOKED_TAIL),
     Code('f_blob_tail_twin', BLOB_TAIL),
+    Code('f_blob_bctr_tail_twin', BLOB_BCTR_TAIL),
     Code('f_blob_next_twin', NEXT_TWIN),
     Code('f_blrl_next_twin', BLRL_TWIN),
     Code('f_bctrl_next_twin', BCTRL_TWIN),
@@ -329,7 +331,8 @@ BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', 
          (BLOB + 0x200, Code('blob_tail', BLOB_TAIL)), (BLOB + 0x300, Code('blob_next', BLOB_NEXT)),
          (BLOB + 0x400, Code('blob_site', BLOB_SITE)), (BLOB + 0x500, Code('blob_blrl_next', BLOB_BLRL_NEXT)),
          (BLOB + 0x600, Code('blob_bctrl_next', BLOB_BCTRL_NEXT)), (BLOB + 0x700, Code('blob_next2', BLOB_NEXT2)),
-         (BLOB + 0x800, Code('blob_mid', BLOB_MID)), (BLOB + 0x900, Code('blob_two_site_loop', TWO_SITE_LOOP))]
+         (BLOB + 0x800, Code('blob_mid', BLOB_MID)), (BLOB + 0x900, Code('blob_two_site_loop', TWO_SITE_LOOP)),
+         (BLOB + 0xA00, Code('blob_bctr_tail', BLOB_BCTR_TAIL))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}
