@@ -302,10 +302,10 @@ FUNCS = [
     # A setjmp site, then a call to a function with a context site, each in a C frame of its own.
     Code('f_two_sites', P32 + address(3, 'jmp_buf') + [bl('made_up_setjmp'), bl('f_ctx_site')] + E32),
     Code('f_ctx_site', P16 + address(3, 'context') + [bl('made_up_save')] + E16),
-    # A loop through a setjmp site and a context site, 16,000 times round.
-    Code('f_two_site_loop', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf') + ['a:', bl('made_up_setjmp')]
-         + address(3, 'context') + ['b:', bl('made_up_save'), addi(31, 31, 1), cmpwi(31, 16000), bne('.again'),
-                                    mr(3, 31)] + E32),
+    # A loop through a setjmp site and a context site that never ends. Only an interpreted run takes it,
+    # and the 4 MiB stop ends it.
+    Code('f_two_site_loop', P16 + ['again:'] + address(3, 'jmp_buf') + ['a:', bl('made_up_setjmp')]
+         + address(3, 'context') + ['b:', bl('made_up_save'), b('.again')]),
     # A setjmp site taken five times round a loop, then a longjmp back to it.
     Code('f_sj_again', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf')
          + [bl('made_up_setjmp'), addi(31, 31, 1), cmpwi(3, 0), bne('.done'), cmpwi(31, 5), bne('.again'), li(4, 7)]
