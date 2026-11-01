@@ -342,6 +342,9 @@ FUNCS = [
     # a site, and then the function runs off its end into the same setjmp function again.
     Code('f_sj_next', address(3, 'jmp_buf') + [bl('made_up_sj_next')]),
     Code('made_up_sj_next', [mflr(0), stw(0, 0, 3), stw(1, 4, 3), BLR], special='setjmp'),
+    # The same with a context function, which is a site of its own kind.
+    Code('f_ctx_next', address(3, 'context') + [bl('made_up_ctx_next')]),
+    Code('made_up_ctx_next', [stw(1, 0, 3), BLR], special='made_up_ctx_next'),
     Code('f_next2_twin', NEXT2_TWIN),
     Code('f_mid_twin', [li(3, 1), 'mid:', MID_WORD, BLR]),
     Code('f_blob_mid_twin', [li(3, 5), b('f_mid_twin.mid')]),
