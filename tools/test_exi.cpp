@@ -18,9 +18,10 @@
 // at the open or cut short by a file size limit, leaves the file as it was and is tried
 // again. A gate MemCard calls before each write holds one so a page or a shutdown can land
 // during it. A card has a write unsaved for a quiet period after the game's last write, even
-// when its file can't be written, which exi_card_unsaved passes on. Running exi_init again makes a new card from the same file, and the new card
-// has to hold a page the old one hadn't written yet. A hold of the guest puts the quiet period
-// off by its length, on the card and through exi_card_held.
+// when its file can't be written, which exi_card_unsaved passes on. Running exi_init again
+// makes a new card from the same file, and the new card has to hold a page the old one hadn't
+// written yet. A hold of the guest puts the quiet period off by its length, on the card and
+// through exi_card_held.
 //
 // The exit checks each run in a child process. Two write a page through the EXI registers
 // and leave by plat_exit_now, as the runtime does, or by a SIGHUP taken on the interrupt
