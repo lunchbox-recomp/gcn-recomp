@@ -103,6 +103,9 @@ struct Outcome {
     // The setjmp and context site calls that asked the runtime for a jmp_buf from another host stack
     // frame than the first call with the same LR and r1 did. Native code takes a site in its function's
     // one C frame, so it's 0 there.
+    //
+    // LR and r1 name a guest stack slot, not one call, so two calls made from one slot share a key. Such
+    // a pair shows as a failure where nothing's wrong, never as a pass where something is.
     uint64_t site_moves;
 };
 

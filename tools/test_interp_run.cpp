@@ -76,6 +76,8 @@ const Case kCases[] = {
      false},
     {"a setjmp site's function calling one with a context site", FX_F_TWO_SITES, 0, nullptr, "hle_context_jmpbuf",
      false},
+    {"a setjmp site and then a context site in one function", FX_F_SJ_THEN_CTX, 0, nullptr, "hle_context_jmpbuf",
+     false},
     {"a setjmp site taken again round a loop, then longjmped to", FX_F_SJ_AGAIN, 0, nullptr, "hle_longjmp_resume",
      false},
     {"a setjmp site's loop taking an interrupt", FX_F_SJ_LOOP, 0,

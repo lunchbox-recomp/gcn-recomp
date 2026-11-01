@@ -308,6 +308,9 @@ FUNCS = [
     # A setjmp site, then a call to a function with a context site, each in a C frame of its own.
     Code('f_two_sites', P32 + address(3, 'jmp_buf') + [bl('made_up_setjmp'), bl('f_ctx_site')] + E32),
     Code('f_ctx_site', P16 + address(3, 'context') + [bl('made_up_save')] + E16),
+    # A setjmp site and then a context site in one function with no loop, which share r1 and not LR.
+    Code('f_sj_then_ctx', P32 + address(3, 'jmp_buf') + [bl('made_up_setjmp')] + address(3, 'context')
+         + [bl('made_up_save')] + E32),
     Code('f_two_site_loop', TWO_SITE_LOOP),
     # A setjmp site taken five times round a loop, then a longjmp back to it.
     Code('f_sj_again', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf')
