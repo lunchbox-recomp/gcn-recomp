@@ -81,9 +81,10 @@ A taken `bl` or `bcl` to the next word sets LR and runs on, as the hardware does
 read its own address. A `blrl` or `bctrl` whose LR or CTR holds the next word's address runs
 on too.
 
-Any other `bl` is a call through `call_indirect`, a `bl` over data included. The runtime's
-`call_indirect` stops the game at a target that isn't a recompiled entry, so a loose frame's
-`bl` over data stops it there.
+A `bl` to a setjmp or context function is a site, as in a function frame. Any other `bl` is a
+call through `call_indirect`, a `bl` over data included. The runtime's `call_indirect` stops
+the game at a target that isn't a recompiled entry, so a loose frame's `bl` over data stops it
+there.
 
 The runtime doesn't call it, and `tools/fixture_runner.cpp` and `tools/test_code_table.cpp` do.
 
