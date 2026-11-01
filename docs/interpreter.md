@@ -27,7 +27,9 @@ and it returns when the guest function does. The frame reads each word from RAM 
 there, so a word that changed runs as RAM now holds it. Branches go the way recomp.py's C sends them.
 
 - A `bl`, `blrl` or `bctrl` sets LR and calls its target through `call_indirect`, so a callee
-  whose own bit is clear runs natively.
+  whose own bit is clear runs natively. A `bl` or `bcl` to the next word sets LR and runs on
+  instead, as the hardware does, unless that word starts a setjmp or context function. In a
+  function's last word, it runs on into the function after it.
 - A branch that stays in the range jumps there. A backward one runs `IRQ_CHECK` first, or
   `IDLE_CHECK` at an `idle.txt` back edge, and a `bctr` jumps with no check, as a jump
   table's `switch` does.
@@ -77,9 +79,9 @@ A loose frame has no range. A branch that doesn't link is a call and then a retu
 lands on a recompiled function's start, as a mod's tail call does. Anywhere else, a
 function's middle included, it goes on in the same frame.
 
-A taken `bl` or `bcl` to the next word sets LR and runs on, as the hardware does, so code can
-read its own address. A `blrl` or `bctrl` whose LR or CTR holds the next word's address runs
-on too.
+A taken `bl` or `bcl` to the next word sets LR and runs on, as it does in a function frame, so
+code can read its own address. A `blrl` or `bctrl` whose LR or CTR holds the next word's
+address runs on too, where a function frame calls it.
 
 A `bl` to a setjmp or context function is a site, as in a function frame. Any other `bl` is a
 call through `call_indirect`, a `bl` over data included. The runtime's `call_indirect` stops
@@ -100,8 +102,6 @@ The runtime doesn't call `interp_run_loose`, and `tools/fixture_runner.cpp` and
 
 ## Where it differs from native
 
-- recomp.py's C for a conditional `bcctrl` sets LR only when the branch is taken. The
-  interpreter sets it either way, as the hardware does.
 - A `bctr` to an address in the range that isn't one of its jump table's targets jumps
   there. recomp.py's C calls it with `call_indirect` and returns.
 - With two different NaNs as the operands of an `fadd`, `fadds`, `fmul` or `fmuls`, or of a
@@ -120,6 +120,3 @@ The runtime doesn't call `interp_run_loose`, and `tools/fixture_runner.cpp` and
   sibling call, which takes no new host frame. An interpreted tail call keeps its frame's host
   frames live until the callee returns, so a long chain of guest tail calls uses host stack
   only when interpreted.
-- A loose frame's `bl` or `bcl` to the next word sets LR and runs on. recomp.py's C, and a
-  function frame with it, calls the next word as a mid-entry and runs the rest again once
-  that call returns.
