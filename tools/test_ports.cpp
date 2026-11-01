@@ -1789,8 +1789,23 @@ void overlay(const std::string& dir) {
     host_frame(guest);
     const bool b_closes = !overlay_open() && !paused();
     const PadState held = read(0);
+    // Back opens it again with that B still down, and the game doesn't get the B on the way to
+    // the hold.
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
+    host_frame(guest);
+    const PadState reopening = read(0);
+    const bool reopened = overlay_open() && paused();
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
+    host_frame(guest);
     set_button(pad, SDL_GAMEPAD_BUTTON_EAST, false);
     host_frame(guest);
+    const bool b_up_stays = overlay_open();
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, true);
+    host_frame(guest);
+    set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
+    host_frame(guest);
+    check(reopened && reopening.connected && !(reopening.buttons & PAD_B) && b_up_stays && !overlay_open(),
+          "Back opens it again with that B still down, and the game doesn't get the B as the guest is held");
     set_button(pad, SDL_GAMEPAD_BUTTON_EAST, true);
     host_frame(guest);
     const PadState again = read(0);
