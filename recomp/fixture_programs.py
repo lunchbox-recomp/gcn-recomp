@@ -296,9 +296,11 @@ FUNCS = [
     Code('f_blob_site_twin', BLOB_SITE),
     # It runs off its end into two words that no symbol holds.
     Code('f_gap_falls', [addi(3, 3, 1), 'gap:'], gap=8),
-    # A setjmp site in a loop, taken 10,000 times.
+    # A setjmp site in a loop, taken 10,000 times. The call to filler_00 moves LR each time round, so the
+    # site has to set it again.
     Code('f_sj_loop', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf')
-         + [bl('made_up_setjmp'), addi(31, 31, 1), cmpwi(31, 10000), bne('.again'), mr(3, 31)] + E32),
+         + [bl('made_up_setjmp'), bl('filler_00'), addi(31, 31, 1), cmpwi(31, 10000), bne('.again'), mr(3, 31)]
+         + E32),
     # A setjmp site, then a call to a function with a context site, each in a C frame of its own.
     Code('f_two_sites', P32 + address(3, 'jmp_buf') + [bl('made_up_setjmp'), bl('f_ctx_site')] + E32),
     Code('f_ctx_site', P16 + address(3, 'context') + [bl('made_up_save')] + E16),
