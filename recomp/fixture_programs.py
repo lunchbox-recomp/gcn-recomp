@@ -115,6 +115,7 @@ def mtmsr(s):
 
 
 BLR, BLRL, BCTR, BCTRL, RFI = 0x4E800020, 0x4E800021, 0x4E800420, 0x4E800421, 0x4C000064
+BEQCTRL = 19 << 26 | 12 << 21 | 2 << 16 | 528 << 1 | 1  # bcctrl 12,2: to CTR and links when cr0's EQ is set
 
 
 # A word that names a label is a function of the pc it's at and `at`, which gives a label's address.
@@ -308,6 +309,8 @@ FUNCS = [
     Code('f_last_bl_next', [addi(3, 3, 1), mflr(4), BLR]),
     # A blrl whose LR holds the next word, which native code calls as it does any blrl, and stops at.
     Code('f_blrl_next', P16 + address(12, '.n') + [mtlr(12), BLRL, 'n:', mflr(3)] + E16),
+    # A bcctrl not taken, which sets LR all the same. r6 holds the word after it, and CTR keeps its value.
+    Code('f_bcctrl_skip', P16 + address(12, 'f_callee') + [mtctr(12), li(5, 1), cmpwi(5, 0), BEQCTRL, mflr(6)] + E16),
     Code('f_rfi', [li(3, 5), RFI, li(3, 6), BLR]),
     Code('f_bdnz', [li(0, 4), mtctr(0), 'spin:', bdnz('.spin'), BLR]),
     Code('f_blob_site_twin', BLOB_SITE),
