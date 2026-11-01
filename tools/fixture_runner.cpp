@@ -141,7 +141,7 @@ void idle_hint(CPU* c) { note("idle_hint", c->r[3]); }
 
 jmp_buf* hle_setjmp_jmpbuf(CPU* c) {
     note("hle_setjmp_jmpbuf", c->r[3], c->lr, c->r[1]);
-    site_frame(c, (uintptr_t)__builtin_frame_address(0));
+    site_frame(c, (uintptr_t)GCN_FRAME_ADDRESS());
     GuestJmp& g = g_jmps[c->r[3]];
     g.lr = c->lr;
     g.sp = c->r[1];
@@ -161,7 +161,7 @@ void hle_longjmp_resume(CPU* c, uint32_t buf) {
 }
 jmp_buf* hle_context_jmpbuf(CPU* c) {
     note("hle_context_jmpbuf", c->r[3]);
-    site_frame(c, (uintptr_t)__builtin_frame_address(0));
+    site_frame(c, (uintptr_t)GCN_FRAME_ADDRESS());
     return &g_bindings[c->r[3]].jb;
 }
 // made_up_save and made_up_load are HLE'd, and stand in for OSSaveContext and OSLoadContext.

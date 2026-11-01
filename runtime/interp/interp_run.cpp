@@ -153,7 +153,7 @@ extern "C" void interp_enter(CPU* c, uint32_t entry) {
     f.site_lo = sites_from(r.start);
     f.site_hi = sites_from(r.end);
     f.ran = code_table_counter(n);
-    f.host = (uintptr_t)__builtin_frame_address(0);
+    f.host = (uintptr_t)GCN_FRAME_ADDRESS();
     interp_frame_run(c, &f, entry);
     // The guard's RET() would return to longjmp's caller, where the native longjmp never returns.
     if (f.longjmp)
@@ -168,7 +168,7 @@ void interp_run_loose(CPU* c, uint32_t pc) {
     f.entry_lr = c->lr;
     f.site_hi = g_recomp_site_count;
     f.ran = code_table_counter(g_recomp_range_count);
-    f.host = (uintptr_t)__builtin_frame_address(0);
+    f.host = (uintptr_t)GCN_FRAME_ADDRESS();
     interp_frame_run(c, &f, pc);
     EXIT();
 }

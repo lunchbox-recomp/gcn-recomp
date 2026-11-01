@@ -28,6 +28,10 @@ static __inline uint32_t GCN_CLZ32(uint32_t v) {
     return _BitScanReverse(&i, (unsigned long)v) ? (uint32_t)(31 - i) : 32u;
 }
 
+/* MSVC gives no frame address, so this is the address of the return address's slot, which is in
+   the same frame. */
+#define GCN_FRAME_ADDRESS() _AddressOfReturnAddress()
+
 #else /* Clang / GCC */
 
 #define GCN_BSWAP16(x) __builtin_bswap16((uint16_t)(x))
@@ -47,6 +51,9 @@ static __inline uint32_t GCN_CLZ32(uint32_t v) {
 #endif
 
 static inline uint32_t GCN_CLZ32(uint32_t v) { return v ? (uint32_t)__builtin_clz(v) : 32u; }
+
+/* An address in the host stack frame of the function it's written in. */
+#define GCN_FRAME_ADDRESS() __builtin_frame_address(0)
 
 #endif
 
