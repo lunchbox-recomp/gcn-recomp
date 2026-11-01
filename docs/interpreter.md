@@ -28,8 +28,8 @@ there, so a word that changed runs as RAM now holds it. Branches go the way reco
 
 - A `bl`, `blrl` or `bctrl` sets LR and calls its target through `call_indirect`, so a callee
   whose own bit is clear runs natively. A `bl` or `bcl` to the next word sets LR and runs on
-  instead, as the hardware does, unless that word starts a setjmp or context function. In a
-  function's last word, it runs on into the function after it.
+  instead, as the hardware does, unless `special_calls.txt` lists the function that starts
+  there. In a function's last word, it runs on into the function after it.
 - A branch that stays in the range jumps there. A backward one runs `IRQ_CHECK` first, or
   `IDLE_CHECK` at an `idle.txt` back edge, and a `bctr` jumps with no check, as a jump
   table's `switch` does.
@@ -79,12 +79,12 @@ A loose frame has no range. A branch that doesn't link is a call and then a retu
 lands on a recompiled function's start, as a mod's tail call does. Anywhere else, a
 function's middle included, it goes on in the same frame.
 
-A taken `bl` or `bcl` to the next word sets LR and runs on, as it does in a function frame, so
-code can read its own address. A `blrl` or `bctrl` whose LR or CTR holds the next word's
-address runs on too, where a function frame calls it.
+A taken `bl` or `bcl` to the next word sets LR and runs on, so code can read its own address.
+A `blrl` or `bctrl` whose LR or CTR holds the next word's address runs on too, where a
+function frame calls it.
 
-A `bl` to a setjmp or context function is a site, as in a function frame. Any other `bl` is a
-call through `call_indirect`, a `bl` over data included. The runtime's `call_indirect` stops
+A `bl` to a setjmp or context function is a site, as in a function frame, unless it's to the
+next word. Any other `bl` is a call through `call_indirect`, a `bl` over data included. The runtime's `call_indirect` stops
 the game at a target that isn't a recompiled entry, so a loose frame's `bl` over data stops it
 there.
 
