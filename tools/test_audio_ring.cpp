@@ -73,6 +73,7 @@ uint32_t ai_stream_rate() { return g_stream_rate; }
 void ai_stream_advance(uint32_t samples) { g_advanced += samples; }
 uint64_t host_ns() { return 0; }
 void clock_hold(uint64_t) {}
+void exi_card_held(uint64_t) {}
 
 // Block n of the disc has 28 stereo samples at predictor 0 and scale 0, so a sample is its
 // nibble, signed, times 4096. The left level is 1 to 7 times that and the right is -7 to -3

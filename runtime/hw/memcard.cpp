@@ -198,6 +198,11 @@ bool MemCard::unsaved() {
     return Clock::now() < game_write_ + quiet_;
 }
 
+void MemCard::held(std::chrono::nanoseconds held) {
+    std::lock_guard<std::mutex> lk(mutex_);
+    game_write_ += std::chrono::duration_cast<Clock::duration>(held);
+}
+
 void MemCard::shutdown() {
     std::unique_lock<std::mutex> lk(mutex_);
     if (stop_) return;

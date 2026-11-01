@@ -19,7 +19,8 @@
 // again. A gate MemCard calls before each write holds one so a page or a shutdown can land
 // during it. A card has a write unsaved for a quiet period after the game's last write, even
 // when its file can't be written, which exi_card_unsaved passes on. Running exi_init again makes a new card from the same file, and the new card
-// has to hold a page the old one hadn't written yet.
+// has to hold a page the old one hadn't written yet. A hold of the guest puts the quiet period
+// off by its length, on the card and through exi_card_held.
 //
 // The exit checks each run in a child process. Two write a page through the EXI registers
 // and leave by plat_exit_now, as the runtime does, or by a SIGHUP taken on the interrupt
@@ -528,6 +529,36 @@ void card_unsaved_unwritable() {
     check(written && !later, "a card whose file can't be written has nothing unsaved a quiet period after the game's last write");
 }
 
+// The quiet period counts only time the guest runs. A hold longer than it, as the overlay's,
+// puts it off by the hold's length, so a save the hold stopped part way is unsaved after it.
+void card_unsaved_held() {
+    const std::string p = path_of("held.raw");
+    MemCard card(p, 4, kQuiet);
+    program_page(card, 0);
+    std::this_thread::sleep_for(kQuiet * 3 / 2);
+    card.held(kQuiet * 3 / 2);
+    const bool after_hold = card.unsaved();
+    std::this_thread::sleep_for(kQuiet * 3 / 2);
+    check(after_hold && !card.unsaved(),
+          "a hold longer than the quiet period leaves a write unsaved, until a quiet period of the guest running");
+}
+
+// exi_card_held passes a hold on to the slot A card, and with no card does nothing.
+void exi_card_holds() {
+    const std::string p = path_of("held-asked.raw");
+    const char* was = g_memcard_path;
+    g_memcard_path = p.c_str();
+    exi_init();
+    exi_write_page();
+    std::this_thread::sleep_for(MemCard::kQuiet * 3 / 2);
+    exi_card_held((uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(MemCard::kQuiet * 3 / 2).count());
+    const bool after_hold = exi_card_unsaved();
+    g_card_a.reset();
+    exi_card_held(1);
+    check(after_hold && !exi_card_unsaved(), "exi_card_held puts the slot A card's quiet period off, and with no card does nothing");
+    g_memcard_path = was;
+}
+
 // exi_card_unsaved is the slot A card's answer, and no with no card.
 void exi_card_answers() {
     const std::string p = path_of("asked.raw");
@@ -700,7 +731,9 @@ int main(int argc, char** argv) {
     card_shutdown_during_save();
     card_unsaved();
     card_unsaved_unwritable();
+    card_unsaved_held();
     exi_card_answers();
+    exi_card_holds();
     card_made_again();
     card_saved_at_exit();
     card_saved_at_hangup();

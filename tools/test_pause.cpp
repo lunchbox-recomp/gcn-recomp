@@ -1,9 +1,9 @@
 // Pause checks: the `test_pause` target. Runs with no window, GL, disc or game.
 //
 // runtime/pause.cpp is compiled into this file over a fake host clock, and a std::thread
-// stands in for the guest thread at a frame boundary. clock_hold sums what it's given, so a
-// check can see that a hold's host time went to the clock. GCN_PAUSE_AT is set before the
-// first boundary, which is when pause.cpp reads it.
+// stands in for the guest thread at a frame boundary. clock_hold and exi_card_held each sum
+// what they're given, so a check can see that a hold's host time went to the clock and to the
+// memory card. GCN_PAUSE_AT is set before the first boundary, which is when pause.cpp reads it.
 //
 // runtime/gx/cmd.cpp is compiled in too, so the guest thread can reach its boundaries the way
 // a game's command stream takes it there: through process() with the front end inline, and
@@ -199,6 +199,8 @@ void check_frame_ends(bool inline_fe) {
 
 uint64_t host_ns() { return g_host.load(); }
 void clock_hold(uint64_t ns) { g_handed += ns; }
+static std::atomic<uint64_t> g_card_held{0};  // what exi_card_held has been given, all told
+void exi_card_held(uint64_t ns) { g_card_held += ns; }
 uint64_t audio_frames_out() { return 0; }
 int present_last_checks();  // tools/test_pause_gl.cpp
 
@@ -214,6 +216,7 @@ int main() {
     check(g->finish(), "lifting the pause lets the guest go on");
     check(!paused(), "the guest isn't held once it has gone on");
     check(g_handed == 40000000, "the 40 ms the guest was held went to the clock");
+    check(g_card_held == 40000000, "and to the memory card, whose quiet period leaves it out");
 
     pause_request(true);
     pause_request(false);

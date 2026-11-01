@@ -774,6 +774,9 @@ at most, after Quit, Restart, Escape or the window's close button. A run that wa
 `[quit] the game is writing to the memory card, so the run ends once it's done, 3 s at most`,
 and one with no card or no write lately ends at once, as `--exit-after` always does.
 
+The quiet period counts only time the guest runs (`exi_card_held` in `runtime/runtime.h`), so a
+save the menu held part way still has all of it to come once the menu closes.
+
 Restart then prints `[reset] the overlay's Restart game starts the game again` and relaunches
 the game as a console reset does (`on_reset`), so a tool reading the run's output sees a
 restart in that line as it does in a console reset's own. A replay's menu has no Restart game,

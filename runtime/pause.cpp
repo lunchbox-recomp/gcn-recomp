@@ -76,6 +76,7 @@ void pause_gate(uint32_t frame) {
     g_lifted.wait(lk, [] { return !g_asked.load(); });
     const uint64_t held = host_ns() - t0;
     clock_hold(held);
+    exi_card_held(held);
     g_resumed_at = std::chrono::steady_clock::now().time_since_epoch().count();
     g_held = false;
     fprintf(stderr, "[pause] resumed at frame %u after %.1f ms, output frame %llu\n", frame, (double)held / 1e6,

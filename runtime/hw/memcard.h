@@ -34,8 +34,12 @@ public:
     uint64_t saves() const { return saves_.load(); }
     // Whether the game wrote the card within the last quiet period, before which the saver takes
     // nothing: the game may be part way through a save. It goes by the game's writes and not by
-    // the file, so a card file that can't be written isn't unsaved forever.
+    // the file, so a card file that can't be written isn't unsaved forever, and it leaves out
+    // time the guest was held (held).
     bool unsaved();
+    // The guest was held for `held` (pause.h), as the overlay holds it. The quiet period counts
+    // only time the guest runs, so it's put off by that much.
+    void held(std::chrono::nanoseconds held);
     void format();
     void write_serial(uint8_t* header);
     // Tests only: called at the start of each write of the file, on the thread writing it,

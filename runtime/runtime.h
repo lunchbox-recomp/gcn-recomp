@@ -189,9 +189,11 @@ void vi_init(); uint16_t vi_read16(uint32_t off); void vi_write16(uint32_t off, 
 void di_init(const char* iso_path); uint32_t di_read32(uint32_t off); void di_write32(uint32_t off, uint32_t v);
 void si_init(); uint32_t si_read32(uint32_t off); void si_write32(uint32_t off, uint32_t v);
 void exi_init(); uint32_t exi_read32(uint32_t off); void exi_write32(uint32_t off, uint32_t v);
-// Whether the game wrote the memory card in slot A within its quiet period (hw/memcard.h), so
-// the game may be part way through a save. False with no card.
+// Whether the game wrote the memory card in slot A within its quiet period of the guest
+// running (hw/memcard.h), so the game may be part way through a save. False with no card.
 bool exi_card_unsaved();
+// The guest was held `ns` of host time by a pause (pause.h), which that quiet period leaves out.
+void exi_card_held(uint64_t ns);
 void ai_init(); uint32_t ai_read32(uint32_t off); void ai_write32(uint32_t off, uint32_t v);
 void dsp_init(); uint16_t dsp_read16(uint32_t off); void dsp_write16(uint32_t off, uint16_t v);
 void cp_init(); uint16_t cp_read16(uint32_t off); void cp_write16(uint32_t off, uint16_t v);

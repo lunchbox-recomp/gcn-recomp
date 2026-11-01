@@ -192,6 +192,11 @@ bool exi_card_unsaved() {
     return g_card_a && g_card_a->unsaved();
 }
 
+void exi_card_held(uint64_t ns) {
+    std::lock_guard<std::mutex> lk(g_card_mutex);
+    if (g_card_a) g_card_a->held(std::chrono::nanoseconds(ns));
+}
+
 uint32_t exi_read32(uint32_t off) {
     int ch = off / 0x14;
     if (ch > 2) return 0;
