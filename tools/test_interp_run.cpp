@@ -83,6 +83,8 @@ const Case kCases[] = {
     // Native code calls a blrl's LR, which is no function's entry here, and stops there.
     {"a function's blrl to the next word", FX_F_BLRL_NEXT, 0, nullptr, kNextWordStop.c_str(), false},
     {"a bcctrl not taken, which sets LR all the same", FX_F_BCCTRL_SKIP, 0, nullptr, nullptr, false},
+    {"a function's last word, a bl to the setjmp function after it", FX_F_SJ_NEXT, 0, nullptr, "hle_setjmp_jmpbuf",
+     false},
     {"an rfi, which returns", FX_F_RFI, 0, nullptr, "hle_rfi", false},
     {"a bdnz to itself, with an IRQ_CHECK each time", FX_F_BDNZ, 0, nullptr, "IRQ_CHECK", false},
     {"a loose frame's branch onto a patch site", FX_BLOB_SITE, FX_F_BLOB_SITE_TWIN, nullptr, "heap_trace_alloc", true},
