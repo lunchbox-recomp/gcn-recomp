@@ -8,6 +8,7 @@
 #include "gx/gl.h"
 #include "gx/render_gl.h"
 #include "pause.h"
+#include "runtime.h"  // host_ns
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cstdint>
@@ -167,28 +168,53 @@ bool is_b(const SDL_GamepadButtonEvent& b) {
     return p && b.button == gamepads_faces(p)[1];
 }
 
-std::vector<SDL_JoystickID> g_chords;  // gamepads holding the chord that last opened or closed it
+// Nintendo's Switch 2 GameCube controller, by its USB IDs. SDL maps no Back on it, but it has
+// ZL, a button the GameCube's pad lacks, and Home: SDL's left shoulder and Guide.
+constexpr Uint16 kNintendo = 0x057e, kSwitch2GameCube = 0x2073;
 
-// Whether `e` completes the chord on a gamepad with no Back, as SDL maps GameCube controllers:
-// L and R clicked in, as the game takes them (kGamepadTriggerClick), and Start, all held. Once
-// it's opened or closed the overlay, it's let go before it does again.
-bool chord(const SDL_Event& e) {
+// Whether the press `b` opens or closes the overlay: Back wherever SDL maps it, and ZL or Home
+// on a Switch 2 GameCube controller.
+bool opens(const SDL_GamepadButtonEvent& b) {
+    if (b.button == SDL_GAMEPAD_BUTTON_BACK) return true;
+    if (b.button != SDL_GAMEPAD_BUTTON_LEFT_SHOULDER && b.button != SDL_GAMEPAD_BUTTON_GUIDE) return false;
+    SDL_Gamepad* p = SDL_GetGamepadFromID(b.which);
+    return p && SDL_GetGamepadVendor(p) == kNintendo && SDL_GetGamepadProduct(p) == kSwitch2GameCube;
+}
+
+// The chord on a gamepad with only the GameCube's own buttons, which SDL maps no Back or Guide
+// on: Z and both trigger clicks held with nothing else for kChordNs. The clicks are SDL's MISC3
+// and MISC4 where it maps them, as for Nintendo's adapter, and the triggers' axes past their
+// click (kGamepadTriggerClick) where it doesn't. It opens or closes the overlay once a hold, and
+// any other button stops it until the hold is let go.
+constexpr uint64_t kChordNs = 1000000000;
+struct ChordHold {
     SDL_JoystickID id;
-    if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || e.type == SDL_EVENT_GAMEPAD_BUTTON_UP) id = e.gbutton.which;
-    else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION) id = e.gaxis.which;
-    else return false;
-    SDL_Gamepad* p = SDL_GetGamepadFromID(id);
-    if (!p || SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_BACK)) return false;
-    const bool held = SDL_GetGamepadButton(p, SDL_GAMEPAD_BUTTON_START) &&
-                      SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > kGamepadTriggerClick &&
-                      SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > kGamepadTriggerClick;
-    const auto at = std::find(g_chords.begin(), g_chords.end(), id);
+    uint64_t since;  // host_ns as the hold began
+    bool spent;      // it's opened or closed the overlay, or another button stopped it
+};
+std::vector<ChordHold> g_holds;
+
+bool clicked(SDL_Gamepad* p, SDL_GamepadButton click, SDL_GamepadAxis axis) {
+    return SDL_GamepadHasButton(p, click) ? SDL_GetGamepadButton(p, click)
+                                          : SDL_GetGamepadAxis(p, axis) > kGamepadTriggerClick;
+}
+
+// Whether `p`'s chord has been held its second by `now`, the once a hold that it acts.
+bool chord(SDL_JoystickID id, SDL_Gamepad* p, uint64_t now) {
+    const auto at = std::find_if(g_holds.begin(), g_holds.end(), [&](const ChordHold& h) { return h.id == id; });
+    const bool held = SDL_GetGamepadButton(p, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER) &&
+                      clicked(p, SDL_GAMEPAD_BUTTON_MISC3, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) &&
+                      clicked(p, SDL_GAMEPAD_BUTTON_MISC4, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
     if (!held) {
-        if (at != g_chords.end()) g_chords.erase(at);
+        if (at != g_holds.end()) g_holds.erase(at);
         return false;
     }
-    if (at != g_chords.end()) return false;
-    g_chords.push_back(id);
+    ChordHold& h = at != g_holds.end() ? *at : g_holds.emplace_back(ChordHold{id, now, false});
+    constexpr uint32_t kChord = 1u << SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER | 1u << SDL_GAMEPAD_BUTTON_MISC3 |
+                                1u << SDL_GAMEPAD_BUTTON_MISC4;
+    if (buttons_down(p) & ~kChord) h.spent = true;
+    if (h.spent || now - h.since < kChordNs) return false;
+    h.spent = true;
     return true;
 }
 
@@ -379,20 +405,36 @@ bool overlay_event(const SDL_Event& e) {
     if (!g_ready) return false;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
     const bool pressed = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
-    const bool chorded = chord(e);
     const bool cancel = g_open && (key == SDL_SCANCODE_ESCAPE || (pressed && is_b(e.gbutton)));
     // While the menu asks, B or Escape goes back to it instead of closing it.
     if (cancel && g_ask != OverlayAsk::none) {
         back();
         return true;
     }
-    if (key == SDL_SCANCODE_F1 || (pressed && e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) || cancel || chorded) {
+    if (key == SDL_SCANCODE_F1 || (pressed && opens(e.gbutton)) || cancel) {
         set_open(!g_open);
         return true;
     }
     if (g_window && (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED)) hold_pads();
     else if (g_window && g_open && !(e.type == SDL_EVENT_KEY_DOWN && e.key.repeat)) ImGui_ImplSDL3_ProcessEvent(&e);
     return g_open && is_input(e);
+}
+
+void overlay_poll() {
+    if (!g_ready) return;
+    const uint64_t now = host_ns();
+    bool toggle = false;
+    int n = 0;
+    SDL_JoystickID* ids = SDL_GetGamepads(&n);
+    for (int i = 0; i < n; i++) {
+        SDL_Gamepad* p = SDL_GetGamepadFromID(ids[i]);
+        if (!p || input_map_binds(ids[i]) || SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_BACK) ||
+            SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_GUIDE))
+            continue;
+        if (chord(ids[i], p, now)) toggle = true;
+    }
+    SDL_free(ids);
+    if (toggle) set_open(!g_open);
 }
 
 void overlay_gate(int port, PadState& p) {

@@ -80,9 +80,11 @@ Control-Command-F on a Mac, from the Window menu SDL adds, where F11 is Show Des
 default.
 
 F1 or a gamepad's Back opens a menu over the game and pauses it until F1, Back or B closes it.
-A gamepad with no Back, as SDL maps a GameCube controller, opens and closes it with L, R and
-Start held together, L and R clicked all the way in. Escape closes the menu too, and quits the
-game when the menu is closed.
+Escape closes the menu too, and quits the game when the menu is closed.
+
+SDL maps no Back on a GameCube controller. On a Switch 2 GameCube controller ZL or Home opens
+and closes the menu instead. One with only the GameCube's buttons, as on an adapter, does it
+with Z and both triggers clicked all the way in, held for a second with nothing else.
 
 On a gamepad A picks and B goes back, the buttons the game takes as A and B, so a Switch Pro's
 are the other way round from an Xbox pad's.

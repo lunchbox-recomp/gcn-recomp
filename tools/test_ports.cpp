@@ -15,14 +15,15 @@
 // gx::render_set_internal_scale) keep what they were last given. The interrupt handler's
 // thread dump (debug_dump_threads) and guest memory (g_mem) are stubbed too, and fatal, which
 // says why and exits 1, and the session's note that the game is starting again
-// (session_relaunching), which notes it was called, and the clock's hold for a bot (host_ns,
-// clock_hold), which no check reaches. So are the end of a movie (record::finish) and the
+// (session_relaunching), which notes it was called, and the clock's hold for a bot
+// (clock_hold), which no check reaches. So are the end of a movie (record::finish) and the
 // guest threads' quit (threads_request_quit), which only --restart's and --quit's ends of the
 // run reach, and where the first resets the console on another thread for them
-// (g_reset_in_finish). reset.cpp is linked, for the game's reset (guest_reset). The disc
+// (g_reset_in_finish), and the host clock (host_ns), which reads g_host_ns, moved by hand for
+// the overlay's chord. reset.cpp is linked, for the game's reset (guest_reset). The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
-// With GCN_OVERLAY, overlay/*.cpp and pause.cpp are linked as well, and pause.cpp's clock
+// With GCN_OVERLAY, overlay/*.cpp and pause.cpp are linked as well, and the clock they read
 // (host_ns and clock_hold above, and audio_frames_out) is stubbed.
 //
 // usage: test_ports <empty work dir>            the port checks
@@ -100,7 +101,8 @@ void fatal(const char* fmt, ...) {
 }
 static std::atomic<int> g_relaunching{0};  // how many times session_relaunching has been called
 void session_relaunching() { g_relaunching++; }
-uint64_t host_ns() { return 0; }
+static std::atomic<uint64_t> g_host_ns{0};  // the host clock, which a check moves by hand
+uint64_t host_ns() { return g_host_ns; }
 void clock_hold(uint64_t) {}
 // Set, the end of a movie resets the console on another thread first, as a game may while
 // end_run runs, and gives that reset time to act.
@@ -1865,45 +1867,141 @@ void overlay(const std::string& dir) {
           "a trigger in as it closes stays out of the game with its travel, eased out past its click too");
     check(rested.trig_l > 0 && !(rested.buttons & PAD_L), "once it's been back at rest, its travel is the game's again");
 
-    // A gamepad with no Back, as SDL maps GameCube controllers, opens and closes it with L and
-    // R clicked in and Start, all held, once each time they're held together.
-    // SDL keeps a virtual gamepad's mapping under the first nine characters of its name, so
-    // this name can't start as "virtual pad" does, or it would get that pad's Back.
-    Virtual cube{"no-back pad"};
-    cube.button_mask = ((1u << SDL_GAMEPAD_BUTTON_COUNT) - 1) & ~(1u << SDL_GAMEPAD_BUTTON_BACK);
+    // A gamepad with only the GameCube's buttons, as SDL maps one on an adapter, opens and closes
+    // it with Z and both trigger clicks held for 1 s with nothing else, once a hold. The clicks
+    // are SDL's MISC3 and MISC4 where it maps them, as for the adapter, and the triggers' axes
+    // past their click (kGamepadTriggerClick) where it doesn't. The second is on the host clock
+    // (host_ns), which g_host_ns sets here. SDL keeps a virtual gamepad's mapping under the first
+    // nine characters of its name, so each name here starts differently.
+    constexpr Uint32 kCubeButtons =
+        1u << SDL_GAMEPAD_BUTTON_SOUTH | 1u << SDL_GAMEPAD_BUTTON_EAST | 1u << SDL_GAMEPAD_BUTTON_WEST |
+        1u << SDL_GAMEPAD_BUTTON_NORTH | 1u << SDL_GAMEPAD_BUTTON_START | 1u << SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER |
+        1u << SDL_GAMEPAD_BUTTON_DPAD_UP | 1u << SDL_GAMEPAD_BUTTON_DPAD_DOWN | 1u << SDL_GAMEPAD_BUTTON_DPAD_LEFT |
+        1u << SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+    constexpr Uint32 kClicks = 1u << SDL_GAMEPAD_BUTTON_MISC3 | 1u << SDL_GAMEPAD_BUTTON_MISC4;
+    Virtual cube{"gamecube pad overlay"};
+    cube.button_mask = kCubeButtons | kClicks;
+    Virtual bare{"bare cube pad overlay"};  // one whose mapping has no click buttons
+    bare.button_mask = kCubeButtons;
     attach(cube);
+    attach(bare);
     host_frame(guest);
-    SDL_Gamepad* cube_pad = SDL_GetGamepadFromID(cube.id);
-    const bool no_back = cube_pad && !SDL_GamepadHasButton(cube_pad, SDL_GAMEPAD_BUTTON_BACK);
-    const auto hold = [&](const Virtual& v, bool l, bool r, bool start) {
-        set_axis(v, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, l ? 32767 : -32768);
-        set_axis(v, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, r ? 32767 : -32768);
-        set_button(v, SDL_GAMEPAD_BUTTON_START, start);
+    // The host clock `ms` on, then a host frame.
+    const auto after = [&](uint64_t ms) {
+        g_host_ns += ms * 1000000;
         host_frame(guest);
     };
-    hold(cube, true, false, true);
-    const bool two_of_three = !overlay_open();
-    hold(cube, true, true, true);
-    const bool chord_opens = overlay_open() && paused();
-    // Still held, the chord sees the stick move, and that closes nothing.
-    set_axis(cube, SDL_GAMEPAD_AXIS_LEFTX, 20000);
-    hold(cube, true, true, true);
-    const bool held_stays = overlay_open();
-    set_axis(cube, SDL_GAMEPAD_AXIS_LEFTX, 0);
-    hold(cube, false, false, false);
-    hold(cube, true, true, true);
-    const bool chord_closes = !overlay_open() && !paused();
-    const PadState closing = read(1);
-    hold(cube, false, false, false);
-    hold(pad, true, true, true);
-    const bool back_pad = !overlay_open();
-    hold(pad, false, false, false);
-    check(no_back && chord_opens && held_stays && chord_closes,
-          "on a gamepad with no Back, L, R and Start held together open it, once, and then close it");
-    check(two_of_three && back_pad, "two of the three don't, and on a gamepad with a Back all three don't");
+    // `v`'s Z, and its trigger clicks: its click buttons where it has them, or else both triggers
+    // pushed to `travel`, then a host frame.
+    const auto chord = [&](const Virtual& v, bool z, bool clicks, Sint16 travel = 32767) {
+        set_button(v, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, z);
+        if (v.button_mask & kClicks) {
+            set_button(v, SDL_GAMEPAD_BUTTON_MISC3, clicks);
+            set_button(v, SDL_GAMEPAD_BUTTON_MISC4, clicks);
+        } else {
+            set_axis(v, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, clicks ? travel : -32768);
+            set_axis(v, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, clicks ? travel : -32768);
+        }
+        after(0);
+    };
+    // The chord held on `v` for `ms`, then let go. Whether that opened or closed the overlay.
+    const auto held_for = [&](const Virtual& v, uint64_t ms) {
+        const bool was = overlay_open();
+        chord(v, true, true);
+        after(ms);
+        const bool toggled = overlay_open() != was;
+        chord(v, false, false);
+        return toggled;
+    };
+    chord(cube, true, true);
+    after(999);
+    const bool not_yet = !overlay_open();
+    after(1);
+    const bool opens = overlay_open() && paused();
+    after(1500);
+    const bool once = overlay_open();
+    chord(cube, false, false);
+    const bool closes = held_for(cube, 1000) && !overlay_open() && !paused();
+    check(not_yet && opens && once && closes,
+          "on a gamepad with only the GameCube's buttons, Z and both clicks held 1 s open it, once a hold, and close it");
+    const bool first_short = !held_for(cube, 900);
+    check(first_short && !held_for(cube, 900) && !overlay_open(),
+          "let go before 1 s they don't, and the next hold is timed from its own start");
+
+    // Any other button stops it: A or Start held from the start, or A pressed and let go partway.
+    set_button(cube, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    const bool with_a = !held_for(cube, 1500);
+    set_button(cube, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    set_button(cube, SDL_GAMEPAD_BUTTON_START, true);
+    const bool with_start = !held_for(cube, 1500);
+    set_button(cube, SDL_GAMEPAD_BUTTON_START, false);
+    chord(cube, true, true);
+    after(500);
+    set_button(cube, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    after(0);
+    set_button(cube, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    after(1500);
+    const bool a_stops = !overlay_open();
+    chord(cube, false, false);
+    check(with_a && with_start && a_stops && !overlay_open(),
+          "with A or Start held too they don't, nor with A pressed and let go during the hold");
+
+    chord(cube, false, true);
+    after(1500);
+    const bool no_z = !overlay_open();
+    chord(cube, false, false);
+    set_button(bare, SDL_GAMEPAD_BUTTON_START, true);
+    chord(bare, false, true);
+    after(1500);
+    const bool no_start_chord = !overlay_open();
+    set_button(bare, SDL_GAMEPAD_BUTTON_START, false);
+    chord(bare, false, false);
+    check(no_z && no_start_chord, "the clicks without Z don't open it, nor do L and R clicked in with Start");
+
+    chord(bare, true, true, 20000);
+    after(1500);
+    const bool partway = !overlay_open();
+    chord(bare, false, false);
+    const bool bare_opens = held_for(bare, 1000) && overlay_open();
+    chord(bare, true, true);
+    after(1000);
+    const bool bare_closes = !overlay_open() && !paused();
+    const PadState closing = read(2);
+    chord(bare, false, false);
+    check(partway && bare_opens && bare_closes,
+          "where SDL maps no click buttons the triggers past their click stand in, though partway in they don't");
     check(closing.connected && at_rest(closing),
-          "the chord that closed it stays out of port 2 until it's let go, the triggers' travel too");
-    unplug({&cube});
+          "the hold that closed it stays out of port 3 until it's let go, the triggers' travel too");
+
+    // A Switch 2 GameCube controller has no Back. Its ZL, a button the GameCube's pad lacks, opens
+    // and closes it, and so does its Home, SDL's left shoulder and Guide on it.
+    Virtual nso{"switch 2 gamecube overlay"};
+    nso.vendor = 0x057e;
+    nso.product = 0x2073;
+    nso.button_mask = kCubeButtons | kClicks | 1u << SDL_GAMEPAD_BUTTON_GUIDE | 1u << SDL_GAMEPAD_BUTTON_LEFT_SHOULDER |
+                      1u << SDL_GAMEPAD_BUTTON_MISC1 | 1u << SDL_GAMEPAD_BUTTON_MISC2;
+    attach(nso);
+    host_frame(guest);
+    // `button` pressed and let go on `v`, a host frame each. Whether the overlay's open after.
+    // SDL holds back a Guide let go within 250 ms of its press (SDL_gamepad.c's
+    // SDL_MINIMUM_GUIDE_BUTTON_DELAY_MS) and drops the next press until it's sent, so a Guide is
+    // held that long first.
+    const auto pressed = [&](const Virtual& v, int button) {
+        set_button(v, button, true);
+        host_frame(guest);
+        if (button == SDL_GAMEPAD_BUTTON_GUIDE) std::this_thread::sleep_for(std::chrono::milliseconds(260));
+        set_button(v, button, false);
+        host_frame(guest);
+        return overlay_open();
+    };
+    const bool zl = pressed(nso, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) && !pressed(nso, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+    const bool home = pressed(nso, SDL_GAMEPAD_BUTTON_GUIDE) && !pressed(nso, SDL_GAMEPAD_BUTTON_GUIDE);
+    check(zl && home, "on a Switch 2 GameCube controller ZL opens it and closes it, and so does Home");
+    const bool guide = !pressed(pad, SDL_GAMEPAD_BUTTON_GUIDE);
+    const bool shoulder = !pressed(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+    check(guide && shoulder && !held_for(pad, 1500),
+          "on a gamepad with a Back, Guide, the left shoulder and the GameCube's chord open nothing");
+    unplug({&cube, &bare, &nso});
 
     Settings next = picture.now;
     next.aspect = "16:9";

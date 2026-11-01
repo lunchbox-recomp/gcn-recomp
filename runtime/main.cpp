@@ -257,8 +257,8 @@ static void update_pads(int first) {
 
 static bool g_restart;  // frontend_restart's
 
-// The window's events, the overlay's first (overlay.h). False once the user has asked to quit,
-// or to restart (frontend_restart).
+// The window's events, the overlay's first (overlay.h), then the overlay's chord. False once the
+// user has asked to quit, or to restart (frontend_restart).
 static bool pump_events() {
     SDL_Event e;
     bool running = true;
@@ -282,6 +282,7 @@ static bool pump_events() {
                 SDL_SetWindowFullscreen(w, !(SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN));
         }
     }
+    overlay_poll();
     return running && !g_restart;
 }
 
