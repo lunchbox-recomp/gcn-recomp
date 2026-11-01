@@ -91,8 +91,9 @@ void code_table_mark(uint32_t n, CodeMark mark, bool on);
 // The index of the range holding addr, or false when no recompiled function holds it.
 bool code_table_find(uint32_t addr, uint32_t* n);
 // Where function n's interpreted instructions are counted. Loose frames count at g_recomp_range_count.
-// Only the guest thread running a frame adds to a count, with a relaxed load and store, and the report
-// at exit reads them from another thread.
+// A frame adds to a count with a relaxed load and store. Only the guest thread holding the baton runs
+// frames, so every adder is serialised and none is lost, and the report at exit reads them from
+// another thread.
 std::atomic<uint64_t>* code_table_counter(uint32_t n);
 // Forces what GCN_INTERPRET's value names, "all" or a file of starts, and returns the line saying how
 // many functions that was. Each line of the file that isn't a recompiled function's start is printed,

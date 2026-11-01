@@ -64,7 +64,8 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
             else unimpl(c, pc, 0);
             return false;
         }
-        // Only this thread adds to the count, so a relaxed load and store keep it a plain one.
+        // The baton serialises every guest thread that adds to a count, so a relaxed load and store
+        // lose nothing and stay a plain one.
         f->ran->store(f->ran->load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
         const uint32_t insn = LD32(pc);
         // A site's function runs while RAM holds the word it replaced, and RAM's word runs otherwise.
