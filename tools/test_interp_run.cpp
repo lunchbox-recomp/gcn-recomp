@@ -61,6 +61,10 @@ const Case kCases[] = {
      true},
     {"a loose frame's bl and bcl to the next word, against the hardware's", FX_BLOB_NEXT, FX_F_BLOB_NEXT_TWIN,
      nullptr, nullptr, true},
+    {"a loose frame's blrl to the next word, against the hardware's", FX_BLOB_BLRL_NEXT, FX_F_BLRL_NEXT_TWIN,
+     nullptr, nullptr, true},
+    {"a loose frame's bctrl to the next word, against the hardware's", FX_BLOB_BCTRL_NEXT, FX_F_BCTRL_NEXT_TWIN,
+     nullptr, nullptr, true},
     // This pins native's behaviour today, which calls the next word as a mid-entry and then runs it again
     // once that returns. F2a changes native to set LR and run on, which flips this case.
     {"a function's bl to the next word, which native runs twice", FX_F_BL_NEXT, 0, nullptr, nullptr, false},
