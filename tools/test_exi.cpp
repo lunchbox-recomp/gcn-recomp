@@ -521,13 +521,18 @@ void card_unsaved() {
 void card_unsaved_unwritable() {
     const std::string p = path_of("unwritable.raw");
     MemCard card(p, 4, kQuiet);
+    const uint64_t made = card.saves();
     mkdir((p + ".tmp").c_str(), 0755);
     program_page(card, 0);
     const bool written = card.unsaved();
-    std::this_thread::sleep_for(2 * kQuiet);
+    // Half a quiet period past the saver's first try, which failed and was put off a quiet
+    // period, so the answer can't be the saver's.
+    std::this_thread::sleep_for(kQuiet * 3 / 2);
     const bool later = card.unsaved();
+    const bool none_saved = card.saves() == made;
     rmdir((p + ".tmp").c_str());
-    check(written && !later, "a card whose file can't be written has nothing unsaved a quiet period after the game's last write");
+    check(written && !later && none_saved,
+          "a card whose file can't be written has nothing unsaved a quiet period after the game's last write");
 }
 
 // The quiet period counts only time the guest runs. A hold longer than it, as the overlay's,
