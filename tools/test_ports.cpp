@@ -1976,7 +1976,8 @@ void overlay(const std::string& dir) {
           "the hold that closed it stays out of port 3 until it's let go, the triggers' travel too");
 
     // A Switch 2 GameCube controller has no Back. Its ZL, a button the GameCube's pad lacks, opens
-    // and closes it, and so does its Home, SDL's left shoulder and Guide on it.
+    // and closes it, and so does its Home, SDL's left shoulder and Guide on it. It has Guide, so
+    // the GameCube's chord isn't its, though it has the clicks.
     Virtual nso{"switch 2 gamecube overlay"};
     nso.vendor = 0x057e;
     nso.product = 0x2073;
@@ -1998,7 +1999,8 @@ void overlay(const std::string& dir) {
     };
     const bool zl = pressed(nso, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER) && !pressed(nso, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
     const bool home = pressed(nso, SDL_GAMEPAD_BUTTON_GUIDE) && !pressed(nso, SDL_GAMEPAD_BUTTON_GUIDE);
-    check(zl && home, "on a Switch 2 GameCube controller ZL opens it and closes it, and so does Home");
+    check(zl && home && !held_for(nso, 1500),
+          "on a Switch 2 GameCube controller ZL opens it and closes it, and so does Home, but the chord doesn't");
     const bool guide = !pressed(pad, SDL_GAMEPAD_BUTTON_GUIDE);
     const bool shoulder = !pressed(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
     check(guide && shoulder && !held_for(pad, 1500),
