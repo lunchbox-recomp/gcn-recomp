@@ -78,8 +78,8 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again 
 void interp_run_loose(CPU* c, uint32_t pc);
 // The bl at site_pc to a setjmp or context row's function, with LR set already. It takes the setjmp and
 // calls target when that returns 0, then runs the rest of f's code from the next word. So a longjmp
-// finds the setjmp's frame for as long as the guest function hasn't returned. The code coming back
-// round to site_pc takes the setjmp again in the same C frame.
+// finds the setjmp's frame for as long as the guest function hasn't returned. When a loop through one
+// site brings the guest function back to it, the setjmp is taken again in the same C frame.
 void interp_setjmp_site(CPU* c, const InterpFrame* f, uint32_t kind, uint32_t target, uint32_t site_pc);
 
 // ---- which functions run interpreted (code_table.cpp) ----

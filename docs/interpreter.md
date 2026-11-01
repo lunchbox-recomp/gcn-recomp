@@ -52,9 +52,9 @@ point. `interp_setjmp_site` takes the host setjmp in a C frame of its own and ca
 function. It then runs the rest of the guest function from that frame, so a longjmp to the
 jmp_buf lands in a live frame for as long as the guest function hasn't returned.
 
-When a loop brings the guest function back to the same site, the setjmp is taken again in
-that C frame, as native code takes it again in the function's. So the host stack stays flat
-however often the loop comes round.
+When a loop through one site brings the guest function back to it, the setjmp is taken again
+in that C frame, as native code takes it again in the function's. So the host stack stays
+flat however often the loop comes round.
 
 ## Sites
 
