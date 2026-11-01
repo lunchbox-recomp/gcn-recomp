@@ -5,8 +5,8 @@
 // test_interp_run_trace is built with GCN_TRACE_CALLS, and each of its runs must leave the guest call
 // stack as deep as it found it.
 //
-// After the cases come --log=interp's lines and the two stops, a longjmp frame that returns and a
-// patch with a goto.
+// After the cases come --log=interp's lines and the stops, a longjmp frame that returns, a patch with
+// a goto and a loop through two sites in a function frame and in a loose one.
 //
 // usage: test_interp_run
 // Exits 0 only if everything matches.
@@ -90,6 +90,10 @@ const Case kCases[] = {
     // The loose frame runs RAM's word at the mid-entry, where a call would run the compiled one.
     {"a loose frame's branch onto a mid-entry, whose word changed in RAM", FX_BLOB_MID, FX_F_BLOB_MID_TWIN,
      [](CPU*) { poke(FX_F_MULTI_MID, FX_MID_WORD); }, nullptr, true},
+    // A loose frame over f_sj's and f_ctx's own words, so each site's LR is the one the native run has. A
+    // twin anywhere else would hand the setjmp another LR.
+    {"a loose frame's setjmp site resumed by a longjmp", FX_F_SJ, 0, nullptr, "hle_longjmp_resume", true},
+    {"a loose frame's context site resumed after its frame went on", FX_F_CTX, 0, nullptr, "hle_made_up_load", true},
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to
@@ -115,8 +119,11 @@ void check_logs() {
     }
 }
 
-// Runs entry forced, and checks that its stop's whole message is one of wants.
-void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std::vector<std::string>& wants) {
+void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc); }
+
+// Runs entry forced, or as a loose frame, and checks that its stop's whole message is one of wants.
+void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std::vector<std::string>& wants,
+               bool loose = false) {
     reset_ram();
     base_cpu(&g_cpu);
     g_calls.clear();
@@ -124,10 +131,15 @@ void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std:
     g_bindings.clear();
     g_longjmp_returns = false;
     if (setup) setup(&g_cpu);
-    const uint32_t n = range_of(entry);
-    code_table_mark(n, CODE_FORCED, true);
-    const std::string stop = call(entry);
-    code_table_mark(n, CODE_FORCED, false);
+    std::string stop;
+    if (loose) {
+        if (!guarded(run_loose, &entry)) stop = g_fatal;
+    } else {
+        const uint32_t n = range_of(entry);
+        code_table_mark(n, CODE_FORCED, true);
+        stop = call(entry);
+        code_table_mark(n, CODE_FORCED, false);
+    }
     g_longjmp_returns = false;
     bool found = false;
     for (const std::string& want : wants) found = found || stop == want;
@@ -149,15 +161,20 @@ void check_stops() {
     snprintf(want, sizeof want, "the patch at %08X has a goto, which works only inside its function", FX_F_GOTO_SITE);
     stop_case("a patch with a goto stops", FX_F_GOTO, nullptr, {want});
     // Which of the two sites crosses the bound depends on the frames' sizes.
-    std::vector<std::string> sites;
+    std::vector<std::string> sites, loose_sites;
+    const char* const nested = "%s's setjmp and context sites nested past 4 MiB of the host stack, at the site at %08X, "
+                               "since a loop through more than one setjmp or context site nests a C frame for each";
     for (uint32_t pc : {FX_F_TWO_SITE_LOOP_A, FX_F_TWO_SITE_LOOP_B}) {
-        snprintf(want, sizeof want,
-                 "f_two_site_loop's setjmp and context sites nested past 4 MiB of the host stack, at the site at %08X, "
-                 "since a loop through more than one setjmp or context site nests a C frame for each",
-                 pc);
+        snprintf(want, sizeof want, nested, "f_two_site_loop", pc);
         sites.push_back(want);
     }
     stop_case("a loop through two sites stops once they nest past 4 MiB", FX_F_TWO_SITE_LOOP, nullptr, sites);
+    for (uint32_t pc : {FX_BLOB_TWO_SITE_LOOP_A, FX_BLOB_TWO_SITE_LOOP_B}) {
+        snprintf(want, sizeof want, nested, "a loose frame", pc);
+        loose_sites.push_back(want);
+    }
+    stop_case("a loose frame's loop through two sites stops once they nest past 4 MiB", FX_BLOB_TWO_SITE_LOOP,
+              nullptr, loose_sites, true);
 }
 
 }  // namespace

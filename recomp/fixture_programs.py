@@ -232,6 +232,10 @@ BLOB_BCTRL_NEXT = P16 + address(12, '.n') + [mtctr(12), BCTRL, 'n:', mflr(3)] + 
 BCTRL_TWIN = P16 + address(12, 'blob_bctrl_next.n') + [mtctr(12), mtlr(12), mflr(3)] + E16
 # A mod's branch onto a patch site in a function's middle.
 BLOB_SITE = [li(3, 1), b('f_patch.site')]
+# A loop through a setjmp site and a context site that never ends. Only an interpreted run takes it,
+# and the 4 MiB stop ends it.
+TWO_SITE_LOOP = (P16 + ['again:'] + address(3, 'jmp_buf') + ['a:', bl('made_up_setjmp')] + address(3, 'context')
+                 + ['b:', bl('made_up_save'), b('.again')])
 GAP_WORD = li(3, 99)  # what fills a gap no symbol holds
 
 FUNCS = [
@@ -304,10 +308,7 @@ FUNCS = [
     # A setjmp site, then a call to a function with a context site, each in a C frame of its own.
     Code('f_two_sites', P32 + address(3, 'jmp_buf') + [bl('made_up_setjmp'), bl('f_ctx_site')] + E32),
     Code('f_ctx_site', P16 + address(3, 'context') + [bl('made_up_save')] + E16),
-    # A loop through a setjmp site and a context site that never ends. Only an interpreted run takes it,
-    # and the 4 MiB stop ends it.
-    Code('f_two_site_loop', P16 + ['again:'] + address(3, 'jmp_buf') + ['a:', bl('made_up_setjmp')]
-         + address(3, 'context') + ['b:', bl('made_up_save'), b('.again')]),
+    Code('f_two_site_loop', TWO_SITE_LOOP),
     # A setjmp site taken five times round a loop, then a longjmp back to it.
     Code('f_sj_again', P32 + [li(31, 0), 'again:'] + address(3, 'jmp_buf')
          + [bl('made_up_setjmp'), addi(31, 31, 1), cmpwi(3, 0), bne('.done'), cmpwi(31, 5), bne('.again'), li(4, 7)]
@@ -325,7 +326,7 @@ BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', 
          (BLOB + 0x200, Code('blob_tail', BLOB_TAIL)), (BLOB + 0x300, Code('blob_next', BLOB_NEXT)),
          (BLOB + 0x400, Code('blob_site', BLOB_SITE)), (BLOB + 0x500, Code('blob_blrl_next', BLOB_BLRL_NEXT)),
          (BLOB + 0x600, Code('blob_bctrl_next', BLOB_BCTRL_NEXT)), (BLOB + 0x700, Code('blob_next2', BLOB_NEXT2)),
-         (BLOB + 0x800, Code('blob_mid', BLOB_MID))]
+         (BLOB + 0x800, Code('blob_mid', BLOB_MID)), (BLOB + 0x900, Code('blob_two_site_loop', TWO_SITE_LOOP))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}
