@@ -1057,6 +1057,9 @@ function(gcn_add_game)
     foreach(_t ${_unit_in_dir})
       if(_t STREQUAL "test_ports")
         add_test(NAME ${_t} COMMAND ${GCN_RECOMP_DIR}/tools/test_ports.sh $<TARGET_FILE:test_ports> ${_unit_work}/${_t})
+        # It takes seconds. An end of the run that never comes (--restart, --quit) sleeps
+        # forever, so it fails at a minute rather than the default's five.
+        set_tests_properties(${_t} PROPERTIES TIMEOUT 60)
       else()
         add_test(NAME ${_t} COMMAND ${_t} ${_unit_work}/${_t})
       endif()

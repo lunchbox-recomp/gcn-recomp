@@ -2776,6 +2776,8 @@ int run_restart(const std::string& dir) {
     check(!pump_events() && !g_relaunching, "after a restart is asked for, the frontend's loop stops, as for a quit");
     bool running = true;
     stop_loop(running);
+    // The loop asks again at each turn of the wait, as pump_events keeps saying it should stop.
+    stop_loop(running);
     stderr_to_file(dir);
     plat_at_exit(after_restart);
     resets_as_it_ends();
