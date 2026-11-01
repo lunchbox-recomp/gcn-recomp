@@ -288,6 +288,14 @@ def main():
             if op not in (36, 37, 38, 39, 44, 45, 47, 52, 53, 54, 55) and d in hi:
                 del hi[d]
 
+    # special_calls.txt: "ADDR NAME". Call sites of OSSaveContext become context resume
+    # points (runtime/threads.cpp). Two names mean the C library's pair instead: a call site
+    # of `setjmp` records a host resume point for the guest jmp_buf it fills, and `longjmp`
+    # runs as recompiled, restoring the guest's registers, then resumes there instead of
+    # returning to its own caller (hle_setjmp_jmpbuf, hle_longjmp_resume).
+    special_calls = load_kv(os.path.join(tables, 'special_calls.txt'))
+    longjmps = {a for a, n in special_calls.items() if n == 'longjmp'}
+
     # Pass 1: find labels, mid-function entries, stats.
     stats = collections.Counter()
     unimpl = collections.Counter()
@@ -300,9 +308,10 @@ def main():
             t = br.target
             if f.addr <= t < f.end and not br.link:
                 f.labels.add(t)
-            elif br.link and t == pc + 4 == f.end and t in by_addr:
+            elif br.link and t == pc + 4 == f.end and t in by_addr and t not in special_calls:
                 # The last word, so the next word is the next function: emit_body sets LR and
-                # falls into it, as it does for a next word in the body.
+                # falls into it, as it does for a next word in the body. A function that
+                # special_calls.txt lists is a call site instead, which emit_body takes as a site.
                 print(f'warning: {pc:08X} bl to own body {t:08X} (next function)', file=sys.stderr)
             elif t not in by_addr:
                 g = func_containing(t)
@@ -362,13 +371,6 @@ def main():
             s += f'call_indirect(c, 0x{t:08X}u);'
         return s
 
-    # special_calls.txt: "ADDR NAME". Call sites of OSSaveContext become context resume
-    # points (runtime/threads.cpp). Two names mean the C library's pair instead: a call site
-    # of `setjmp` records a host resume point for the guest jmp_buf it fills, and `longjmp`
-    # runs as recompiled, restoring the guest's registers, then resumes there instead of
-    # returning to its own caller (hle_setjmp_jmpbuf, hle_longjmp_resume).
-    special_calls = load_kv(os.path.join(tables, 'special_calls.txt'))
-    longjmps = {a for a, n in special_calls.items() if n == 'longjmp'}
     # idle.txt: addresses of backward branches that are the OS's "nothing to run" spin
     # (the SDK scheduler's wait for RunQueueBitmap). They poll through IDLE_CHECK, which
     # lets the runtime skip guest time forward to the next event instead of spinning.

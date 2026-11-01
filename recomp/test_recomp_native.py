@@ -489,6 +489,9 @@ class LastWordSpecialCall(Fixture):
         self.assertIn(f'c->lr = 0x{self.addr["f_setjmp"]:08X}u; if (GCN_SETJMP(*hle_setjmp_jmpbuf(c)) == 0) '
                       f'fn_{self.addr["f_setjmp"]:08X}(c);', self.c)
 
+    def test_it_is_not_warned_about_as_the_next_function(self):
+        self.assertEqual([line for line in self.stderr.splitlines() if 'bl to own body' in line], [])
+
 
 if __name__ == '__main__':
     unittest.main()
