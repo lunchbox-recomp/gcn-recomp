@@ -345,6 +345,12 @@ static void claim_end() {
     for (;;) std::this_thread::sleep_for(std::chrono::seconds(1));
 }
 
+// The window loop is asked to stop, `running` its own flag, and the run's end is claimed then.
+static void stop_loop(bool& running) {
+    if (running) claim_end();
+    running = false;
+}
+
 // The game resetting the console relaunches it, and either way this process ends
 // (guest_reset), so the gamepads and a wheel are shut down first, as at any other exit.
 static void on_reset(uint32_t, uint32_t) {
@@ -796,11 +802,7 @@ int main(int argc, char** argv) {
 
     bool running = true;
     RunEnd run_end;
-    // The loop is asked to stop, and the run's end is claimed then (claim_end).
-    const auto stop = [&] {
-        if (running) claim_end();
-        running = false;
-    };
+    const auto stop = [&] { stop_loop(running); };
     uint32_t frames = 0;
     uint32_t presented_total = 0;
     quit_at_load();

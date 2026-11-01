@@ -2709,7 +2709,7 @@ int run_shutdown(const std::string& dir) {
 // the at-exit function added here runs last, and ends it, before the relaunch would. No memory
 // card is made here (exi_init), so none is written.
 //
-// The loop claims the run's end as it stops (claim_end), so the game resetting the console
+// The loop claims the run's end as it stops (stop_loop), so the game resetting the console
 // after that (guest_reset, on another thread, with main()'s reset handler) says nothing, ends
 // nothing and waits, as the loop waits for a save and as end_run runs. A restart's own [reset]
 // line is the run's one, and --quit, the same with a quit, has none and no relaunch.
@@ -2772,7 +2772,8 @@ int run_restart(const std::string& dir) {
     set_reset_handler(on_reset);
     frontend_restart();
     check(!pump_events() && !g_relaunching, "after a restart is asked for, the frontend's loop stops, as for a quit");
-    claim_end();
+    bool running = true;
+    stop_loop(running);
     stderr_to_file(dir);
     plat_at_exit(after_restart);
     resets_as_it_ends();
@@ -2788,7 +2789,8 @@ int run_quit(const std::string& dir) {
     e.type = SDL_EVENT_QUIT;
     SDL_PushEvent(&e);
     check(!pump_events() && !g_restart, "a quit stops the frontend's loop");
-    claim_end();
+    bool running = true;
+    stop_loop(running);
     stderr_to_file(dir);
     plat_at_exit(after_quit);
     resets_as_it_ends();
