@@ -18,7 +18,7 @@ import unittest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import ppc  # noqa: E402
-from test_recomp_interp import BLR, NOP, RECOMP, addi, cc_command, read, write, write_dol  # noqa: E402
+from test_recomp_interp import BLR, NOP, RECOMP, RUNTIME, addi, cc_command, read, write, write_dol  # noqa: E402
 
 T = 0x80104000
 MFLR_R3 = 0x7C6802A6
@@ -402,6 +402,20 @@ class UnimplOffTheEnd(Fixture):
     def test_the_run_stops_at_the_end(self):
         self.assertIn('the run exited 3', self.problem)
         self.assertIn(f'unimpl at {self.addr["f_off"] + 4:08X}', self.problem)
+
+
+class UnimplNeverReturns(unittest.TestCase):
+    """recomp.h declares unimpl as one that doesn't return, in C, so the compiler holds the call that
+    follows a function's last word to stop there. A function that returns a value needs nothing after it."""
+
+    def test_nothing_is_needed_after_it(self):
+        cc = Fixture.compiler()
+        with tempfile.TemporaryDirectory() as d:
+            src = os.path.join(d, 'unimpl_noreturn.c')
+            write(src, '#include "recomp.h"\nint f(CPU* c) { unimpl(c, 0, 0); }\n')
+            r = subprocess.run([cc, '-std=gnu11', '-fsyntax-only', '-Werror=return-type', '-I', RUNTIME, src],
+                               capture_output=True, text=True)
+        self.assertEqual((r.returncode, r.stderr), (0, ''))
 
 
 class LinkOffBranches(Fixture):

@@ -18,6 +18,7 @@
 #define GCN_LIKELY(x) (!!(x))
 #define GCN_UNLIKELY(x) (!!(x))
 
+#define GCN_NORETURN __declspec(noreturn)
 #define GCN_PRINTF_FMT(fmt_idx, first_arg)
 /* COFF has no weak symbols in the ELF sense. Nothing overrides these today, so a
    plain definition is correct; see GCN_WEAK's use in gx/fifo.cpp. */
@@ -41,6 +42,8 @@ static __inline uint32_t GCN_CLZ32(uint32_t v) {
 #define GCN_LIKELY(x) __builtin_expect(!!(x), 1)
 #define GCN_UNLIKELY(x) __builtin_expect(!!(x), 0)
 
+/* C11 has no [[noreturn]], and recomp.h declares functions for generated C. */
+#define GCN_NORETURN __attribute__((noreturn))
 #define GCN_PRINTF_FMT(fmt_idx, first_arg) __attribute__((format(printf, fmt_idx, first_arg)))
 
 /* Clang on COFF only emulates weak via /alternatename, which we don't need. */

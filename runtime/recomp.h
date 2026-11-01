@@ -341,7 +341,7 @@ void rels_linked(uint32_t module_info);
 void rels_unlinked(uint32_t module_info);
 
 void call_indirect(CPU* c, uint32_t addr);
-void unimpl(CPU* c, uint32_t pc, uint32_t inst);
+GCN_NORETURN void unimpl(CPU* c, uint32_t pc, uint32_t inst);
 void hle_sc(CPU* c, uint32_t pc);
 void hle_trap(CPU* c, uint32_t pc, uint32_t inst);
 void hle_rfi(CPU* c, uint32_t pc);

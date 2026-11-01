@@ -390,12 +390,13 @@ class Direct(unittest.TestCase):
 HARNESS = r'''
 #include "recomp_funcs.h"
 #include <stdio.h>
+#include <stdlib.h>
 
 volatile uint64_t g_vcount, g_vlimit = ~0ull;
 void irq_poll(CPU* c) { (void)c; }
 void idle_hint(CPU* c) { (void)c; }
 void call_indirect(CPU* c, uint32_t a) { (void)c; printf("call_indirect %08X\n", a); }
-void unimpl(CPU* c, uint32_t pc, uint32_t i) { (void)c; (void)i; printf("unimpl %08X\n", pc); }
+void unimpl(CPU* c, uint32_t pc, uint32_t i) { (void)c; (void)i; printf("unimpl %08X\n", pc); exit(3); }
 static jmp_buf setjmp_buf, context_buf;
 jmp_buf* hle_setjmp_jmpbuf(CPU* c) { (void)c; return &setjmp_buf; }
 jmp_buf* hle_context_jmpbuf(CPU* c) { (void)c; return &context_buf; }
