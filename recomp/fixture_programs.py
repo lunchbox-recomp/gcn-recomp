@@ -295,8 +295,19 @@ FUNCS = [
     Code('f_blob_next_twin', NEXT_TWIN),
     Code('f_blrl_next_twin', BLRL_TWIN),
     Code('f_bctrl_next_twin', BCTRL_TWIN),
-    # recomp.py makes .n1 a mid-entry and warns, and native code calls it and then runs on from it.
-    Code('f_bl_next', P16 + [li(3, 0), bl('.n1'), 'n1:', addi(3, 3, 1)] + E16),
+    # A bl and a bcl to the next word in a function. Native code sets LR and runs on, as the hardware does,
+    # so r3 counts one run and r4 holds the next word's address.
+    Code('f_bl_next', P16 + [li(3, 0), bl('.n1'), 'n1:', addi(3, 3, 1), mflr(4)] + E16),
+    Code('f_bcl_next', P16 + [li(3, 0), bcl('.n1'), 'n1:', addi(3, 3, 1), mflr(4)] + E16),
+    # A taken bdnzl and a bnel not taken, each to the next word, so CTR and LR both have to come out right.
+    Code('f_bdnzl_next', P16 + [li(0, 2), mtctr(0), li(3, 0), bdnzl('.n1'), 'n1:', addi(3, 3, 1), mflr(4), li(5, 0),
+                                cmpwi(5, 0), bnel('.n2'), 'n2:', addi(3, 3, 1), mflr(6)] + E16),
+    # A bl in a function's last word, to the function that starts right after it. Native code sets LR and
+    # runs on into it, once.
+    Code('f_last_bl', [li(3, 0), bl('f_last_bl_next')]),
+    Code('f_last_bl_next', [addi(3, 3, 1), mflr(4), BLR]),
+    # A blrl whose LR holds the next word, which native code calls as it does any blrl, and stops at.
+    Code('f_blrl_next', P16 + address(12, '.n') + [mtlr(12), BLRL, 'n:', mflr(3)] + E16),
     Code('f_rfi', [li(3, 5), RFI, li(3, 6), BLR]),
     Code('f_bdnz', [li(0, 4), mtctr(0), 'spin:', bdnz('.spin'), BLR]),
     Code('f_blob_site_twin', BLOB_SITE),

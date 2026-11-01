@@ -26,6 +26,13 @@ const std::string kGapStop = [] {
     return std::string(s);
 }();
 
+// The stop native code makes when f_blrl_next calls the word after its blrl, which no function starts.
+const std::string kNextWordStop = [] {
+    char s[96];
+    snprintf(s, sizeof s, "call_indirect: no function at %08X (lr=%08X)", FX_F_BLRL_NEXT_N, FX_F_BLRL_NEXT_N);
+    return std::string(s);
+}();
+
 const Case kCases[] = {
     {"an in-range loop", FX_F_LOOP, 0, nullptr, "IRQ_CHECK", false},
     {"an idle back edge", FX_F_IDLE, 0, nullptr, "idle_hint", false},
@@ -67,9 +74,14 @@ const Case kCases[] = {
      nullptr, nullptr, true},
     {"a loose frame's bctrl to the next word, against the hardware's", FX_BLOB_BCTRL_NEXT, FX_F_BCTRL_NEXT_TWIN,
      nullptr, nullptr, true},
-    // This pins native's behaviour today, which calls the next word as a mid-entry and then runs it again
-    // once that returns. F2a changes native to set LR and run on, which flips this case.
-    {"a function's bl to the next word, which native runs twice", FX_F_BL_NEXT, 0, nullptr, nullptr, false},
+    // Native code sets LR and runs on, as a loose frame does and the hardware does, so the next word runs
+    // once with LR holding its address.
+    {"a function's bl to the next word", FX_F_BL_NEXT, 0, nullptr, nullptr, false},
+    {"a function's bcl to the next word", FX_F_BCL_NEXT, 0, nullptr, nullptr, false},
+    {"a function's taken bdnzl and untaken bnel to the next word", FX_F_BDNZL_NEXT, 0, nullptr, nullptr, false},
+    {"a function's last word, a bl to the function after it", FX_F_LAST_BL, 0, nullptr, nullptr, false},
+    // Native code calls a blrl's LR, which is no function's entry here, and stops there.
+    {"a function's blrl to the next word", FX_F_BLRL_NEXT, 0, nullptr, kNextWordStop.c_str(), false},
     {"an rfi, which returns", FX_F_RFI, 0, nullptr, "hle_rfi", false},
     {"a bdnz to itself, with an IRQ_CHECK each time", FX_F_BDNZ, 0, nullptr, "IRQ_CHECK", false},
     {"a loose frame's branch onto a patch site", FX_BLOB_SITE, FX_F_BLOB_SITE_TWIN, nullptr, "heap_trace_alloc", true},
@@ -101,25 +113,21 @@ const Case kCases[] = {
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to
-// an LR its frame wasn't entered with, though each ran twice interpreted. The mid-entry frame that a
-// function's bl to the next word starts returns to its caller's LR, which leaves a third.
+// an LR its frame wasn't entered with, though each ran twice interpreted.
 void check_logs() {
-    char blr[160], site[160], next[160];
+    char blr[160], site[160];
     snprintf(site, sizeof site, "site at %08X holds %08X, not the %08X its patch replaced, so that word runs",
              FX_F_SITE2_SITE, FX_SITE2_WORD, peek(FX_F_SITE2_SITE));
     snprintf(blr, sizeof blr, "blr at %08X returns to %08X, and its frame was entered with LR %08X", FX_F_LR_RET,
              kLR + 8, kLR);
-    // f_bl_next's blr is four words after the mid-entry.
-    snprintf(next, sizeof next, "blr at %08X returns to %08X, and its frame was entered with LR %08X",
-             FX_F_BL_NEXT_N1 + 16, kLR, FX_F_BL_NEXT_N1);
-    const std::vector<std::string> want = {site, blr, next};
+    const std::vector<std::string> want = {site, blr};
     if (g_logs != want) {
         std::string got, wanted;
         for (const std::string& s : g_logs) got += "  " + s + "\n";
         for (const std::string& s : want) wanted += (wanted.empty() ? "  " : "\n  ") + s;
         fail("--log=interp printed\n" + got + "where it should print\n" + wanted);
     } else {
-        printf("match  --log=interp's three lines, once each\n");
+        printf("match  --log=interp's two lines, once each\n");
     }
 }
 

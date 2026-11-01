@@ -82,9 +82,11 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
         InterpBranch br;
         if (interp_branch(c, pc, insn, &br)) {
             if (br.link) {
-                // LR is pc + 4 already, taken or not. In a loose frame, a bl or bcl to the next word reads
-                // its own address and runs on, as the hardware does.
-                if (br.taken && f->loose && br.target == pc + 4) {
+                // LR is pc + 4 already, taken or not. A bl or bcl to the next word reads its own address
+                // and runs on, as the hardware does and recomp.py's C does. In a function frame, a blrl or
+                // bctrl to it is a call, as in the C, and so is a bl to a setjmp or context function.
+                if (br.taken && br.target == pc + 4 &&
+                    (f->loose || (br.kind <= INTERP_BC && !special_kind(br.target)))) {
                     pc += 4;
                     continue;
                 }
