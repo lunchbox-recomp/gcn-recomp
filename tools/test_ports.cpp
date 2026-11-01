@@ -61,6 +61,9 @@
 #include "ffb.h"
 #include "gx/render.h"
 #include "vr_game.h"
+#ifdef GCN_OVERLAY
+#include "imgui.h"  // what the menu's navigation reads of the gamepads
+#endif
 #include <climits>
 #include <condition_variable>
 #include <functional>
@@ -2142,6 +2145,38 @@ void overlay_buttons(const std::string& dir) {
           "the frontend gives the renderer the page's aspect and scale, and with the aspect held the scale alone");
     g_aspect_held = false;
     g_window = nullptr;
+
+    // A gamepad plugged in while the menu is open, holding A, has the A kept from the menu as one
+    // held at the open is. A gamepad already in keeps its own latch, so a D-pad it holds stays
+    // down for the menu. Down from Restart game, the bottom row, moves nothing.
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    for (int i = 0; i < 8; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    for (int i = 0; i < 2; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
+    host_frame(guest);
+    const bool dpad_down = ImGui::IsKeyDown(ImGuiKey_GamepadDpadDown);
+    Virtual late{"late pad buttons"};
+    attach(late);
+    // Opened here, so that its A is down before the frontend hears of it.
+    SDL_Joystick* late_joystick = SDL_OpenJoystick(late.id);
+    SDL_SetJoystickVirtualButton(late_joystick, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    host_frame(guest);
+    host_frame(guest);
+    const bool dpad_kept = ImGui::IsKeyDown(ImGuiKey_GamepadDpadDown);
+    const bool late_a_out = waiting(OverlayAsk::none);
+    set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false);
+    SDL_SetJoystickVirtualButton(late_joystick, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    host_frame(guest);
+    const bool late_let_go = waiting(OverlayAsk::none);
+    tap(guest, late, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(dpad_down && dpad_kept, "a gamepad plugged in while the menu is open leaves another's held D-pad down for it");
+    check(late_a_out && late_let_go && waiting(OverlayAsk::restart),
+          "an A the new gamepad holds as it comes presses nothing, nor does letting it go, and its next press does");
+    tap(guest, late, SDL_GAMEPAD_BUTTON_EAST);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    SDL_CloseJoystick(late_joystick);
+    detach(late);
+    host_frame(guest);
 
     // A device controls.txt binds is the file's alone, so its Back opens nothing.
     const std::string controls = dir + "/buttons-controls.txt";

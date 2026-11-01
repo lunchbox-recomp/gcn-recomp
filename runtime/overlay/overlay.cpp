@@ -48,6 +48,7 @@ long g_at_left;             // draws over the held frame left before GCN_OVERLAY
 // A gamepad held for the menu (hold_pads), and its buttons held as the menu opened, kept from
 // the menu until each is let go, a bit for each SDL_GamepadButton.
 struct HeldPad {
+    SDL_JoystickID id;
     SDL_Gamepad* pad;
     uint32_t latched;
 };
@@ -77,21 +78,29 @@ void set_open(bool on) {
     g_dumped = false;
 }
 
-// Every gamepad SDL has, held open after letting go of those held before, so that the menu
-// reads each one and each one's Back opens it, on a port or not. A device controls.txt binds
-// is the file's alone, as it is for the ports (gamepads.cpp), so it's left out. At the start
-// and again as a gamepad comes or goes. While the menu is open, what each one holds is latched
-// as at the open.
+// Every gamepad SDL has, held open, so that the menu reads each one and each one's Back opens
+// it, on a port or not. A device controls.txt binds is the file's alone, as it is for the ports
+// (gamepads.cpp), so it's left out. At the start and again as a gamepad comes or goes, when one
+// held already keeps its latch, a gamepad gone is let go, and one that comes while the menu is
+// open is latched as at the open.
 void hold_pads() {
-    for (const HeldPad& h : g_pads) SDL_CloseGamepad(h.pad);
-    g_pads.clear();
+    std::vector<HeldPad> held;
     int n = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&n);
     for (int i = 0; i < n; i++) {
         if (input_map_binds(ids[i])) continue;
-        if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) g_pads.push_back({p, g_open ? buttons_down(p) : 0});
+        const auto was = std::find_if(g_pads.begin(), g_pads.end(), [&](const HeldPad& h) { return h.id == ids[i]; });
+        if (was != g_pads.end()) {
+            held.push_back(*was);
+            was->pad = nullptr;  // still held, so not let go below
+        } else if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) {
+            held.push_back({ids[i], p, g_open ? buttons_down(p) : 0});
+        }
     }
     SDL_free(ids);
+    for (const HeldPad& h : g_pads)
+        if (h.pad) SDL_CloseGamepad(h.pad);
+    g_pads = std::move(held);
 }
 
 // What Dear ImGui's navigation reads of the held gamepads, for the menu's frame, merged over
