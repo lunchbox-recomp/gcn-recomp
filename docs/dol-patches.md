@@ -1,6 +1,10 @@
 # DOL patches
 
-A DOL patch changes a game's executable before the recompiler reads it. `recomp/dol_patch.py` applies patch lists to a DOL, adds new sections and names the new functions in them. The recompiled game can't run PowerPC the recompiler didn't translate, so any new code has to be in the DOL before it's recompiled.
+A DOL patch changes a game's executable before the recompiler reads it. `recomp/dol_patch.py` applies patch lists to a DOL, adds new sections and names the new functions in them. The recompiler translates that code with the rest of the game, so it runs as native code.
+
+The recompiled game can run PowerPC the recompiler didn't translate too. Code the game or a mod writes into RAM runs in the interpreter, and so does a recompiled function whose words change after an `icbi` (`docs/interpreter.md`). A Riivolution release's memory patches write at boot, and the code they change runs in the interpreter the same way (`docs/riivolution.md`).
+
+A DOL patch is still how new code gets recompiled, so it runs as native code and gets a name in the build's symbols. The interpreter runs the same code a word at a time.
 
 ## Running it
 
@@ -104,6 +108,6 @@ A game with `RELS` needs `rel.py link` to carry `.syms` through first. It runs a
 
 ## Why the boot DOL has to be the patched one
 
-Boot copies each DOL section from the disc into RAM (`runtime/boot.cpp:17-27`). The DOL it loads has to be the one the recompiler read, byte for byte. Otherwise the added sections and changed data words never reach RAM, and the game reads zeros or the old values where it expects the patch.
+Boot copies each DOL section from the disc into RAM (`runtime/boot.cpp:19-29`). The DOL it loads has to be the one the recompiler read, byte for byte. Otherwise the added sections and changed data words never reach RAM, and the game reads zeros or the old values where it expects the patch.
 
 The disc overlay serves it. `disc_overlay.py --dol OUT` puts the patched DOL on the virtual disc and points header word `0x420` at it, so boot loads it with no change to `boot.cpp` (`docs/disc-overlay.md`). The disc itself stays vanilla.

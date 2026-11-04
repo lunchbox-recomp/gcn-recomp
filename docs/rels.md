@@ -63,5 +63,9 @@ absolute, and records it in `g_rel_base`; before an unlink, `rels_unlinked` forg
 to the canonical one with `rels_canon`. Data the linker relocates is in guest memory as
 the game linked it. `--log=os` prints each link and unlink.
 
+`call_indirect` tries the function table, then `modules_bind` (`docs/modules.md`), then
+`rels_canon`. An address that none of them binds falls through to the interpreter when it's
+word aligned and in main RAM (`docs/interpreter.md`), and stops the game otherwise.
+
 Nothing checks that a module's code is only entered while it is linked; the game cannot
 do otherwise on the console either.
