@@ -173,6 +173,8 @@ Nothing in a refused package is used. The message names the XML and the element,
 
 An overlay item is one host file, or its first bytes. A patch that needs more is refused.
 
+A RAM patch list that would pass 96 MiB and 4 KiB is refused before anything is written, since the runtime can't read one that size.
+
 A message cuts any long value it quotes to 60 characters, so a package can't make a line as long as its XML.
 
 The reader also stops where Dolphin quietly skips.
