@@ -146,12 +146,13 @@ int main(int argc, char** argv) {
     session_write(60, "sha", true);  // writes nothing, anywhere
 
     // The first process: one switch set by hand, one set to a value the session would not, and
-    // one set empty, which counts as unset.
+    // two set empty, which count as unset.
     const std::string dir = g_dir + "/sess";
     set_env("GCN_SESSION", dir);
     set_env("GCN_WAV", "hand.wav");
     set_env("GCN_FRAMETIME", "2");
     set_env("GCN_AXSTATS", "");
+    set_env("GCN_AIDWAV", "");
     const time_t before = time(nullptr);
     const std::string inputs = session_begin(nargs, args);
     const time_t after = time(nullptr);
@@ -159,7 +160,7 @@ int main(int argc, char** argv) {
     check(exists(dir), "the directory is made");
     check(!exists(dir + "/.session-write-test"), "and the file that tried writing there is gone");
     check(env("GCN_WAV") == "hand.wav" && env("GCN_FRAMETIME") == "2", "a switch set by hand keeps its value");
-    check(env("GCN_AIDWAV") == dir + "/aid.raw", "GCN_AIDWAV points into the directory");
+    check(env("GCN_AIDWAV") == dir + "/aid.raw", "GCN_AIDWAV points into the directory, though it was set empty");
     check(env("GCN_AXSTATS") == "1" && env("GCN_AUDIOSTATS") == "1",
           "the stats switches are on, GCN_AXSTATS too though it was set empty");
 

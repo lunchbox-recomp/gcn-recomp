@@ -1003,7 +1003,8 @@ which pulls the ring couldn't fill.
 
 `GCN_WAV=<file>` writes what went to the device, the DVD music mixed in, as a 16-bit stereo
 WAV file at 48 kHz. Its header is rewritten after every write, so a run that's stopped from
-outside still leaves a file that reads. An empty `GCN_WAV` records nothing.
+outside still leaves a file that reads. An empty `GCN_WAV` records nothing, unless a playtest
+session sets it.
 
 `GCN_JAUDIO_WAV=<file>` records JAudio's 32 kHz output. Its header is rewritten every frame,
 so a run that's stopped from outside still leaves a file that reads.
