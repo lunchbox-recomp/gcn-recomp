@@ -199,19 +199,33 @@ uint64_t g_aid_frames_delivered;   // for GCN_CLOCKLOG: what the DMA has handed 
 // block's start in frames, its length, the virtual time it was delivered at, whether it
 // was delivered catching up, the buffer's address and whether the guest had queued the
 // next one by then. Works in the benchmark, which has no audio device, so a
-// replay can be listened to and its blocks checked.
+// replay can be listened to and its blocks checked. Empty is the same as unset, and if either
+// file won't open nothing is recorded.
+struct AidFiles {
+    FILE* pcm = nullptr;
+    FILE* idx = nullptr;   // open whenever pcm is
+};
+
+static AidFiles aid_open(const char* path) {
+    AidFiles f;
+    if (!path || !*path) return f;
+    f.pcm = fopen(path, "wb");
+    if (f.pcm) f.idx = fopen((std::string(path) + ".txt").c_str(), "w");
+    if (!f.idx && f.pcm) {
+        fclose(f.pcm);
+        f.pcm = nullptr;
+    }
+    return f;
+}
+
 static void aid_capture(const int16_t* be, uint32_t frames, bool catching_up, uint32_t addr, bool queued) {
-    static FILE* pcm = [] { const char* p = getenv("GCN_AIDWAV"); return p ? fopen(p, "wb") : nullptr; }();
-    static FILE* idx = [] {
-        const char* p = getenv("GCN_AIDWAV");
-        return p ? fopen((std::string(p) + ".txt").c_str(), "w") : nullptr;
-    }();
+    static const AidFiles files = aid_open(getenv("GCN_AIDWAV"));
     static uint64_t at;
-    if (!pcm) return;
-    fprintf(idx, "%llu %u %llu %d %08X %d\n", (unsigned long long)at, frames, (unsigned long long)now_ticks(), catching_up ? 1 : 0, addr, queued ? 1 : 0);
+    if (!files.pcm) return;
+    fprintf(files.idx, "%llu %u %llu %d %08X %d\n", (unsigned long long)at, frames, (unsigned long long)now_ticks(), catching_up ? 1 : 0, addr, queued ? 1 : 0);
     for (uint32_t i = 0; i < frames; i++) {
         const int16_t s[2] = {(int16_t)GCN_BSWAP16((uint16_t)be[2 * i + 1]), (int16_t)GCN_BSWAP16((uint16_t)be[2 * i])};
-        fwrite(s, sizeof(s), 1, pcm);
+        fwrite(s, sizeof(s), 1, files.pcm);
     }
     at += frames;
 }

@@ -13,11 +13,18 @@
 // Behind its clock after a long jump, the DMA hands a guest that queues at once the blocks it
 // owes at speed.
 //
-// usage: test_aid
+// GCN_AIDWAV is read when the first block is delivered, so each of its checks runs in a child
+// process of its own, in the work dir: an empty value records nothing, a file records its
+// blocks, and an index file that won't open leaves the blocks unrecorded.
+//
+// usage: test_aid <work dir>   (a directory that doesn't exist yet)
 // Exits 0 only if every check passes.
 #include "hw/dsp.cpp"
 #include <cstdio>
 #include <cstdlib>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <vector>
 
 uint8_t* g_mem;
@@ -117,6 +124,46 @@ int repeats(size_t from) {
     return n;
 }
 
+bool exists(const char* path) {
+    struct stat st;
+    return stat(path, &st) == 0;
+}
+
+long size_of(const char* path) {
+    struct stat st;
+    return stat(path, &st) == 0 ? (long)st.st_size : -1;
+}
+
+int lines_in(const char* path) {
+    FILE* f = fopen(path, "r");
+    int n = 0;
+    if (!f) return -1;
+    for (int c; (c = getc(f)) != EOF;) n += c == '\n';
+    fclose(f);
+    return n;
+}
+
+// Three blocks delivered with GCN_AIDWAV set to `path`, in a child process. Returns its wait
+// status.
+int capture_run(const char* path) {
+    fflush(stdout);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        setenv("GCN_AIDWAV", path, 1);
+        dsp_write16(0x0A, CR_AID_MASK | 0x800);
+        queue(kBufA);
+        g_next = kBufB;
+        dsp_write16(0x36, 0x8000 | kBlocks);
+        run_to(3 * kDur + 1);
+        exit(0);
+    }
+    int status = 0;
+    waitpid(pid, &status, 0);
+    return status;
+}
+
+bool ran_clean(int status) { return WIFEXITED(status) && WEXITSTATUS(status) == 0; }
+
 }  // namespace
 
 uint64_t now_ticks() { return g_now; }
@@ -130,9 +177,26 @@ void audio_push_dma(const int16_t* samples, uint32_t) {
     g_played.push_back({(uint32_t)((const uint8_t*)samples - g_mem), g_now});
 }
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc != 2) {
+        fprintf(stderr, "usage: test_aid <work dir>\n");
+        return 2;
+    }
+    if (exists(argv[1]) || mkdir(argv[1], 0755) != 0 || chdir(argv[1]) != 0) {
+        fprintf(stderr, "%s exists or can't be made: give a new directory\n", argv[1]);
+        return 2;
+    }
     g_mem = (uint8_t*)calloc(0x02000000, 1);
     g_aram = (uint8_t*)calloc(ARAM_SIZE, 1);
+
+    // Before the parent's own run, so that each child starts from a DMA that never ran.
+    check(ran_clean(capture_run("")) && !exists(".txt"), "an empty GCN_AIDWAV records nothing");
+    check(ran_clean(capture_run("aid.raw")) && size_of("aid.raw") == 3 * 160 * 4 && lines_in("aid.raw.txt") == 3,
+          "GCN_AIDWAV=<file> records each block, with a line for it in <file>.txt");
+    mkdir("blocked.raw.txt", 0755);
+    check(ran_clean(capture_run("blocked.raw")) && size_of("blocked.raw") == 0,
+          "an index file that won't open leaves the blocks unrecorded");
+
     dsp_write16(0x0A, CR_AID_MASK | 0x800);
     queue(kBufA);
     g_next = kBufB;

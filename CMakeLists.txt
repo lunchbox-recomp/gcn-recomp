@@ -1043,10 +1043,10 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_aid test_blend test_clock test_pause
+    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay
-        test_bot_link test_code_table)
+        test_bot_link test_code_table test_aid)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()
