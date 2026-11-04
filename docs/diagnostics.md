@@ -1432,7 +1432,7 @@ digits. It also stops when the `base` differs from the disc's ID or bytes writte
 checked would leave main RAM. An `original` that differs from RAM stops the run with the
 address and both byte strings.
 
-`--log=os` prints `[os] RAM patches: 2 patches, 20 bytes written` for a list with
+`--log=os` prints `[OS] RAM patches: 2 patches, 20 bytes written` for a list with
 two patches writing 20 bytes.
 `ninja test_ram_patches` builds `tools/test_ram_patches.cpp`, which checks the parser, ordered
 writes and code change notifications against fake RAM.
