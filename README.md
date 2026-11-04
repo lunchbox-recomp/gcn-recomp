@@ -3,7 +3,9 @@
 A toolkit for static recompilation of Nintendo GameCube games to native code: a Gekko
 PowerPC → C recompiler, and a runtime that stands in for the GameCube hardware (CPU helpers,
 OS context switching, graphics through an OpenGL GX pipeline, audio, DVD, controllers,
-memory card) with an SDL desktop frontend.
+memory card) with an SDL desktop frontend. The runtime also interprets code the recompiler
+didn't see or the game changes, and applies Riivolution patches as a disc overlay and a RAM
+patch list.
 
 It is the common layer under per-game projects, each of which supplies its own game's
 layout and steering files and nothing else:
@@ -199,11 +201,20 @@ hundreds of milliseconds (`f19f98d`).
 
 - `recomp/`: `recomp.py` drives the translation; `ppc.py` turns each instruction into C;
   `dol.py` reads DOLs, `.iso` and `.ciso` images and symbol files; `extract_dol.py` pulls
-  and verifies the DOL.
+  and verifies the DOL; `rel.py` extracts the SDK's `.rel` modules and links them at canonical
+  addresses; `dol_patch.py` applies patch lists to a DOL before it's recompiled;
+  `fst.py` reads and writes a disc's file table; `disc_overlay.py` builds a disc overlay;
+  `riivolution.py` turns a folder of Riivolution mods into an overlay and a RAM patch list,
+  with `riivolution_xml.py`, `riivolution_paths.py` and `riivolution_patch.py` reading each
+  XML, finding its host files and applying its patches; `interp_tables.py` writes the tables
+  the interpreter reads; `ppc_cases.py` and `fixture_programs.py` make the interpreter's test
+  cases and made-up programs. `test_*.py` are the Python tests.
 - `runtime/`: the GameCube in software. `recomp.h` is the contract with generated code.
   `cpu.cpp`, `threads.cpp` and `hle_os.cpp` are the CPU and OS; `hw/` the hardware
-  registers; `gx/` the graphics pipeline; `main.cpp` the SDL frontend and `bench_main.cpp`
-  the benchmark. `gamepads.*` gives each gamepad a port of its own as it connects. It
+  registers; `gx/` the graphics pipeline; `interp/` the interpreter, which runs code the
+  recompiler didn't see or the game changed; `ram_patches.*` the RAM patch list, applied at
+  the end of boot; `main.cpp` the SDL frontend and `bench_main.cpp` the benchmark.
+  `gamepads.*` gives each gamepad a port of its own as it connects. It
   takes its saved port if that's free. A gamepad the file doesn't name takes the port of
   its player number if that's free (Steam Input's order, or the XInput slot on Windows),
   else the lowest free port, and a saved one that finds its port taken takes the lowest
@@ -245,7 +256,10 @@ hundreds of milliseconds (`f19f98d`).
   (`runtime/vr_config.*`) and what a game tells the headset (`runtime/vr_game.h`) are in the
   runtime, so the desktop can check a game's hooks too.
 - `tools/package-apk.ps1`: packages the app into an APK without Gradle, and installs it.
-- `docs/`: working notes on diagnostics and the renderer.
+- `docs/`: `diagnostics.md` (the `GCN_*` variables, replay, the benchmark, crash dumps),
+  `graphics.md` (the renderer), `interpreter.md`, `mmu.md` (page tables), `modules.md` (code
+  in a game's data files), `rels.md` (relocatable modules), `disc-overlay.md`,
+  `riivolution.md`, `dol-patches.md` and `visionos.md` (the Vision Pro frontend).
 
 ## Requirements
 
