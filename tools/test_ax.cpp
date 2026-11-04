@@ -595,8 +595,8 @@ void voice_log_checks() {
           "an ADPCM one-shot that wraps at either header end prints loop with looping=0");
 }
 
-// ax_init reads GCN_AXSTATS and GCN_AXVOICES. Windows can't hold an empty variable, so the
-// check is for the others.
+// ax_init reads GCN_AXSTATS, GCN_AXVOICES and GCN_AX_LAYOUT. Windows can't hold an empty
+// variable, so the check is for the others.
 void switch_checks() {
 #ifndef _WIN32
     unsetenv("GCN_AX_LAYOUT");
