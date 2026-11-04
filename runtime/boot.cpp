@@ -1,6 +1,7 @@
 // Boot: emulate what the IPL + apploader leave behind, load the DOL, start __start.
 #include "runtime.h"
 #include "interp/interp.h"
+#include "ram_patches.h"
 #include <vector>
 
 static uint32_t be32(const uint8_t* p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
@@ -62,5 +63,6 @@ uint32_t boot_load(const char* iso_path) {
     cp_init();
     code_table_boot();  // GCN_INTERPRET and GCN_INTERPRET_STATS
     code_watch_boot();  // boot's copy of the text, and GCN_CODE_CHECK
+    ram_patches_apply((const char*)hdr);
     return entry;
 }

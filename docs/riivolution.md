@@ -122,6 +122,9 @@ patch 80003104 60000000 14151617
 
 Numbers and byte strings are lowercase hex with no `0x`, and the address has eight digits. `base` is the image's disc ID. A `valuefile` becomes one `patch` line whose value is the file's bytes.
 
+The runtime applies `OUT/ram-patches.txt` at boot when `--ram-patches=OUT/ram-patches.txt`
+names it. It checks each `original` against RAM before writing that patch's bytes.
+
 The lines keep the order the patches turn on, with the packages in the order of their XML paths. A line's `original` is what RAM holds once the lines before it are in. That's why a patch can sit inside the bytes a `valuefile` patch wrote, and why overlaps inside one package are fine.
 
 ## Two packages

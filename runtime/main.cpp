@@ -13,6 +13,7 @@
 #include "gx/gl.h"
 #include "hw/pad.h"
 #include "hw/disc_overlay.h"
+#include "ram_patches.h"
 #include "vr_game.h"
 #include "telemetry.h"
 #include "record.h"
@@ -454,6 +455,11 @@ static std::string take_disc_overlay(const Settings& settings, int argc, char** 
     return settings_choose_path(settings.disc_overlay, flag, getenv("GCN_DISC_OVERLAY"));
 }
 
+// A flag wins over the environment for this run. An empty path selects no patches.
+static void take_ram_patches(int argc, char** argv) {
+    ram_patches_set_file(ram_patches_choose(getenv("GCN_RAM_PATCHES"), argc, argv));
+}
+
 // Sets `bot` to the socket of the bot that drives the pads (bot_link.h). The last --bot=PATH wins,
 // then GCN_BOT, and there's none when neither names one. A bot opens no controller, as under
 // --no-gamepads. The result is false, naming the flag or variable that brought the bot, for a bare
@@ -542,6 +548,7 @@ int main(int argc, char** argv) {
     int scale = settings.scale;
     // --disc=fast or --disc=console, which the loop below passes over.
     if (!take_disc_speed(settings, argc, argv)) return 1;
+    take_ram_patches(argc, argv);
     int pads = 1;
     // --aspect=W:H, or --aspect=window to follow the window's shape: what the picture is
     // stretched to (gx::output_aspect). settings.txt's, which is 4:3, the console's own, by
