@@ -78,6 +78,8 @@ bool ram_patches_choose(const char* variable, int argc, char** argv, std::string
 
 void ram_patches_set_file(const std::string& path) { patch_file = path; }
 
+const std::string& ram_patches_file() { return patch_file; }
+
 void ram_patches_apply(const char* disc_id) {
     if (patch_file.empty()) return;
     FILE* input = fopen(patch_file.c_str(), "rb");
