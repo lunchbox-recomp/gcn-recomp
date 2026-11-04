@@ -21,6 +21,7 @@ from recomp import FUNCS_PER_FILE  # noqa: E402
 
 BLOB = 0x80080000    # code that's in RAM only, below the text, as a mod's would be
 TEXT = 0x80100000
+SECOND_TEXT = 0x80140000  # a second text section, with a gap no section holds before it
 DATA = 0x80180000
 MODULE = 0x80200000  # a module's code, which has no guard
 STACK = 0x8037FF00
@@ -239,6 +240,16 @@ BLOB_SITE = [li(3, 1), b('f_patch.site')]
 TWO_SITE_LOOP = (P16 + ['again:'] + address(3, 'jmp_buf') + ['a:', bl('made_up_setjmp')] + address(3, 'context')
                  + ['b:', bl('made_up_save'), b('.again')])
 GAP_WORD = li(3, 99)  # what fills a gap no symbol holds
+# A mod's bl over two floats to the code after them. It reads their address from LR, puts its caller's LR
+# back and returns with the first float in f1. The words are mflr r0, bl, the floats, mflr r3, mtlr r0,
+# lfs f1,0(r3) and blr.
+BLOB_FLOATS = [0x7C0802A6, 0x4800000D, 'floats:', 0x3F800000, 0x40000000, 0x7C6802A6, 0x7C0803A6, 0xC0230000,
+               0x4E800020]
+# A mod's bl to a helper of its own, twice, and its bl to a recompiled function.
+BLOB_HELPER = [mflr(0), li(3, 0), bl('.add'), bl('.add'), mtlr(0), BLR, 'add:', addi(3, 3, 5), BLR]
+BLOB_KNOWN = [mflr(0), li(3, 1), bl('f_callee'), addi(3, 3, 100), mtlr(0), BLR]
+# A mod's blr into a recompiled function, which returns to the LR the mod left in r0.
+BLOB_BLR_KNOWN = [mflr(0)] + address(12, 'f_lr_from_r0') + [mtlr(12), BLR]
 
 FUNCS = [
     Code('f_loop', [li(3, 3), li(4, 0), 'loop:', add(4, 4, 3), addi(3, 3, -1), cmpwi(3, 0), bne('.loop'), BLR]),
@@ -350,14 +361,18 @@ FUNCS = [
     Code('f_blob_mid_twin', [li(3, 5), b('f_mid_twin.mid')]),
     # An icbi of the block holding r3's address, for tools/test_code_watch.cpp.
     Code('f_icbi', [x_form(0, 0, 3, 982), BLR]),
+    Code('f_lr_from_r0', [li(3, 42), mtlr(0), BLR]),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
+SECOND_FUNCS = [Code('f_second', [addi(3, 3, 7), BLR]), Code('f_second_next', [addi(3, 3, 9), BLR])]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
 BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')])),
          (BLOB + 0x200, Code('blob_tail', BLOB_TAIL)), (BLOB + 0x300, Code('blob_next', BLOB_NEXT)),
          (BLOB + 0x400, Code('blob_site', BLOB_SITE)), (BLOB + 0x500, Code('blob_blrl_next', BLOB_BLRL_NEXT)),
          (BLOB + 0x600, Code('blob_bctrl_next', BLOB_BCTRL_NEXT)), (BLOB + 0x700, Code('blob_next2', BLOB_NEXT2)),
          (BLOB + 0x800, Code('blob_mid', BLOB_MID)), (BLOB + 0x900, Code('blob_two_site_loop', TWO_SITE_LOOP)),
-         (BLOB + 0xA00, Code('blob_bctr_tail', BLOB_BCTR_TAIL))]
+         (BLOB + 0xA00, Code('blob_bctr_tail', BLOB_BCTR_TAIL)), (BLOB + 0xB00, Code('blob_floats', BLOB_FLOATS)),
+         (BLOB + 0xC00, Code('blob_helper', BLOB_HELPER)), (BLOB + 0xD00, Code('blob_known', BLOB_KNOWN)),
+         (BLOB + 0xE00, Code('blob_blr_known', BLOB_BLR_KNOWN))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}
@@ -370,7 +385,7 @@ def layout():
     """Places everything, and returns the labels with each section's words. A function's gap is that
     many bytes of GAP_WORD after it."""
     labels = dict(DATA_LABELS)
-    for codes, base in ((FUNCS, TEXT), (MODULE_FUNCS, MODULE)):
+    for codes, base in ((FUNCS, TEXT), (SECOND_FUNCS, SECOND_TEXT), (MODULE_FUNCS, MODULE)):
         a = base
         for f in codes:
             f.place(a, labels)
@@ -378,13 +393,14 @@ def layout():
     for a, blob in BLOBS:
         blob.place(a, labels)
     text = [w for f in FUNCS for w in f.words(labels) + [GAP_WORD] * (f.opts.get('gap', 0) // 4)]
+    second = [w for f in SECOND_FUNCS for w in f.words(labels)]
     module = [w for f in MODULE_FUNCS for w in f.words(labels)]
     data = [0] * (DATA_SIZE // 4)
     for table, func, cases in JUMP_TABLES:
         f = FUNCS[[g.name for g in FUNCS].index(func)]
         k = (labels[table] - DATA) // 4
         data[k:k + len(cases)] = [f.label(labels, case) for case in cases]
-    return labels, text, module, data
+    return labels, text, second, module, data
 
 
 def write(path, text):
@@ -418,7 +434,7 @@ def c_words(name, words):
     return [f'static const uint32_t {name}[] = {{'] + [f'\t{r},' for r in rows] + ['};']
 
 
-def header(labels, text, module, data):
+def header(labels, text, second, module, data):
     out = ['/* What tools/test_interp_run.cpp needs to know about its programs, from recomp/fixture_programs.py. */',
            '#pragma once', '#include <stdint.h>', '']
     for name, a in sorted(labels.items(), key=lambda kv: (kv[1], kv[0])):
@@ -430,7 +446,8 @@ def header(labels, text, module, data):
             f'#define FX_HOOK_WORD 0x{b("blob_hook")(labels["f_hooked"], labels.get):08X}u',
             f'#define FX_SITE2_WORD 0x{SITE2_WORD:08X}u', f'#define FX_MID_WORD 0x{MID_WORD:08X}u', '',
             'typedef struct { uint32_t addr, count; const uint32_t* words; } FxWords;']
-    image = [('fx_text', TEXT, text), ('fx_module', MODULE, module), ('fx_data', DATA, data)]
+    image = [('fx_text', TEXT, text), ('fx_second_text', SECOND_TEXT, second), ('fx_module', MODULE, module),
+             ('fx_data', DATA, data)]
     image += [(f'fx_{blob.name}', a, blob.words(labels)) for a, blob in BLOBS]
     for name, _, words in image:
         out += c_words(name, words)
@@ -445,27 +462,28 @@ def main():
     if len(sys.argv) != 2:
         sys.exit('usage: fixture_programs.py OUTDIR')
     out = sys.argv[1]
-    if len(FUNCS) + len(MODULE_FUNCS) >= FUNCS_PER_FILE:
+    if len(FUNCS) + len(SECOND_FUNCS) + len(MODULE_FUNCS) >= FUNCS_PER_FILE:
         sys.exit('error: more functions than recomp.py puts in one file, which CMakeLists.txt expects')
-    labels, text, module, data = layout()
+    labels, text, second, module, data = layout()
     os.makedirs(out, exist_ok=True)
     pack = lambda words: struct.pack(f'>{len(words)}I', *words)  # noqa: E731
     # rel.py's writer leaves its file for the collector to close, which Python can warn about.
     with warnings.catch_warnings():
         warnings.simplefilter('ignore', ResourceWarning)
         rel.write_dol(os.path.join(out, 'main.dol'),
-                      [(TEXT, pack(text), True), (MODULE, pack(module), True), (DATA, pack(data), False)],
+                      [(TEXT, pack(text), True), (SECOND_TEXT, pack(second), True), (MODULE, pack(module), True),
+                       (DATA, pack(data), False)],
                       (DATA + 0x1000, 0x100), TEXT)
     write(os.path.join(out, 'main.dol.modules'), f'{MODULE:08X} {len(module) * 4:X} 0 made_up_module\n')
     syms = [f'{f.name} = .text:0x{f.addr:08X}; // type:function size:0x{f.size():X} scope:global'
-            for f in FUNCS + MODULE_FUNCS]
+            for f in FUNCS + SECOND_FUNCS + MODULE_FUNCS]
     for table, _, cases in JUMP_TABLES:
         a = labels[table]
         syms.append(f'jumptable_{a:08X} = .data:0x{a:08X}; // type:object size:0x{len(cases) * 4:X} scope:local')
     write(os.path.join(out, 'symbols.txt'), '\n'.join(syms) + '\n')
     for name, lines in tables(labels).items():
         write(os.path.join(out, 'tables', name), ''.join(line + '\n' for line in lines))
-    write(os.path.join(out, 'fixture_programs.h'), header(labels, text, module, data))
+    write(os.path.join(out, 'fixture_programs.h'), header(labels, text, second, module, data))
 
 
 if __name__ == '__main__':

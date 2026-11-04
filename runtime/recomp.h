@@ -355,7 +355,10 @@ void hle_dcbi(CPU* c, uint32_t ea);
 /* Code written at run time (runtime/interp/code_watch.cpp). icbi's range is the 32-byte block
    holding ea, and any other writer of code names its own. Each recounts the words that differ
    from the text as boot found it in every function the range overlaps, and a function's bit stays
-   set while its count isn't 0. */
+   set while its count isn't 0.
+
+   A caller of either is the guest thread holding the baton, or runs before threads_start_boot.
+   Nothing else serializes boot's copy and the counts. */
 void hle_icbi(CPU* c, uint32_t ea);
 void gcn_code_written(uint32_t addr, uint32_t len);
 /* Segment registers and the TLB, for a game that maps memory through the Gekko's page

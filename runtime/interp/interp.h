@@ -116,15 +116,12 @@ void code_table_boot();
 // boot marked, and reads GCN_CODE_CHECK.
 void code_watch_boot();
 // GCN_CODE_CHECK's comparison of all the text with boot's copy. It reports each changed word whose
-// function nothing marked, once. It also reports a changed function with a frame on one of threads'
-// guest stacks, at the first check that finds it changed.
+// function nothing marked, once. It also reports a changed function that one of threads' LR or a
+// return address on its guest stack returns into, at the first check that finds it changed.
 void code_watch_check(const std::vector<const CPU*>& threads);
-// The guest thread, at each frame boundary. Under GCN_CODE_CHECK=1 it runs the check on
-// guest_threads() and counts the frame's icbi.
-void code_watch_frame();
 // GCN_CODE_CHECK's line at exit, with the icbi that ran in the frames it counted.
 std::string code_watch_stats();
 // call_indirect's miss path. An aligned addr in main RAM runs as a loose frame, the first miss at each
-// address prints a line, and it returns true. Anything else returns false having run nothing, and
-// call_indirect stops.
+// address since boot prints a line, and it returns true. Anything else returns false having run
+// nothing, and call_indirect stops.
 bool code_watch_run_unknown(CPU* c, uint32_t addr);

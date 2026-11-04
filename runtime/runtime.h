@@ -31,6 +31,9 @@ void mem_init();
 uint32_t vi_display_height();
 // Whether a recompiled function starts at `addr`.
 bool recomp_is_function(uint32_t addr);
+// Calls the recompiled entry at `addr`, in the DOL, a module or a REL, as call_indirect does. It
+// returns false having called nothing when there's none, where call_indirect would go on to its miss path.
+bool call_known(CPU* c, uint32_t addr);
 extern uint8_t* g_aram;
 
 // Where the memory card lives. Null means the working directory, which is right for a
@@ -181,6 +184,9 @@ std::string guest_str(uint32_t addr, size_t max = 4096);
 // memory (runtime/heap_trace.cpp); with GCN_HEAP set, also the live cells by caller.
 void heap_report(std::string& out);
 void heap_trace_frame(uint32_t frame);  // GCN_HEAP=<frames>: the report every so many frames
+// The guest thread, at each frame boundary (runtime/interp/code_watch.cpp). Under GCN_CODE_CHECK=1 it
+// runs the check on guest_threads() and counts the frame's icbi.
+void code_watch_frame();
 
 // Names a guest address. func_name wants a function's first instruction; func_containing
 // takes any address inside one, which is what a return address off the stack is.

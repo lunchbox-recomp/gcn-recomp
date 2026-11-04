@@ -1,7 +1,8 @@
 // The interpreter's frames. A recompiled body's entry guard calls interp_enter while its function's bit
 // in g_code_changed_bits is set (runtime/recomp.h), and the function frame it runs does with each word
 // what recomp.py's emit_body made that word's C do, call for call. A loose frame runs code that no
-// function holds, and a branch that doesn't link stays inside it unless it lands on a function's start.
+// function holds. A branch that doesn't link stays inside it unless it lands on a function's start, and a
+// bl stays inside it unless a table knows its target.
 //
 // Each word goes to its site first, then to interp_branch, then to interp_step. The frame reads the CPU
 // again for every word, since an interrupt or a context switch comes back through a longjmp with the
@@ -99,7 +100,16 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
                         interp_setjmp_site(c, f, kind, br.target, pc);
                         return false;
                     }
-                    call_indirect(c, br.target);
+                    // A loose frame's bl to code that no table knows, such as a helper of its own or a bl
+                    // over data, jumps there with LR set, as the hardware does.
+                    if (f->loose && br.kind <= INTERP_BC) {
+                        if (!call_known(c, br.target)) {
+                            pc = br.target;
+                            continue;
+                        }
+                    } else {
+                        call_indirect(c, br.target);
+                    }
                 }
                 pc += 4;
                 continue;
@@ -112,6 +122,13 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
                 if (f->longjmp) {
                     hle_longjmp_resume(c, f->jb);
                     return false;
+                }
+                // A loose frame returns only to the LR it was entered with. Any other blr goes on at its
+                // target, natively when a table knows the code there.
+                if (f->loose && br.target != f->entry_lr) {
+                    if (call_known(c, br.target)) return false;
+                    pc = br.target;
+                    continue;
                 }
                 if (br.target != f->entry_lr && first_report(g_blr_seen, pc))
                     log_msg(LOG_INTERP, "blr at %08X returns to %08X, and its frame was entered with LR %08X", pc,

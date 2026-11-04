@@ -171,7 +171,9 @@ void check_recount() {
     icbi(f);
     const bool forced = bit(n);
     code_table_mark(n, CODE_FORCED, false);
-    if (!forced || bit(n)) fail("a forced f_sj with its word back: marked " + std::to_string(forced));
+    if (!forced || bit(n))
+        fail("a forced f_sj with its word back: marked " + std::to_string(forced) + " while forced, and " +
+             std::to_string(bit(n)) + " after");
     else printf("match  a forced function stays interpreted once its changed word is back\n");
 }
 
@@ -204,6 +206,30 @@ void check_ranges() {
     if (set_bits() != two)
         fail("gcn_code_written across f_loop's last word marked " + starts(set_bits()) + ", not " + starts(two));
     else printf("match  gcn_code_written marks each function its range overlaps, and none outside the text\n");
+}
+
+// The second text section, and the text's ends. f_loop's first word is the text's lowest and
+// f_second_next's last word its highest. The fillers end the first section, two words each.
+void check_sections() {
+    boot();
+    poke(FX_F_SECOND, kNop);
+    icbi(FX_F_SECOND);
+    const std::vector<uint32_t> second = {FX_F_SECOND};
+    if (set_bits() != second)
+        fail("a change in the second text section marked " + starts(set_bits()) + ", not " + starts(second));
+    else printf("match  a change in a second text section marks its function\n");
+
+    boot();
+    const uint32_t first_end = FX_FILLER_00 + 8 * FX_FILLER_COUNT;
+    for (uint32_t a : {FX_F_LOOP, first_end - 4, FX_F_SECOND_NEXT + 4}) {
+        poke(a, kNop);
+        icbi(a);
+    }
+    const std::vector<uint32_t> ends = {FX_F_LOOP, first_end - 8, FX_F_SECOND_NEXT};
+    if (set_bits() != ends)
+        fail("changes at the text's ends and the first section's marked " + starts(set_bits()) + ", not " +
+             starts(ends));
+    else printf("match  a change at either end of the text, or at the first section's, marks its function\n");
 }
 
 void check_hle() {
@@ -289,6 +315,7 @@ void check_live() {
     poke(sp2 + 4, FX_F_CALL + 16);
     base_cpu(&g_thread);
     g_thread.r[1] = sp0;
+    g_thread.lr = FX_F_CALL + 16;  // and LR too, which mustn't report f_call a second time
     const std::string first = printed([](void*) { code_watch_check({&g_thread}); });
     const std::string again = printed([](void*) { code_watch_check({&g_thread}); });
     const std::string want = "[interp] GCN_CODE_CHECK: f_call at " + hex(FX_F_CALL) +
@@ -297,6 +324,20 @@ void check_live() {
     if (first != want) fail("GCN_CODE_CHECK printed\n" + first + "where it should print\n" + want);
     else if (!again.empty()) fail("GCN_CODE_CHECK's next check printed \"" + again + "\"");
     else printf("match  GCN_CODE_CHECK reports a changed function live on a guest stack, at the first check\n");
+
+    // A thread stopped in a call that f_call made, whose LR no frame on the stack has saved yet.
+    setenv("GCN_CODE_CHECK", "1", 1);
+    boot();
+    unsetenv("GCN_CODE_CHECK");
+    poke(FX_F_CALL + 16, kNop);
+    icbi(FX_F_CALL + 16);
+    poke(sp2, 0);
+    base_cpu(&g_thread);
+    g_thread.r[1] = sp2;
+    g_thread.lr = FX_F_CALL + 16;
+    const std::string lr = printed([](void*) { code_watch_check({&g_thread}); });
+    if (lr != want) fail("GCN_CODE_CHECK with f_call live in LR printed\n" + lr + "where it should print\n" + want);
+    else printf("match  GCN_CODE_CHECK reports a changed function that a thread's LR returns into\n");
 }
 
 void check_stats() {
@@ -338,6 +379,14 @@ void check_unknown() {
     else if (said != want) fail("two calls into a RAM blob printed\n" + said + "where they should print\n" + want);
     else printf("match  a call into a RAM blob runs loose, with a line the first time\n");
 
+    boot();
+    base_cpu(&g_cpu);
+    g_at = FX_BLOB_LOOP;
+    said = printed(run_unknown);
+    if (said != want)
+        fail("a call into the RAM blob after another boot printed\n" + said + "where it should print\n" + want);
+    else printf("match  another boot prints the line for the same blob again\n");
+
     bool none = true;
     for (uint32_t a : {FX_BLOB_LOOP + 2, FX_BLOB_LOOP + 1, 0x81800000u, 0x7FFFFFFCu}) {
         base_cpu(&g_cpu);
@@ -376,6 +425,7 @@ int main(int argc, char** argv) {
     check_branch_and_back();
     check_recount();
     check_ranges();
+    check_sections();
     check_hle();
     check_mismatch();
     check_unmarked();

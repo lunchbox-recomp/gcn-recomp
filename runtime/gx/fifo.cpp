@@ -2,7 +2,6 @@
 #include <algorithm>
 #include "../runtime.h"
 #include "../platform.h"
-#include "../interp/interp.h"
 #include "gx.h"
 #include "render.h"
 #include "render_gl.h"

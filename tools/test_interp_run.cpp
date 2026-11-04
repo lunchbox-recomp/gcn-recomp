@@ -5,8 +5,9 @@
 // test_interp_run_trace is built with GCN_TRACE_CALLS, and each of its runs must leave the guest call
 // stack as deep as it found it.
 //
-// After the cases come --log=interp's lines and the stops, a longjmp frame that returns, a patch with
-// a goto and a loop through two sites in a function frame and in a loose one.
+// After the cases come --log=interp's lines, three loose frames' bl and the stops. The stops are a
+// longjmp frame that returns, a patch with a goto and a loop through two sites in a function frame and
+// in a loose one.
 //
 // usage: test_interp_run
 // Exits 0 only if everything matches.
@@ -139,6 +140,43 @@ void check_logs() {
     }
 }
 
+// A loose frame's bl to code that no table knows jumps there in the same frame, and its blr to anything
+// but the LR it was entered with goes on there. A bl to a recompiled function calls it, and so does a
+// blr into one.
+struct LooseBl {
+    const char* name;
+    uint32_t entry, r3;
+    double f1;
+    uint64_t ran;  // the words the frame runs, so a run that goes on past its last blr shows
+};
+
+const LooseBl kLooseBls[] = {
+    {"a loose frame's bl over two floats, which reads their address from LR", FX_BLOB_FLOATS, FX_BLOB_FLOATS_FLOATS,
+     1.0, 6},
+    // base_cpu's f1 is -2.25.
+    {"a loose frame's bl to a helper of its own, twice", FX_BLOB_HELPER, 10, -2.25, 10},
+    {"a loose frame's bl to a recompiled function, which goes on after it", FX_BLOB_KNOWN, 106, -2.25, 6},
+    {"a loose frame's blr into a recompiled function, which runs natively", FX_BLOB_BLR_KNOWN, 42, -2.25, 5},
+};
+
+void check_loose_bls() {
+    for (const LooseBl& w : kLooseBls) {
+        const Outcome o = run(Case{w.name, w.entry, 0, nullptr, nullptr, true}, OWN);
+        char got[256];
+        snprintf(got, sizeof got, "r3 %08X, f1 %g, LR %08X, %llu words run, %d blobs run through call_indirect",
+                 o.cpu.r[3], o.cpu.f[1].d, o.cpu.lr, (unsigned long long)o.ran, g_blob_runs);
+        if (!o.stop.empty()) fail(std::string(w.name) + ": stopped with \"" + o.stop + "\"");
+        else if (o.cpu.r[3] != w.r3 || o.cpu.f[1].d != w.f1 || o.cpu.lr != kLR || o.ran != w.ran || g_blob_runs) {
+            char want[256];
+            snprintf(want, sizeof want, "r3 %08X, f1 %g, LR %08X, %llu words run, 0 blobs run through call_indirect",
+                     w.r3, w.f1, kLR, (unsigned long long)w.ran);
+            fail(std::string(w.name) + ": " + got + ", not " + want);
+        } else {
+            printf("match  %s\n", w.name);
+        }
+    }
+}
+
 void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc); }
 
 // Runs entry forced, or as a loose frame, and checks that its stop's whole message is one of wants.
@@ -211,6 +249,7 @@ int main(int argc, char**) {
 
     for (const Case& k : kCases) check_case(k);
     check_logs();
+    check_loose_bls();
     check_stops();
     return runner_finish();
 }

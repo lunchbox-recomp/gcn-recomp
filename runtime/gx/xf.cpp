@@ -2,7 +2,6 @@
 // texgen) on the CPU, primitive assembly, pixel-state snapshots and EFB copies.
 #include "../runtime.h"
 #include "../platform.h"
-#include "../interp/interp.h"
 #include "../pause.h"
 #include "blend.h"
 #include "gx.h"

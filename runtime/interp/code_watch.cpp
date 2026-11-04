@@ -27,11 +27,13 @@ struct Watch {
     bool on = false;     // boot's copy matched the text the build was recompiled from
     bool check = false;  // GCN_CODE_CHECK=1
     std::vector<Section> text;
+    uint32_t lo = 0, hi = 0;  // the text's lowest address and the end of its highest
     // By a function's index in g_recomp_ranges, its words that differ from boot's copy as last counted.
     std::vector<uint32_t> changed;
     std::vector<uint8_t> hle_said;      // a change to the HLE'd function has printed its line
     std::vector<uint8_t> check_saw;     // the last check found the function's words changed
     std::unordered_set<uint32_t> said;  // the unmarked words the check reported
+    std::unordered_set<uint32_t> seen;  // the unknown code that call_indirect's miss path ran
     uint64_t frame_icbi = 0;            // the icbi since the last frame boundary
 };
 Watch g_watch;
@@ -75,9 +77,10 @@ void recount(uint32_t n) {
 }
 
 // Recounts each function [lo, hi) overlaps whose words there differ from boot's copy, or that has a
-// count already. When nothing changed that's a lookup and a compare.
+// count already. When nothing changed that's a lookup and a compare, and a range outside the text is
+// only the compare with its ends.
 void watch(uint32_t lo, uint32_t hi) {
-    if (!g_watch.on) return;
+    if (!g_watch.on || hi <= g_watch.lo || lo >= g_watch.hi) return;
     const RecompRange* end = g_recomp_ranges + g_recomp_range_count;
     const RecompRange* r =
         std::upper_bound(g_recomp_ranges, end, lo, [](uint32_t a, const RecompRange& x) { return a < x.end; });
@@ -143,6 +146,9 @@ void code_watch_boot() {
         g_watch.text.clear();
         fprintf(stderr, "[interp] the text in RAM at boot doesn't match what this build was recompiled from, so code "
                         "changes go unseen\n");
+    } else if (!g_watch.text.empty()) {
+        g_watch.lo = g_watch.text.front().start;
+        g_watch.hi = g_watch.text.back().end;
     }
     const char* check = getenv("GCN_CODE_CHECK");
     g_watch.check = g_watch.on && check && !strcmp(check, "1");
@@ -164,23 +170,27 @@ void code_watch_check(const std::vector<const CPU*>& threads) {
         fresh[n] = differs[n] && !g_watch.check_saw[n];
         g_watch.check_saw[n] = differs[n];
     }
-    // Each guest stack's back chain, as debug_sampler_start in threads.cpp walks it. The word at [sp] is
-    // the caller's frame, and the one 4 past that is the return address into the caller.
-    for (const CPU* t : threads)
+    const auto live = [&fresh](uint32_t ret) {
+        uint32_t n;
+        if (!code_table_find(ret - 4, &n) || !fresh[n]) return;
+        fresh[n] = 0;
+        fprintf(stderr,
+                "[interp] GCN_CODE_CHECK: %s at %08X changed with a frame of it live on a guest stack, which returns "
+                "to %08X\n",
+                func_name(g_recomp_ranges[n].start), g_recomp_ranges[n].start, ret);
+    };
+    // A guest thread's LR returns into the function that made the call the thread is in, until something
+    // saves it. The check reads it, then the thread's back chain as debug_sampler_start in threads.cpp
+    // walks it. The word at [sp] is the caller's frame, and the word 4 past it holds the return address.
+    for (const CPU* t : threads) {
+        live(t->lr);
         for (uint32_t sp = t->r[1]; in_ram(sp);) {
             const uint32_t prev = mem_r32(sp);
             if (!in_ram(prev) || prev <= sp) break;
-            const uint32_t ret = mem_r32(prev + 4);
-            uint32_t n;
-            if (code_table_find(ret - 4, &n) && fresh[n]) {
-                fresh[n] = 0;
-                fprintf(stderr,
-                        "[interp] GCN_CODE_CHECK: %s at %08X changed with a frame of it live on a guest stack, which "
-                        "returns to %08X\n",
-                        func_name(g_recomp_ranges[n].start), g_recomp_ranges[n].start, ret);
-            }
+            live(mem_r32(prev + 4));
             sp = prev;
         }
+    }
 }
 
 void code_watch_frame() {
@@ -207,8 +217,8 @@ std::string code_watch_stats() {
 
 bool code_watch_run_unknown(CPU* c, uint32_t addr) {
     if ((addr & 3) || !in_ram(addr)) return false;
-    static std::unordered_set<uint32_t> seen;  // the guest thread holding the baton's
-    if (seen.insert(addr).second) fprintf(stderr, "[interp] running unknown code at %08X (lr=%08X)\n", addr, c->lr);
+    if (g_watch.seen.insert(addr).second)
+        fprintf(stderr, "[interp] running unknown code at %08X (lr=%08X)\n", addr, c->lr);
     interp_run_loose(c, addr);
     return true;
 }

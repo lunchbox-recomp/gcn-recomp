@@ -33,13 +33,20 @@ does the same for a writer that isn't the guest, and each recounts the words tha
 copy in every function its range overlaps. An `icbi`'s range is the 32-byte block holding its
 address.
 
+A caller of either is the guest thread holding the baton, or runs before `threads_start_boot`.
+Nothing else serializes boot's copy and the counts.
+
 A function's `CODE_CHANGED` mark is set while its count isn't 0, so writing the old word back and
 flushing it sends the function native again.
 
 When nothing in the range changed and none of its functions has a count, that's a range lookup
-and a compare of the block. A function that's running when its code changes goes on natively
-until it returns, and its next entry is interpreted. A write that nothing flushes isn't seen,
-which is what `GCN_CODE_CHECK` looks for.
+and a compare of the block, and a range outside the text is a compare with its ends. A function
+that's running when its code changes goes on natively until it returns, and its next entry is
+interpreted.
+
+A write that nothing flushes isn't seen, which is what `GCN_CODE_CHECK` looks for. A write that
+only `ICFlashInvalidate` flushes isn't seen either, since it sets HID0's ICFI bit through
+`hle_mtspr` and names no range.
 
 A change to an HLE'd function prints `[interp] the HLE'd <name> at <start> changed, and its
 replacement still runs in its place`, once for that function. Its original body runs
@@ -48,9 +55,9 @@ interpreted only where the replacement calls it.
 ## Unknown code
 
 `call_indirect` runs an aligned address in main RAM that no table knows as a loose frame, such
-as a blob the game or a mod wrote. The first miss at each address prints `[interp] running
-unknown code at <addr> (lr=<lr>)`. A misaligned address or one outside main RAM stops the game
-as it did before.
+as a blob the game or a mod wrote. The first miss at each address since boot prints `[interp]
+running unknown code at <addr> (lr=<lr>)`. A misaligned address or one outside main RAM stops
+the game as it did before.
 
 ## Function frames
 
@@ -105,7 +112,7 @@ address (`interp_site_unusable`).
 
 `interp_run_loose` runs code that no function's range holds, such as a blob the game wrote
 into RAM, with its own `ENTER` and `EXIT`. Its backward branches run the same checks and its
-sites apply. A `blr` returns from it.
+sites apply.
 
 A loose frame has no range. A branch that doesn't link is a call and then a return when it
 lands on a recompiled function's start, as a mod's tail call does. Anywhere else, a
@@ -113,12 +120,17 @@ function's middle included, it goes on in the same frame.
 
 A taken `bl` or `bcl` to the next word sets LR and runs on, so code can read its own address.
 A `blrl` or `bctrl` whose LR or CTR holds the next word's address runs on too, where a
-function frame calls it.
+function frame calls it. Any other `blrl` or `bctrl` is a call through `call_indirect`.
 
 A `bl` to a setjmp or context function is a site, as in a function frame, unless it's to the
-next word. Any other `bl` is a call through `call_indirect`, a `bl` over data included. The runtime's `call_indirect` stops
-the game at a target that isn't a recompiled entry, so a loose frame's `bl` over data stops it
-there.
+next word. Any other `bl` or `bcl` to a recompiled entry calls it, a module's or a REL's
+included, and the frame goes on after it. One to code that no table knows sets LR and jumps
+there in the same frame, as the hardware does, so a mod's own helper runs there and so does
+the code after a `bl` over data.
+
+A `blr` to the LR the frame was entered with returns from it. A `blr` to anywhere else goes on
+at its target in the same frame, as a helper's return does. When a table knows the code there,
+the frame calls it and then returns.
 
 The runtime calls `interp_run_loose` from `call_indirect`'s miss path, under Unknown code
 above.

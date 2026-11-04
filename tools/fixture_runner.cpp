@@ -23,6 +23,7 @@ bool g_longjmp_returns;
 std::map<uint32_t, Binding> g_bindings;
 bool g_irq_armed;
 int g_at_exit;
+int g_blob_runs;
 
 namespace {
 
@@ -111,16 +112,20 @@ void plat_at_exit(void (*fn)()) {
 
 std::vector<const CPU*> guest_threads() { return {&g_cpu}; }
 
+bool call_known(CPU* c, uint32_t addr) {
+    RecompFn fn = lookup(addr);
+    if (fn) fn(c);
+    return fn != nullptr;
+}
+
 extern "C" {
 void orig_made_up_save(CPU* c);
 
 void call_indirect(CPU* c, uint32_t addr) {
-    if (RecompFn fn = lookup(addr)) {
-        fn(c);
-        return;
-    }
+    if (call_known(c, addr)) return;
     // A blob is code in RAM that no table knows, and it runs as a loose frame.
     if (addr >= FX_BLOB_BASE && addr < FX_BLOB_END) {
+        g_blob_runs++;
         interp_run_loose(c, addr);
         return;
     }
@@ -408,6 +413,7 @@ Outcome run(const Case& k, Mode m) {
     g_irq_armed = g_longjmp_returns = false;
     g_site_frames.clear();
     g_site_moves = 0;
+    g_blob_runs = 0;
     force_none();
     if (k.setup) k.setup(&g_cpu);
     const uint32_t n = k.loose ? g_recomp_range_count : range_of(k.entry);

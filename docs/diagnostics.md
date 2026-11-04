@@ -1461,8 +1461,8 @@ address it came from. An empty `GCN_FEED_DUMP` records nothing.
 
 `GCN_FIFO_DUMP=<path>` writes the GP FIFO's memory, base to end, in the FIFO dump that the
 interrupt and fault handlers print. `GCN_RAM_DUMP=<path>` writes the guest RAM when
-`call_indirect` finds no function at its target, to see what code is at that target and
-where it came from. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record nothing.
+`call_indirect` stops at a misaligned target or one outside main RAM, for seeing what handed it
+that address. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record nothing.
 
 `ninja test_feed_dump` builds `tools/test_feed_dump.cpp`. It checks that unset and empty
 paths make no files, and that a failed file open leaves no open dump or index.
@@ -1570,11 +1570,12 @@ flushes them (`docs/interpreter.md`). These lines go to stderr whatever the sett
 ```
 
 The first comes at boot. The second comes once for each HLE'd function whose code changes, and
-the third once for each address `call_indirect` runs as a loose frame.
+the third once for each address `call_indirect` runs as a loose frame since boot.
 
 `GCN_CODE_CHECK=1` compares all the text with boot's copy at each frame boundary, on the guest
 thread. It reports each changed word whose function nothing marked, once. It also reports a
-changed function with a frame on a guest stack, at the first check that finds it changed.
+changed function that a guest thread's LR or stack returns into, at the first check that finds
+it changed.
 
 ```
 [interp] GCN_CODE_CHECK: the word at <addr> in <name> is <word>, not the <old> it was at boot, and nothing marked the function changed
@@ -1582,8 +1583,11 @@ changed function with a frame on a guest stack, at the first check that finds it
 ```
 
 Such a frame is native if it was entered before the change, and it goes on in the old code until
-it returns. The check reads each guest thread's stack the way `--sample` does, and it can't
-tell a native frame from an interpreted one. When boot's copy didn't match, the check is off.
+it returns. The check can't tell a native frame from an interpreted one. When boot's copy
+didn't match, the check is off.
+
+The check reads each guest thread's LR, then its stack the way `--sample` does. A frameless
+leaf's caller shows only while LR still returns into it, so it can be missed.
 
 At exit it prints how many `icbi` ran, counted by the frames it checked.
 

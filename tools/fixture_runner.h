@@ -50,6 +50,7 @@ extern std::map<uint32_t, Binding> g_bindings;
 
 extern bool g_irq_armed;  // the next irq_poll delivers an interrupt, as irq_deliver delivers one
 extern int g_at_exit;     // plat_at_exit's calls
+extern int g_blob_runs;   // call_indirect's loose frames over a blob, since the last run started
 
 uint32_t depth_of(const CPU* c);
 RecompFn lookup(uint32_t a);

@@ -147,18 +147,22 @@ bool recomp_is_function(uint32_t addr) {
     return !(addr & 3) && fn_lookup(addr) != nullptr;
 }
 
+bool call_known(CPU* c, uint32_t addr) {
+    if (addr & 3) return false;
+    RecompFn fn = fn_lookup(addr);
+    if (fn) { fn(c); return true; }
+    // In a module the game loaded: at its canonical address, once bound.
+    uint32_t canon = modules_canon(addr);
+    if (canon == addr && modules_bind(addr)) canon = modules_canon(addr);
+    if (canon != addr && (fn = fn_lookup(canon))) { fn(c); return true; }
+    // In a relocatable module, where the game linked it.
+    canon = rels_canon(addr);
+    if (canon != addr && (fn = fn_lookup(canon))) { fn(c); return true; }
+    return false;
+}
+
 extern "C" void call_indirect(CPU* c, uint32_t addr) {
-    if (!(addr & 3)) {
-        RecompFn fn = fn_lookup(addr);
-        if (fn) { fn(c); return; }
-        // In a module the game loaded: at its canonical address, once bound.
-        uint32_t canon = modules_canon(addr);
-        if (canon == addr && modules_bind(addr)) canon = modules_canon(addr);
-        if (canon != addr && (fn = fn_lookup(canon))) { fn(c); return; }
-        // In a relocatable module, where the game linked it.
-        canon = rels_canon(addr);
-        if (canon != addr && (fn = fn_lookup(canon))) { fn(c); return; }
-    }
+    if (call_known(c, addr)) return;
     // Code in main RAM that no table knows, such as a blob the game or a mod wrote, runs interpreted.
     if (code_watch_run_unknown(c, addr)) return;
     // GCN_RAM_DUMP=<path>: the guest RAM at this failure, for finding out what the code at
