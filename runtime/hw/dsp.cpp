@@ -1,6 +1,7 @@
 // DSP interface: mailboxes, ARAM DMA, audio (AI) DMA. The DSP itself is HLE'd
 // (see dsp_hle.cpp) - this file only models the CPU-side registers.
 #include "../runtime.h"
+#include "../platform.h"
 #include "dsp_hle.h"
 #include <algorithm>
 #include <deque>
@@ -219,7 +220,11 @@ static AidFiles aid_open(const char* path) {
 }
 
 static void aid_capture(const int16_t* be, uint32_t frames, bool catching_up, uint32_t addr, bool queued) {
-    static const AidFiles files = aid_open(getenv("GCN_AIDWAV"));
+    static const AidFiles files = [] {
+        AidFiles f = aid_open(getenv("GCN_AIDWAV"));
+        if (f.pcm) plat_at_exit([] { fclose(files.idx); fclose(files.pcm); });
+        return f;
+    }();
     static uint64_t at;
     if (!files.pcm) return;
     fprintf(files.idx, "%llu %u %llu %d %08X %d\n", (unsigned long long)at, frames, (unsigned long long)now_ticks(), catching_up ? 1 : 0, addr, queued ? 1 : 0);

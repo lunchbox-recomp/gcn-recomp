@@ -618,6 +618,7 @@ writes every block the DMA delivers (raw 16-bit stereo at the DMA's rate, little
 and `<file>.txt` each block's start, length, virtual time, whether it was delivered catching
 up, its address and whether the guest had queued the next one; it works in the benchmark,
 so a replay's sound can be checked block by block for repeats and broken joins.
+An orderly exit closes both files, keeping the last block and its index line.
 
 An empty `GCN_AIDWAV` records nothing, as an unset one does. If the file won't open, nothing
 is recorded. If the `.txt` won't open, the file named is left empty and nothing is recorded.
@@ -994,8 +995,10 @@ which pulls the ring couldn't fill.
   that came out in a pull the ring couldn't fill was made from nothing.
 
 `GCN_WAV=<file>` writes what went to the device, the DVD music mixed in, as a 16-bit stereo
-WAV file at 48 kHz. Its header is rewritten after every write, so a run that's stopped from
-outside still leaves a file that reads.
+WAV file at 48 kHz. Its header is rewritten after every write, and an orderly exit closes the
+file so its last buffered samples reach it.
+
+`GCN_JAUDIO_WAV=<file>` records JAudio's 32 kHz output. An orderly exit closes this file too.
 
 `ninja test_audio_ring` checks this accounting too, on the same virtual clock as the ring.
 A device that keeps exact time gets no late callbacks and no underruns. A gap of 1.4 periods

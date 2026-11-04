@@ -21,6 +21,7 @@
 // usage: test_aid <work dir>   (a directory that doesn't exist yet)
 // Exits 0 only if every check passes.
 #include "hw/dsp.cpp"
+#include "platform.h"
 #include <cstdio>
 #include <cstdlib>
 #include <sys/stat.h>
@@ -135,13 +136,27 @@ long size_of(const char* path) {
     return stat(path, &st) == 0 ? (long)st.st_size : -1;
 }
 
-int lines_in(const char* path) {
-    FILE* f = fopen(path, "r");
-    int n = 0;
-    if (!f) return -1;
-    for (int c; (c = getc(f)) != EOF;) n += c == '\n';
-    fclose(f);
-    return n;
+bool capture_contents() {
+    FILE* raw = fopen("aid.raw", "rb");
+    if (!raw) return false;
+    bool ok = true;
+    for (int i = 0; i < 3 * 160 * 4; i++) ok &= getc(raw) == ((i / (160 * 4)) % 2 ? 0xA5 : 0x5A);
+    ok &= getc(raw) == EOF;
+    fclose(raw);
+
+    FILE* idx = fopen("aid.raw.txt", "r");
+    if (!idx) return false;
+    for (unsigned i = 0; i < 3; i++) {
+        unsigned long long at, when;
+        unsigned frames, catching_up, addr, queued;
+        ok &= fscanf(idx, "%llu %u %llu %u %x %u\n", &at, &frames, &when,
+                     &catching_up, &addr, &queued) == 6 &&
+              at == i * 160 && frames == 160 && when == (i + 1) * kDur &&
+              catching_up == 0 && addr == (i % 2 ? kBufB : kBufA) && queued == 1;
+    }
+    ok &= getc(idx) == EOF;
+    fclose(idx);
+    return ok;
 }
 
 // Three blocks delivered with GCN_AIDWAV set to `path`, in a child process. True if the child
@@ -152,12 +167,14 @@ bool capture_run(const char* path) {
     if (pid == 0) {
         alarm(10);
         setenv("GCN_AIDWAV", path, 1);
+        memset(g_mem + kBufA, 0x5A, kBlocks * 32);
+        memset(g_mem + kBufB, 0xA5, kBlocks * 32);
         dsp_write16(0x0A, CR_AID_MASK | 0x800);
         queue(kBufA);
         g_next = kBufB;
         dsp_write16(0x36, 0x8000 | kBlocks);
         run_to(3 * kDur + 1);
-        exit(0);
+        plat_exit_now(0);
     }
     int status = 0;
     return pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
@@ -190,7 +207,7 @@ int main(int argc, char** argv) {
 
     // Before the parent's own run, so that each child starts from a DMA that never ran.
     check(capture_run("") && !exists(".txt"), "an empty GCN_AIDWAV records nothing");
-    check(capture_run("aid.raw") && size_of("aid.raw") == 3 * 160 * 4 && lines_in("aid.raw.txt") == 3,
+    check(capture_run("aid.raw") && capture_contents(),
           "GCN_AIDWAV=<file> records each block, with a line for it in <file>.txt");
     mkdir("blocked.raw.txt", 0755);
     check(capture_run("blocked.raw") && size_of("blocked.raw") <= 0,
