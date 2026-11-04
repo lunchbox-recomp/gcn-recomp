@@ -1566,11 +1566,13 @@ flushes them (`docs/interpreter.md`). These lines go to stderr whatever the sett
 ```
 [interp] the text in RAM at boot doesn't match what this build was recompiled from, so code changes go unseen
 [interp] the HLE'd <name> at <start> changed, and its replacement still runs in its place
-[interp] running unknown code at <addr> (lr=<lr>)
+[interp] running unknown code at <addr> (lr=<lr>), which returns to <ret>
 ```
 
 The first comes at boot. The second comes once for each HLE'd function whose code changes, and
-the third once for each address of unknown code that runs as a loose frame since boot.
+the third once for each address of unknown code that runs as a loose frame since boot. Its
+`<ret>` is the LR whose `blr` returns from the frame, which isn't `<lr>` at a hook a mod wrote
+past a call.
 
 `GCN_CODE_CHECK=1` compares all the text with boot's copy at each frame boundary, on the guest
 thread. It reports each changed word whose function nothing marked, once. It also reports a

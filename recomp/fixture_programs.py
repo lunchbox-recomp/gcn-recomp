@@ -252,6 +252,8 @@ BLOB_KNOWN = [mflr(0), li(3, 1), bl('f_callee'), addi(3, 3, 100), mtlr(0), BLR]
 BLOB_BLR_KNOWN = [mflr(0)] + address(12, 'f_lr_from_r0') + [mtlr(12), BLR]
 # A hook written past a call in f_hooked_late, where LR holds the call's return and not the function's.
 LATE_HOOK = [addi(3, 3, 1000), b('f_hooked_late.after')]
+# The code a mod points f_switch_hook's first case at. It branches back into the second case.
+CASE_HOOK = [addi(3, 3, 1000), b('f_switch_hook.case1')]
 
 FUNCS = [
     Code('f_loop', [li(3, 3), li(4, 0), 'loop:', add(4, 4, 3), addi(3, 3, -1), cmpwi(3, 0), bne('.loop'), BLR]),
@@ -366,6 +368,12 @@ FUNCS = [
     Code('f_lr_from_r0', [li(3, 42), mtlr(0), BLR]),
     Code('f_hooked_late', P16 + [bl('f_callee'), 'hook:', addi(3, 3, 1), 'after:', addi(3, 3, 2)] + E16),
     Code('f_hooked_late_twin', P16 + [bl('f_callee'), addi(3, 3, 1000), addi(3, 3, 2)] + E16),
+    # A jump table's bctr after a call, so LR holds the call's return when the table sends it elsewhere.
+    Code('f_switch_hook', P16 + [bl('f_callee')] + address(4, 'jumptable_hook')
+         + [li(5, 0), slwi(0, 5, 2), lwzx(0, 4, 0), mtctr(0), BCTR, 'case0:', addi(3, 3, 10), b('.end'),
+            'case1:', addi(3, 3, 20), 'end:'] + E16),
+    Code('f_switch_hook_twin', P16 + [bl('f_callee')] + address(4, 'jumptable_hook') + [li(5, 0), slwi(0, 5, 2)]
+         + address(0, 'blob_case_hook') + [mtctr(0), addi(3, 3, 1000), addi(3, 3, 20)] + E16),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 SECOND_FUNCS = [Code('f_second', [addi(3, 3, 7), BLR]), Code('f_second_next', [addi(3, 3, 9), BLR])]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
@@ -376,12 +384,15 @@ BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', 
          (BLOB + 0x800, Code('blob_mid', BLOB_MID)), (BLOB + 0x900, Code('blob_two_site_loop', TWO_SITE_LOOP)),
          (BLOB + 0xA00, Code('blob_bctr_tail', BLOB_BCTR_TAIL)), (BLOB + 0xB00, Code('blob_floats', BLOB_FLOATS)),
          (BLOB + 0xC00, Code('blob_helper', BLOB_HELPER)), (BLOB + 0xD00, Code('blob_known', BLOB_KNOWN)),
-         (BLOB + 0xE00, Code('blob_blr_known', BLOB_BLR_KNOWN)), (BLOB + 0xF00, Code('blob_late_hook', LATE_HOOK))]
-# The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
+         (BLOB + 0xE00, Code('blob_blr_known', BLOB_BLR_KNOWN)), (BLOB + 0xF00, Code('blob_late_hook', LATE_HOOK)),
+         (BLOB + 0x1000, Code('blob_case_hook', CASE_HOOK))]
+# The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark. f_switch_hook's
+# jump table comes last.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
-               'mark': DATA + 0xC0}
+               'mark': DATA + 0xC0, 'jumptable_hook': DATA + 0xE0}
 JUMP_TABLES = (('jumptable', 'f_switch', ('case0', 'case1', 'case2')),
-               ('jumptable_back', 'f_switch_back', ('again', 'end')))
+               ('jumptable_back', 'f_switch_back', ('again', 'end')),
+               ('jumptable_hook', 'f_switch_hook', ('case0', 'case1')))
 DATA_SIZE = 0x100
 
 

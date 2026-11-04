@@ -64,6 +64,7 @@ struct InterpFrame {
     uint32_t start, end;        // the function's range, which a loose frame hasn't got
     bool loose, longjmp;        // longjmp says the function is RECOMP_RANGE_LONGJMP
     uint32_t entry_lr;          // LR as the frame was entered
+    uint32_t entry_sp;          // r1 as a loose frame was entered
     uint32_t jb;                // r3 as a longjmp frame was entered, the guest jmp_buf
     uint32_t site_lo, site_hi;  // the rows of g_recomp_sites it can reach
     // Where its interpreted instructions are counted.

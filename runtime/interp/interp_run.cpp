@@ -123,10 +123,12 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
                     hle_longjmp_resume(c, f->jb);
                     return false;
                 }
-                // A loose frame returns only to the LR it was entered with. Any other blr goes on at its
-                // target, natively when a table knows the code there.
-                if (f->loose && br.target != f->entry_lr) {
-                    if (call_known(c, br.target)) return false;
+                // A loose frame returns at a blr to the LR it was entered with, or at one taken with r1
+                // above the r1 it was entered with, which has popped a frame the entry didn't own. Any
+                // other blr goes on at its target, natively when a table knows the code there.
+                if (f->loose) {
+                    if (br.target == f->entry_lr || c->r[1] > f->entry_sp || call_known(c, br.target))
+                        return false;
                     pc = br.target;
                     continue;
                 }
@@ -192,6 +194,7 @@ void interp_run_loose(CPU* c, uint32_t pc, uint32_t entry_lr) {
     InterpFrame f{};
     f.loose = true;
     f.entry_lr = entry_lr;
+    f.entry_sp = c->r[1];
     f.site_hi = g_recomp_site_count;
     f.ran = code_table_counter(g_recomp_range_count);
     f.host = (uintptr_t)GCN_FRAME_ADDRESS();

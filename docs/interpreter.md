@@ -55,9 +55,13 @@ interpreted only where the replacement calls it.
 ## Unknown code
 
 `call_indirect` runs an aligned address in main RAM that no table knows as a loose frame, such
-as a blob the game or a mod wrote. The first miss at each address since boot prints `[interp]
-running unknown code at <addr> (lr=<lr>)`. A misaligned address or one outside main RAM stops
-the game as it did before.
+as a blob the game or a mod wrote. So does a function frame's branch out of its range that
+doesn't link, through the same `code_watch_run_unknown`. A misaligned address or one outside
+main RAM stops the game as it did before.
+
+The first miss at each address since boot prints `[interp] running unknown code at <addr>
+(lr=<lr>), which returns to <ret>`. `<ret>` is the LR whose `blr` returns from the frame, which
+is the function's own LR for a function frame's branch.
 
 ## Function frames
 
@@ -131,12 +135,18 @@ included, and the frame goes on after it. One to code that no table knows sets L
 there in the same frame, as the hardware does, so a mod's own helper runs there and so does
 the code after a `bl` over data.
 
-A `blr` to the LR the frame was entered with returns from it. A `blr` to anywhere else goes on
-at its target in the same frame, as a helper's return does. When a table knows the code there,
-the frame calls it and then returns.
+A `blr` to the LR the frame was entered with returns from it, and so does one taken with r1
+above the r1 the frame was entered with. A `blr` to anywhere else goes on at its target in the
+same frame, as a helper's return does. When a table knows the code there, the frame calls it and
+then returns.
 
-The runtime calls `interp_run_loose` from `call_indirect`'s miss path, under Unknown code
-above.
+The r1 rule is for a frame entered with LR holding an earlier call's return, as native code's
+jump leaves it at a jump table a mod pointed at its own code. The function's epilogue pops a
+frame the entry didn't own, so its `blr` returns. A frameless leaf reached the same way has no
+r1 change to go on, and code that moves r1 to a stack above its own returns at its next `blr`.
+
+The runtime calls `interp_run_loose` from `call_indirect`'s miss path and from a function
+frame's branch out of its range, under Unknown code above.
 
 ## What stays native
 

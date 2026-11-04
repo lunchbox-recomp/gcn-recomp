@@ -5,9 +5,9 @@
 // test_interp_run_trace is built with GCN_TRACE_CALLS, and each of its runs must leave the guest call
 // stack as deep as it found it.
 //
-// After the cases come --log=interp's lines, four loose frames' bl and blr and the stops. The stops
-// are a longjmp frame that returns, a patch with a goto and a loop through two sites in a function
-// frame and in a loose one.
+// After the cases come --log=interp's lines, four loose frames' bl and blr, a function's tail call to
+// an HLE'd function and the stops. The stops are a longjmp frame that returns, a patch with a goto and
+// a loop through two sites in a function frame and in a loose one.
 //
 // A function frame's branch into a blob runs it through the runtime's own miss path, which prints its
 // line for each blob to stderr.
@@ -125,6 +125,12 @@ const Case kCases[] = {
     // LR at the hook is f_callee's return, so the hook's loose frame has to return where f_hooked_late does.
     {"a hook written past a call, whose frame returns where its function does", FX_F_HOOKED_LATE,
      FX_F_HOOKED_LATE_TWIN, [](CPU*) { poke(FX_F_HOOKED_LATE_HOOK, FX_LATE_HOOK_WORD); }, nullptr, false},
+    // A mod points f_switch_hook's first case at a blob. Natively the bctr goes to call_indirect with LR
+    // still f_callee's return, so the blob's frame has to return once the function's epilogue pops its frame.
+    {"a jump table pointed at a blob that branches back into a case", FX_F_SWITCH_HOOK, FX_F_SWITCH_HOOK_TWIN,
+     [](CPU*) { poke(FX_JUMPTABLE_HOOK, FX_BLOB_CASE_HOOK); }, nullptr, false},
+    {"a native jump table pointed at a blob, against the interpreted one", FX_F_SWITCH_HOOK, 0,
+     [](CPU*) { poke(FX_JUMPTABLE_HOOK, FX_BLOB_CASE_HOOK); }, nullptr, false},
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to
@@ -181,6 +187,21 @@ void check_loose_bls() {
             printf("match  %s\n", w.name);
         }
     }
+}
+
+// A function frame's tail call to an HLE'd function calls its replacement, and runs no loose frame.
+void check_function_tail() {
+    const char* const what = "a function's tail call to an HLE'd function runs its replacement and no loose frame";
+    const uint64_t before = *code_table_counter(g_recomp_range_count);
+    const Outcome o = run(Case{what, FX_F_BLOB_TAIL_TWIN, 0, nullptr, nullptr, false}, OWN);
+    const uint64_t loose = *code_table_counter(g_recomp_range_count) - before;
+    bool replaced = false;
+    for (const Call& k : o.calls) replaced = replaced || k.fn == "hle_made_up_save";
+    if (!o.stop.empty() || !o.ran || !replaced || loose)
+        fail(std::string(what) + ": stopped with \"" + o.stop + "\", " + std::to_string(o.ran) +
+             " words interpreted, replacement called " + std::to_string(replaced) + ", " + std::to_string(loose) +
+             " words run loose");
+    else printf("match  %s\n", what);
 }
 
 void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc, g_cpu.lr); }
@@ -256,6 +277,7 @@ int main(int argc, char**) {
     for (const Case& k : kCases) check_case(k);
     check_logs();
     check_loose_bls();
+    check_function_tail();
     check_stops();
     return runner_finish();
 }

@@ -120,6 +120,14 @@ Ran run_fn(uint32_t entry) {
     return {g_cpu.r[3], *code_table_counter(n) != before};
 }
 
+// The line the miss path prints for the blob at addr, run with LR lr, whose frame returns to ret.
+std::string miss_line(uint32_t addr, uint32_t lr, uint32_t ret) {
+    return "[interp] running unknown code at " + hex(addr) + " (lr=" + hex(lr) + "), which returns to " + hex(ret) +
+           "\n";
+}
+
+Ran g_hooked;  // run_fn's result from inside printed()
+
 void check_branch_and_back() {
     boot();
     const uint32_t n = range_of(FX_F_HOOKED), old = peek(FX_F_HOOKED);
@@ -128,11 +136,13 @@ void check_branch_and_back() {
     poke(FX_F_HOOKED, FX_HOOK_WORD);
     const bool early = bit(n);
     icbi(FX_F_HOOKED);
-    const Ran hooked = run_fn(FX_F_HOOKED);
-    if (early || !bit(n) || !hooked.interpreted || hooked.r3 != twin.r3)
+    const std::string said = printed([](void*) { g_hooked = run_fn(FX_F_HOOKED); });
+    const Ran hooked = g_hooked;
+    const std::string line = miss_line(FX_BLOB_HOOK, kLR, kLR);
+    if (early || !bit(n) || !hooked.interpreted || hooked.r3 != twin.r3 || said != line)
         fail("a branch over f_hooked's first word: marked before its icbi " + std::to_string(early) + ", after " +
              std::to_string(bit(n)) + ", interpreted " + std::to_string(hooked.interpreted) + ", r3 " + hex(hooked.r3) +
-             " where the twin's is " + hex(twin.r3));
+             " where the twin's is " + hex(twin.r3) + ", and it printed\n" + said + "where it should print\n" + line);
     else printf("match  a branch written over a word, then icbi, sends the function's next entry to the interpreter\n");
 
     const bool was = bit(n);
@@ -144,6 +154,20 @@ void check_branch_and_back() {
         fail("the old word back in f_hooked: marked " + std::to_string(bit(n)) + ", interpreted " +
              std::to_string(back.interpreted) + ", r3 " + hex(back.r3) + " where native's is " + hex(plain.r3));
     else printf("match  the old word written back, then an interpreted icbi, sends it native again\n");
+}
+
+// A hook past f_hooked_late's call, where LR holds the call's return and the hook's frame returns where
+// the function does.
+void check_hook_lr() {
+    boot();
+    poke(FX_F_HOOKED_LATE_HOOK, FX_LATE_HOOK_WORD);
+    icbi(FX_F_HOOKED_LATE_HOOK);
+    const std::string said = printed([](void*) { g_hooked = run_fn(FX_F_HOOKED_LATE); });
+    const std::string want = miss_line(FX_BLOB_LATE_HOOK, FX_F_HOOKED_LATE_HOOK, kLR);
+    if (!g_hooked.interpreted || said != want)
+        fail("a hook past a call: interpreted " + std::to_string(g_hooked.interpreted) + ", and it printed\n" + said +
+             "where it should print\n" + want);
+    else printf("match  the line for a hook past a call names LR and where the hook's frame returns\n");
 }
 
 // f_sj's first word and the one 64 bytes on are in different blocks.
@@ -363,7 +387,7 @@ void run_unknown(void*) { g_ran = code_watch_run_unknown(&g_cpu, g_at, g_cpu.lr)
 
 void check_unknown() {
     reset_ram();
-    std::string want = "[interp] running unknown code at " + hex(FX_BLOB_LOOP) + " (lr=" + hex(kLR) + ")\n";
+    std::string want = miss_line(FX_BLOB_LOOP, kLR, kLR);
     std::string said;
     bool ran = true, moved = true;
     for (int k = 0; k < 2; k++) {
@@ -423,6 +447,7 @@ int main(int argc, char** argv) {
     g_at_exit = 0;
 
     check_branch_and_back();
+    check_hook_lr();
     check_recount();
     check_ranges();
     check_sections();
