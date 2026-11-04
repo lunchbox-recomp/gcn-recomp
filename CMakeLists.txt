@@ -977,7 +977,7 @@ function(gcn_add_game)
     target_include_directories(test_feed_dump PRIVATE ${RT})
     target_compile_options(test_feed_dump PRIVATE ${GCN_RUNTIME_WARNINGS})
 
-    # The RAM patch checks (tools/test_ram_patches.cpp): the boot manifest over fake main
+    # The RAM patch checks (tools/test_ram_patches.cpp): the RAM patch list over fake main
     # memory, with fatal errors and code write notifications captured. Needs no disc or SDL.
     add_executable(test_ram_patches EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ram_patches.cpp
       ${RT}/ram_patches.cpp)
