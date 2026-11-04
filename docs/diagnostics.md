@@ -1434,8 +1434,11 @@ address of the first byte that differs and up to 16 bytes of RAM and of the patc
 there.
 
 A line with a control character, such as a tab or the CR of a Windows line ending, stops
-the run, as does a last line with no newline, since it may be cut short. So does a list over
-96 MiB, which the runtime refuses before it reads any line.
+the run, as does a last line with no newline, since it may be cut short.
+
+A path that's missing, unreadable or a folder stops the run with the file and no line, and
+so does a list over 96 MiB and 4 KiB. The runtime refuses a list that size before it reads
+any line.
 
 A bare `--ram-patches` prints one line on stderr and exits 1.
 
