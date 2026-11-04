@@ -348,6 +348,8 @@ FUNCS = [
     Code('f_next2_twin', NEXT2_TWIN),
     Code('f_mid_twin', [li(3, 1), 'mid:', MID_WORD, BLR]),
     Code('f_blob_mid_twin', [li(3, 5), b('f_mid_twin.mid')]),
+    # An icbi of the block holding r3's address, for tools/test_code_watch.cpp.
+    Code('f_icbi', [x_form(0, 0, 3, 982), BLR]),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
 BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', HOOK + [b('f_hooked.after')])),

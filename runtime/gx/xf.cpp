@@ -2,6 +2,7 @@
 // texgen) on the CPU, primitive assembly, pixel-state snapshots and EFB copies.
 #include "../runtime.h"
 #include "../platform.h"
+#include "../interp/interp.h"
 #include "../pause.h"
 #include "blend.h"
 #include "gx.h"
@@ -1915,6 +1916,7 @@ void renderer_efb_copy(uint32_t dest_addr, bool ends_frame) {
             copy_writebacks_land(g_frames_submitted.load());
             debug_guest_check("frame");
             heap_trace_frame(g_frames_submitted.load());
+            code_watch_frame();
         }
         if (ends_frame) {
             g_have_last_state = false;

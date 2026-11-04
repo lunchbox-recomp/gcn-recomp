@@ -55,6 +55,13 @@ static std::atomic<bool> g_quit{false};
 HostThread* host_current() { return t_self; }
 CPU* cpu_current() { return t_self ? &t_self->cpu : nullptr; }
 
+std::vector<const CPU*> guest_threads() {
+    std::vector<const CPU*> v;
+    for (HostThread* h : g_threads)
+        if (!h->retired) v.push_back(&h->cpu);
+    return v;
+}
+
 // OSContext layout
 enum { CTX_GPR = 0x000, CTX_CR = 0x080, CTX_LR = 0x084, CTX_CTR = 0x088, CTX_XER = 0x08C,
        CTX_FPR = 0x090, CTX_FPSCR = 0x194, CTX_SRR0 = 0x198, CTX_SRR1 = 0x19C,

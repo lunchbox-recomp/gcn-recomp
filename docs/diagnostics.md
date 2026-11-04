@@ -1557,3 +1557,36 @@ RAM isn't the one its patch replaced, which then runs in the patch's place.
 [INTERP] blr at <pc> returns to <lr>, and its frame was entered with LR <entry lr>
 [INTERP] site at <pc> holds <word>, not the <original> its patch replaced, so that word runs
 ```
+
+## Code changes at run time
+
+A function whose words change in RAM runs interpreted from its next entry, once an `icbi`
+flushes them (`docs/interpreter.md`). These lines go to stderr whatever the settings.
+
+```
+[interp] the text in RAM at boot doesn't match what this build was recompiled from, so code changes go unseen
+[interp] the HLE'd <name> at <start> changed, and its replacement still runs in its place
+[interp] running unknown code at <addr> (lr=<lr>)
+```
+
+The first comes at boot. The second comes once for each HLE'd function whose code changes, and
+the third once for each address `call_indirect` runs as a loose frame.
+
+`GCN_CODE_CHECK=1` compares all the text with boot's copy at each frame boundary, on the guest
+thread. It reports each changed word whose function nothing marked, once. It also reports a
+changed function with a frame on a guest stack, at the first check that finds it changed.
+
+```
+[interp] GCN_CODE_CHECK: the word at <addr> in <name> is <word>, not the <old> it was at boot, and nothing marked the function changed
+[interp] GCN_CODE_CHECK: <name> at <start> changed with a frame of it live on a guest stack, which returns to <ret>
+```
+
+Such a frame is native if it was entered before the change, and it goes on in the old code until
+it returns. The check reads each guest thread's stack the way `--sample` does, and it can't
+tell a native frame from an interpreted one. When boot's copy didn't match, the check is off.
+
+At exit it prints how many `icbi` ran, counted by the frames it checked.
+
+```
+[interp] GCN_CODE_CHECK: <n> icbi ran in <k> of <frames> frames, and the most in one frame was <most>
+```

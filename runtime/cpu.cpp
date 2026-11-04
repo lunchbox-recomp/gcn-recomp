@@ -1,6 +1,7 @@
 // Memory, CPU helper routines, timing and event scheduling.
 #include "runtime.h"
 #include "platform.h"
+#include "interp/interp.h"
 #include "mmu.h"
 #include "modules.h"
 #include "input_log.h"
@@ -158,6 +159,8 @@ extern "C" void call_indirect(CPU* c, uint32_t addr) {
         canon = rels_canon(addr);
         if (canon != addr && (fn = fn_lookup(canon))) { fn(c); return; }
     }
+    // Code in main RAM that no table knows, such as a blob the game or a mod wrote, runs interpreted.
+    if (code_watch_run_unknown(c, addr)) return;
     // GCN_RAM_DUMP=<path>: the guest RAM at this failure, for finding out what the code at
     // `addr` is and where it came from.
     if (const char* path = getenv("GCN_RAM_DUMP"); path && *path) {

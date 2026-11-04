@@ -498,7 +498,11 @@ def translate31(pc, i, d, a, b, rc):
         return f'hle_dcbz(c, {ea_x(a, b)});'
     if xo == 470:  # dcbi
         return f'hle_dcbi(c, {ea_x(a, b)});'
-    if xo in (54, 86, 246, 278, 982, 598, 854, 566):  # dcbst dcbf dcbtst dcbt icbi sync eieio tlbsync
+    # A guest that writes code flushes it with icbi, which sends a function whose words changed to
+    # the interpreter (runtime/interp/code_watch.cpp).
+    if xo == 982:  # icbi
+        return f'hle_icbi(c, {ea_x(a, b)});'
+    if xo in (54, 86, 246, 278, 598, 854, 566):  # dcbst dcbf dcbtst dcbt sync eieio tlbsync
         return ';'
     if xo == 4:  # tw
         return f'hle_trap(c, 0x{pc:08X}, 0x{i:08X});'

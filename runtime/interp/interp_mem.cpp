@@ -104,7 +104,8 @@ InterpStep op31(CPU* c, uint32_t i) {
     case 725: hle_stswi(c, a ? c->r[a] : 0, (int)d, b ? (int)b : 32); return INTERP_NEXT;
     case 1014: hle_dcbz(c, ea); return INTERP_NEXT;
     case 470: hle_dcbi(c, ea); return INTERP_NEXT;
-    case 54: case 86: case 246: case 278: case 982: return INTERP_NEXT;  // dcbst dcbf dcbtst dcbt icbi
+    case 982: hle_icbi(c, ea); return INTERP_NEXT;
+    case 54: case 86: case 246: case 278: return INTERP_NEXT;  // dcbst dcbf dcbtst dcbt
     case 535: case 567: case 599: case 631: case 663: case 695: case 727: case 759:
         return fp(c, i, ea, (insn_xo(i) - 535) / 32);  // lfsx and the rest, 32 apart
     case 983: ST32(ea, (uint32_t)c->f[d].u); return INTERP_NEXT;  // stfiwx

@@ -109,6 +109,8 @@ void plat_at_exit(void (*fn)()) {
     g_at_exit++;
 }
 
+std::vector<const CPU*> guest_threads() { return {&g_cpu}; }
+
 extern "C" {
 void orig_made_up_save(CPU* c);
 

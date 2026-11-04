@@ -61,5 +61,6 @@ uint32_t boot_load(const char* iso_path) {
     dsp_init();
     cp_init();
     code_table_boot();  // GCN_INTERPRET and GCN_INTERPRET_STATS
+    code_watch_boot();  // boot's copy of the text, and GCN_CODE_CHECK
     return entry;
 }

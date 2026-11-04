@@ -211,7 +211,7 @@ class Generated(unittest.TestCase):
         lmw = [s for s in mem if s.insn >> 26 == 46]
         self.assertTrue(all(s.mem[3] == 4 * (32 - field(s.insn, D)) for s in lmw))
         rest = [s for s in self.cases.steps if s.mem is None]
-        touch = r'\b(LD|ST)[SF]?[0-9]|hle_(dcb|lswi|stswi)|psq_(load|store)'
+        touch = r'\b(LD|ST)[SF]?[0-9]|hle_(dcb|icbi|lswi|stswi)|psq_(load|store)'
         self.assertFalse([s.text for s in rest if re.search(touch, s.text)])
         self.assertTrue(all(re.search(touch, s.text) or s.text == ';' for s in mem))
 

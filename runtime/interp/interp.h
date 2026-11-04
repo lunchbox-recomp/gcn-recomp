@@ -6,6 +6,7 @@
 #include "recomp.h"
 #include <atomic>
 #include <string>
+#include <vector>
 
 enum InterpStep { INTERP_NEXT, INTERP_RFI, INTERP_UNIMPL };
 
@@ -105,3 +106,25 @@ std::string code_table_force(const char* spec);
 std::string code_table_stats();
 // Reads GCN_INTERPRET and GCN_INTERPRET_STATS, once the DOL is in RAM.
 void code_table_boot();
+
+// ---- code changes at run time (code_watch.cpp) ----
+// recomp.h's hle_icbi and gcn_code_written keep a count of each function's words that differ from
+// boot's copy of the text, and CODE_CHANGED is set while it isn't 0.
+//
+// Copies the text sections in g_recomp_text from RAM once the DOL is there, and checks them against
+// g_recomp_text_fnv. A mismatch prints a warning and turns detection off. It clears what an earlier
+// boot marked, and reads GCN_CODE_CHECK.
+void code_watch_boot();
+// GCN_CODE_CHECK's comparison of all the text with boot's copy. It reports each changed word whose
+// function nothing marked, once. It also reports a changed function with a frame on one of threads'
+// guest stacks, at the first check that finds it changed.
+void code_watch_check(const std::vector<const CPU*>& threads);
+// The guest thread, at each frame boundary. Under GCN_CODE_CHECK=1 it runs the check on
+// guest_threads() and counts the frame's icbi.
+void code_watch_frame();
+// GCN_CODE_CHECK's line at exit, with the icbi that ran in the frames it counted.
+std::string code_watch_stats();
+// call_indirect's miss path. An aligned addr in main RAM runs as a loose frame, the first miss at each
+// address prints a line, and it returns true. Anything else returns false having run nothing, and
+// call_indirect stops.
+bool code_watch_run_unknown(CPU* c, uint32_t addr);

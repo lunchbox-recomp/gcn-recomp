@@ -7,6 +7,7 @@
 #include <cstdarg>
 #include <string>
 #include <functional>
+#include <vector>
 
 // ---- logging ----
 enum LogCat { LOG_CPU, LOG_OS, LOG_HW, LOG_DVD, LOG_GX, LOG_VI, LOG_SI, LOG_EXI, LOG_DSP, LOG_AI, LOG_THREAD, LOG_INTERP,
@@ -168,6 +169,8 @@ HostThread* host_current();
 CPU* cpu_current();
 void threads_start_boot(uint32_t entry);
 void threads_request_quit();
+// Each guest thread's CPU but a retired one's, for the guest thread holding the baton.
+std::vector<const CPU*> guest_threads();
 
 // ---- HLE ----
 void hle_os_report(CPU* c);

@@ -71,6 +71,7 @@ void hle_set_fpscr(CPU* c, uint32_t v) {
 void hle_dcbz(CPU*, uint32_t ea) { note("hle_dcbz", ea); }
 void hle_dcbz_l(CPU*, uint32_t ea) { note("hle_dcbz_l", ea); }
 void hle_dcbi(CPU*, uint32_t ea) { note("hle_dcbi", ea); }
+void hle_icbi(CPU*, uint32_t ea) { note("hle_icbi", ea); }
 void hle_mtsr(CPU*, uint32_t sr, uint32_t v) { note("hle_mtsr", sr, v); }
 uint32_t hle_mfsr(CPU*, uint32_t sr) {
     note("hle_mfsr", sr);

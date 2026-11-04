@@ -6,7 +6,8 @@ word what `recomp.py`'s `emit_body` made of it, call for call. `tools/test_inter
 the words against that C, and `tools/test_interp_run.cpp` checks the frames on made-up
 programs that `recomp/fixture_programs.py` writes and `recomp.py` compiles.
 
-`GCN_INTERPRET` and `GCN_INTERPRET_STATS` in `diagnostics.md` are how a run uses it.
+`GCN_INTERPRET`, `GCN_INTERPRET_STATS` and `GCN_CODE_CHECK` in `diagnostics.md` are how a run
+uses it.
 
 ## The guard
 
@@ -19,6 +20,37 @@ A function with more than one entry hands over the entry it was called at, so th
 starts at a mid-entry where native code would have. `code_table_mark(n, mark, on)` in
 `runtime/interp/code_table.cpp` is the one place that sets and clears the bits. A bit is set
 while any of its function's marks is, and `GCN_INTERPRET` sets the `CODE_FORCED` mark.
+
+## Code changes at run time
+
+Once `boot_load` has put the DOL in RAM, `code_watch_boot` in `runtime/interp/code_watch.cpp`
+copies the text sections that `g_recomp_text` lists. It checks the copy against
+`g_recomp_text_fnv`. When they don't match, it prints `[interp] the text in RAM at boot doesn't
+match what this build was recompiled from, so code changes go unseen` and nothing below happens.
+
+An `icbi` calls `hle_icbi` whether it runs natively or interpreted. `gcn_code_written(addr, len)`
+does the same for a writer that isn't the guest, and each recounts the words that differ from the
+copy in every function its range overlaps. An `icbi`'s range is the 32-byte block holding its
+address.
+
+A function's `CODE_CHANGED` mark is set while its count isn't 0, so writing the old word back and
+flushing it sends the function native again.
+
+When nothing in the range changed and none of its functions has a count, that's a range lookup
+and a compare of the block. A function that's running when its code changes goes on natively
+until it returns, and its next entry is interpreted. A write that nothing flushes isn't seen,
+which is what `GCN_CODE_CHECK` looks for.
+
+A change to an HLE'd function prints `[interp] the HLE'd <name> at <start> changed, and its
+replacement still runs in its place`, once for that function. Its original body runs
+interpreted only where the replacement calls it.
+
+## Unknown code
+
+`call_indirect` runs an aligned address in main RAM that no table knows as a loose frame, such
+as a blob the game or a mod wrote. The first miss at each address prints `[interp] running
+unknown code at <addr> (lr=<lr>)`. A misaligned address or one outside main RAM stops the game
+as it did before.
 
 ## Function frames
 
@@ -88,8 +120,8 @@ next word. Any other `bl` is a call through `call_indirect`, a `bl` over data in
 the game at a target that isn't a recompiled entry, so a loose frame's `bl` over data stops it
 there.
 
-The runtime doesn't call `interp_run_loose`, and `tools/fixture_runner.cpp` and
-`tools/test_code_table.cpp` do.
+The runtime calls `interp_run_loose` from `call_indirect`'s miss path, under Unknown code
+above.
 
 ## What stays native
 
@@ -97,7 +129,8 @@ The runtime doesn't call `interp_run_loose`, and `tools/fixture_runner.cpp` and
   isn't forced itself.
 - An HLE'd function's wrapper and its replacement. Only the original body has a guard, so
   forcing the function interprets that body when the replacement calls it.
-- Module and REL code, which isn't in RAM at its own address and has no guard.
+- Module and REL code, which isn't in RAM at its own address and has no guard. Boot's copy of
+  the text leaves it out, so a change to it isn't counted.
 - Site functions, which run as recomp.py compiled them.
 
 ## Where it differs from native
