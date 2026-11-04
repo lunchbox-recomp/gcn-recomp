@@ -1263,24 +1263,53 @@ class TestMemory(SdCase):
                      '<memory offset="0x80000000" valuefile="/mod/first.bin"/>'
                      '<memory offset="0x80000000" valuefile="/mod/second.bin" '
                      f'original="{"00" * 2048}"/>')
-        line = self.refusal(r"ram-patches\.txt is bigger than 96 MiB and 4 KiB, so it "
-                            r"isn't a RAM patch list")
-        self.assertEqual(line['packages'], [])
-        self.assertEqual(self.outputs(), [])
+        read_files = []
+        read_blob = rpatch.Patcher._blob
+
+        def counted_read(patcher, el, host, size):
+            read_files.append(host)
+            return read_blob(patcher, el, host, size)
+
+        with mock.patch.object(rpatch.Patcher, '_blob', counted_read):
+            line = self.refusal(r"<memory .*> in a\.xml would make the RAM patches list bigger "
+                                r"than 96 MiB and 4 KiB, which the runtime can't read, so "
+                                r"nothing is written")
+        self.assertEqual(line['packages'], ['a.xml'])
+        self.assertEqual([os.path.basename(path) for path in read_files], ['first.bin'])
 
     def test_a_list_at_the_cap_is_written_and_one_byte_over_is_refused(self):
-        self.package('a.xml', '<memory offset="0x80001000" value="aa"/>')
-        expected = b'gcn-ram-patches 1\nbase TEST00\npatch 80001000 aa\n'
+        self.package('a.xml', '<memory offset="0x80001000" value="aa"/>'
+                     '<memory offset="0x80001004" value="bb" original="cc"/>')
+        expected = (b'gcn-ram-patches 1\nbase TEST00\npatch 80001000 aa\n'
+                    b'patch 80001004 bb cc\n')
         # A small cap checks the exact boundary without building a 96 MiB list.
         with mock.patch.object(rv, 'MAX_RAM_PATCH_LIST', len(expected)):
-            self.assertEqual(self.apply()['ram_patches'], 1)
+            self.assertEqual(self.apply()['ram_patches'], 2)
         with open(os.path.join(self.out, 'ram-patches.txt'), 'rb') as f:
             self.assertEqual(f.read(), expected)
         other = os.path.join(self.root, '.other-out')
         with mock.patch.object(rv, 'MAX_RAM_PATCH_LIST', len(expected) - 1):
-            with self.assertRaisesRegex(rxml.Refused, r"ram-patches\.txt is bigger than "):
+            with self.assertRaisesRegex(rxml.Refused,
+                                        r"<memory .*> in a\.xml would make the RAM patches "
+                                        r"list bigger than "):
                 rv.apply_packages(self.image, self.root, other, [])
         self.assertFalse(os.path.exists(other))
+
+    def test_ram_list_cap_matches_runtime(self):
+        runtime = os.path.join(os.path.dirname(HERE), 'runtime')
+        source = os.path.join(runtime, 'ram_patches.cpp')
+        header = os.path.join(runtime, 'runtime.h')
+        if not os.path.isfile(source) or not os.path.isfile(header):
+            self.skipTest('runtime sources are absent')
+        with open(source, encoding='utf-8') as f:
+            cap_source = f.read()
+        with open(header, encoding='utf-8') as f:
+            ram_source = f.read()
+        ram_size = int(re.search(r'\bRAM_SIZE\s*=\s*(0x[0-9a-fA-F]+)', ram_source).group(1), 16)
+        factor, extra = map(int, re.search(
+            r'\bkMaxPatchList\s*=\s*(\d+)u?\s*\*\s*RAM_SIZE\s*\+\s*(\d+)u?',
+            cap_source).groups())
+        self.assertEqual(rv.MAX_RAM_PATCH_LIST, factor * ram_size + extra)
 
     def test_a_valuefile_that_is_missing_empty_or_too_big_is_refused(self):
         self.put('mod/empty.bin', b'')

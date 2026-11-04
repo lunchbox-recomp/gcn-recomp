@@ -126,11 +126,14 @@ def join_disc(a: str, b: str) -> str:
 class Patcher:
     """The disc tree and the RAM patches after the packages given to apply."""
 
-    def __init__(self, sd_root: str, game_id: str, disc: fst.Entry) -> None:
+    def __init__(self, sd_root: str, game_id: str, disc: fst.Entry,
+                 max_ram_patch_list: int) -> None:
         self.sd_root = sd_root
         self.game_id = game_id
         self.root = from_fst(disc)
         self.ram: List[RamPatch] = []
+        self.ram_list_size = len('gcn-ram-patches 1\nbase \n') + len(game_id)
+        self.max_ram_patch_list = max_ram_patch_list
         self.writes: List[Tuple[int, int, str]] = []  # each RAM patch's span and its XML
         self.xml = ''
         self.folder = ''
@@ -343,23 +346,39 @@ class Patcher:
         blob = self._text(el, 'valuefile')
         if blob and value is not None:
             raise el.refuse('has both value and valuefile')
-        if blob:
-            value = self._blob(el, blob)
-        if not value:
-            raise el.refuse('has no value')
         original = el.hexbytes('original') or b''
-        end = addr + max(len(value), len(original))
+        if blob:
+            host = self._host(el, blob)
+            if not os.path.isfile(host):
+                raise el.refuse(f"has the path {cut(blob)!r}, which isn't a file")
+            value_size = os.stat(host).st_size
+            if value_size > RAM_END - RAM_START:
+                raise el.refuse(f'has a valuefile, {cut(blob)!r}, that is bigger than main RAM')
+        else:
+            value_size = len(value or b'')
+        if not value_size:
+            raise el.refuse('has no value')
+        end = addr + max(value_size, len(original))
         if end > RAM_END:
             raise el.refuse(f'covers {addr:08x} to {end - 1:08x}, which isn\'t inside main RAM '
                             f'({RAM_START:08x} to {RAM_END - 1:08x})')
+        line_size = len(f'patch {addr:08x} ') + 2 * value_size + 1
+        if original:
+            line_size += 1 + 2 * len(original)
+        if self.ram_list_size + line_size > self.max_ram_patch_list:
+            raise el.refuse('would make the RAM patches list bigger than 96 MiB and 4 KiB, '
+                            "which the runtime can't read, so nothing is written")
+        if blob:
+            value = self._blob(el, host, value_size)
+        if not value:
+            raise el.refuse('has no value')
+        self.ram_list_size += line_size
         self.ram.append(RamPatch(addr, value, original))
         self.writes.append((addr, addr + len(value), self.xml))
 
-    def _blob(self, el: Element, name: str) -> bytes:
-        host = self._host(el, name)
-        if not os.path.isfile(host):
-            raise el.refuse(f"has the path {cut(name)!r}, which isn't a file")
-        if os.stat(host).st_size > RAM_END - RAM_START:
-            raise el.refuse(f'has a valuefile, {cut(name)!r}, that is bigger than main RAM')
+    def _blob(self, el: Element, host: str, expected_size: int) -> bytes:
         with open(host, 'rb') as f:
-            return f.read()
+            value = f.read(expected_size + 1)
+        if len(value) != expected_size:
+            raise el.refuse('has a valuefile whose size changed while it was read')
+        return value
