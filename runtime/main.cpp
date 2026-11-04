@@ -550,7 +550,7 @@ int main(int argc, char** argv) {
     const char* controls = "controls.txt";
     bool list_controls = false, test_ffb = false;
     // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
-    const char* telemetry_to = getenv("GCN_TELEMETRY");
+    const char* telemetry_to = getenv_nonempty("GCN_TELEMETRY");
     // settings.txt in the working directory (settings.h). A flag beats it for this run and
     // isn't written back.
     const Settings settings = settings_load("settings.txt");

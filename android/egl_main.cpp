@@ -440,7 +440,7 @@ int main(int argc, char** argv) {
     // GCN_REPLAY=<dir> plays an input log back, as --replay does on the desktop: the way to
     // drive a run on a device through a recorded route, exactly, under the virtual clock.
     static std::string replay_card, replay_sram;
-    if (const char* r = getenv("GCN_REPLAY")) {
+    if (const char* r = getenv_nonempty("GCN_REPLAY")) {
         if (!input_replay_load(r, replay_card, replay_sram)) {
             fprintf(stderr, "GCN_REPLAY: no input log at %s\n", r);
             return 1;
@@ -486,7 +486,7 @@ int main(int argc, char** argv) {
         gx::render_set_view_space_world(g_vrcfg.view_space_world);
         gx::render_set_eye_filter(vr::game_hooks().eye_filter);
         gx::render_set_panel_band(g_vrcfg.panel_band);
-        if (const char* s = getenv("GCN_EYE_MORPH")) {
+        if (const char* s = getenv_nonempty("GCN_EYE_MORPH")) {
             for (const char* q = s; *q;) {
                 g_morphs.push_back((float)atof(q));
                 q = strchr(q, ',');
@@ -535,8 +535,11 @@ int main(int argc, char** argv) {
         // Diffing snapshots taken in known game states is how a variable for a stereo hook
         // -- "the player is in control", say -- gets found.
         static const char* ramsnap = getenv_nonempty("GCN_RAMSNAP");
-        static const uint32_t snap_every = getenv_nonempty("GCN_RAMSNAP_EVERY")
-                                               ? atoi(getenv_nonempty("GCN_RAMSNAP_EVERY")) : 150;
+        static const uint32_t snap_every = [] {
+            const char* e = getenv_nonempty("GCN_RAMSNAP_EVERY");
+            const int n = e ? atoi(e) : 0;
+            return n ? (uint32_t)n : 150u;
+        }();
         // The low 8 MB: enough to hold the game's own state without writing 24 MB a shot.
         static const uint32_t snap_bytes = 8u << 20;
         // GCN_RAMSNAP_RANGE=a-b bounds it to a window of frames. A transition that takes a

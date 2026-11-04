@@ -860,6 +860,17 @@ function(gcn_add_game)
     target_include_directories(test_anchor PRIVATE ${RT})
     target_compile_options(test_anchor PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    add_executable(test_shader_env EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_shader_env.cpp ${RT}/gx/shadergen.cpp)
+    _gcn_set_standards(test_shader_env)
+    target_include_directories(test_shader_env PRIVATE ${RT} ${GLAD_INCLUDE_DIR})
+    target_compile_definitions(test_shader_env PRIVATE ${GCN_GL_DEFS})
+    target_compile_options(test_shader_env PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    add_executable(test_step_env EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_step_env.cpp)
+    _gcn_set_standards(test_step_env)
+    target_include_directories(test_step_env PRIVATE ${RT})
+    target_compile_options(test_step_env PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The blend factor checks (tools/test_blend.cpp): runtime/gx/blend.h on its own.
     add_executable(test_blend EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_blend.cpp)
     _gcn_set_standards(test_blend)
@@ -1061,7 +1072,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_blend test_clock test_pause
+    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_shader_env test_step_env test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_code_table test_code_watch test_aid)

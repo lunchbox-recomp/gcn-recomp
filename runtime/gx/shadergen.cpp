@@ -820,7 +820,7 @@ std::string gen_pixel_shader(const ShaderKey& k) {
     // GCN_SHOW_MIN_STAGES=<n> leaves programs of fewer stages alone instead, which keeps
     // a one-stage full-screen blit from painting its own value over everything.
     static const int show_min_stages = getenv("GCN_SHOW_MIN_STAGES") ? atoi(getenv("GCN_SHOW_MIN_STAGES")) : 0;
-    const char* show = getenv("GCN_SHOW");
+    const char* show = getenv_nonempty("GCN_SHOW");
     if (show && show_stages && (int)nstages != show_stages) show = nullptr;
     if (show && show_min_stages && (int)nstages < show_min_stages) show = nullptr;
     if (show) {
@@ -848,7 +848,7 @@ std::string gen_pixel_shader(const ShaderKey& k) {
         // own pixels, so 640 is the middle at --scale=2), leaving the left half as it
         // normally renders: the two can then be read off one frame, which matters when
         // no two runs reach the same frame at the same moment.
-        if (const char* split = getenv("GCN_SHOW_SPLIT")) {
+        if (const char* split = getenv_nonempty("GCN_SHOW_SPLIT")) {
             s.insert(s.rfind("  o_color = vec4(vec3("), "  if (gl_FragCoord.x > " + std::string(split) + ".0)\n  ");
         }
     }

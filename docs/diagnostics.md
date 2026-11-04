@@ -440,6 +440,8 @@ The desktop build honours `GCN_STEREOLOG` too, numbering frames as its dumps are
 game's stereo hook can be checked against a replayed route without a device.
 `GCN_RAMSNAP=<dir>` (with `GCN_RAMSNAP_EVERY`, `GCN_RAMSNAP_RANGE=a-b`) writes the low 8 MB
 of guest RAM beside the frames, for finding the state such a hook reads.
+An empty `GCN_EYE_MORPH` acts as unset. An empty or zero `GCN_RAMSNAP_EVERY` uses the
+default interval of 150 presented frames.
 `GCN_THEATER_STEREO=<metres>` draws the flat frame as the stereo pair the headset hangs on
 its panel with `theater_stereo` (see "The theater panel as a stereo pair" in `graphics.md`),
 the eyes that far apart; the dumps come as `frame_NNNNN_l.png` and `_r.png`, and the
@@ -451,7 +453,8 @@ moves between stereo and theater, so the first frame after the change can be dum
 The app has no environment of its own, so `gcn_env.txt` in its files directory
 (`/sdcard/Android/data/<package>/files/`), one `KEY=VALUE` per line, is put into it before
 the runtime starts; `gcn_input.txt` there holds a `GCN_INPUT` script, and `GCN_REPLAY=<dir>`
-in the env file replays an input log relative to that directory. Its log is
+in the env file replays an input log relative to that directory. An empty `GCN_REPLAY` acts
+as unset. Its log is
 `adb logcat -s <game>`, with a line every second: compositor and game frames, the longest
 wait between game frames, the render thread's time per stereo frame, how many display frames
 each game frame stayed up (`held 1:a 2:b 3:c 4+:d`; even pacing is all one column), the
@@ -893,6 +896,7 @@ log line then ends `(set by GCN_AX_LAYOUT)`. It changes only how the mixer contr
 decoded, nothing else, so it is for comparing the two decodings on one game: the
 `[ax] hash` lines from a run with each show where the mix first differs. Any other value is
 ignored, with a line on stderr saying so whatever `--log` is set to.
+An empty `GCN_AX_LAYOUT` acts as unset.
 
 Command 12, the compressor, runs on every ucode build but the 2001 one, which has no such
 command and skips it. The ucode hash alone decides this, so `GCN_AX_LAYOUT` does not
@@ -1127,6 +1131,7 @@ use, which every lookup prolonged.
   place of the game's marks. With `--aspect=16:9` the 4:3 picture comes out at its own
   shape against that edge of the window, and `--dump-output` writes what the window shows.
   Any other value of `GCN_ANCHOR_ALL` is refused with a line on stderr.
+  An empty `GCN_ANCHOR_ALL` acts as unset.
 - `[anchor] copy N made under an anchor` says a texture copy was made while an anchor
   other than Stretch was set. It prints once for each scene, which ends after 60 frames in a
   row with no such copy, with N the copies made under an anchor so far. Copies to the
@@ -1189,6 +1194,7 @@ so the variants never mix with the real ones).
   pixels: 640 is the middle at `--scale=2`), so the probe and the normal image are read
   off one frame. Since GCN_SHOW writes an opaque colour too, a blended draw that touches a
   pixel last covers it; `GCN_PIXEL` is the tool when that is the question.
+  Empty `GCN_SHOW` and `GCN_SHOW_SPLIT` values act as unset.
 - `GCN_TEX_WHITE=1` makes every texture sample opaque white, leaving a draw's colour to
   its channels and konstants; `GCN_RAS_WHITE=1` does the same to the rasterised colour.
 - `GCN_DUMP_SHADERS=1` prints every program's source as it is compiled, which at start-up
@@ -1279,6 +1285,7 @@ left.
   changes (a speed the game measures as this frame's position minus the last one's) is
   consumed, which no static search tells apart from the other structures with a float at
   the same offset.
+  An empty `GCN_READERS` acts as unset.
 - `steps.txt` in the game's tables lists, per instruction address, which operand (`A`, `B`
   or `C`) carries the value from the previous frame. The recompiler emits that instruction
   through `runtime/step.cpp` (`ppc.translate_step`): `x += t` becomes `x += s*t`, `x *= k`
@@ -1300,9 +1307,11 @@ left.
   and `GCN_STEP_ONLY=<file>` scales only those: how a site that breaks the game is bisected
   out of a list of hundreds without a rebuild. An empty `GCN_STEP_ONLY` scales every site,
   as if unset.
+  An empty `GCN_STEP_SKIP` acts as unset.
 - `GCN_STEP_POW=<file>` (lines of `<hex address> <power>`) gives the listed sites that power
   instead of the table's, for trying a reading of a site -- a force as a rate, a difference
   converted or not -- against a run at the native rate before it goes into the table.
+  An empty `GCN_STEP_POW` acts as unset.
 - A body the game integrates in N passes a frame, each pass a complete step of a fixed
   size (its forces, dampings and constraint corrections all inside the pass), is not
   served by scaling the sites in the pass: that runs N passes of size s per paced frame,
@@ -1323,10 +1332,11 @@ those that count by one. The method and what it found are in the game project's 
 ## Motion telemetry
 
 `runtime/telemetry.h`: a game publishes its vehicle's motion once a game frame, and
-`--telemetry[=host:port]` on the desktop (or `GCN_TELEMETRY`, empty for the default) sends it
+`--telemetry[=host:port]` on the desktop (or `GCN_TELEMETRY=<host:port>`) sends it
 as SimRacingStudio's custom-game API packet to `127.0.0.1:33001`. `GCN_TELEMETRY_LOG=1`, or
 `log 1` in `telemetry.txt`, prints what is sent twice a second, plus every ease to or from rest
 and every crossfade.
+An empty `GCN_TELEMETRY` acts as unset.
 
 The motion never steps where the game did not: a motion platform moves a person. The output
 eases to and from rest and crossfades across anything the game marks

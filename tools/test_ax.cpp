@@ -599,6 +599,16 @@ void voice_log_checks() {
 // check is for the others.
 void switch_checks() {
 #ifndef _WIN32
+    unsetenv("GCN_AX_LAYOUT");
+    const std::string layout_unset = stderr_of([] { ax_init(kHashLater); });
+    setenv("GCN_AX_LAYOUT", "", 1);
+    const std::string layout_empty = stderr_of([] { ax_init(kHashLater); });
+    setenv("GCN_AX_LAYOUT", "2001", 1);
+    const std::string layout_set = stderr_of([] { ax_init(kHashLater); });
+    check(layout_unset == layout_empty && g_layout_later == false &&
+              layout_set.find("ignored") == std::string::npos,
+          "an empty GCN_AX_LAYOUT acts as unset, and 2001 still selects the old layout");
+    unsetenv("GCN_AX_LAYOUT");
     setenv("GCN_AXSTATS", "", 1);
     setenv("GCN_AXVOICES", "", 1);
     ax_init(kHashLater);

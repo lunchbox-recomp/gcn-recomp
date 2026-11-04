@@ -335,7 +335,7 @@ void android_main(android_app* app) {
     // See gcn-recomp/docs/diagnostics.md; the replay runs on scratch copies of the
     // logged card and SRAM, never the real ones.
     static std::string replay_card, replay_sram;
-    if (const char* r = getenv("GCN_REPLAY")) {
+    if (const char* r = getenv_nonempty("GCN_REPLAY")) {
         const std::string replay_dir = r[0] == '/' ? std::string(r) : dir + "/" + r;
         if (!input_replay_load(replay_dir, replay_card, replay_sram)) {
             LOGE("no replay at %s", replay_dir.c_str());

@@ -623,7 +623,7 @@ void ax_init(uint32_t ucode_hash) {
     g_has_lpf = ucode_hash != kUcode2001Hash;
     g_comp_counter = 0;
     make_polyphase();
-    const char* over = getenv("GCN_AX_LAYOUT");
+    const char* over = getenv_nonempty("GCN_AX_LAYOUT");
     const bool forced = over && (!strcmp(over, "2001") || !strcmp(over, "later"));
     if (forced) g_layout_later = !strcmp(over, "later");
     else if (over) fprintf(stderr, "GCN_AX_LAYOUT=%s is not 2001 or later, ignored\n", over);

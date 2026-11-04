@@ -2,6 +2,7 @@
 // pixel states taken from there on carry (PixelState::anchor), and the log line for a texture
 // copy made while one is set. The state and its rules are AnchorMark's (anchor.h), and the
 // renderer applies the remap.
+#include "../env.h"
 #include "anchor.h"
 #include "gx.h"
 #include "render.h"
@@ -18,7 +19,7 @@ namespace {
 AnchorMark& mark() {
     static AnchorMark m = [] {
         Anchor all = Anchor::Stretch;
-        if (const char* s = getenv("GCN_ANCHOR_ALL"))
+        if (const char* s = getenv_nonempty("GCN_ANCHOR_ALL"))
             if (!parse_anchor(s, &all)) fprintf(stderr, "GCN_ANCHOR_ALL is L, C or R, not \"%s\"\n", s);
         return AnchorMark(all);
     }();

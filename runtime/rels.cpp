@@ -109,7 +109,7 @@ void rels_linking(uint32_t info) {
     fprintf(stderr, "[rels] %s (module %u, %u bytes) written to %s\n", name.c_str(), LD32(info), size, path.c_str());
     static std::string done;
     done += "," + name + ",";
-    if (const char* want = getenv("GCN_REL_DUMP_WANT")) {
+    if (const char* want = getenv_nonempty("GCN_REL_DUMP_WANT")) {
         std::string w = want;
         size_t p = 0;
         bool all = true;

@@ -643,7 +643,7 @@ struct Readers {
 };
 std::vector<Readers> g_readers = [] {
     std::vector<Readers> v;
-    const char* path = getenv("GCN_READERS");
+    const char* path = getenv_nonempty("GCN_READERS");
     if (!path) return v;
     FILE* f = fopen(path, "r");
     if (!f) { fprintf(stderr, "[readers] cannot read %s\n", path); return v; }
