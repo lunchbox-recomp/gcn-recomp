@@ -873,6 +873,12 @@ function(gcn_add_game)
     target_include_directories(test_step_env PRIVATE ${RT})
     target_compile_options(test_step_env PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The anchor switch check (tools/test_anchor_env.cpp): GCN_ANCHOR_ALL in runtime/gx/anchor.cpp.
+    add_executable(test_anchor_env EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_anchor_env.cpp)
+    _gcn_set_standards(test_anchor_env)
+    target_include_directories(test_anchor_env PRIVATE ${RT})
+    target_compile_options(test_anchor_env PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The blend factor checks (tools/test_blend.cpp): runtime/gx/blend.h on its own.
     add_executable(test_blend EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_blend.cpp)
     _gcn_set_standards(test_blend)
@@ -1074,7 +1080,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_shader_env test_step_env test_blend test_clock test_pause
+    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_code_table test_code_watch test_aid)
