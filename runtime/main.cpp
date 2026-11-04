@@ -588,6 +588,9 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--dump-output")) gx::g_dump_output = true;
         else if (argv[i][0] != '-') iso = argv[i];
     }
+    const std::string disc_overlay_path_for_run =
+        settings_choose_path(settings.disc_overlay, g_disc_overlay_flag, getenv("GCN_DISC_OVERLAY"));
+    g_disc_overlay_flag = disc_overlay_path_for_run.c_str();
     // --eye and GCN_THEATER_STEREO (below) show a headset's views on the desktop. A headset's
     // panel keeps the console's 4:3 whatever the output aspect is, so these ignore it: the
     // window opens at 4:3 and the game's hooks see 4:3, not a shape the view isn't drawn at.

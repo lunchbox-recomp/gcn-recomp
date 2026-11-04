@@ -104,6 +104,24 @@ void parsing() {
     check(s.scale == 3, "scale 3 is read with trailing spaces");
 }
 
+void overlay_paths() {
+    const std::string p = path_of("paths.txt");
+    write_file(p, "disc_overlay mods/disc.txt\nram_patches mods/ram.txt\n");
+    const Settings s = settings_load(p);
+    check(s.disc_overlay == path_of("mods/disc.txt"), "disc overlay resolves beside settings.txt");
+    check(s.ram_patches == path_of("mods/ram.txt"), "RAM patches resolve beside settings.txt");
+    for (const std::string& key : {s.disc_overlay, s.ram_patches}) {
+        check(settings_choose_path(key, "flag.txt", "variable.txt") == "flag.txt", "a flag beats the variable and key");
+        check(settings_choose_path(key, nullptr, "variable.txt") == "variable.txt", "a variable beats the key");
+        check(settings_choose_path(key, nullptr, nullptr) == key, "the key supplies a path on its own");
+        check(settings_choose_path(key, "", "variable.txt").empty(), "an empty flag means none");
+        check(settings_choose_path(key, nullptr, "").empty(), "an empty variable means none");
+    }
+    write_file(p, "disc_overlay\nram_patches   \n");
+    const Settings empty = settings_load(p);
+    check(empty.disc_overlay.empty() && empty.ram_patches.empty(), "empty path keys mean none");
+}
+
 void byte_order_mark() {
     // Written as a string, since \xBF in a literal with aspect after it would take the a as
     // another hex digit.
@@ -430,6 +448,7 @@ int main(int argc, char** argv) {
     }
     missing_file();
     parsing();
+    overlay_paths();
     byte_order_mark();
     aspects();
     aspects_match_the_flag();

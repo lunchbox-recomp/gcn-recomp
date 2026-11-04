@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <utility>
 #include <vector>
 #ifdef _WIN32
@@ -83,6 +84,19 @@ bool read_lines(const std::string& path, std::vector<std::string>& lines, bool& 
 
 }  // namespace
 
+std::string settings_choose_path(const std::string& key, const char* flag, const char* variable) {
+    if (flag) return flag;
+    if (variable) return variable;
+    return key;
+}
+
+// A path in the file is relative to the file's folder, not the process's work dir.
+static std::string settings_file_path(const std::string& file, const std::string& value) {
+    if (value.empty()) return "";
+    const std::filesystem::path p(value);
+    return p.is_absolute() ? p.string() : (std::filesystem::path(file).parent_path() / p).string();
+}
+
 bool settings_parse_aspect(const std::string& text, float& ratio) {
     if (text == "window") {
         ratio = 0.0f;
@@ -128,6 +142,10 @@ Settings settings_load(const std::string& path) {
             if (!parse_positive(value, kMaxScale, s.scale)) takes = "a whole number from 1 up";
         } else if (key == "disc") {
             if (!settings_parse_disc(value, s.fast_disc)) takes = "fast or console";
+        } else if (key == "disc_overlay") {
+            s.disc_overlay = settings_file_path(path, value);
+        } else if (key == "ram_patches") {
+            s.ram_patches = settings_file_path(path, value);
         }
         if (takes)
             fprintf(stderr, "%s:%d: %s takes %s, not \"%s\", so the line is skipped\n", path.c_str(), n,

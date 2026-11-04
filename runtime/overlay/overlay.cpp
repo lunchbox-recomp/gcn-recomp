@@ -32,6 +32,12 @@ bool g_ready, g_open;
 SDL_Window* g_window;  // null in tests, which draw nothing
 bool g_gl;             // the window has a GL context to draw the menu with, which tests' don't
 std::string g_title;
+struct AddedPage {
+    std::string title;
+    void (*draw)(void* user);
+    void* user;
+};
+std::vector<AddedPage> g_pages;
 OverlayAsk g_ask;         // what the menu is asking before it does it
 OverlayAsk g_asked;       // the button that asked, which takes the focus back at the next draw
 bool g_focus_cancel;      // Cancel takes the focus at the next draw, as the menu starts asking
@@ -347,6 +353,12 @@ void draw_menu() {
                 display_page(g_window);
                 ImGui::EndTabItem();
             }
+            for (const AddedPage& page : g_pages) {
+                if (ImGui::BeginTabItem(page.title.c_str())) {
+                    page.draw(page.user);
+                    ImGui::EndTabItem();
+                }
+            }
             ImGui::EndTabBar();
         }
         actions();
@@ -364,6 +376,10 @@ void menu_frame() {
 }
 
 }  // namespace
+
+void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
+    if (!g_ready && title && draw) g_pages.push_back({title, draw, user});
+}
 
 void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& picture) {
     g_ready = true;
@@ -464,7 +480,9 @@ void overlay_gate(int port, PadState& p) {
 }
 
 void overlay_menu_frame() {
-    if (g_window && g_open) menu_frame();
+    if (!g_open) return;
+    if (g_window) menu_frame();
+    else for (const AddedPage& page : g_pages) page.draw(page.user);
 }
 
 void overlay_draw() {

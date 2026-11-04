@@ -1421,11 +1421,15 @@ times worked out from its numbers, at both speeds. It needs no disc image or dev
 
 ## The disc overlay
 
-`--disc-overlay=FILE` on the desktop or `GCN_DISC_OVERLAY=FILE` in the environment makes
-the runtime read its disc through the overlay that manifest describes (see
-`docs/disc-overlay.md`). The flag wins when both are set, as `--telemetry` beats
-`GCN_TELEMETRY`. A reset starts the run again with the same arguments, so the overlay
-stays.
+`disc_overlay PATH` in `settings.txt` makes the runtime read its disc through the overlay
+that manifest describes (see `docs/disc-overlay.md`). The path is relative to the folder
+holding `settings.txt`.
+
+`GCN_DISC_OVERLAY=FILE` overrides the key, and `--disc-overlay=FILE` overrides the
+variable. An empty value means no overlay.
+
+`ram_patches PATH` names a RAM patch file in the same folder as `settings.txt` when the
+path is relative. The setting loads now, and a later runtime change will read it.
 
 The manifest loads before boot reads the disc header, and every host file it names opens
 once then. The run stops at boot if the manifest or one of its files is wrong or the image
@@ -1433,7 +1437,7 @@ isn't the one it was made for.
 
 The message names the manifest and the line. A manifest that can't be opened, can't be
 read or is over 16 MiB has no line, so the message names the file alone. An empty
-`--disc-overlay=` names the flag.
+`--disc-overlay=` disables the overlay for that run.
 
 `--log=dvd` prints the load with its file count and bytes, then each piece of a DVD
 command's read that comes from a host file. The audio stream reads a block at a time, so

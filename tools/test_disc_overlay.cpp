@@ -409,7 +409,7 @@ void path_choice() {
     g_disc_overlay_flag = "from flag.txt";
     check(std::string(disc_overlay_path()) == "from flag.txt", "--disc-overlay beats the variable");
     g_disc_overlay_flag = "";
-    check(disc_overlay_path() != nullptr && *disc_overlay_path() == 0, "and an empty flag still wins, so the load can refuse it");
+    check(disc_overlay_path() == nullptr, "an empty flag wins and means no overlay");
     g_disc_overlay_flag = nullptr;
     setenv("GCN_DISC_OVERLAY", "", 1);
     check(disc_overlay_path() == nullptr, "an empty variable counts as unset");

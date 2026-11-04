@@ -70,8 +70,11 @@ struct OverlayPicture {
 enum class OverlayAsk { none, restart, quit };
 
 #ifdef GCN_OVERLAY
+// Add a page after Display before overlay_init. The callback draws that page with ImGui.
+void overlay_add_page(const char* title, void (*draw)(void* user), void* user);
 // Once the window's GL context is current, with the menu's title. A null window draws no menu,
-// for tests: the overlay still opens, closes and holds input back. A window with no GL context,
+// for tests: the overlay still opens, closes and holds input back. Added page callbacks run
+// there without ImGui, so tests can check them. A window with no GL context,
 // which tests make with SDL's dummy video driver, has a menu that's driven but never drawn
 // (overlay_menu_frame).
 void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& picture);
@@ -95,12 +98,14 @@ void overlay_gate(int port, PadState& p);
 // swap.
 void overlay_draw();
 // What overlay_draw does short of drawing, for a window with no GL context: while it's open, the
-// menu takes its input and lays out its frame. For the tests (tools/test_ports.cpp).
+// menu takes its input and lays out its frame. With no window, it calls added pages for the
+// tests (tools/test_ports.cpp).
 void overlay_menu_frame();
 // What the Display page does with `next`, the picture with its change made: the frontend applies
 // it, and each key where it differs from the picture now is saved.
 void overlay_display_change(const Settings& next);
 #else
+inline void overlay_add_page(const char*, void (*)(void*), void*) {}
 inline void overlay_init(SDL_Window*, const char*, const OverlayPicture&) {}
 inline bool overlay_event(const SDL_Event&) { return false; }
 inline void overlay_poll() {}

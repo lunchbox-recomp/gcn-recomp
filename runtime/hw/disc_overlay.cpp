@@ -281,7 +281,7 @@ uint64_t disc_overlay_fnv1a64(const void* data, size_t size) {
 }
 
 const char* disc_overlay_path() {
-    if (g_disc_overlay_flag) return g_disc_overlay_flag;
+    if (g_disc_overlay_flag) return *g_disc_overlay_flag ? g_disc_overlay_flag : nullptr;
     const char* env = getenv("GCN_DISC_OVERLAY");
     return env && *env ? env : nullptr;
 }

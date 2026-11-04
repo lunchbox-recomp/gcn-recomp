@@ -10,7 +10,7 @@
 //   scale 3
 //   disc console
 //
-// The runtime owns four keys:
+// The runtime reads six keys and saves the four picture and disc speed keys:
 //   aspect       the output's shape, "W:H" with two whole numbers from 1 to 9999, or
 //                "window" for the window's own shape (settings_parse_aspect). Default 4:3
 //   fullscreen   1 for fullscreen, 0 for a window. Default 0
@@ -19,10 +19,12 @@
 //   disc         how long a disc read takes (hw/drive.h). "fast" reads every block at the
 //                32 MiB/s of one the drive has read ahead, and "console" times reads as a
 //                console's drive does, seeks and all. Default fast
+//   disc_overlay a manifest path relative to this file's folder, or empty for none
+//   ram_patches  a patch path relative to this file's folder, or empty for none
 // A bad value for one of them is reported on stderr and leaves the key as it was. Every
 // other key is left alone: a load skips it and a save keeps its line.
 //
-// The desktop frontend reads the file at start and applies all four, and a flag beats it for
+// The desktop frontend reads the file at start and applies the first four, and a flag beats it for
 // that run without being written back (--disc=fast or --disc=console for `disc`). The
 // overlay's Display page saves the key it changes (overlay/overlay.h).
 //
@@ -36,7 +38,13 @@ struct Settings {
     bool fullscreen = false;
     int scale = 2;
     bool fast_disc = true;  // disc fast, or disc console when false
+    std::string disc_overlay;  // resolved relative to settings.txt
+    std::string ram_patches;   // resolved relative to settings.txt
 };
+
+// A flag wins over a variable, then a loaded key. Null means absent; an empty value
+// means no path and still wins over the lower-priority sources.
+std::string settings_choose_path(const std::string& key, const char* flag, const char* variable);
 
 // The settings in the file at `path`, over the defaults. A missing file gives the defaults,
 // and so does one that can't be read, with a line on stderr.

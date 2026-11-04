@@ -1709,7 +1709,12 @@ void record_apply(const Settings& s) {
     g_applies++;
 }
 
+void draw_added_page(void* user) { ++*static_cast<int*>(user); }
+
 void overlay(const std::string& dir) {
+    static int page_draws = 0;
+    page_draws = 0;
+    overlay_add_page("Extra", draw_added_page, &page_draws);
     const std::string path = dir + "/settings.txt";
     write_file(path, "# The picture\naspect 4:3\nvsync on\nfullscreen 0\n\nscale 2\ndisc console\n# the end\n");
     OverlayPicture picture;
@@ -1735,6 +1740,8 @@ void overlay(const std::string& dir) {
     set_button(pad, SDL_GAMEPAD_BUTTON_BACK, false);
     host_frame(guest);
     check(frames <= 2 && overlay_open() && paused(), "a gamepad's Back opens the overlay, and the guest is held within 2 host frames");
+    host_frame(guest);
+    check(page_draws > 0, "an added page draws while the overlay test has no window");
 
     // Each pushed all the way, and back to where it rests: a virtual pad's triggers rest at the
     // bottom of their axis.

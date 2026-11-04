@@ -43,7 +43,7 @@ bool disc_overlay_loaded();
 void disc_overlay_unload();
 
 // The manifest to load: --disc-overlay=FILE if g_disc_overlay_flag is set, else the
-// GCN_DISC_OVERLAY variable, else null. An empty variable counts as unset.
+// GCN_DISC_OVERLAY variable, else null. An empty flag or variable means none.
 extern const char* g_disc_overlay_flag;
 const char* disc_overlay_path();
 
