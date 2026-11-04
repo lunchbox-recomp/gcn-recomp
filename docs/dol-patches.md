@@ -2,7 +2,7 @@
 
 A DOL patch changes a game's executable before the recompiler reads it. `recomp/dol_patch.py` applies patch lists to a DOL, adds new sections and names the new functions in them. The recompiler translates that code with the rest of the game.
 
-The recompiled game can run PowerPC the recompiler didn't translate too. Code the game or a mod writes into RAM runs in the interpreter, and so does a recompiled function whose words change after an `icbi` (`docs/interpreter.md`). A Riivolution release's memory patches write at boot, and the code they change runs in the interpreter the same way, unless it's HLE'd or in a module or REL (`docs/riivolution.md`, `docs/interpreter.md`).
+The recompiled game can run PowerPC the recompiler didn't translate too. Code the game or a mod writes into RAM runs in the interpreter, and so does a recompiled function whose words change after an `icbi`, unless it's HLE'd or in a module or REL (`docs/interpreter.md`). A Riivolution release's memory patches write at boot, and the code they change runs in the interpreter the same way (`docs/riivolution.md`).
 
 A DOL patch is still how new code gets recompiled, so it runs as native code and gets a name in the build's symbols. The interpreter runs the same code a word at a time.
 
