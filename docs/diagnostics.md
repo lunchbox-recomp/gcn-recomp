@@ -1430,7 +1430,14 @@ The run stops with a file and line when the header or a patch line is malformed,
 string has an odd number of digits or a non-hex digit, or an address isn't eight hex
 digits. It also stops when the `base` differs from the disc's ID or bytes written or
 checked would leave main RAM. An `original` that differs from RAM stops the run with the
-address and both byte strings.
+address of the first byte that differs and up to 16 bytes of RAM and of the patch from
+there.
+
+A line with a control character, such as a tab or the CR of a Windows line ending, stops
+the run, as does a last line with no newline, since it may be cut short. So does a list over
+96 MiB, which the runtime refuses before it reads any line.
+
+A bare `--ram-patches` prints one line on stderr and exits 1.
 
 `--log=os` prints `[OS] RAM patches: 2 patches, 20 bytes written` for a list with
 two patches writing 20 bytes.
