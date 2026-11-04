@@ -33,7 +33,6 @@ extern uint32_t g_frame_counter;
 
 TexLookup texture_lookup(const TexParams& p, std::vector<std::shared_ptr<TexData>>& new_textures);
 uint32_t texture_register_efb_copy(uint32_t addr, uint32_t w, uint32_t h, uint32_t fmt);
-void texture_invalidate_efb_copy(uint32_t addr);
 
 // Drop decoded textures the game has stopped referencing. Call once per frame.
 void texture_evict();

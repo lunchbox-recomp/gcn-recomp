@@ -432,7 +432,6 @@ void clock_set_cpu_scale(double s) {
     g_ticks_per_edge = std::max<uint64_t>(1, (uint64_t)((double)kTicksPerEdge / s + 0.5));
     clock_update_limit();  // the pending limit was counted at the old rate
 }
-double clock_cpu_scale() { return (double)kTicksPerEdge / (double)g_ticks_per_edge; }
 
 void timing_init() {
     g_t0 = std::chrono::steady_clock::now();

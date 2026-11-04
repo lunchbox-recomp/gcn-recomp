@@ -57,7 +57,6 @@ inline uint16_t mem_r16(uint32_t a) { uint16_t v; memcpy(&v, HOST(a), 2); return
 inline uint8_t mem_r8(uint32_t a) { return *HOST(a); }
 inline void mem_w32(uint32_t a, uint32_t v) { v = GCN_BSWAP32(v); memcpy(HOST_W(a), &v, 4); }
 inline void mem_w16(uint32_t a, uint16_t v) { v = GCN_BSWAP16(v); memcpy(HOST_W(a), &v, 2); }
-inline void mem_w8(uint32_t a, uint8_t v) { *HOST_W(a) = v; }
 // Physical address (as used by DMA engines) -> host pointer into main RAM.
 inline uint8_t* phys_ptr(uint32_t pa) { return g_mem + (pa & 0x01FFFFFF); }
 
@@ -96,7 +95,6 @@ void step_frame();
 // While a finite value is set it replaces the step scale at every site (step.cpp, a body
 // the game integrates in several passes a frame); NAN ends the override.
 void step_override(double s);
-double clock_cpu_scale();
 void clock_update_limit();   // recompute g_vlimit from the next event / decrementer deadline
 void clock_pace();           // wait if virtual time is ahead of real time (virtual clock only)
 uint64_t clock_jumped_ticks();  // virtual time clock_pace's catch-up jumps have skipped so far
@@ -177,7 +175,6 @@ void threads_request_quit();
 std::vector<const CPU*> guest_threads();
 
 // ---- HLE ----
-void hle_os_report(CPU* c);
 std::string guest_format(CPU* c, uint32_t fmt_addr, int first_gpr, int first_fpr);
 std::string guest_str(uint32_t addr, size_t max = 4096);
 

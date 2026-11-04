@@ -507,8 +507,6 @@ TexLookup texture_lookup(const TexParams& p, std::vector<std::shared_ptr<TexData
     return {td->id, false};
 }
 
-void texture_invalidate_efb_copy(uint32_t addr) { g_efb_copies.erase(addr & 0x03FFFFFF); }
-
 // Decoded textures let go of, for the renderer (Batch::dead_textures). EFB copies are not
 // here: the renderer makes their GL textures itself and ages them itself.
 static std::vector<uint32_t> g_dead;
