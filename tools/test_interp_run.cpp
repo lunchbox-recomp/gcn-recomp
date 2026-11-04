@@ -39,6 +39,12 @@ std::string next_word_stop(uint32_t next) {
 const std::string kBlrlStop = next_word_stop(FX_F_BLRL_NEXT_N);
 const std::string kBctrlStop = next_word_stop(FX_F_BCTRL_NEXT_N);
 
+// A mod points f_switch_hook's first case at a blob. Natively the bctr goes to call_indirect with LR still
+// f_callee's return, so the blob's frame has to return once the function's epilogue pops its frame.
+const Case kNativeSwitchHook = {"a native jump table pointed at a blob, against the interpreted one",
+                                FX_F_SWITCH_HOOK, 0, [](CPU*) { poke(FX_JUMPTABLE_HOOK, FX_BLOB_CASE_HOOK); },
+                                nullptr, false};
+
 const Case kCases[] = {
     {"an in-range loop", FX_F_LOOP, 0, nullptr, "IRQ_CHECK", false},
     {"an idle back edge", FX_F_IDLE, 0, nullptr, "idle_hint", false},
@@ -125,30 +131,36 @@ const Case kCases[] = {
     // LR at the hook is f_callee's return, so the hook's loose frame has to return where f_hooked_late does.
     {"a hook written past a call, whose frame returns where its function does", FX_F_HOOKED_LATE,
      FX_F_HOOKED_LATE_TWIN, [](CPU*) { poke(FX_F_HOOKED_LATE_HOOK, FX_LATE_HOOK_WORD); }, nullptr, false},
-    // A mod points f_switch_hook's first case at a blob. Natively the bctr goes to call_indirect with LR
-    // still f_callee's return, so the blob's frame has to return once the function's epilogue pops its frame.
+    // r1 is back where f_epilogue_hook found it when the hook's frame starts, so only the LR the function
+    // was entered with returns that frame.
+    {"a hook written over an epilogue after it pops, whose frame returns where its function does",
+     FX_F_EPILOGUE_HOOK, FX_F_EPILOGUE_HOOK_TWIN,
+     [](CPU*) { poke(FX_F_EPILOGUE_HOOK_HOOK, FX_EPILOGUE_HOOK_WORD); }, nullptr, false},
     {"a jump table pointed at a blob that branches back into a case", FX_F_SWITCH_HOOK, FX_F_SWITCH_HOOK_TWIN,
      [](CPU*) { poke(FX_JUMPTABLE_HOOK, FX_BLOB_CASE_HOOK); }, nullptr, false},
-    {"a native jump table pointed at a blob, against the interpreted one", FX_F_SWITCH_HOOK, 0,
-     [](CPU*) { poke(FX_JUMPTABLE_HOOK, FX_BLOB_CASE_HOOK); }, nullptr, false},
+    kNativeSwitchHook,
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to
-// an LR its frame wasn't entered with, though each ran twice interpreted.
+// an LR its frame wasn't entered with, though each ran twice interpreted. The native jump table's blob
+// left one for the blr its frame returned at by r1, and running it again adds none.
 void check_logs() {
-    char blr[160], site[160];
+    run(kNativeSwitchHook, NATIVE);
+    char blr[160], site[160], popped[160];
     snprintf(site, sizeof site, "site at %08X holds %08X, not the %08X its patch replaced, so that word runs",
              FX_F_SITE2_SITE, FX_SITE2_WORD, peek(FX_F_SITE2_SITE));
     snprintf(blr, sizeof blr, "blr at %08X returns to %08X, and its frame was entered with LR %08X", FX_F_LR_RET,
              kLR + 8, kLR);
-    const std::vector<std::string> want = {site, blr};
+    snprintf(popped, sizeof popped, "blr at %08X returns to %08X, and r1 %08X is above the %08X its loose frame was "
+             "entered with", FX_F_SWITCH_HOOK_END + 12, kLR, FX_STACK, FX_STACK - 16);
+    const std::vector<std::string> want = {site, blr, popped};
     if (g_logs != want) {
         std::string got, wanted;
         for (const std::string& s : g_logs) got += "  " + s + "\n";
         for (const std::string& s : want) wanted += (wanted.empty() ? "  " : "\n  ") + s;
         fail("--log=interp printed\n" + got + "where it should print\n" + wanted);
     } else {
-        printf("match  --log=interp's two lines, once each\n");
+        printf("match  --log=interp's three lines, once each\n");
     }
 }
 

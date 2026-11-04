@@ -60,8 +60,9 @@ doesn't link, through the same `code_watch_run_unknown`. A misaligned address or
 main RAM stops the game as it did before.
 
 The first miss at each address since boot prints `[interp] running unknown code at <addr>
-(lr=<lr>), which returns to <ret>`. `<ret>` is the LR whose `blr` returns from the frame, which
-is the function's own LR for a function frame's branch.
+(lr=<lr>), which returns to <ret>`. `<ret>` is the LR a `blr` returns from the frame at, which
+is the function's own LR for a function frame's branch. A `blr` that pops a frame the entry
+didn't own returns too, under Loose frames below.
 
 ## Function frames
 
@@ -142,8 +143,13 @@ then returns.
 
 The r1 rule is for a frame entered with LR holding an earlier call's return, as native code's
 jump leaves it at a jump table a mod pointed at its own code. The function's epilogue pops a
-frame the entry didn't own, so its `blr` returns. A frameless leaf reached the same way has no
-r1 change to go on, and code that moves r1 to a stack above its own returns at its next `blr`.
+frame the entry didn't own, so its `blr` returns.
+
+The rule returns early when code moves r1 to a stack above its own. It also does when a frame
+goes on past a pop into mod code whose own frame is smaller than the one popped, at the `blr` of
+a helper that code calls, so the rest of that code doesn't run and its caller gets the wrong r1.
+`--log=interp` prints `blr at <pc> returns to <lr>, and r1 <r1> is above the <entry r1> its
+loose frame was entered with` once for each `blr` the rule returns at.
 
 The runtime calls `interp_run_loose` from `call_indirect`'s miss path and from a function
 frame's branch out of its range, under Unknown code above.

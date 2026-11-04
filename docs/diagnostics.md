@@ -1549,12 +1549,15 @@ exit after a fault doesn't. Every word a frame runs counts, a site's included.
 [interp]      <count>  <start> <name>
 ```
 
-`--log=interp` reports each of these once for its address. The first is a `blr` that goes
-somewhere other than the LR its frame was entered with, and the second a site whose word in
-RAM isn't the one its patch replaced, which then runs in the patch's place.
+`--log=interp` reports each of these once for its address. The first is a function frame's
+`blr` that goes somewhere other than the LR its frame was entered with. The second is a loose
+frame's `blr` that returns because r1 is above the r1 the frame was entered with
+(`docs/interpreter.md`), and the third a site whose word in RAM isn't the one its patch
+replaced, which then runs in the patch's place.
 
 ```
 [INTERP] blr at <pc> returns to <lr>, and its frame was entered with LR <entry lr>
+[INTERP] blr at <pc> returns to <lr>, and r1 <r1> is above the <entry r1> its loose frame was entered with
 [INTERP] site at <pc> holds <word>, not the <original> its patch replaced, so that word runs
 ```
 
@@ -1570,9 +1573,11 @@ flushes them (`docs/interpreter.md`). These lines go to stderr whatever the sett
 ```
 
 The first comes at boot. The second comes once for each HLE'd function whose code changes, and
-the third once for each address of unknown code that runs as a loose frame since boot. Its
-`<ret>` is the LR whose `blr` returns from the frame, which isn't `<lr>` at a hook a mod wrote
-past a call.
+the third once for each address of unknown code that runs as a loose frame since boot.
+
+The third's `<ret>` is the LR a `blr` returns from the frame at, which isn't `<lr>` at a hook a
+mod wrote past a call. A `blr` that pops a frame the entry didn't own returns too
+(`docs/interpreter.md`).
 
 `GCN_CODE_CHECK=1` compares all the text with boot's copy at each frame boundary, on the guest
 thread. It reports each changed word whose function nothing marked, once. It also reports a

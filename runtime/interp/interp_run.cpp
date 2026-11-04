@@ -49,7 +49,7 @@ void irq_check(CPU* c) {
 }
 
 // --log=interp reports each of these once for its address.
-std::unordered_set<uint32_t> g_blr_seen, g_site_seen;
+std::unordered_set<uint32_t> g_blr_seen, g_popped_seen, g_site_seen;
 
 bool first_report(std::unordered_set<uint32_t>& seen, uint32_t pc) {
     return g_log_enabled[LOG_INTERP] && seen.insert(pc).second;
@@ -127,8 +127,18 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
                 // above the r1 it was entered with, which has popped a frame the entry didn't own. Any
                 // other blr goes on at its target, natively when a table knows the code there.
                 if (f->loose) {
-                    if (br.target == f->entry_lr || c->r[1] > f->entry_sp || call_known(c, br.target))
+                    if (br.target == f->entry_lr) return false;
+                    // The r1 rule can return early, at a helper's blr in mod code the frame went on into after
+                    // a pop, when that code's frame is smaller than the popped one. --log=interp reports it.
+                    if (c->r[1] > f->entry_sp) {
+                        if (first_report(g_popped_seen, pc))
+                            log_msg(LOG_INTERP,
+                                    "blr at %08X returns to %08X, and r1 %08X is above the %08X its loose frame was "
+                                    "entered with",
+                                    pc, br.target, c->r[1], f->entry_sp);
                         return false;
+                    }
+                    if (call_known(c, br.target)) return false;
                     pc = br.target;
                     continue;
                 }

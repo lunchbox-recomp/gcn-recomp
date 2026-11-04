@@ -254,6 +254,8 @@ BLOB_BLR_KNOWN = [mflr(0)] + address(12, 'f_lr_from_r0') + [mtlr(12), BLR]
 LATE_HOOK = [addi(3, 3, 1000), b('f_hooked_late.after')]
 # The code a mod points f_switch_hook's first case at. It branches back into the second case.
 CASE_HOOK = [addi(3, 3, 1000), b('f_switch_hook.case1')]
+# A hook written over f_epilogue_hook's mtlr. It runs that word, then returns with r3 changed.
+EPILOGUE_HOOK = [mtlr(0), addi(3, 3, 1000), BLR]
 
 FUNCS = [
     Code('f_loop', [li(3, 3), li(4, 0), 'loop:', add(4, 4, 3), addi(3, 3, -1), cmpwi(3, 0), bne('.loop'), BLR]),
@@ -374,6 +376,11 @@ FUNCS = [
             'case1:', addi(3, 3, 20), 'end:'] + E16),
     Code('f_switch_hook_twin', P16 + [bl('f_callee')] + address(4, 'jumptable_hook') + [li(5, 0), slwi(0, 5, 2)]
          + address(0, 'blob_case_hook') + [mtctr(0), addi(3, 3, 1000), addi(3, 3, 20)] + E16),
+    # The hook's word comes after the epilogue pops the frame, so r1 is back where it was at entry and only
+    # the function's own LR returns the hook's frame.
+    Code('f_epilogue_hook', P16 + [bl('f_callee'), lwz(0, 20, 1), addi(1, 1, 16), 'hook:', mtlr(0), BLR]),
+    Code('f_epilogue_hook_twin', P16 + [bl('f_callee'), lwz(0, 20, 1), addi(1, 1, 16), mtlr(0), addi(3, 3, 1000),
+                                        BLR]),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 SECOND_FUNCS = [Code('f_second', [addi(3, 3, 7), BLR]), Code('f_second_next', [addi(3, 3, 9), BLR])]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
@@ -385,7 +392,7 @@ BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', 
          (BLOB + 0xA00, Code('blob_bctr_tail', BLOB_BCTR_TAIL)), (BLOB + 0xB00, Code('blob_floats', BLOB_FLOATS)),
          (BLOB + 0xC00, Code('blob_helper', BLOB_HELPER)), (BLOB + 0xD00, Code('blob_known', BLOB_KNOWN)),
          (BLOB + 0xE00, Code('blob_blr_known', BLOB_BLR_KNOWN)), (BLOB + 0xF00, Code('blob_late_hook', LATE_HOOK)),
-         (BLOB + 0x1000, Code('blob_case_hook', CASE_HOOK))]
+         (BLOB + 0x1000, Code('blob_case_hook', CASE_HOOK)), (BLOB + 0x1100, Code('blob_epilogue_hook', EPILOGUE_HOOK))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark. f_switch_hook's
 # jump table comes last.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
@@ -460,8 +467,10 @@ def header(labels, text, second, module, data):
             "/* The words the test writes over f_hooked's first, f_site2's site and f_multi's mid-entry. */",
             f'#define FX_HOOK_WORD 0x{b("blob_hook")(labels["f_hooked"], labels.get):08X}u',
             f'#define FX_SITE2_WORD 0x{SITE2_WORD:08X}u', f'#define FX_MID_WORD 0x{MID_WORD:08X}u',
-            "/* The branch the test writes over f_hooked_late's hook. */",
-            f'#define FX_LATE_HOOK_WORD 0x{b("blob_late_hook")(labels["f_hooked_late.hook"], labels.get):08X}u', '',
+            "/* The branches the test writes over f_hooked_late's hook and f_epilogue_hook's. */",
+            f'#define FX_LATE_HOOK_WORD 0x{b("blob_late_hook")(labels["f_hooked_late.hook"], labels.get):08X}u',
+            f'#define FX_EPILOGUE_HOOK_WORD '
+            f'0x{b("blob_epilogue_hook")(labels["f_epilogue_hook.hook"], labels.get):08X}u', '',
             'typedef struct { uint32_t addr, count; const uint32_t* words; } FxWords;']
     image = [('fx_text', TEXT, text), ('fx_second_text', SECOND_TEXT, second), ('fx_module', MODULE, module),
              ('fx_data', DATA, data)]
