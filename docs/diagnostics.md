@@ -3,6 +3,7 @@
 How to drive a game without a controller, record and replay a run, measure the port, and
 find out which guest code or which draw is responsible for something. Environment variables
 are `GCN_*`; none of this is needed to play.
+The engine reads an empty number or on/off switch as unset.
 
 ## Input logging and replay
 
@@ -1030,13 +1031,13 @@ directory. It turns on these:
 - `GCN_AXSTATS`, `GCN_AUDIOSTATS` and `GCN_FRAMETIME`, whose lines go to stderr with the
   rest of the run's output
 
-A switch that's already set keeps its value. The stats lines don't go into `<dir>`, so
-keep the run's output beside it, as a script does that runs the game with
-`2>&1 | tee <dir>/stdout.txt`. Once the window and the sound device are open, the process
-writes `<dir>/session.json`. Under `--vr` that waits for the headset frontend to open the
-device. A `--headless` run has no window or device and writes it before the guest boots,
-with `refresh_hz` and `audio_device` null. For a run on SDL's dummy driver it looks like
-this, with the command line shortened and the game's binary called `game`:
+A switch that's already set keeps its value, and an empty one counts as unset. The stats
+lines don't go into `<dir>`, so keep the run's output beside it, as a script does that runs
+the game with `2>&1 | tee <dir>/stdout.txt`. Once the window and the sound device are open,
+the process writes `<dir>/session.json`. Under `--vr` that waits for the headset frontend to
+open the device. A `--headless` run has no window or device and writes it before the guest
+boots, with `refresh_hz` and `audio_device` null. For a run on SDL's dummy driver it looks
+like this, with the command line shortened and the game's binary called `game`:
 
 ```json
 {
