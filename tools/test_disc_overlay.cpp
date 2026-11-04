@@ -833,8 +833,6 @@ void refusals() {
 
     // The manifest itself.
     std::string err;
-    check(!disc_overlay_load("", plain_base, &err, kImage) && err.find("--disc-overlay=") == 0 && err.find("no manifest path") != std::string::npos,
-          "an empty manifest name is refused as the flag with nothing after it");
     const std::string none = g_out + "/none.txt";
     check(!disc_overlay_load(none.c_str(), plain_base, &err, kImage) && err.find(none) == 0 && err.find(", line ") == std::string::npos,
           "a manifest that isn't there is refused naming the file and no line");

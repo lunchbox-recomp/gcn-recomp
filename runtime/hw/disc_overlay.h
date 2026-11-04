@@ -19,7 +19,7 @@ using BaseRead = bool (*)(uint64_t off, void* dst, uint32_t len);
 // The image has to be the one the manifest was made for: its disc ID and its FST's offset,
 // size and FNV-1a hash are read through `base` and compared. On a refusal nothing is loaded
 // and *error (if given) says why. It names the manifest and the line, except for a manifest
-// that can't be opened, can't be read or is too big, which has no line, and an empty name.
+// that can't be opened, can't be read or is too big, which has no line.
 //
 // `base_size` is how many bytes the image has as `base` sees it: a plain image's file size,
 // and for a CISO the entries in its block map times its block size, stored or not. The
