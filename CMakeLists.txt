@@ -977,6 +977,14 @@ function(gcn_add_game)
     target_include_directories(test_feed_dump PRIVATE ${RT})
     target_compile_options(test_feed_dump PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The RAM patch checks (tools/test_ram_patches.cpp): the boot manifest over fake main
+    # memory, with fatal errors and code write notifications captured. Needs no disc or SDL.
+    add_executable(test_ram_patches EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ram_patches.cpp
+      ${RT}/ram_patches.cpp)
+    _gcn_set_standards(test_ram_patches)
+    target_include_directories(test_ram_patches PRIVATE ${RT})
+    target_compile_options(test_ram_patches PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The interpreter's differential checks (tools/test_interp.cpp) run ppc.translate's own C for
     # random and edge-case words of every form it accepts against runtime/interp/, on the same
     # seeded CPUs. recomp/ppc_cases.py writes the cases into <build>/interp_cases/, and they
@@ -1056,7 +1064,7 @@ function(gcn_add_game)
     set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay test_feed_dump
-        test_bot_link test_code_table test_code_watch test_aid)
+        test_ram_patches test_bot_link test_code_table test_code_watch test_aid)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()

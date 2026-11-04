@@ -1419,6 +1419,24 @@ when `fast` was asked for.
 `ninja test_drive` builds `tools/test_drive.cpp`, which checks the model's times against
 times worked out from its numbers, at both speeds. It needs no disc image or device.
 
+## RAM patches at boot
+
+`--ram-patches=FILE` or `GCN_RAM_PATCHES=FILE` selects a RAM patch list from
+`recomp/riivolution.py apply`. The flag wins over the variable, and an empty value at
+either level means there are no patches. The runtime applies the list at the end of boot,
+after it has loaded the disc and checked the code in RAM.
+
+The run stops with a file and line when the header or a patch line is malformed, a byte
+string has an odd number of digits or a non-hex digit, or an address isn't eight hex
+digits. It also stops when the `base` differs from the disc's ID or bytes written or
+checked would leave main RAM. An `original` that differs from RAM stops the run with the
+address and both byte strings.
+
+`--log=os` prints `[os] RAM patches: 2 patches, 20 bytes written` for a list with
+two patches writing 20 bytes.
+`ninja test_ram_patches` builds `tools/test_ram_patches.cpp`, which checks the parser, ordered
+writes and code change notifications against fake RAM.
+
 ## The disc overlay
 
 `disc_overlay PATH` in `settings.txt` makes the desktop frontend read its disc through the
