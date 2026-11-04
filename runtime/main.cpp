@@ -455,9 +455,16 @@ static std::string take_disc_overlay(const Settings& settings, int argc, char** 
     return settings_choose_path(settings.disc_overlay, flag, getenv("GCN_DISC_OVERLAY"));
 }
 
-// A flag wins over the environment for this run. An empty path selects no patches.
-static void take_ram_patches(int argc, char** argv) {
-    ram_patches_set_file(ram_patches_choose(getenv("GCN_RAM_PATCHES"), argc, argv));
+// A flag wins over the environment for this run. An empty path selects no patches. The result is
+// false, with the reason on stderr, for a bare --ram-patches.
+static bool take_ram_patches(int argc, char** argv) {
+    std::string file, error;
+    if (!ram_patches_choose(getenv("GCN_RAM_PATCHES"), argc, argv, file, error)) {
+        fprintf(stderr, "%s\n", error.c_str());
+        return false;
+    }
+    ram_patches_set_file(file);
+    return true;
 }
 
 // Sets `bot` to the socket of the bot that drives the pads (bot_link.h). The last --bot=PATH wins,
@@ -548,7 +555,7 @@ int main(int argc, char** argv) {
     int scale = settings.scale;
     // --disc=fast or --disc=console, which the loop below passes over.
     if (!take_disc_speed(settings, argc, argv)) return 1;
-    take_ram_patches(argc, argv);
+    if (!take_ram_patches(argc, argv)) return 1;
     int pads = 1;
     // --aspect=W:H, or --aspect=window to follow the window's shape: what the picture is
     // stretched to (gx::output_aspect). settings.txt's, which is 4:3, the console's own, by
