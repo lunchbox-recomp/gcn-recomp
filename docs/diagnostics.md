@@ -453,8 +453,7 @@ moves between stereo and theater, so the first frame after the change can be dum
 The app has no environment of its own, so `gcn_env.txt` in its files directory
 (`/sdcard/Android/data/<package>/files/`), one `KEY=VALUE` per line, is put into it before
 the runtime starts; `gcn_input.txt` there holds a `GCN_INPUT` script, and `GCN_REPLAY=<dir>`
-in the env file replays an input log relative to that directory. An empty `GCN_REPLAY` acts
-as unset. Its log is
+in the env file replays an input log relative to that directory. Its log is
 `adb logcat -s <game>`, with a line every second: compositor and game frames, the longest
 wait between game frames, the render thread's time per stereo frame, how many display frames
 each game frame stayed up (`held 1:a 2:b 3:c 4+:d`; even pacing is all one column), the

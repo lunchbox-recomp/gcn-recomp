@@ -217,7 +217,7 @@ void gcn_vos_run(void* layer_renderer) {
     // Every run records its input into <Documents>/inputs/<stamp>/, as on the Quest; see
     // gcn-recomp/docs/diagnostics.md. GCN_REPLAY in gcn_env.txt plays one back.
     static std::string replay_card, replay_sram;
-    if (const char* r = getenv_nonempty("GCN_REPLAY")) {
+    if (const char* r = getenv("GCN_REPLAY")) {
         const std::string replay_dir = r[0] == '/' ? std::string(r) : dir + "/" + r;
         if (!input_replay_load(replay_dir, replay_card, replay_sram)) {
             LOGE("no replay at %s", replay_dir.c_str());
