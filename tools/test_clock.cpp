@@ -14,8 +14,8 @@
 // (clock_hold), so that the guest doesn't see a pause as time gone by. The last check runs
 // that clock.
 //
-// The clock's switches are read through gcn_env (runtime.h), which takes an empty value as
-// unset. The first checks cover it, GCN_TIMESCALE as timing_init reads it, and GCN_CATCHUP
+// The clock's switches are read through getenv_nonempty (env.h), which takes an empty value
+// as unset. The first checks cover it, GCN_TIMESCALE as timing_init reads it, and GCN_CATCHUP
 // and GCN_CLOCKLOG, which are read once a process and so are each tried in a child of its own.
 //
 // usage: test_clock
@@ -107,15 +107,15 @@ int main(int argc, char** argv) {
     if (argc == 2 && strcmp(argv[1], "catchup") == 0) return g_catchup ? 0 : 1;
 
     unsetenv("GCN_TEST_EMPTY");
-    const bool unset_none = gcn_env("GCN_TEST_EMPTY") == nullptr;
+    const bool unset_none = getenv_nonempty("GCN_TEST_EMPTY") == nullptr;
     setenv("GCN_TEST_EMPTY", "", 1);
-    const bool empty_none = gcn_env("GCN_TEST_EMPTY") == nullptr;
+    const bool empty_none = getenv_nonempty("GCN_TEST_EMPTY") == nullptr;
     setenv("GCN_TEST_EMPTY", "0", 1);
-    const char* zero = gcn_env("GCN_TEST_EMPTY");
+    const char* zero = getenv_nonempty("GCN_TEST_EMPTY");
     const bool zero_kept = zero && !strcmp(zero, "0");
     unsetenv("GCN_TEST_EMPTY");
     check(unset_none && empty_none && zero_kept,
-          "gcn_env has no value for an unset or an empty switch, and gives a set one as it is");
+          "getenv_nonempty has no value for an unset or an empty switch, and gives a set one as it is");
 
     setenv("GCN_TIMESCALE", "", 1);
     clock_set_scale(1);

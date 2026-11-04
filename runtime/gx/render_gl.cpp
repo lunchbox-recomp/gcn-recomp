@@ -25,7 +25,7 @@ static const int EFB_W = 640, EFB_H = 528;
 // many times the full pixel state had to be re-applied. CPU time only: the GPU runs
 // behind, so a long frame here is driver and submission cost, not fill.
 static bool frametime_on() {  // on first use: the app sets its environment after static init
-    static const bool on = gcn_env("GCN_FRAMETIME") != nullptr;
+    static const bool on = getenv_nonempty("GCN_FRAMETIME") != nullptr;
     return on;
 }
 static inline double ms_since(std::chrono::steady_clock::time_point t) {
@@ -489,7 +489,7 @@ static void shader_cache_write_header(FILE* f) {
 // with parallel compilation (g_parallel_compile) the GL builds it in the background, and
 // finish_program, or any query of the program, waits for it.
 static GLuint start_program(const std::string& src, GLuint* fs_out) {
-    if (gcn_env("GCN_DUMP_SHADERS")) fprintf(stderr, "---- shader %zu ----\n%s\n", g_programs.size(), src.c_str());
+    if (getenv_nonempty("GCN_DUMP_SHADERS")) fprintf(stderr, "---- shader %zu ----\n%s\n", g_programs.size(), src.c_str());
     GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
     const char* text = src.c_str();
     glShaderSource(fs, 1, &text, nullptr);
@@ -1022,7 +1022,7 @@ void render_init(int internal_scale) {
             parallel = e && (!strcmp(e, "GL_KHR_parallel_shader_compile") || !strcmp(e, "GL_ARB_parallel_shader_compile"));
         }
         bool want = g_async_wanted;
-        if (const char* v = gcn_env("GCN_ASYNC_SHADERS")) want = atoi(v) != 0;
+        if (const char* v = getenv_nonempty("GCN_ASYNC_SHADERS")) want = atoi(v) != 0;
         g_parallel_compile = want && parallel;
         if (want)
             fprintf(stderr, parallel ? "[shaders] built in the background; a draw waiting for its program is left out\n"
@@ -1464,7 +1464,7 @@ static void grab_eye(EyeGrab& g, int w, int h) {
 static bool is_grab_tex(uint32_t id) {
     // GCN_EYE_SPRAY=0 restores the stale lookup, which is the only way to see from inside
     // the headset what this changed.
-    static const bool off = gcn_env("GCN_EYE_SPRAY") && atoi(gcn_env("GCN_EYE_SPRAY")) == 0;
+    static const bool off = getenv_nonempty("GCN_EYE_SPRAY") && atoi(getenv_nonempty("GCN_EYE_SPRAY")) == 0;
     if (off || !id) return false;
     auto it = g_textures.find(id);
     return it != g_textures.end() && it->second.grab;
@@ -1560,7 +1560,7 @@ static void view_invalidate() { g_view_gen++; }
 // pass, printed every 64th frame. What a game changes between draws decides what a state
 // application costs, and this is how to see it.
 static bool applystats_on() {  // on first use: the app sets its environment after static init
-    static const bool on = gcn_env("GCN_APPLYSTATS") != nullptr;
+    static const bool on = getenv_nonempty("GCN_APPLYSTATS") != nullptr;
     return on;
 }
 static struct ApplyStats {
@@ -1732,8 +1732,8 @@ static void apply_state(const PixelState& st, int prim) {
         // A draw an eye will give a foreground layer's game depth (u_vr 4, below) gets the
         // program that works that depth out per fragment; the shader still checks u_vr, so
         // a draw that ends up elsewhere keeps its own depth.
-        static const bool game_depth = !(gcn_env("GCN_EYE_FGDEPTH") && atoi(gcn_env("GCN_EYE_FGDEPTH")) == 0);
-        static const bool frag_depth = !(gcn_env("GCN_EYE_FGFRAGDEPTH") && atoi(gcn_env("GCN_EYE_FGFRAGDEPTH")) == 0);
+        static const bool game_depth = !(getenv_nonempty("GCN_EYE_FGDEPTH") && atoi(getenv_nonempty("GCN_EYE_FGDEPTH")) == 0);
+        static const bool frag_depth = !(getenv_nonempty("GCN_EYE_FGFRAGDEPTH") && atoi(getenv_nonempty("GCN_EYE_FGFRAGDEPTH")) == 0);
         if (g_vr_active && game_depth && frag_depth && g_morph >= 1.0f && (int)st.proj[6] == 0 && g_fg_to > 0.0f &&
             st.viewport[5] / 16777215.0f <= g_fg_to && !g_cur_flat3d)
             key.fg_depth = 1;
@@ -1790,7 +1790,7 @@ static void apply_state(const PixelState& st, int prim) {
     // a point in the scene. Those are world geometry like anything else -- their vertices
     // are in the camera's frame as every world vertex is -- and held before the camera
     // they stayed where the chase camera saw them while the game's own eye moved off.
-    static const bool vs3d = !(gcn_env("GCN_EYE_VS3D") && atoi(gcn_env("GCN_EYE_VS3D")) == 0);
+    static const bool vs3d = !(getenv_nonempty("GCN_EYE_VS3D") && atoi(getenv_nonempty("GCN_EYE_VS3D")) == 0);
     const bool view_space = st.view_space && !g_view_space_world;
     // A 3D draw the game composes into its 2D picture (EyeFlat): a model in a window of the
     // HUD, drawn with a frustum of its own into a viewport no bigger than that window. Its
@@ -1858,7 +1858,7 @@ static void apply_state(const PixelState& st, int prim) {
     // its background and foreground bands (render_set_depth_layers): the background is
     // drawn at infinity, turned with the head and the same in both eyes, and the
     // foreground is scaled towards the camera. GCN_EYE_SKY=0 turns the background off.
-    static const bool sky_at_infinity = !(gcn_env("GCN_EYE_SKY") && atoi(gcn_env("GCN_EYE_SKY")) == 0);
+    static const bool sky_at_infinity = !(getenv_nonempty("GCN_EYE_SKY") && atoi(getenv_nonempty("GCN_EYE_SKY")) == 0);
     const float band_lo = (st.viewport[5] - fabsf(st.viewport[2])) / 16777215.0f;
     const float band_hi = st.viewport[5] / 16777215.0f;
     const bool background = sky_at_infinity && g_bg_from > 0.0f && perspective && !view_space &&
@@ -1907,9 +1907,9 @@ static void apply_state(const PixelState& st, int prim) {
             // GCN_EYE_GAMEPROJ keeps the game's own frustum and applies only the head
             // transform, which tells apart "the eye sees less than it should" from "the game
             // never drew anything out there".
-            static const bool game_proj = gcn_env("GCN_EYE_GAMEPROJ") != nullptr;
+            static const bool game_proj = getenv_nonempty("GCN_EYE_GAMEPROJ") != nullptr;
             static bool logged = false;
-            if (!logged && gcn_env("GCN_EYELOG")) {
+            if (!logged && getenv_nonempty("GCN_EYELOG")) {
                 logged = true;
                 fprintf(stderr, "[eye] game fov: x=%.1fdeg y=%.1fdeg (p0=%f p2=%f)\n",
                         2.0f * atanf(1.0f / p[0]) * 57.2958f, 2.0f * atanf(1.0f / p[2]) * 57.2958f,
@@ -1930,7 +1930,7 @@ static void apply_state(const PixelState& st, int prim) {
                              : foreground ? (view_space_3d ? "foreground(view)" : "foreground(world)")
                              : view_space_3d ? "view-space-3d" : g_cur_late_view ? "late(at-panel)"
                              : true_scale ? "true-scale" : "world";
-            static const bool game_depth = !(gcn_env("GCN_EYE_FGDEPTH") && atoi(gcn_env("GCN_EYE_FGDEPTH")) == 0);
+            static const bool game_depth = !(getenv_nonempty("GCN_EYE_FGDEPTH") && atoi(getenv_nonempty("GCN_EYE_FGDEPTH")) == 0);
             glUniform1i(pr.u_vr, fg_layer && game_depth ? 4 : 1);
         } else if (g_vr_active) {
             // A HUD element in an eye. The game's own projection already puts its frame in
@@ -2211,7 +2211,7 @@ static void apply_state(const PixelState& st, int prim) {
     // GCN_EYE_RIPPLE=0 keeps the substitution but leaves the offset unconverted, which is
     // what the water surface shipped with and separates "the lookup is in the wrong
     // space" from "the distortion is the wrong size".
-    static const bool no_ripple = gcn_env("GCN_EYE_RIPPLE") && atoi(gcn_env("GCN_EYE_RIPPLE")) == 0;
+    static const bool no_ripple = getenv_nonempty("GCN_EYE_RIPPLE") && atoi(getenv_nonempty("GCN_EYE_RIPPLE")) == 0;
     if (screen_uv && perspective && !no_ripple) {
         const float gx = fabsf(vp[0]) * p[0], gy = fabsf(vp[1]) * p[2];
         if (gx > 0.0f) ripple[0] = 0.5f * (float)g_eye_w * g_vr_proj[0] / gx;
@@ -2400,7 +2400,7 @@ static void apply_state(const PixelState& st, int prim) {
     // Cull
     uint32_t cull = (bp[0x00] >> 14) & 3;
     if (prim == 0) {
-        static bool nocull = gcn_env("GCN_NOCULL") != nullptr;
+        static bool nocull = getenv_nonempty("GCN_NOCULL") != nullptr;
         // GX: 1 = cull front, 2 = cull back. GX front faces are clockwise with y down,
         // which is counter-clockwise after our y flip (GL's default front face).
         const int want = (cull == 0 || nocull) ? 0 : cull == 3 ? 3 : ((cull == 2) != g_cull_swap ? 2 : 1);
@@ -2436,7 +2436,7 @@ static void apply_state(const PixelState& st, int prim) {
             // GCN_EYE_SCISSORLOG reports the draws whose rect is not the whole frame, which
             // are the ones this is throwing away clipping for. Anything the game relies on
             // the scissor to hide is drawn in full in an eye.
-            static const bool slog = gcn_env("GCN_EYE_SCISSORLOG") != nullptr;
+            static const bool slog = getenv_nonempty("GCN_EYE_SCISSORLOG") != nullptr;
             if (slog && (x0 > 0 || y0 > 0 || x1 < EFB_W || y1 < EFB_H)) {
                 static int shown;
                 if (shown++ < 40)
@@ -2868,7 +2868,7 @@ static void present(const EfbCopyCmd& c) {
     static bool range_parsed = false;
     if (!range_parsed) {
         range_parsed = true;
-        if (const char* s = gcn_env("GCN_DUMP_RANGE")) {
+        if (const char* s = getenv_nonempty("GCN_DUMP_RANGE")) {
             range_lo = atoi(s);
             const char* dash = strchr(s, '-');
             range_hi = dash ? atoi(dash + 1) : range_lo;
@@ -3151,7 +3151,7 @@ static void fit_uv_gradients(const Batch& b, uint32_t state, float out[32]) {
                 out[i * 4 + k * 2 + 1] = grad[i * 4 + k * 2 + 1];
             }
     // GCN_EYELOG: what was fitted, per coordinate the state uses.
-    static const bool log = gcn_env("GCN_EYELOG") != nullptr;
+    static const bool log = getenv_nonempty("GCN_EYELOG") != nullptr;
     if (log)
         for (int i = 0; i < st.num_texgens && i < 8; i++)
             fprintf(stderr, "[eye] frame-screen state %u coord %d: s %s %.4f %.4f, t %s %.4f %.4f\n", state, i,
@@ -3605,7 +3605,7 @@ static bool samples_grab_copy(const PixelState& st) {
 // Empty when nothing is to be left out.
 static void flat_pass_trim(const Batch& b, const std::vector<uint8_t>& skip, std::vector<uint8_t>& out) {
     out.clear();
-    static const bool full = gcn_env("GCN_EYE_FULLFLAT") != nullptr;
+    static const bool full = getenv_nonempty("GCN_EYE_FULLFLAT") != nullptr;
     if (full) return;
     uint32_t dw, dh;
     display_size(b, dw, dh);
@@ -3750,7 +3750,7 @@ bool render_execute_eye(Batch& b, unsigned fbo, int w, int h, bool do_copies) {
     }
     // GCN_EYELOG=1 reports how a frame was split, which is the only way to tell a scene
     // rendered at the wrong field of view from a composite quad standing in for one.
-    static const bool eyelog = gcn_env("GCN_EYELOG") != nullptr;
+    static const bool eyelog = getenv_nonempty("GCN_EYELOG") != nullptr;
     int n_drawn = 0, n_skipped = 0, n_spray = 0;
     if (eyelog && do_copies) {
         uint32_t dw, dh;
@@ -3849,7 +3849,7 @@ bool render_execute_eye(Batch& b, unsigned fbo, int w, int h, bool do_copies) {
     static bool eye_skip_parsed = false;
     if (!eye_skip_parsed) {
         eye_skip_parsed = true;
-        if (const char* s = gcn_env("GCN_DRAW_SKIP")) {
+        if (const char* s = getenv_nonempty("GCN_DRAW_SKIP")) {
             eye_skip_lo = atoi(s);
             const char* dash = strchr(s, '-');
             eye_skip_hi = dash ? atoi(dash + 1) : eye_skip_lo;
@@ -3896,7 +3896,7 @@ bool render_execute_eye(Batch& b, unsigned fbo, int w, int h, bool do_copies) {
         if (!g_hide.empty() && g_hide[i]) { eye_draw_index++; continue; }
         // GCN_EYE_SKIPCOMP drops the screen-space passes entirely, for comparing against
         // drawing them flat across the eye. Dropping the water one leaves bare seabed.
-        static const bool skipcomp = gcn_env("GCN_EYE_SKIPCOMP") != nullptr;
+        static const bool skipcomp = getenv_nonempty("GCN_EYE_SKIPCOMP") != nullptr;
         if (skipcomp && samples_fullscreen_copy(b.states[c.state])) { n_skipped++; continue; }
         // The first draw that wants the finished frame is the moment to take it: the
         // scene behind the water is in the target by now and the water is not yet.
@@ -4054,7 +4054,7 @@ bool render_execute_eye(Batch& b, unsigned fbo, int w, int h, bool do_copies) {
     // per eye per frame, for nothing. Saying so lets the driver drop it. Desktop GL 3.3
     // has no glInvalidateFramebuffer, and an immediate-mode GPU would gain nothing.
     // GCN_EYE_KEEPDEPTH=1 leaves it in, for comparing.
-    static const bool keep_depth = gcn_env("GCN_EYE_KEEPDEPTH") != nullptr;
+    static const bool keep_depth = getenv_nonempty("GCN_EYE_KEEPDEPTH") != nullptr;
     if (!keep_depth) {
         const GLenum attachment = GL_DEPTH_ATTACHMENT;
         glInvalidateFramebuffer(GL_FRAMEBUFFER, 1, &attachment);
@@ -4181,7 +4181,7 @@ static bool execute_batch(Batch& b, bool do_present, const std::vector<uint8_t>*
     glBindVertexArray(g_vao);
     uint32_t n_apply = 0;
     note_fullscreen_copies(b);
-    static const bool batchlog = gcn_env("GCN_EYELOG") != nullptr;
+    static const bool batchlog = getenv_nonempty("GCN_EYELOG") != nullptr;
     if (batchlog) {
         int nd = 0, nc = 0, np = 0;
         for (auto& c : b.cmds) {
@@ -4201,9 +4201,9 @@ static bool execute_batch(Batch& b, bool do_present, const std::vector<uint8_t>*
     // GCN_NO_COMP drops draws that sample a copy of the whole frame, in the flat path too.
     // The duplicate racer on the water is visible without any of the VR code, so this is
     // how to tell whether that draw is responsible for it.
-    static const bool no_comp = gcn_env("GCN_NO_COMP") != nullptr;
-    static const bool only_comp = gcn_env("GCN_ONLY_COMP") != nullptr;
-    static const bool complog = gcn_env("GCN_COMPLOG") != nullptr;
+    static const bool no_comp = getenv_nonempty("GCN_NO_COMP") != nullptr;
+    static const bool only_comp = getenv_nonempty("GCN_ONLY_COMP") != nullptr;
+    static const bool complog = getenv_nonempty("GCN_COMPLOG") != nullptr;
     int draw_index = 0;
     // GCN_DRAWLOG_COPY=WxH logs, like GCN_DRAWLOG, every batch holding a copy of that size:
     // a render to texture done once, at a frame that differs from run to run, is logged
@@ -4248,7 +4248,7 @@ static bool execute_batch(Batch& b, bool do_present, const std::vector<uint8_t>*
             static bool skip_parsed = false;
             if (!skip_parsed) {
                 skip_parsed = true;
-                if (const char* s = gcn_env("GCN_DRAW_SKIP")) {
+                if (const char* s = getenv_nonempty("GCN_DRAW_SKIP")) {
                     skip_lo = atoi(s);
                     const char* dash = strchr(s, '-');
                     skip_hi = dash ? atoi(dash + 1) : skip_lo;
@@ -4296,7 +4296,7 @@ static bool execute_batch(Batch& b, bool do_present, const std::vector<uint8_t>*
                         const float sp = (e0 + e1 + e2) * 0.5f;
                         const float area2 = std::max(0.0f, sp * (sp - e0) * (sp - e1) * (sp - e2));
                         const float height = 2.0f * sqrtf(area2) / longest;
-                        static const float ratio = gcn_env("GCN_SLIVER_RATIO") ? (float)atof(gcn_env("GCN_SLIVER_RATIO")) : 0.001f;
+                        static const float ratio = getenv_nonempty("GCN_SLIVER_RATIO") ? (float)atof(getenv_nonempty("GCN_SLIVER_RATIO")) : 0.001f;
                         if (height < longest * ratio) {
                             if (slivers < 3) {
                                 char buf[200];
@@ -4345,7 +4345,7 @@ static bool execute_batch(Batch& b, bool do_present, const std::vector<uint8_t>*
                 // order, colour and alpha combiners and konst selectors, the colour
                 // registers and konsts -- and the first few vertices, so a draw's shading
                 // can be read off without a shader dump.
-                static const bool verbose = gcn_env("GCN_DRAWLOG_VERBOSE") != nullptr;
+                static const bool verbose = getenv_nonempty("GCN_DRAWLOG_VERBOSE") != nullptr;
                 if (verbose) {
                     const uint32_t* bp = st.bp;
                     const uint32_t nstages = ((bp[0] >> 10) & 15) + 1;
@@ -4416,7 +4416,7 @@ static bool execute_batch(Batch& b, bool do_present, const std::vector<uint8_t>*
             // the water surface that the game tints submerged geometry with. Unlike a draw
             // index this is stable from frame to frame, which matters because the game's
             // timebase is wall-clock driven and frame N is not the same moment twice.
-            static const bool no_efbtex = gcn_env("GCN_NO_EFBTEX") != nullptr;
+            static const bool no_efbtex = getenv_nonempty("GCN_NO_EFBTEX") != nullptr;
             if (no_efbtex) {
                 const PixelState& st = b.states[c.state];
                 bool partial = false;

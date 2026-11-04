@@ -1,5 +1,5 @@
 // Generates GLSL for the GX pixel pipeline (TEV) from BP state.
-#include "../runtime.h"
+#include "../env.h"
 #include "shadergen.h"
 #include "blend.h"
 #include "gl.h"   // GCN_GLSL_VERSION
@@ -269,7 +269,7 @@ void main() {
     // though it were as near as its forward depth, and stops fogging at all when it
     // leaves the game's 60-degree frustum. GCN_EYE_FOGZ=0 takes the game's depth instead,
     // which fogs exactly as the flat view does whatever the head is doing.
-    static const bool eye_fog_z = !(gcn_env("GCN_EYE_FOGZ") && atoi(gcn_env("GCN_EYE_FOGZ")) == 0);
+    static const bool eye_fog_z = !(getenv_nonempty("GCN_EYE_FOGZ") && atoi(getenv_nonempty("GCN_EYE_FOGZ")) == 0);
     s += "    vec2 gx_clip = vec2(1.0);\n";
     s += "    vec2 push_d = vec2(0.0);\n";
     s += "    v_gdepth = vec2(-1.0, 1.0);\n";
@@ -395,21 +395,21 @@ void main() {
 }
 
 std::string gen_pixel_shader(const ShaderKey& k) {
-    static const int tev_stop = gcn_env("GCN_TEV_STOP") ? atoi(gcn_env("GCN_TEV_STOP")) : -1;
+    static const int tev_stop = getenv_nonempty("GCN_TEV_STOP") ? atoi(getenv_nonempty("GCN_TEV_STOP")) : -1;
     // GCN_TEV_STOP_STAGES=<n> confines the stop to programs of exactly n stages, so a
     // draw can be probed without every later draw of at least as many stages painting
     // its own probe over it.
     static const int tev_stop_stages = getenv("GCN_TEV_STOP_STAGES") ? atoi(getenv("GCN_TEV_STOP_STAGES")) : 0;
     static const int tev_reg = getenv("GCN_TEV_REG") ? atoi(getenv("GCN_TEV_REG")) : 0;
     static const int tev_alpha = getenv("GCN_TEV_ALPHA") ? atoi(getenv("GCN_TEV_ALPHA")) : 0;
-    static const bool no_alpha_test = gcn_env("GCN_NO_ALPHA_TEST") != nullptr;
-    static const bool no_fog = gcn_env("GCN_NO_FOG") != nullptr;
-    static const bool ras_white = gcn_env("GCN_RAS_WHITE") != nullptr;
+    static const bool no_alpha_test = getenv_nonempty("GCN_NO_ALPHA_TEST") != nullptr;
+    static const bool no_fog = getenv_nonempty("GCN_NO_FOG") != nullptr;
+    static const bool ras_white = getenv_nonempty("GCN_RAS_WHITE") != nullptr;
     // GCN_TEX_WHITE=1 makes every texture sample opaque white, which leaves a draw's
     // colour to its channels and konstants alone. The cache keys programs by their
     // source, so the variant is kept apart from the real one.
-    static const bool tex_white = gcn_env("GCN_TEX_WHITE") != nullptr;
-    static const int snap_stage = gcn_env("GCN_SNAP") ? atoi(gcn_env("GCN_SNAP")) : -1;
+    static const bool tex_white = getenv_nonempty("GCN_TEX_WHITE") != nullptr;
+    static const int snap_stage = getenv_nonempty("GCN_SNAP") ? atoi(getenv_nonempty("GCN_SNAP")) : -1;
     std::string s;
     char buf[1024];
     // The zero-argument case appends directly: handing a runtime format string to
@@ -809,7 +809,7 @@ std::string gen_pixel_shader(const ShaderKey& k) {
     // which the blend then reads from the second output.
     if (k.dst_alpha == 2) s += "  o_src1 = o_color;\n";
     if (k.dst_alpha) s += "  o_color.a = u_dstalpha;\n";
-    if (gcn_env("GCN_FLAT")) s += "  o_color = vec4(1.0, 0.0, 1.0, 1.0);\n";
+    if (getenv_nonempty("GCN_FLAT")) s += "  o_color = vec4(1.0, 0.0, 1.0, 1.0);\n";
     // GCN_SHOW=prev|c0|c1|c2|konst (plus GCN_SHOW_ALPHA=1) replaces the final colour
     // with a TEV value. Unlike GCN_TEV_STOP this changes no control flow at all --
     // every stage, the alpha test and fog still run exactly as they normally would --
@@ -842,7 +842,7 @@ std::string gen_pixel_shader(const ShaderKey& k) {
         else if (!strcmp(show, "probe2"))
             s += "  o_color = vec4(float(snap.r & 255) / 255.0, float(c1.a & 255) / 255.0,"
                  " float(prev.r & 255) / 255.0, 1.0);\n";
-        else if (gcn_env("GCN_SHOW_ALPHA")) W("  o_color = vec4(vec3(float(%s.a & 255) / 255.0), 1.0);\n", show);
+        else if (getenv_nonempty("GCN_SHOW_ALPHA")) W("  o_color = vec4(vec3(float(%s.a & 255) / 255.0), 1.0);\n", show);
         else W("  o_color = vec4(vec3(%s.rgb & 255) / 255.0, 1.0);\n", show);
         // GCN_SHOW_SPLIT=<x> shows the value only right of EFB column x (in the target's
         // own pixels, so 640 is the middle at --scale=2), leaving the left half as it

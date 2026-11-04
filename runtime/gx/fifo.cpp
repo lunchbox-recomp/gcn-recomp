@@ -42,7 +42,7 @@ enum { CP_CR_READ = 1, CP_CR_BPEN = 2, CP_CR_OVFINT = 4, CP_CR_UNFINT = 8, CP_CR
 enum { PE_TOKEN_EN = 1, PE_FINISH_EN = 2, PE_TOKEN_INT = 4, PE_FINISH_INT = 8 };
 
 static uint32_t g_pe_finish_raised, g_pe_finish_coalesced, g_pe_finish_acked;
-static bool toklog() { static const bool on = gcn_env("GCN_TOKLOG") != nullptr; return on; }
+static bool toklog() { static const bool on = getenv_nonempty("GCN_TOKLOG") != nullptr; return on; }
 static void pe_update_irq() {
     pi_set_interrupt(INT_PE_TOKEN, (g_pe_ctrl & PE_TOKEN_INT) && (g_pe_ctrl & PE_TOKEN_EN));
     pi_set_interrupt(INT_PE_FINISH, (g_pe_ctrl & PE_FINISH_INT) && (g_pe_ctrl & PE_FINISH_EN));
@@ -117,7 +117,7 @@ static void ram_dump_frame(uint32_t frame) {
 // GCN_GX_SYNC=1 runs the front end inline, as before.
 // ---------------------------------------------------------------------------
 static bool fe_threaded() {
-    static const bool on = !gcn_env("GCN_GX_SYNC");
+    static const bool on = !getenv_nonempty("GCN_GX_SYNC");
     return on;
 }
 
@@ -129,7 +129,7 @@ static uint64_t now_us() {
                std::chrono::steady_clock::now().time_since_epoch()).count();
 }
 bool gx::stalls_on() {
-    static const bool on = gcn_env("GCN_STALLS") != nullptr;
+    static const bool on = getenv_nonempty("GCN_STALLS") != nullptr;
     return on;
 }
 void gx::stall_add(Stall s, uint64_t us) { g_stall_us[(int)s] += us; }
@@ -195,7 +195,7 @@ static constexpr uint32_t kLagSpin = 8;
 void gx::set_draw_sync_lag(bool on) { g_lag_on = on; }
 static bool lag_on() {
     static const int env = [] {
-        const char* e = gcn_env("GCN_GX_TOKEN_LAG");
+        const char* e = getenv_nonempty("GCN_GX_TOKEN_LAG");
         return e ? atoi(e) : -1;
     }();
     return env >= 0 ? env != 0 : g_lag_on;
@@ -383,7 +383,7 @@ static void fe_wait_until(uint64_t at, gx::Stall kind = gx::Stall::Token) {
 // value is read at the same point, which keeps replays exact. GCN_GX_TOKEN_EAGER=1 waits
 // at every token as before.
 static bool token_eager() {
-    static const bool on = gcn_env("GCN_GX_TOKEN_EAGER") != nullptr;
+    static const bool on = getenv_nonempty("GCN_GX_TOKEN_EAGER") != nullptr;
     return on;
 }
 
@@ -662,7 +662,7 @@ const char* func_name(uint32_t addr);
 // pushed into the write-gather pipe. Unlike the drain side, the guest is still inside the
 // code that wanted the command here, so this names it. Needs GCN_TRACE_CALLS.
 static void gp_stack_probe(uint32_t v) {
-    static const char* want = gcn_env("GCN_GP_STACK");
+    static const char* want = getenv_nonempty("GCN_GP_STACK");
     if (!want) return;
     static const uint32_t w = (uint32_t)strtoul(want, nullptr, 16);
     if (v != w) return;

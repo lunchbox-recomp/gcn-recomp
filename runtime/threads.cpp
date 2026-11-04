@@ -123,7 +123,7 @@ static void spawn(HostThread* h) {
 // GCN_SWITCHLOG=1: how many times a frame the baton passed between host threads and how
 // long each handoff took, from the wake to the woken thread running -- time the guest is
 // stopped that neither the profile (CPU time) nor GCN_STALLS sees.
-static const bool g_switchlog = gcn_env("GCN_SWITCHLOG") != nullptr;
+static const bool g_switchlog = getenv_nonempty("GCN_SWITCHLOG") != nullptr;
 static std::chrono::steady_clock::time_point g_switch_t0;
 static uint64_t g_switches, g_switch_ns;
 uint32_t gx_frames_submitted();
@@ -459,7 +459,7 @@ void debug_guest_check(const char* where) {
             (unsigned)gx_frames_submitted(), (double)now_ticks() / TB_FREQ, what);
     input_log_end();
     debug_dump_threads();
-    if (gcn_env("GCN_GUEST_CHECK_CONTINUE")) { g_guest_check = nullptr; return; }
+    if (getenv_nonempty("GCN_GUEST_CHECK_CONTINUE")) { g_guest_check = nullptr; return; }
     plat_exit_now(3);
 #endif
 }
@@ -501,7 +501,7 @@ void debug_dump_threads() {
                     c->r[i + 4], c->r[i + 5], c->r[i + 6], c->r[i + 7]);
 #ifdef GCN_CALL_TRACE
         fprintf(stderr, "  guest call stack (innermost first):\n");
-        uint32_t want = gcn_env("GCN_TRACE_DEPTH") ? (uint32_t)atoi(gcn_env("GCN_TRACE_DEPTH")) : 40;
+        uint32_t want = getenv_nonempty("GCN_TRACE_DEPTH") ? (uint32_t)atoi(getenv_nonempty("GCN_TRACE_DEPTH")) : 40;
         // The depth counts past the end of the array so that deep recursion still unwinds
         // correctly; anything above 256 was never recorded.
         uint32_t have = c->depth < 256 ? c->depth : 256;
@@ -566,7 +566,7 @@ struct {
     std::unordered_map<uint32_t, Writers> writers;
 } g_sthist = [] {
     decltype(g_sthist) h;
-    if (const char* e = gcn_env("GCN_STORE_HIST")) {
+    if (const char* e = getenv_nonempty("GCN_STORE_HIST")) {
         h.from = (uint32_t)strtoul(e, nullptr, 10);
         const char* dash = strchr(e, '-');
         h.to = dash ? (uint32_t)strtoul(dash + 1, nullptr, 10) : 0xFFFFFFFFu;

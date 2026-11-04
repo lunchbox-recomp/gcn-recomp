@@ -33,7 +33,7 @@ static uint32_t g_tev_reg[4][2], g_tev_konst[4][2];
 // how full the submission queue was -- a full queue means the guest was waiting on the
 // renderer, not the other way round. The renderer prints its own line per batch.
 static bool frametime_on() {  // on first use: the app sets its environment after static init
-    static const bool on = gcn_env("GCN_FRAMETIME") != nullptr;
+    static const bool on = getenv_nonempty("GCN_FRAMETIME") != nullptr;
     return on;
 }
 static double g_fe_ms, g_tex_ms;
@@ -332,7 +332,7 @@ static Layout make_layout(int vat) {
     L.col_desc[1] = (lo >> 15) & 3; L.col_fmt[1] = (a >> 18) & 7;
     // GCN_VATLOG=1: each vertex layout as it is built (VCD and VAT), for reading a draw's
     // vertex data against the format it was decoded with.
-    static const bool vatlog = gcn_env("GCN_VATLOG") != nullptr;
+    static const bool vatlog = getenv_nonempty("GCN_VATLOG") != nullptr;
     if (vatlog)
         fprintf(stderr, "[vat] vat%d vcd=%08X/%08X A=%08X B=%08X C=%08X pos desc=%u cnt=%u fmt=%u nrm desc=%u fmt=%u col0 desc=%u fmt=%u col1 desc=%u fmt=%u\n", vat, lo, hi, a, b, c,
                 L.pos_desc, L.pos_cnt, L.pos_fmt, L.nrm_desc, L.nrm_fmt, L.col_desc[0], L.col_fmt[0], L.col_desc[1], L.col_fmt[1]);
@@ -863,7 +863,7 @@ static bool pos_matrix_is_view_space(uint8_t pnmtx) {
     // GCN_VS_YAW=0 goes back to demanding the identity rotation, which is what this did
     // before it was taught to allow a turn. For telling apart "the rig is misplaced" from
     // "something else was reclassified by the wider test".
-    static const bool allow_yaw = !(gcn_env("GCN_VS_YAW") && atoi(gcn_env("GCN_VS_YAW")) == 0);
+    static const bool allow_yaw = !(getenv_nonempty("GCN_VS_YAW") && atoi(getenv_nonempty("GCN_VS_YAW")) == 0);
     const uint32_t m = (pnmtx & 63) * 4;
     if (!allow_yaw) {
         for (int i = 0; i < 9; i++) {
@@ -972,8 +972,8 @@ struct Pending {
 };
 
 static bool xf_sync() {
-    static const bool sync = gcn_env("GCN_XF_SYNC") || gcn_env("GCN_TRACE_FRAME") ||
-                             gcn_env("GCN_GXSTATS") || gcn_env("GCN_MTXLOG");
+    static const bool sync = getenv_nonempty("GCN_XF_SYNC") || getenv_nonempty("GCN_TRACE_FRAME") ||
+                             getenv_nonempty("GCN_GXSTATS") || getenv_nonempty("GCN_MTXLOG");
     return sync;
 }
 
@@ -1093,7 +1093,7 @@ static thread_local uint32_t t_plan_snap[XF_REGIONS];
 // so nothing is added per vertex.
 struct XfStats { uint64_t verts, nrm, lit, alit, lights, texgens, post, emboss; };
 static bool xfstats_on() {  // on first use: the app sets its environment after static init
-    static const bool on = gcn_env("GCN_XFSTATS") != nullptr;
+    static const bool on = getenv_nonempty("GCN_XFSTATS") != nullptr;
     return on;
 }
 static thread_local XfStats t_stats;
@@ -1267,7 +1267,7 @@ static void helper_main(XfHelper* h) {
 
 static void transform_pending(const Pending& pd, Batch& b) {
     static const int threads = [] {
-        const char* e = gcn_env("GCN_XF_THREADS");
+        const char* e = getenv_nonempty("GCN_XF_THREADS");
         const int n = e ? atoi(e) : 2;
         return n < 1 ? 1 : n > 8 ? 8 : n;
     }();
@@ -1500,7 +1500,7 @@ static void draw_impl(const DrawCall& dc) {
     if (g_mtxlog) {
         // GCN_WATCH=a,b,c prints those guest addresses every frame. Sparse snapshots cannot
         // tell a steady flag from one that blinks, so this samples every frame.
-        static const char* watch = gcn_env("GCN_WATCH");
+        static const char* watch = getenv_nonempty("GCN_WATCH");
         static uint32_t watch_last_frame = ~0u;
         if (watch && g_frame_counter != watch_last_frame) {
             watch_last_frame = g_frame_counter;
@@ -1545,7 +1545,7 @@ static void draw_impl(const DrawCall& dc) {
     static bool pnm_parsed = false;
     if (!pnm_parsed) {
         pnm_parsed = true;
-        if (const char* r = gcn_env("GCN_PNMLOG")) {
+        if (const char* r = getenv_nonempty("GCN_PNMLOG")) {
             pnm_lo = atoi(r);
             const char* dash = strchr(r, '-');
             pnm_hi = dash ? atoi(dash + 1) : pnm_lo;
@@ -1746,7 +1746,7 @@ void copy_writebacks_land(uint32_t frames) {
         }
         // GCN_COPYLOG: each write-back as it lands, or is dropped, with how many of its bytes
         // are not zero (an id buffer with nothing in it is all zero).
-        static const bool copylog = gcn_env("GCN_COPYLOG") != nullptr;
+        static const bool copylog = getenv_nonempty("GCN_COPYLOG") != nullptr;
         if (copylog) {
             size_t nz = 0;
             for (uint8_t b : w.bytes) nz += b != 0;
@@ -1783,7 +1783,7 @@ void renderer_efb_copy(uint32_t dest_addr, bool ends_frame) {
     cc.clear_z_value = bp[0x51] & 0xFFFFFF;
     // Logged after the fields are filled in; it used to print cc.clear before it was
     // assigned, so every copy appeared not to clear.
-    static const bool copylog = gcn_env("GCN_COPYLOG") != nullptr;
+    static const bool copylog = getenv_nonempty("GCN_COPYLOG") != nullptr;
     if (copylog) {
         // How many draw commands the batch holds since its last copy: what this copy can show.
         uint32_t draws = 0;
@@ -1828,7 +1828,7 @@ void renderer_efb_copy(uint32_t dest_addr, bool ends_frame) {
         g_wb.push_back(std::move(w));
     }
     batch().cmds.push_back(c);
-    static int trace_frame = gcn_env("GCN_TRACE_FRAME") ? atoi(gcn_env("GCN_TRACE_FRAME")) : -1;
+    static int trace_frame = getenv_nonempty("GCN_TRACE_FRAME") ? atoi(getenv_nonempty("GCN_TRACE_FRAME")) : -1;
     if ((int)g_frame_counter == trace_frame) {
         Batch& bb = batch();
         fprintf(stderr, "[trace] frame %u copy xfb=%d fmt=%X src %ux%u@%u,%u dst %ux%u\n", g_frame_counter, cc.to_xfb, cc.format, cc.src_w, cc.src_h,
@@ -1869,7 +1869,7 @@ void renderer_efb_copy(uint32_t dest_addr, bool ends_frame) {
                 fprintf(stderr, "      reg%d %06X %06X konst%d %06X %06X\n", r, ps.tev_reg[r][0], ps.tev_reg[r][1], r, ps.tev_konst[r][0], ps.tev_konst[r][1]);
         }
     }
-    if (cc.to_xfb && gcn_env("GCN_GXSTATS")) {
+    if (cc.to_xfb && getenv_nonempty("GCN_GXSTATS")) {
         Batch& bb = batch();
         uint32_t draws = 0;
         for (auto& cmd : bb.cmds) draws += cmd.type == CmdType::Draw;

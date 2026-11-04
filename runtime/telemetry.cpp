@@ -118,7 +118,7 @@ bool configure(const char* spec) {
     u_long nb = 1;
     ioctlsocket(g_sock, FIONBIO, &nb);
 #endif
-    g_log = key("log", 0.0f) != 0.0f || gcn_env("GCN_TELEMETRY_LOG");
+    g_log = key("log", 0.0f) != 0.0f || getenv_nonempty("GCN_TELEMETRY_LOG");
     fprintf(stderr, "telemetry: SimRacingStudio API packets to %s:%d\n", host.c_str(), port);
     return true;
 }

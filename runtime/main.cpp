@@ -412,7 +412,7 @@ static long long g_quit_at = -1;  // the frame, -1 for none or once it's asked S
 
 static void quit_at_load() {
     g_quit_at = -1;
-    const char* e = gcn_env("GCN_QUIT_AT");
+    const char* e = getenv_nonempty("GCN_QUIT_AT");
     if (!e) return;
     char* end = nullptr;
     const unsigned long long n = strtoull(e, &end, 10);
@@ -701,7 +701,7 @@ int main(int argc, char** argv) {
     g_port_count = std::max(pads, input_map_port_count());
     pad_set_count(g_port_count);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    const bool gl_debug = gcn_env("GCN_GL_DEBUG") != nullptr;
+    const bool gl_debug = getenv_nonempty("GCN_GL_DEBUG") != nullptr;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG |
                                                   (gl_debug ? SDL_GL_CONTEXT_DEBUG_FLAG : 0));
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -852,7 +852,7 @@ int main(int argc, char** argv) {
         }
         // GCN_STEREOLOG=1: what the game's stereo hook (vr_game.h) would have a headset
         // show, whenever the answer changes, numbered as the frame dumps are.
-        static const bool stereolog = gcn_env("GCN_STEREOLOG") != nullptr;
+        static const bool stereolog = getenv_nonempty("GCN_STEREOLOG") != nullptr;
         if (stereolog && vr::game_hooks().wants_stereo) {
             static int last = -1;
             const int want = vr::game_hooks().wants_stereo(*b) ? 1 : 0;

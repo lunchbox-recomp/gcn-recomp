@@ -399,7 +399,7 @@ TexLookup texture_lookup(const TexParams& p, std::vector<std::shared_ptr<TexData
     uint32_t addr = p.addr & 0x03FFFFFF;
     // EFB copies at this address take priority (the copy isn't written back to RAM),
     // unless the RAM there has changed since, which means the copy has been replaced.
-    static const bool hash_always = gcn_env("GCN_TEXHASH_ALWAYS") != nullptr;
+    static const bool hash_always = getenv_nonempty("GCN_TEXHASH_ALWAYS") != nullptr;
     auto eit = g_efb_copies.find(addr);
     if (eit != g_efb_copies.end()) {
         EfbCopyEntry& c = eit->second;
@@ -487,7 +487,7 @@ TexLookup texture_lookup(const TexParams& p, std::vector<std::shared_ptr<TexData
     // GCN_TEXLOG=1 reports every texture decoded: where it came from, its shape, and how
     // much of its top level is anything but black -- which tells a texture the game never
     // wrote (all zero) from one the shader is mishandling.
-    static const bool texlog = gcn_env("GCN_TEXLOG") != nullptr;
+    static const bool texlog = getenv_nonempty("GCN_TEXLOG") != nullptr;
     if (texlog) {
         uint32_t nonzero = 0;
         for (uint32_t v : td->levels[0]) nonzero += (v & 0x00FFFFFF) != 0;

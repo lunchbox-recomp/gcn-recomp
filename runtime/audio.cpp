@@ -38,7 +38,7 @@ static constexpr int DMA_RATE = 32000;
 // sets it; read on first use, since the headset app sets its environment late.
 static size_t ring_cushion() {
     static const size_t c = [] {
-        const char* e = gcn_env("GCN_AUDIO_CUSHION_MS");
+        const char* e = getenv_nonempty("GCN_AUDIO_CUSHION_MS");
         const int ms = e ? atoi(e) : 100;
         return (size_t)DMA_RATE * std::clamp(ms, 10, 500) / 1000;
     }();
@@ -169,7 +169,7 @@ void audio_render(int16_t* out, int frames) {
     {
         std::lock_guard<std::mutex> lk(g_ring_mutex);
         size_t cap = g_ring.size() / 2;
-        static const bool stats = gcn_env("GCN_AXSTATS") != nullptr;
+        static const bool stats = getenv_nonempty("GCN_AXSTATS") != nullptr;
         // A frame `behind` frames before the read position, at the fractional position.
         auto frame_at = [&](size_t behind, int32_t& l, int32_t& r) {
             const size_t a = (g_ring_r + cap - behind) % cap, b = (a + 1) % cap;

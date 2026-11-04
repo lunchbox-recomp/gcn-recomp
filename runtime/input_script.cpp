@@ -15,7 +15,7 @@ bool g_log;
 }  // namespace
 
 void input_script_init(const char* spec) {
-    g_log = gcn_env("GCN_INPUT_LOG") != nullptr;
+    g_log = getenv_nonempty("GCN_INPUT_LOG") != nullptr;
     if (!spec || !*spec) spec = getenv("GCN_INPUT");
     if (!spec || !*spec) return;
     std::string s = spec;

@@ -79,7 +79,7 @@ int main(int argc, char** argv) {
     timing_init();
     // The benchmark measures the host, so the guest runs flat out: virtual time is never
     // held back to real time here (GCN_TIMESCALE still sets a pace if one is wanted).
-    if (!gcn_env("GCN_TIMESCALE")) clock_set_scale(0);
+    if (!getenv_nonempty("GCN_TIMESCALE")) clock_set_scale(0);
     pad_set_count(pads);
     input_script_init();
     // GCN_REPLAY=<dir> plays an input log back, as --replay does on the desktop: the way to

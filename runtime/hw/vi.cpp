@@ -76,7 +76,7 @@ uint16_t vi_read16(uint32_t off) {
 
 void vi_write16(uint32_t off, uint16_t v) {
     off &= 0xFF;
-    if (gcn_env("GCN_VILOG") && off < 0x40 && g_vi[off >> 1] != v) fprintf(stderr, "[vi] reg %02X = %04X\n", off, v);
+    if (getenv_nonempty("GCN_VILOG") && off < 0x40 && g_vi[off >> 1] != v) fprintf(stderr, "[vi] reg %02X = %04X\n", off, v);
     g_vi[off >> 1] = v;
     if (off >= 0x30 && off < 0x40) vi_update_irq();
 }

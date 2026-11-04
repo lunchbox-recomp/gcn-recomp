@@ -58,7 +58,7 @@ static TestPause parse_pause_at(const char* e) {
 void pause_gate(uint32_t frame) {
     // Read at the first frame end, and spent by the pause it asks for. The guest thread's.
     static TestPause test = [] {
-        const char* e = gcn_env("GCN_PAUSE_AT");
+        const char* e = getenv_nonempty("GCN_PAUSE_AT");
         return e ? parse_pause_at(e) : TestPause{};
     }();
     if (test.host_frames && frame >= test.frame) {

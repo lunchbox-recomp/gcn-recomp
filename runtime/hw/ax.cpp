@@ -615,8 +615,8 @@ void output(uint32_t surround_addr, uint32_t lr_addr) {
 constexpr uint32_t kUcode2001Hash = 0x4E8A8B21;
 
 void ax_init(uint32_t ucode_hash) {
-    g_axstats = gcn_env("GCN_AXSTATS") != nullptr;
-    g_axvoices = gcn_env("GCN_AXVOICES") != nullptr;
+    g_axstats = getenv_nonempty("GCN_AXSTATS") != nullptr;
+    g_axvoices = getenv_nonempty("GCN_AXVOICES") != nullptr;
     g_seen.clear();
     g_layout_later = ucode_hash != kUcode2001Hash;
     g_has_compressor = ucode_hash != kUcode2001Hash;

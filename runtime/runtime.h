@@ -1,20 +1,14 @@
 // Internal runtime interfaces (C++).
 #pragma once
 #include "recomp.h"
+#include "env.h"
 #include <cstdint>
 #include <ctime>
 #include <cstdio>
 #include <cstdarg>
-#include <cstdlib>
 #include <string>
 #include <functional>
 #include <vector>
-
-// An empty switch has the same meaning as one that is absent.
-inline const char* gcn_env(const char* name) {
-    const char* value = getenv(name);
-    return value && *value ? value : nullptr;
-}
 
 // ---- logging ----
 enum LogCat { LOG_CPU, LOG_OS, LOG_HW, LOG_DVD, LOG_GX, LOG_VI, LOG_SI, LOG_EXI, LOG_DSP, LOG_AI, LOG_THREAD, LOG_INTERP,

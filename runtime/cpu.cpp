@@ -437,7 +437,7 @@ double clock_cpu_scale() { return (double)kTicksPerEdge / (double)g_ticks_per_ed
 void timing_init() {
     g_t0 = std::chrono::steady_clock::now();
     if (const char* e = getenv("GCN_CLOCK")) g_virtual_clock = strcmp(e, "host") != 0;
-    if (const char* e = gcn_env("GCN_TIMESCALE")) {
+    if (const char* e = getenv_nonempty("GCN_TIMESCALE")) {
         double s = atof(e);
         if (s >= 0) g_time_scale = s;
     }
@@ -493,7 +493,7 @@ extern uint64_t g_aid_frames_delivered;   // hw/dsp.cpp
 // how much the guest executed per presented frame. The edges/frame figure is what
 // g_ticks_per_edge is tuned against.
 static void clock_log() {
-    static bool on = gcn_env("GCN_CLOCKLOG") != nullptr;
+    static bool on = getenv_nonempty("GCN_CLOCKLOG") != nullptr;
     if (!on) return;
     static uint64_t next_at, last_edges, last_frames, last_audio;
     uint64_t vt = now_ticks();
@@ -525,7 +525,7 @@ static void clock_log() {
 // its own, so a replay is still exact. GCN_CATCHUP=0 keeps the slow-motion behaviour. A
 // host more than kForgiveNs behind is re-anchored as it always was: a stall that size
 // is a load or a shader build, not a frame to make up.
-static const bool g_catchup = !(gcn_env("GCN_CATCHUP") && atoi(gcn_env("GCN_CATCHUP")) == 0);
+static const bool g_catchup = !(getenv_nonempty("GCN_CATCHUP") && atoi(getenv_nonempty("GCN_CATCHUP")) == 0);
 static constexpr int64_t kCatchupNs = 4000000;
 static constexpr int64_t kForgiveNs = 100000000;
 

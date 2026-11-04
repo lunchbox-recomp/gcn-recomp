@@ -398,7 +398,7 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_window = window;
     g_title = title;
     display_init(picture);
-    if (const char* e = gcn_env("GCN_OVERLAY_AT")) parse_at(e);
+    if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) parse_at(e);
     if (!window) return;
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
