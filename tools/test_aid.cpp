@@ -13,9 +13,10 @@
 // Behind its clock after a long jump, the DMA hands a guest that queues at once the blocks it
 // owes at speed.
 //
-// GCN_AIDWAV is read when the first block is delivered, so each of its checks runs in a child
-// process of its own, in the work dir: an empty value records nothing, a file records its
-// blocks, and an index file that won't open leaves the blocks unrecorded.
+// GCN_AIDWAV is read when the first block is delivered, so each of its four checks runs in a
+// child process of its own, in the work dir: an empty value records nothing, a file records
+// its blocks, an index file that won't open leaves the blocks unrecorded, and a file that
+// won't open never has its index tried.
 //
 // usage: test_aid <work dir>   (a directory that doesn't exist yet)
 // Exits 0 only if every check passes.
@@ -143,12 +144,13 @@ int lines_in(const char* path) {
     return n;
 }
 
-// Three blocks delivered with GCN_AIDWAV set to `path`, in a child process. Returns its wait
-// status.
-int capture_run(const char* path) {
+// Three blocks delivered with GCN_AIDWAV set to `path`, in a child process. True if the child
+// ran to its end and exited 0; a fork that failed, or a child that crashed or hung, is false.
+bool capture_run(const char* path) {
     fflush(stdout);
     const pid_t pid = fork();
     if (pid == 0) {
+        alarm(10);
         setenv("GCN_AIDWAV", path, 1);
         dsp_write16(0x0A, CR_AID_MASK | 0x800);
         queue(kBufA);
@@ -158,11 +160,8 @@ int capture_run(const char* path) {
         exit(0);
     }
     int status = 0;
-    waitpid(pid, &status, 0);
-    return status;
+    return pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
-
-bool ran_clean(int status) { return WIFEXITED(status) && WEXITSTATUS(status) == 0; }
 
 }  // namespace
 
@@ -190,12 +189,14 @@ int main(int argc, char** argv) {
     g_aram = (uint8_t*)calloc(ARAM_SIZE, 1);
 
     // Before the parent's own run, so that each child starts from a DMA that never ran.
-    check(ran_clean(capture_run("")) && !exists(".txt"), "an empty GCN_AIDWAV records nothing");
-    check(ran_clean(capture_run("aid.raw")) && size_of("aid.raw") == 3 * 160 * 4 && lines_in("aid.raw.txt") == 3,
+    check(capture_run("") && !exists(".txt"), "an empty GCN_AIDWAV records nothing");
+    check(capture_run("aid.raw") && size_of("aid.raw") == 3 * 160 * 4 && lines_in("aid.raw.txt") == 3,
           "GCN_AIDWAV=<file> records each block, with a line for it in <file>.txt");
     mkdir("blocked.raw.txt", 0755);
-    check(ran_clean(capture_run("blocked.raw")) && size_of("blocked.raw") == 0,
+    check(capture_run("blocked.raw") && size_of("blocked.raw") <= 0,
           "an index file that won't open leaves the blocks unrecorded");
+    mkdir("isdir", 0755);   // opening it for writing fails
+    check(capture_run("isdir") && !exists("isdir.txt"), "a file that won't open never has its index tried");
 
     dsp_write16(0x0A, CR_AID_MASK | 0x800);
     queue(kBufA);

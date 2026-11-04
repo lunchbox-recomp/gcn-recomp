@@ -860,12 +860,6 @@ function(gcn_add_game)
     target_include_directories(test_anchor PRIVATE ${RT})
     target_compile_options(test_anchor PRIVATE ${GCN_RUNTIME_WARNINGS})
 
-    # The AI DMA checks (tools/test_aid.cpp): hw/dsp.cpp's audio DMA on a fake clock.
-    add_executable(test_aid EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_aid.cpp)
-    _gcn_set_standards(test_aid)
-    target_include_directories(test_aid PRIVATE ${RT})
-    target_compile_options(test_aid PRIVATE ${GCN_RUNTIME_WARNINGS})
-
     # The blend factor checks (tools/test_blend.cpp): runtime/gx/blend.h on its own.
     add_executable(test_blend EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_blend.cpp)
     _gcn_set_standards(test_blend)
@@ -958,6 +952,14 @@ function(gcn_add_game)
     _gcn_set_standards(test_session)
     target_include_directories(test_session PRIVATE ${RT})
     target_compile_options(test_session PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The AI DMA checks (tools/test_aid.cpp): hw/dsp.cpp's audio DMA on a fake clock, and
+    # GCN_AIDWAV's files in a work dir, each case in a child process. Needs no disc image,
+    # device or SDL.
+    add_executable(test_aid EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_aid.cpp)
+    _gcn_set_standards(test_aid)
+    target_include_directories(test_aid PRIVATE ${RT})
+    target_compile_options(test_aid PRIVATE ${GCN_RUNTIME_WARNINGS})
 
     # The disc overlay checks (tools/test_disc_overlay.cpp): hw/disc_overlay.cpp over a small
     # image it writes, plain and as a CISO, with the files and manifests the overlay names.

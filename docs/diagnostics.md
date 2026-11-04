@@ -617,8 +617,10 @@ and was worse: such a guest queues only after the DMA has moved on. `GCN_AIDWAV=
 writes every block the DMA delivers (raw 16-bit stereo at the DMA's rate, little endian),
 and `<file>.txt` each block's start, length, virtual time, whether it was delivered catching
 up, its address and whether the guest had queued the next one; it works in the benchmark,
-so a replay's sound can be checked block by block for repeats and broken joins. An empty
-`GCN_AIDWAV` records nothing, as an unset one does, and so does a file that won't open.
+so a replay's sound can be checked block by block for repeats and broken joins.
+
+An empty `GCN_AIDWAV` records nothing, as an unset one does. If the file won't open, nothing
+is recorded. If the `.txt` won't open, the file named is left empty and nothing is recorded.
 
 **A block held for the guest.** A block that ends before the guest has queued the next
 buffer is held for up to a quarter block of the guest's own running, with the jumps the
@@ -639,10 +641,12 @@ fake clock and event queue. The guest has two buffers and queues the other one w
 it's free to take the interrupt. The checks hold blocks with one jump or two landing in
 them while the guest is busy, and check where each held block ends and which buffers play
 twice. One runs the DMA ten blocks behind its clock, where the blocks it owes must come a
-32nd of a block apart. Three more run `GCN_AIDWAV` set empty, to a file and to a file whose
-index won't open, each in a child process. Each check prints `ok` or `FAIL`, and the exit
-code is 0 only if all pass. It takes a work directory that doesn't exist yet (`test_aid
-<dir>`), and needs no disc image, device or SDL.
+32nd of a block apart. Each check prints `ok` or `FAIL`, and the exit code is 0 only if all
+pass. It needs no disc image, device or SDL.
+
+Four more checks set `GCN_AIDWAV` empty, to a file, to a file whose `.txt` won't open and to
+a file that won't open itself, each in a child process, since the files are opened on the
+first block. `test_aid` takes a work directory that doesn't exist yet (`test_aid <dir>`).
 
 The sound ring between the DMA and the device keeps a cushion (`audio.cpp`), 100 ms by
 default and `GCN_AUDIO_CUSHION_MS` to change it. Running dry, it stays silent until the
