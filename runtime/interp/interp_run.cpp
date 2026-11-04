@@ -129,7 +129,8 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
                 if (f->loose) {
                     if (br.target == f->entry_lr) return false;
                     // The r1 rule can return early, at a helper's blr in mod code the frame went on into after
-                    // a pop, when that code's frame is smaller than the popped one. --log=interp reports it.
+                    // a pop, when that code's frame is smaller than the popped one. --log=interp reports each pc
+                    // it returns at, the early returns among them.
                     if (c->r[1] > f->entry_sp) {
                         if (first_report(g_popped_seen, pc))
                             log_msg(LOG_INTERP,
