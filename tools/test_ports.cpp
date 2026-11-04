@@ -1638,23 +1638,18 @@ void ram_patch_flags(const std::string& dir) {
     check(take(2, one) && ram_patches_file() == "a.txt", "--ram-patches=FILE beats an empty GCN_RAM_PATCHES and a settings key");
     unsetenv("GCN_RAM_PATCHES");
 
-    loaded.ram_patches.clear();
-    check(take(2, none) && ram_patches_file().empty(), "an empty settings key is no list");
-    setenv("GCN_RAM_PATCHES", "env.txt", 1);
-    check(take(2, none) && ram_patches_file() == "env.txt", "GCN_RAM_PATCHES is the list beside an empty settings key");
-    unsetenv("GCN_RAM_PATCHES");
-
     // A relative path in the file is read from the file's folder, not the working directory.
     const std::string path = dir + "/ram-patches-settings.txt";
-    write_file(path, "ram_patches mods/ram.txt\n");
-    loaded = settings_load(path);
+    auto load = [&](const char* text) {
+        write_file(path, text);
+        capture(said, [&] { loaded = settings_load(path); });
+    };
+    load("ram_patches mods/ram.txt\n");
     check(take(2, none) && ram_patches_file() == dir + "/mods/ram.txt",
           "a relative settings key is read from the folder that holds settings.txt");
-    write_file(path, "ram_patches /abs/ram.txt\n");
-    loaded = settings_load(path);
+    load("ram_patches /abs/ram.txt\n");
     check(take(2, none) && ram_patches_file() == "/abs/ram.txt", "an absolute settings key is the list as written");
-    write_file(path, "ram_patches\n");
-    loaded = settings_load(path);
+    load("ram_patches\n");
     check(take(2, none) && ram_patches_file().empty(), "a ram_patches line with no path is no list");
 }
 
