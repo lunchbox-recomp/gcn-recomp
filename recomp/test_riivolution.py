@@ -1256,6 +1256,45 @@ class TestMemory(SdCase):
         self.assertEqual(lines[2:], ['patch 80003100 ' + bytes(range(0x10, 0x30)).hex()])
         self.assertEqual(summary['ram_bytes'], 32)
 
+    def test_a_valuefile_that_grows_after_stat_is_refused(self):
+        host = self.put('mod/blob.bin', b'ab')
+        self.package('a.xml', '<memory offset="0x1000" valuefile="/mod/blob.bin"/>')
+        stat = os.stat
+        host_stats = 0
+
+        def grow_after_stat(path, *args, **kwargs):
+            nonlocal host_stats
+            result = stat(path, *args, **kwargs)
+            if path == host:
+                host_stats += 1
+                if host_stats == 2:
+                    with open(host, 'ab') as f:
+                        f.write(b'c')
+            return result
+
+        with mock.patch.object(rpatch.os, 'stat', side_effect=grow_after_stat):
+            self.refused(r'<memory .*> in a\.xml has a valuefile whose size changed while '
+                         r'it was read')
+
+    def test_a_valuefile_that_shrinks_after_stat_is_refused(self):
+        host = self.put('mod/blob.bin', b'abc')
+        self.package('a.xml', '<memory offset="0x1000" valuefile="/mod/blob.bin"/>')
+        stat = os.stat
+        host_stats = 0
+
+        def shrink_after_stat(path, *args, **kwargs):
+            nonlocal host_stats
+            result = stat(path, *args, **kwargs)
+            if path == host:
+                host_stats += 1
+                if host_stats == 2:
+                    os.truncate(host, 2)
+            return result
+
+        with mock.patch.object(rpatch.os, 'stat', side_effect=shrink_after_stat):
+            self.refused(r'<memory .*> in a\.xml has a valuefile whose size changed while '
+                         r'it was read')
+
     def test_two_full_ram_valuefiles_refuse_a_list_the_runtime_cannot_read(self):
         for name in ('first.bin', 'second.bin'):
             os.truncate(self.put('mod/' + name), 0x1800000)
