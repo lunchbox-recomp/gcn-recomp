@@ -1429,8 +1429,9 @@ variable and the variable over the key. An empty value at any of them means ther
 patches.
 
 A relative path in the key is read from the folder holding `settings.txt`. Only the desktop
-frontend reads the key, the variable or the flag. The OpenXR, Android and visionOS frontends
-and the benchmark apply no patches.
+frontend reads the key, the variable or the flag. Its `--vr` keeps what it chose for the
+OpenXR frontend it starts, and the Android and visionOS frontends and the benchmark apply
+no patches.
 
 The runtime applies the list at the end of boot, after it has loaded the disc and checked
 the code in RAM.
