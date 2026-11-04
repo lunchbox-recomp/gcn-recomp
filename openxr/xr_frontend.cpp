@@ -1340,7 +1340,7 @@ bool build_shaders() {
 // long it ran, how long it waited runnable for a core, and the core it last ran on --
 // what tells a stage that is slow from one the OS is not giving a core to.
 void log_thread_sched() {
-    static const bool on = getenv("GCN_SCHEDLOG") != nullptr;
+    static const bool on = getenv_nonempty("GCN_SCHEDLOG") != nullptr;
     if (!on) return;
     struct Prev { uint64_t run, wait; };
     static std::unordered_map<long, Prev> prev;
