@@ -220,11 +220,9 @@ static AidFiles aid_open(const char* path) {
 }
 
 static void aid_capture(const int16_t* be, uint32_t frames, bool catching_up, uint32_t addr, bool queued) {
-    static const AidFiles files = [] {
-        AidFiles f = aid_open(getenv("GCN_AIDWAV"));
-        if (f.pcm) plat_at_exit([] { fclose(files.idx); fclose(files.pcm); });
-        return f;
-    }();
+    static const AidFiles files = aid_open(getenv("GCN_AIDWAV"));
+    static const bool registered = files.pcm && (plat_at_exit([] { fflush(files.pcm); fflush(files.idx); }), true);
+    (void)registered;
     static uint64_t at;
     if (!files.pcm) return;
     fprintf(files.idx, "%llu %u %llu %d %08X %d\n", (unsigned long long)at, frames, (unsigned long long)now_ticks(), catching_up ? 1 : 0, addr, queued ? 1 : 0);

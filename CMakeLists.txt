@@ -830,7 +830,7 @@ function(gcn_add_game)
   # guest's. Needs no disc image, no device and no SDL.
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID)
     find_package(Threads REQUIRED)
-    add_executable(test_audio_ring EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_audio_ring.cpp ${RT}/platform.cpp)
+    add_executable(test_audio_ring EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_audio_ring.cpp)
     _gcn_set_standards(test_audio_ring)
     target_include_directories(test_audio_ring PRIVATE ${RT})
     target_link_libraries(test_audio_ring PRIVATE Threads::Threads)

@@ -47,7 +47,6 @@
 // GCN_JAUDIO_STATS=1 prints levels and what the game uses; GCN_JAUDIO_VOICES=1 each voice as
 // it starts, and where a streamed voice is in its ring.
 #include "../runtime.h"
-#include "../platform.h"
 #include "dsp_hle.h"
 #include "jaudio.h"
 #include <algorithm>
@@ -500,10 +499,7 @@ void wav_write(const int16_t* lr, int frames) {
     static bool opened;
     if (!opened) {
         opened = true;
-        if (const char* p = getenv("GCN_JAUDIO_WAV")) {
-            g_wav = fopen(p, "wb");
-            if (g_wav) plat_at_exit([] { fclose(g_wav); });
-        }
+        if (const char* p = getenv("GCN_JAUDIO_WAV")) g_wav = fopen(p, "wb");
     }
     if (!g_wav) return;
     g_wav_bytes += frames * 4;

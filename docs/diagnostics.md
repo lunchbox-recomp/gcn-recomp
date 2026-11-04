@@ -618,7 +618,9 @@ writes every block the DMA delivers (raw 16-bit stereo at the DMA's rate, little
 and `<file>.txt` each block's start, length, virtual time, whether it was delivered catching
 up, its address and whether the guest had queued the next one; it works in the benchmark,
 so a replay's sound can be checked block by block for repeats and broken joins.
-An orderly exit closes both files, keeping the last block and its index line.
+
+Quitting, restarting or an interrupt flushes both files, so the last block and its line are
+kept. A fault or the watchdog loses them.
 
 An empty `GCN_AIDWAV` records nothing, as an unset one does. If the file won't open, nothing
 is recorded. If the `.txt` won't open, the file named is left empty and nothing is recorded.
@@ -648,6 +650,7 @@ pass. It needs no disc image, device or SDL.
 Four more checks set `GCN_AIDWAV` empty, to a file, to a file whose `.txt` won't open and to
 a file that won't open itself, each in a child process, since the files are opened on the
 first block. `test_aid` takes a work directory that doesn't exist yet (`test_aid <dir>`).
+The file case's child leaves through `plat_exit_now`, which catches a lost tail.
 
 The sound ring between the DMA and the device keeps a cushion (`audio.cpp`), 100 ms by
 default and `GCN_AUDIO_CUSHION_MS` to change it. Running dry, it stays silent until the
@@ -995,10 +998,11 @@ which pulls the ring couldn't fill.
   that came out in a pull the ring couldn't fill was made from nothing.
 
 `GCN_WAV=<file>` writes what went to the device, the DVD music mixed in, as a 16-bit stereo
-WAV file at 48 kHz. Its header is rewritten after every write, and an orderly exit closes the
-file so its last buffered samples reach it.
+WAV file at 48 kHz. Its header is rewritten after every write, so a run that's stopped from
+outside still leaves a file that reads.
 
-`GCN_JAUDIO_WAV=<file>` records JAudio's 32 kHz output. An orderly exit closes this file too.
+`GCN_JAUDIO_WAV=<file>` records JAudio's 32 kHz output. Its header is rewritten every frame,
+so a run that's stopped from outside still leaves a file that reads.
 
 `ninja test_audio_ring` checks this accounting too, on the same virtual clock as the ring.
 A device that keeps exact time gets no late callbacks and no underruns. A gap of 1.4 periods
