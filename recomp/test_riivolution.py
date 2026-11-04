@@ -1302,19 +1302,20 @@ class TestMemory(SdCase):
                      '<memory offset="0x80000000" valuefile="/mod/first.bin"/>'
                      '<memory offset="0x80000000" valuefile="/mod/second.bin" '
                      f'original="{"00" * 2048}"/>')
-        read_files = []
-        read_blob = rpatch.Patcher._blob
+        opened_files = []
+        real_open = open
 
-        def counted_read(patcher, el, host, size):
-            read_files.append(host)
-            return read_blob(patcher, el, host, size)
+        def counted_open(path, *args, **kwargs):
+            if os.path.basename(path) in ('first.bin', 'second.bin'):
+                opened_files.append(os.path.basename(path))
+            return real_open(path, *args, **kwargs)
 
-        with mock.patch.object(rpatch.Patcher, '_blob', counted_read):
+        with mock.patch('builtins.open', side_effect=counted_open):
             line = self.refusal(r"<memory .*> in a\.xml would make the RAM patch list bigger "
                                 r"than 96 MiB and 4 KiB, which the runtime can't read, so "
                                 r"nothing is written")
         self.assertEqual(line['packages'], ['a.xml'])
-        self.assertEqual([os.path.basename(path) for path in read_files], ['first.bin'])
+        self.assertEqual(opened_files, ['first.bin'])
 
     def test_a_list_at_the_cap_is_written_and_one_byte_over_is_refused(self):
         self.package('a.xml', '<memory offset="0x80001000" value="aa"/>'
