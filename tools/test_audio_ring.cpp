@@ -40,6 +40,10 @@
 // sizes. The other sweeps a stream of noise over all 65536 pairs of AIVR volumes at both stream
 // rates, then with the music muted.
 //
+// The cushion and the stats switches are read once a process. So first, in a child process of
+// its own each, an empty GCN_AUDIO_CUSHION_MS, GCN_AUDIOSTATS or GCN_AXSTATS must read as
+// unset. Windows can't hold an empty variable, so those checks are for the others.
+//
 // usage: test_audio_ring
 // Exits 0 only if every check passes.
 #include "audio.cpp"
@@ -51,9 +55,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
 #include <numbers>
 #include <string>
 #include <thread>
+#ifndef _WIN32
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace {
 // What the AI and the disc give the music, as a check sets them. The stream plays only when
@@ -118,6 +127,20 @@ void check(bool ok, const char* what) {
     printf("%s: %s\n", ok ? "ok" : "FAIL", what);
     if (!ok) g_failed++;
 }
+
+#ifndef _WIN32
+// Whether `holds` is true in a child process with each of `names` set to `value`.
+bool in_child(std::initializer_list<const char*> names, const char* value, bool (*holds)()) {
+    fflush(stdout);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        for (const char* name : names) setenv(name, value, 1);
+        _exit(holds() ? 0 : 1);
+    }
+    int status = 0;
+    return pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+#endif
 
 // The [audio] lines, as audio_stats printed them.
 std::vector<std::string> g_lines;
@@ -690,6 +713,14 @@ void dtk_hold_checks() {
 }  // namespace
 
 int main() {
+#ifndef _WIN32
+    check(in_child({"GCN_AUDIO_CUSHION_MS"}, "", [] { return ring_cushion() == (size_t)DMA_RATE / 10; }) &&
+              in_child({"GCN_AUDIO_CUSHION_MS"}, "50", [] { return ring_cushion() == (size_t)DMA_RATE / 20; }),
+          "an empty GCN_AUDIO_CUSHION_MS keeps the 100 ms cushion, as an unset one does, and one of 50 sets 50 ms");
+    check(in_child({"GCN_AUDIOSTATS", "GCN_AXSTATS"}, "", [] { return !audio_stats_on(); }) &&
+              in_child({"GCN_AXSTATS"}, "1", [] { return audio_stats_on(); }),
+          "an empty GCN_AUDIOSTATS or GCN_AXSTATS leaves the [audio] lines off, and GCN_AXSTATS=1 turns them on");
+#endif
     // The cushion sets when the ring cuts and runs dry, so the caller's setting must not.
     // The [audio] lines are on, and collected here instead of printed. The pause gate reads
     // GCN_PAUSE_AT on its first boundary, so that's cleared too.

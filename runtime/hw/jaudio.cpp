@@ -319,10 +319,10 @@ bool voice_samples(PB& pb, Voice& v, int16_t* out) {
 
 // GCN_JAUDIO_STATS=1 prints, once a second, the loudest mixer volume, the voices mixed and
 // the loudest bus sample before the output volume.
-const bool g_stats = getenv("GCN_JAUDIO_STATS") != nullptr;
+const bool g_stats = gcn_env("GCN_JAUDIO_STATS") != nullptr;
 // GCN_JAUDIO_VOICES=1 prints each voice as it starts: its source, pitch, where its samples
 // are and how it loops, and its first two mixer slots.
-const bool g_voice_log = getenv("GCN_JAUDIO_VOICES") != nullptr;
+const bool g_voice_log = gcn_env("GCN_JAUDIO_VOICES") != nullptr;
 int32_t g_stat_vmax, g_stat_bmax;
 uint32_t g_stat_mixes, g_stat_frames;
 uint32_t g_stat_srcs, g_stat_filters;
@@ -453,7 +453,7 @@ struct FxPB {
 };
 
 // GCN_JAUDIO_NOFX=1 leaves the effect lines out, to tell their contribution apart.
-const bool g_no_fx = getenv("GCN_JAUDIO_NOFX") != nullptr;
+const bool g_no_fx = gcn_env("GCN_JAUDIO_NOFX") != nullptr;
 
 void fx_return() {
     if (g_no_fx) return;

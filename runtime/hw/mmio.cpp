@@ -48,7 +48,7 @@ void pi_write32(uint32_t off, uint32_t v) {
     // old destination, so it goes out first. See gp_flush_partial.
     if (off == 0x0C || off == 0x10 || off == 0x14) {
         // GCN_GATHERLOG=1: every repointing of the pipe, with what was pending in it.
-        static bool log = getenv("GCN_GATHERLOG") != nullptr;
+        static bool log = gcn_env("GCN_GATHERLOG") != nullptr;
         if (log) {
             extern uint32_t gx_frames_submitted();
             extern uint32_t gp_pending();

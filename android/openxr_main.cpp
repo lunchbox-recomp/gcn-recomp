@@ -344,7 +344,7 @@ void android_main(android_app* app) {
             g_sram_path = replay_sram.c_str();
         }
     }
-    if (!getenv("GCN_NO_INPUT_LOG")) {
+    if (!gcn_env("GCN_NO_INPUT_LOG")) {
         char stamp[64];
         time_t now = time(nullptr);
         strftime(stamp, sizeof(stamp), "%Y%m%d-%H%M%S", localtime(&now));

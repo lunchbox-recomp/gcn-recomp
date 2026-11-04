@@ -4,6 +4,7 @@
 // stands in for the guest thread at a frame boundary. clock_hold and exi_card_held each sum
 // what they're given, so a check can see that a hold's host time went to the clock and to the
 // memory card. GCN_PAUSE_AT is set before the first boundary, which is when pause.cpp reads it.
+// An empty one is tried first, in a child process, before this one reaches a boundary.
 //
 // runtime/gx/cmd.cpp is compiled in too, so the guest thread can reach its boundaries the way
 // a game's command stream takes it there: through process() with the front end inline, and
@@ -21,7 +22,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <string>
+#include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 
 uint8_t* g_mem;
 bool g_log_enabled[LOG_COUNT];
@@ -94,6 +98,32 @@ Guest* at_boundary(uint32_t frame) {
 bool stays_held(const Guest& g) {
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     return paused() && !g.past;
+}
+
+// What the first frame boundary writes to stderr with GCN_PAUSE_AT set to `value`, in a child
+// process, or "no child" if it didn't get past the boundary unpaused and exit.
+std::string first_boundary_says(const char* value) {
+    int fds[2];
+    if (pipe(fds) != 0) return "no child";
+    fflush(stdout);
+    fflush(stderr);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        close(fds[0]);
+        dup2(fds[1], 2);
+        setenv("GCN_PAUSE_AT", value, 1);
+        pause_gate(0);
+        fflush(stderr);
+        _exit(pause_requested() ? 1 : 0);
+    }
+    close(fds[1]);
+    std::string said;
+    char buf[256];
+    for (ssize_t n; (n = read(fds[0], buf, sizeof buf)) > 0;) said.append(buf, (size_t)n);
+    close(fds[0]);
+    int status = 0;
+    const bool ran = pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+    return ran ? said : "no child";
 }
 
 void check_parse(const char* s, uint32_t frame, long host_frames) {
@@ -205,6 +235,10 @@ uint64_t audio_frames_out() { return 0; }
 int present_last_checks();  // tools/test_pause_gl.cpp
 
 int main() {
+    const std::string empty = first_boundary_says(""), bad = first_boundary_says("x");
+    check(empty.empty() && bad.find("[pause] GCN_PAUSE_AT=x isn't <frame>:<host frames>") != std::string::npos,
+          "an empty GCN_PAUSE_AT pauses nothing and says nothing, as an unset one does, where a bad one says so");
+
     setenv("GCN_PAUSE_AT", "50:3", 1);
 
     pause_request(true);

@@ -1674,7 +1674,7 @@ void run_end(const std::string& dir) {
 // so the window loop stops (pump_events) and the run ends through RunEnd's wait. It asks once.
 void quit_at_frame(const std::string& dir) {
     const std::string out = dir + "/quit-at-stderr.txt";
-    bool before = false, at = false, once = false, bad = false;
+    bool before = false, at = false, once = false, bad = false, empty = false;
     capture(out, [&] {
         frame();
         setenv("GCN_QUIT_AT", "3", 1);
@@ -1689,6 +1689,10 @@ void quit_at_frame(const std::string& dir) {
         quit_at_load();
         quit_at_presented(3);
         bad = pump_events();
+        setenv("GCN_QUIT_AT", "", 1);
+        quit_at_load();
+        quit_at_presented(3);
+        empty = g_quit_at < 0 && pump_events();
         unsetenv("GCN_QUIT_AT");
         quit_at_load();
     });
@@ -1697,6 +1701,24 @@ void quit_at_frame(const std::string& dir) {
           "and only then, which it says once");
     check(bad && lines_with(out, "[quit] GCN_QUIT_AT=3x isn't a frame number, so it ends nothing") == 1,
           "a GCN_QUIT_AT that isn't a frame number ends nothing, and says so");
+    check(empty && lines_with(out, "[quit] GCN_QUIT_AT= ") == 0,
+          "an empty GCN_QUIT_AT ends nothing and says nothing, as an unset one does");
+}
+
+// ---- GCN_INPUT_LOG=1 has a script say how many presses it holds. "x" adds none, so the
+// presses the run started with are left as they were.
+void input_log_switch(const std::string& dir) {
+    const std::string out = dir + "/input-log-stderr.txt";
+    capture(out, [] {
+        setenv("GCN_INPUT_LOG", "", 1);
+        input_script_init("x");
+        setenv("GCN_INPUT_LOG", "1", 1);
+        input_script_init("x");
+        unsetenv("GCN_INPUT_LOG");
+        input_script_init("x");
+    });
+    check(lines_with(out, "scripted press(es)") == 1,
+          "an empty GCN_INPUT_LOG logs nothing, as an unset one does, and GCN_INPUT_LOG=1 says what the script holds");
 }
 
 #ifdef GCN_OVERLAY
@@ -1790,7 +1812,12 @@ void overlay(const std::string& dir) {
     picture.now.scale = 3;  // as --scale=3 makes it for this run
     picture.path = path;
     picture.apply = record_apply;
-    overlay_init(nullptr, "Test title", picture);
+    const std::string at_said = dir + "/overlay-at-stderr.txt";
+    setenv("GCN_OVERLAY_AT", "", 1);
+    capture(at_said, [&] { overlay_init(nullptr, "Test title", picture); });
+    unsetenv("GCN_OVERLAY_AT");
+    check(lines_with(at_said, "GCN_OVERLAY_AT") == 0,
+          "an empty GCN_OVERLAY_AT opens nothing and says nothing, as an unset one does");
     power_on(1);
     gamepads_init();
     Virtual pad{"virtual pad overlay"};
@@ -2507,6 +2534,7 @@ int run_ports(const std::string& dir) {
     ram_patch_flags(dir);
     run_end(dir);
     quit_at_frame(dir);
+    input_log_switch(dir);
 #ifdef GCN_OVERLAY
     overlay(dir);
     overlay_buttons(dir);

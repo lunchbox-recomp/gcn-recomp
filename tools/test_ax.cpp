@@ -595,6 +595,26 @@ void voice_log_checks() {
           "an ADPCM one-shot that wraps at either header end prints loop with looping=0");
 }
 
+// ax_init reads GCN_AXSTATS and GCN_AXVOICES. Windows can't hold an empty variable, so the
+// check is for the others.
+void switch_checks() {
+#ifndef _WIN32
+    setenv("GCN_AXSTATS", "", 1);
+    setenv("GCN_AXVOICES", "", 1);
+    ax_init(kHashLater);
+    const bool empty_off = !g_axstats && !g_axvoices;
+    setenv("GCN_AXSTATS", "1", 1);
+    setenv("GCN_AXVOICES", "1", 1);
+    ax_init(kHashLater);
+    const bool set_on = g_axstats && g_axvoices;
+    unsetenv("GCN_AXSTATS");
+    unsetenv("GCN_AXVOICES");
+    ax_init(kHashLater);
+    check(empty_off && set_on && !g_axstats && !g_axvoices,
+          "an empty GCN_AXSTATS or GCN_AXVOICES is off, as an unset one is, and one set to 1 is on");
+#endif
+}
+
 }  // namespace
 
 int main() {
@@ -607,6 +627,7 @@ int main() {
     polyphase_checks();
     end_checks();
     voice_log_checks();
+    switch_checks();
     printf("%s: %d failed\n", g_failed ? "FAIL" : "ok", g_failed);
     return g_failed ? 1 : 0;
 }

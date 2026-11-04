@@ -1,5 +1,6 @@
 // The device stage's accounting (audio_stats.h). Portable: a backend hands it the device it
 // opened and the time each callback started, so a test can drive it on a clock of its own.
+#include "runtime.h"
 #include "audio_stats.h"
 #include <algorithm>
 #include <cstdio>
@@ -28,7 +29,7 @@ void (*g_print)(const char*) = print_stderr;  // a test collects the lines inste
 }  // namespace
 
 bool audio_stats_on() {
-    static const bool on = getenv("GCN_AUDIOSTATS") != nullptr || getenv("GCN_AXSTATS") != nullptr;
+    static const bool on = gcn_env("GCN_AUDIOSTATS") != nullptr || gcn_env("GCN_AXSTATS") != nullptr;
     return on;
 }
 

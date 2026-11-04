@@ -83,7 +83,7 @@ void init() {
     static bool done = false;
     if (done) return;
     done = true;
-    if (const char* e = getenv("GCN_HEAP")) {
+    if (const char* e = gcn_env("GCN_HEAP")) {
         g_trace = true;
         g_every = (uint32_t)strtoul(e, nullptr, 10);
         if (g_every == 1) g_every = 0;  // GCN_HEAP=1 is just "on"

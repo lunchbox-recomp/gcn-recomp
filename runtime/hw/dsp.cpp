@@ -244,7 +244,7 @@ static void aid_block_done() {
     }
     uint32_t bytes = g_aid_blocks_left * 32;
     static int n;
-    if (getenv("GCN_AXSTATS") && n++ % 400 == 0) fprintf(stderr, "[aid] block addr=%08X bytes=%u ctrl=%04X\n", g_aid_cur_addr, bytes, g_aid_ctrl);
+    if (gcn_env("GCN_AXSTATS") && n++ % 400 == 0) fprintf(stderr, "[aid] block addr=%08X bytes=%u ctrl=%04X\n", g_aid_cur_addr, bytes, g_aid_ctrl);
     bytes = dma_fit("AI", g_aid_cur_addr, bytes);
     if (bytes) audio_push_dma((const int16_t*)phys_ptr(g_aid_cur_addr), bytes / 4);
     if (bytes) aid_capture((const int16_t*)phys_ptr(g_aid_cur_addr), bytes / 4, now_ticks() > g_aid_due, g_aid_cur_addr, g_aid_queued);

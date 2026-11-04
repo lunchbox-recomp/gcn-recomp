@@ -249,7 +249,7 @@ static int g_gpu_n = 0, g_cpu_n = 0;
 static constexpr GLenum kTimeElapsed = 0x88BF;   // GL_TIME_ELAPSED_EXT
 
 static void gpu_timer_init() {
-    g_gpu_timing = getenv("GCN_EYE_GPU") != nullptr;
+    g_gpu_timing = gcn_env("GCN_EYE_GPU") != nullptr;
     if (!g_gpu_timing) return;
     g_query_u64 = (void (*)(GLuint, GLenum, uint64_t*))gl_proc("glGetQueryObjectui64vEXT");
     if (!g_query_u64) {
@@ -453,7 +453,7 @@ int main(int argc, char** argv) {
     // be re-recorded or extended on the device as it can on the desktop.
     // A live run's card and SRAM are the files exi_init loads (g_save_dir is unset here), so
     // the log snapshots those, as main.cpp does.
-    if (const char* d = getenv("GCN_INPUT_LOG"))
+    if (const char* d = gcn_env("GCN_INPUT_LOG"))
         input_log_start(d, replay_card.empty() ? "saves/memcard_a.raw" : replay_card,
                         replay_sram.empty() ? "saves/sram.raw" : replay_sram);
 
@@ -473,7 +473,7 @@ int main(int argc, char** argv) {
     // The app sets the game's depth layers and panel band whatever it is showing, and the
     // stereo pair (GCN_THEATER_STEREO) uses both: its HUD sits on the panel and its sky at
     // infinity.
-    if (!g_eye_mode && getenv("GCN_THEATER_STEREO")) {
+    if (!g_eye_mode && gcn_env("GCN_THEATER_STEREO")) {
         gx::render_set_depth_layers(g_vrcfg.background_band, g_vrcfg.foreground_band, g_vrcfg.foreground_scale, g_vrcfg.hud_band, g_vrcfg.hud_band_scale);
         gx::render_set_panel_band(g_vrcfg.panel_band);
     }
@@ -510,7 +510,7 @@ int main(int argc, char** argv) {
     // to be run over adb on a device somebody may be wearing, but it is the only way to
     // exercise the audio path without the VR frontend -- and with GCN_WAV it records what
     // the device was handed, which is checkable afterwards rather than by listening.
-    if (getenv("GCN_AUDIO") && !audio_open())
+    if (gcn_env("GCN_AUDIO") && !audio_open())
         fprintf(stderr, "audio unavailable; continuing without sound\n");
 
     uint32_t entry = boot_load(iso.c_str());
@@ -534,9 +534,9 @@ int main(int argc, char** argv) {
         // GCN_RAMSNAP=dir dumps guest RAM every GCN_RAMSNAP_EVERY presented frames.
         // Diffing snapshots taken in known game states is how a variable for a stereo hook
         // -- "the player is in control", say -- gets found.
-        static const char* ramsnap = getenv("GCN_RAMSNAP");
-        static const uint32_t snap_every = getenv("GCN_RAMSNAP_EVERY")
-                                               ? atoi(getenv("GCN_RAMSNAP_EVERY")) : 150;
+        static const char* ramsnap = gcn_env("GCN_RAMSNAP");
+        static const uint32_t snap_every = gcn_env("GCN_RAMSNAP_EVERY")
+                                               ? atoi(gcn_env("GCN_RAMSNAP_EVERY")) : 150;
         // The low 8 MB: enough to hold the game's own state without writing 24 MB a shot.
         static const uint32_t snap_bytes = 8u << 20;
         // GCN_RAMSNAP_RANGE=a-b bounds it to a window of frames. A transition that takes a
@@ -547,7 +547,7 @@ int main(int argc, char** argv) {
         static bool snap_range_parsed = false;
         if (!snap_range_parsed) {
             snap_range_parsed = true;
-            if (const char* r = getenv("GCN_RAMSNAP_RANGE")) {
+            if (const char* r = gcn_env("GCN_RAMSNAP_RANGE")) {
                 snap_lo = atoi(r);
                 const char* dash = strchr(r, '-');
                 snap_hi = dash ? atoi(dash + 1) : snap_lo;
@@ -583,7 +583,7 @@ int main(int argc, char** argv) {
             // hook may do its render-thread work here (finding the camera it answers from,
             // say), which the game's other hooks then rely on. Without this the scan visor
             // followed the head on the headset but not in the harness.
-            static const bool stereolog = getenv("GCN_STEREOLOG") != nullptr;
+            static const bool stereolog = gcn_env("GCN_STEREOLOG") != nullptr;
             if (vr::game_hooks().wants_stereo) {
                 static int last = -1;
                 const int want = vr::game_hooks().wants_stereo(*b) ? 1 : 0;
@@ -653,7 +653,7 @@ int main(int argc, char** argv) {
                 static bool range_parsed = false;
                 if (!range_parsed) {
                     range_parsed = true;
-                    if (const char* r = getenv("GCN_DUMP_RANGE")) {
+                    if (const char* r = gcn_env("GCN_DUMP_RANGE")) {
                         range_lo = atoi(r);
                         const char* dash = strchr(r, '-');
                         range_hi = dash ? atoi(dash + 1) : range_lo;

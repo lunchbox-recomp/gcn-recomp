@@ -1,6 +1,7 @@
 // GCN_SESSION=<dir> (session.h). The switches it turns on are read where they always were;
 // this sets them in the environment before anything reads them, and records what a reader
 // of the directory needs to know about the run.
+#include "runtime.h"
 #include "session.h"
 #include "audio_stats.h"
 #include "platform.h"
@@ -26,7 +27,7 @@ void set_env(const char* name, const char* value) {
 
 // Sets `name` to `value` unless it's set already: a switch set by hand wins.
 void set_default(const char* name, const std::string& value) {
-    if (getenv(name)) return;
+    if (gcn_env(name)) return;
     set_env(name, value.c_str());
     g_set.push_back(name);
 }

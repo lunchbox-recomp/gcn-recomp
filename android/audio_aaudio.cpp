@@ -36,7 +36,7 @@ static aaudio_data_callback_result_t on_data(AAudioStream*, void*, void* audio_d
     g_callbacks.fetch_add(1, std::memory_order_relaxed);
     // GCN_AUDIO_TEST=1 fills the buffer here instead of asking for the mix, which
     // separates "the device is not pulling" from "the mix is not returning".
-    static const bool test = getenv("GCN_AUDIO_TEST") != nullptr;
+    static const bool test = gcn_env("GCN_AUDIO_TEST") != nullptr;
     if (test) {
         static double ph;
         int16_t* o = (int16_t*)audio_data;
@@ -122,7 +122,7 @@ static bool stream_start() {
     // playing is not something the documentation settles.
     const char* perf = getenv("GCN_AUDIO_PERF");
     const bool low_latency = !(perf && !strcmp(perf, "none"));
-    const int bursts = getenv("GCN_AUDIO_BURSTS") ? atoi(getenv("GCN_AUDIO_BURSTS")) : 2;
+    const int bursts = gcn_env("GCN_AUDIO_BURSTS") ? atoi(gcn_env("GCN_AUDIO_BURSTS")) : 2;
 
     AAudioStreamBuilder_setDirection(b, AAUDIO_DIRECTION_OUTPUT);
     AAudioStreamBuilder_setSharingMode(b, AAUDIO_SHARING_MODE_SHARED);

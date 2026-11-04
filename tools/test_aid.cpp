@@ -16,7 +16,8 @@
 // GCN_AIDWAV is read when the first block is delivered, so each of its four checks runs in a
 // child process of its own, in the work dir: an empty value records nothing, a file records
 // its blocks, an index file that won't open leaves the blocks unrecorded, and a file that
-// won't open never has its index tried.
+// won't open never has its index tried. Two more children set GCN_AXSTATS, whose [aid] line
+// comes with the first block: one set to 1 prints it, and an empty one prints nothing.
 //
 // usage: test_aid <work dir>   (a directory that doesn't exist yet)
 // Exits 0 only if every check passes.
@@ -24,6 +25,7 @@
 #include "platform.h"
 #include <cstdio>
 #include <cstdlib>
+#include <string>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -180,6 +182,41 @@ bool capture_run(const char* path) {
     return pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
+// Three blocks delivered with GCN_AXSTATS set to `value`, in a child process whose stderr goes
+// to `said`. True if the child ran to its end and exited 0.
+bool stats_run(const char* value, const char* said) {
+    fflush(stdout);
+    fflush(stderr);
+    const pid_t pid = fork();
+    if (pid == 0) {
+        alarm(10);
+        if (!freopen(said, "w", stderr)) _exit(1);
+        setenv("GCN_AXSTATS", value, 1);
+        dsp_write16(0x0A, CR_AID_MASK | 0x800);
+        queue(kBufA);
+        g_next = kBufB;
+        dsp_write16(0x36, 0x8000 | kBlocks);
+        run_to(3 * kDur + 1);
+        fflush(stderr);
+        plat_exit_now(0);
+    }
+    int status = 0;
+    return pid > 0 && waitpid(pid, &status, 0) == pid && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+}
+
+// How many times `what` is in the file at `path`.
+int count_in(const char* path, const char* what) {
+    std::string text;
+    if (FILE* f = fopen(path, "r")) {
+        char buf[256];
+        for (size_t n; (n = fread(buf, 1, sizeof buf, f)) > 0;) text.append(buf, n);
+        fclose(f);
+    }
+    int count = 0;
+    for (size_t at = 0; (at = text.find(what, at)) != std::string::npos; at++) count++;
+    return count;
+}
+
 }  // namespace
 
 uint64_t now_ticks() { return g_now; }
@@ -214,6 +251,9 @@ int main(int argc, char** argv) {
           "an index file that won't open leaves the blocks unrecorded");
     mkdir("isdir", 0755);   // opening it for writing fails
     check(capture_run("isdir") && !exists("isdir.txt"), "a file that won't open never has its index tried");
+    check(stats_run("", "stats-empty.txt") && stats_run("1", "stats-on.txt") &&
+              count_in("stats-empty.txt", "[aid] block") == 0 && count_in("stats-on.txt", "[aid] block") == 1,
+          "an empty GCN_AXSTATS prints no [aid] line, as an unset one does, and GCN_AXSTATS=1 prints one");
 
     dsp_write16(0x0A, CR_AID_MASK | 0x800);
     queue(kBufA);

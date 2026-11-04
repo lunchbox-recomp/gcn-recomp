@@ -92,7 +92,7 @@ static void load_xf(uint32_t addr, uint32_t n, const uint8_t* data) {
     // ENTER()/RET() in recomp.h.
     // The guest's call stack is only there to read while the front end runs inline
     // (GCN_GX_SYNC=1); on its own thread it is somewhere else entirely by now.
-    static const char* want = getenv("GCN_POSMTX_STACK");
+    static const char* want = gcn_env("GCN_POSMTX_STACK");
     if (want && !g_fe_threaded && n == 12 && (addr & 3) == 0 && addr < 0x100) {
         float wx = 0, wy = 0, wz = 0;
         sscanf(want, "%f,%f,%f", &wx, &wy, &wz);

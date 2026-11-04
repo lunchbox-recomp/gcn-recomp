@@ -1,4 +1,5 @@
 // Host OS services: POSIX and Windows implementations of platform.h.
+#include "runtime.h"
 #include "platform.h"
 #include <atomic>
 #include <cctype>
@@ -489,7 +490,7 @@ void plat_thread_role(ThreadRole role, const char* name) {
     // the lower priority. GCN_WORKER_NICE sets how much lower (5, a third of the share
     // when contended; 0 leaves it).
     if (role == ThreadRole::RenderWorker) {
-        const char* e = getenv("GCN_WORKER_NICE");
+        const char* e = gcn_env("GCN_WORKER_NICE");
         const int nice = e ? atoi(e) : 5;
         if (nice) setpriority(PRIO_PROCESS, (id_t)tid, nice);
     }
