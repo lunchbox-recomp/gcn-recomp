@@ -3,9 +3,9 @@
 A toolkit for static recompilation of Nintendo GameCube games to native code: a Gekko
 PowerPC → C recompiler, and a runtime that stands in for the GameCube hardware (CPU helpers,
 OS context switching, graphics through an OpenGL GX pipeline, audio, DVD, controllers,
-memory card) with an SDL desktop frontend. The runtime also interprets code the recompiler
-didn't see or the game changes, and applies Riivolution patches as a disc overlay and a RAM
-patch list.
+memory card) with an SDL desktop frontend. The engine also interprets code the recompiler
+didn't see or the game changes, and takes a Riivolution mod's patches as a disc overlay and
+a RAM patch list.
 
 It is the common layer under per-game projects, each of which supplies its own game's
 layout and steering files and nothing else:
