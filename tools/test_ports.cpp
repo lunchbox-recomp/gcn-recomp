@@ -1586,6 +1586,43 @@ void bot_flags(const std::string& dir) {
     g_gamepads = true;
 }
 
+// ---- main() takes the RAM patch list from --ram-patches=FILE or GCN_RAM_PATCHES
+// (take_ram_patches). Each check starts with the list set to something the call must replace,
+// so one it leaves alone shows.
+void ram_patch_flags(const std::string& dir) {
+    char game[] = "game", image[] = "game.iso", to_a[] = "--ram-patches=a.txt", to_b[] = "--ram-patches=b.txt";
+    char bare[] = "--ram-patches", empty[] = "--ram-patches=", other[] = "--ram-patchesx=x";
+    char* none[] = {game, image, nullptr};
+    char* both[] = {game, to_a, image, to_b, nullptr};
+    char* lone[] = {game, bare, image, nullptr};
+    char* blank[] = {game, empty, nullptr};
+    char* near[] = {game, other, nullptr};
+    char* one[] = {game, to_a, nullptr};
+    const std::string said = dir + "/ram-patches-stderr.txt";
+    bool took = false;
+    auto take = [&](int argc, char** argv) {
+        ram_patches_set_file("left");
+        capture(said, [&] { took = take_ram_patches(argc, argv); });
+        return took;
+    };
+
+    unsetenv("GCN_RAM_PATCHES");
+    check(take(2, none) && ram_patches_file().empty() && read_file(said).empty(),
+          "with no --ram-patches and no GCN_RAM_PATCHES there's no list, and nothing is said");
+    check(take(4, both) && ram_patches_file() == "b.txt", "--ram-patches=FILE is the list, the last one winning");
+    check(take(2, near) && ram_patches_file().empty(), "--ram-patchesx= isn't taken for --ram-patches=");
+    setenv("GCN_RAM_PATCHES", "env.txt", 1);
+    check(take(2, none) && ram_patches_file() == "env.txt", "GCN_RAM_PATCHES is the list with no flag");
+    check(take(2, one) && ram_patches_file() == "a.txt", "--ram-patches=FILE beats GCN_RAM_PATCHES");
+    check(take(2, blank) && ram_patches_file().empty(), "an empty --ram-patches= beats GCN_RAM_PATCHES and means no list");
+    setenv("GCN_RAM_PATCHES", "", 1);
+    check(take(2, none) && ram_patches_file().empty(), "an empty GCN_RAM_PATCHES is no list");
+    check(!take(3, lone) && ram_patches_file() == "left" &&
+              read_file(said) == "--ram-patches: the RAM patch list's path goes after an =, as in --ram-patches=FILE\n",
+          "a bare --ram-patches is refused in one line, leaving the list as it was");
+    unsetenv("GCN_RAM_PATCHES");
+}
+
 // ---- The hints main() sets win over the environment, where SDL_JOYSTICK_HIDAPI=1 or the
 // like would otherwise turn a driver for real controllers back on, and the Steam variable
 // tools/test_ports.sh sets is gone from where SDL reads it. No virtual gamepad can show the
@@ -2467,6 +2504,7 @@ int run_ports(const std::string& dir) {
     disc_speed(dir);
     disc_overlay_flags();
     bot_flags(dir);
+    ram_patch_flags(dir);
     run_end(dir);
     quit_at_frame(dir);
 #ifdef GCN_OVERLAY
