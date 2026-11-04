@@ -469,6 +469,19 @@ static bool take_ram_patches(const Settings& settings, int argc, char** argv) {
     return true;
 }
 
+// Where the game's motion goes (telemetry.h): the last --telemetry[=host:port] wins over
+// GCN_TELEMETRY, and the result is null, which is no telemetry, when neither is given. An
+// empty value from either, or a bare --telemetry, is the default address, which
+// telemetry::configure takes from an empty string.
+static const char* take_telemetry(int argc, char** argv) {
+    const char* to = getenv("GCN_TELEMETRY");
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--telemetry")) to = "";
+        else if (!strncmp(argv[i], "--telemetry=", 12)) to = argv[i] + 12;
+    }
+    return to;
+}
+
 // Sets `bot` to the socket of the bot that drives the pads (bot_link.h). The last --bot=PATH wins,
 // then GCN_BOT, and there's none when neither names one. A bot opens no controller, as under
 // --no-gamepads. The result is false, naming the flag or variable that brought the bot, for a bare
@@ -549,8 +562,8 @@ int main(int argc, char** argv) {
     int record_w = 2560, record_h = 1440;
     const char* controls = "controls.txt";
     bool list_controls = false, test_ffb = false;
-    // --telemetry[=host:port]: the game's motion to a motion platform (telemetry.h).
-    const char* telemetry_to = getenv_nonempty("GCN_TELEMETRY");
+    // --telemetry[=host:port] or GCN_TELEMETRY: the game's motion to a motion platform (telemetry.h).
+    const char* telemetry_to = take_telemetry(argc, argv);
     // settings.txt in the working directory (settings.h). A flag beats it for this run and
     // isn't written back.
     const Settings settings = settings_load("settings.txt");
@@ -580,8 +593,6 @@ int main(int argc, char** argv) {
             pads = atoi(argv[i] + 7);
             if (pads < 1 || pads > 4) { fprintf(stderr, "--pads: 1 to 4 controllers, not %s\n", argv[i] + 7); return 1; }
         }
-        else if (!strcmp(argv[i], "--telemetry")) telemetry_to = "";
-        else if (!strncmp(argv[i], "--telemetry=", 12)) telemetry_to = argv[i] + 12;
         else if (!strcmp(argv[i], "--first-person")) first_person = true;
         else if (!strcmp(argv[i], "--no-input-log")) input_log = false;
         else if (!strncmp(argv[i], "--input-log=", 12)) input_log_dir = argv[i] + 12;

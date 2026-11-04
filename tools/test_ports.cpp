@@ -1653,6 +1653,38 @@ void ram_patch_flags(const std::string& dir) {
     check(take(2, none) && ram_patches_file().empty(), "a ram_patches line with no path is no list");
 }
 
+// ---- main() takes the telemetry target from --telemetry[=host:port] or GCN_TELEMETRY
+// (take_telemetry). No target is null, and an empty one is the default address, so an empty
+// GCN_TELEMETRY is not the same as an unset one.
+void telemetry_flags() {
+    char game[] = "game", image[] = "game.iso", to_a[] = "--telemetry=10.0.0.1:1234";
+    char to_b[] = "--telemetry=10.0.0.2:5678", bare[] = "--telemetry", empty[] = "--telemetry=";
+    char other[] = "--telemetryx=x";
+    char* none[] = {game, image, nullptr};
+    char* both[] = {game, to_a, image, to_b, nullptr};
+    char* lone[] = {game, bare, image, nullptr};
+    char* blank[] = {game, empty, nullptr};
+    char* near[] = {game, other, nullptr};
+    char* one[] = {game, to_a, nullptr};
+    auto is = [](const char* got, const char* want) { return got && !strcmp(got, want); };
+
+    unsetenv("GCN_TELEMETRY");
+    check(take_telemetry(2, none) == nullptr, "with no --telemetry and no GCN_TELEMETRY there's no telemetry");
+    check(is(take_telemetry(4, both), "10.0.0.2:5678"), "--telemetry=host:port is the target, the last one winning");
+    check(is(take_telemetry(3, lone), ""), "a bare --telemetry is the default address");
+    check(is(take_telemetry(2, blank), ""), "--telemetry= is the default address");
+    check(take_telemetry(2, near) == nullptr, "--telemetryx= isn't taken for --telemetry=");
+    setenv("GCN_TELEMETRY", "10.9.9.9:4321", 1);
+    check(is(take_telemetry(2, none), "10.9.9.9:4321"), "GCN_TELEMETRY=host:port is the target with no flag");
+    check(is(take_telemetry(2, one), "10.0.0.1:1234"), "--telemetry=host:port beats GCN_TELEMETRY");
+    check(is(take_telemetry(3, lone), ""), "a bare --telemetry beats GCN_TELEMETRY and is the default address");
+    check(is(take_telemetry(2, blank), ""), "--telemetry= beats GCN_TELEMETRY and is the default address");
+    setenv("GCN_TELEMETRY", "", 1);
+    check(is(take_telemetry(2, none), ""), "an empty GCN_TELEMETRY is the default address, not no telemetry");
+    check(is(take_telemetry(2, one), "10.0.0.1:1234"), "--telemetry=host:port beats an empty GCN_TELEMETRY");
+    unsetenv("GCN_TELEMETRY");
+}
+
 // ---- The hints main() sets win over the environment, where SDL_JOYSTICK_HIDAPI=1 or the
 // like would otherwise turn a driver for real controllers back on, and the Steam variable
 // tools/test_ports.sh sets is gone from where SDL reads it. No virtual gamepad can show the
@@ -2563,6 +2595,7 @@ int run_ports(const std::string& dir) {
     disc_overlay_flags();
     bot_flags(dir);
     ram_patch_flags(dir);
+    telemetry_flags();
     run_end(dir);
     quit_at_frame(dir);
     input_log_switch(dir);

@@ -1332,11 +1332,10 @@ those that count by one. The method and what it found are in the game project's 
 ## Motion telemetry
 
 `runtime/telemetry.h`: a game publishes its vehicle's motion once a game frame, and
-`--telemetry[=host:port]` on the desktop (or `GCN_TELEMETRY=<host:port>`) sends it
+`--telemetry[=host:port]` on the desktop (or `GCN_TELEMETRY`, empty for the default) sends it
 as SimRacingStudio's custom-game API packet to `127.0.0.1:33001`. `GCN_TELEMETRY_LOG=1`, or
 `log 1` in `telemetry.txt`, prints what is sent twice a second, plus every ease to or from rest
 and every crossfade.
-An empty `GCN_TELEMETRY` acts as unset.
 
 The motion never steps where the game did not: a motion platform moves a person. The output
 eases to and from rest and crossfades across anything the game marks
