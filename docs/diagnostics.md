@@ -1083,9 +1083,6 @@ and reads `session.json` back. It needs no disc image, device or SDL. `test_sess
 dir>` makes that directory and leaves its files there. It prints `ok` or `FAIL` for each
 check, and the exit code is 0 only if all pass.
 
-`ninja test_feed_dump` builds `tools/test_feed_dump.cpp`. It checks that unset and empty
-paths make no files, and that a failed file open leaves no open dump or index.
-
 ## Textures
 
 `GCN_TEXLOG=1` prints a line per decoded texture: frame, id, guest address, format, size and
@@ -1447,9 +1444,6 @@ image, a CISO of it and the files and manifests an overlay names. It compares re
 through the overlay with a disc it builds itself, even from four threads at once. It also
 makes each refusal happen.
 
-`ninja test_feed_dump` builds `tools/test_feed_dump.cpp`. It checks that unset and empty
-paths make no files, and that a failed file open leaves no open dump or index.
-
 ## The command stream
 
 When the GX parser derails -- a draw in a vertex format the game never set, or a partial
@@ -1459,11 +1453,13 @@ every byte handed to the parser, in order, with a `<path>.idx` of `offset addres
 per chunk, so the stream can be decoded offline and each offset mapped back to the FIFO
 address it came from. An empty `GCN_FEED_DUMP` records nothing.
 
-`GCN_FIFO_DUMP=<path>` writes the GP FIFO's memory, base to end, in
-the FIFO dump that the interrupt and fault handlers print. `GCN_RAM_DUMP=<path>` writes the
-guest RAM when `call_indirect` finds no function at its target, to inspect its code and
-origin. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record
-nothing.
+`GCN_FIFO_DUMP=<path>` writes the GP FIFO's memory, base to end, in the FIFO dump that the
+interrupt and fault handlers print. `GCN_RAM_DUMP=<path>` writes the guest RAM when
+`call_indirect` finds no function at its target, to see what code is at that target and
+where it came from. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record nothing.
+
+`ninja test_feed_dump` builds `tools/test_feed_dump.cpp`. It checks that unset and empty
+paths make no files, and that a failed file open leaves no open dump or index.
 
 ## Panics and faults
 
