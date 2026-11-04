@@ -1586,9 +1586,9 @@ void bot_flags(const std::string& dir) {
     g_gamepads = true;
 }
 
-// ---- main() takes the RAM patch list from --ram-patches=FILE or GCN_RAM_PATCHES
-// (take_ram_patches). Each check starts with the list set to something the call must replace,
-// so one it leaves alone shows.
+// ---- main() takes the RAM patch list from --ram-patches=FILE, GCN_RAM_PATCHES or settings.txt's
+// ram_patches key (take_ram_patches). Each check starts with the list set to something the call
+// must replace, so one it leaves alone shows. `loaded` is what settings_load made of the file.
 void ram_patch_flags(const std::string& dir) {
     char game[] = "game", image[] = "game.iso", to_a[] = "--ram-patches=a.txt", to_b[] = "--ram-patches=b.txt";
     char bare[] = "--ram-patches", empty[] = "--ram-patches=", other[] = "--ram-patchesx=x";
@@ -1599,10 +1599,11 @@ void ram_patch_flags(const std::string& dir) {
     char* near[] = {game, other, nullptr};
     char* one[] = {game, to_a, nullptr};
     const std::string said = dir + "/ram-patches-stderr.txt";
+    Settings loaded;
     bool took = false;
     auto take = [&](int argc, char** argv) {
         ram_patches_set_file("left");
-        capture(said, [&] { took = take_ram_patches(argc, argv); });
+        capture(said, [&] { took = take_ram_patches(loaded, argc, argv); });
         return took;
     };
 
@@ -1621,6 +1622,40 @@ void ram_patch_flags(const std::string& dir) {
               read_file(said) == "--ram-patches: the RAM patch list's path goes after an =, as in --ram-patches=FILE\n",
           "a bare --ram-patches is refused in one line, leaving the list as it was");
     unsetenv("GCN_RAM_PATCHES");
+
+    loaded.ram_patches = "key.txt";
+    check(take(2, none) && ram_patches_file() == "key.txt", "the settings key is the list with no flag or variable");
+    check(take(2, one) && ram_patches_file() == "a.txt", "--ram-patches=FILE beats the settings key");
+    check(take(2, blank) && ram_patches_file().empty(), "an empty --ram-patches= beats the settings key and means no list");
+    check(!take(3, lone) && ram_patches_file() == "left" &&
+              read_file(said) == "--ram-patches: the RAM patch list's path goes after an =, as in --ram-patches=FILE\n",
+          "a bare --ram-patches is still refused in one line beside a settings key");
+    setenv("GCN_RAM_PATCHES", "env.txt", 1);
+    check(take(2, none) && ram_patches_file() == "env.txt", "GCN_RAM_PATCHES beats the settings key");
+    check(take(2, one) && ram_patches_file() == "a.txt", "--ram-patches=FILE beats both GCN_RAM_PATCHES and the settings key");
+    setenv("GCN_RAM_PATCHES", "", 1);
+    check(take(2, none) && ram_patches_file().empty(), "an empty GCN_RAM_PATCHES beats the settings key and means no list");
+    check(take(2, one) && ram_patches_file() == "a.txt", "--ram-patches=FILE beats an empty GCN_RAM_PATCHES and a settings key");
+    unsetenv("GCN_RAM_PATCHES");
+
+    loaded.ram_patches.clear();
+    check(take(2, none) && ram_patches_file().empty(), "an empty settings key is no list");
+    setenv("GCN_RAM_PATCHES", "env.txt", 1);
+    check(take(2, none) && ram_patches_file() == "env.txt", "GCN_RAM_PATCHES is the list beside an empty settings key");
+    unsetenv("GCN_RAM_PATCHES");
+
+    // A relative path in the file is read from the file's folder, not the working directory.
+    const std::string path = dir + "/ram-patches-settings.txt";
+    write_file(path, "ram_patches mods/ram.txt\n");
+    loaded = settings_load(path);
+    check(take(2, none) && ram_patches_file() == dir + "/mods/ram.txt",
+          "a relative settings key is read from the folder that holds settings.txt");
+    write_file(path, "ram_patches /abs/ram.txt\n");
+    loaded = settings_load(path);
+    check(take(2, none) && ram_patches_file() == "/abs/ram.txt", "an absolute settings key is the list as written");
+    write_file(path, "ram_patches\n");
+    loaded = settings_load(path);
+    check(take(2, none) && ram_patches_file().empty(), "a ram_patches line with no path is no list");
 }
 
 // ---- The hints main() sets win over the environment, where SDL_JOYSTICK_HIDAPI=1 or the

@@ -1423,11 +1423,17 @@ times worked out from its numbers, at both speeds. It needs no disc image or dev
 
 ## RAM patches at boot
 
-`--ram-patches=FILE` or `GCN_RAM_PATCHES=FILE` selects a RAM patch list from
-`recomp/riivolution.py apply`, for the desktop frontend alone. The flag wins over the
-variable, and an empty value at either level means there are no patches. The runtime
-applies the list at the end of boot, after it has loaded the disc and checked the code in
-RAM.
+`--ram-patches=FILE`, `GCN_RAM_PATCHES=FILE` or `ram_patches PATH` in `settings.txt`
+selects a RAM patch list from `recomp/riivolution.py apply`. The flag wins over the
+variable and the variable over the key. An empty value at any of them means there are no
+patches.
+
+A relative path in the key is read from the folder holding `settings.txt`. Only the desktop
+frontend reads the key, the variable or the flag. The OpenXR, Android and visionOS frontends
+and the benchmark apply no patches.
+
+The runtime applies the list at the end of boot, after it has loaded the disc and checked
+the code in RAM.
 
 The run stops with a file and line when the header or a patch line is malformed, a byte
 string has an odd number of digits or a non-hex digit, or an address isn't eight hex
@@ -1458,9 +1464,6 @@ folder holding `settings.txt`.
 
 `GCN_DISC_OVERLAY=FILE` overrides the key, and `--disc-overlay=FILE` overrides the
 variable. An empty value means no overlay.
-
-`ram_patches PATH` names a RAM patch file in the same folder as `settings.txt` when the
-path is relative. The desktop frontend loads the key, but nothing reads it yet.
 
 The manifest loads before boot reads the disc header, and every host file it names opens
 once then. The run stops at boot if the manifest or one of its files is wrong or the image
