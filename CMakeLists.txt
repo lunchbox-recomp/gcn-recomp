@@ -860,6 +860,14 @@ function(gcn_add_game)
     target_include_directories(test_anchor PRIVATE ${RT})
     target_compile_options(test_anchor PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The blend factor checks (tools/test_blend.cpp): runtime/gx/blend.h on its own.
+    add_executable(test_blend EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_blend.cpp)
+    _gcn_set_standards(test_blend)
+    target_include_directories(test_blend PRIVATE ${RT})
+    target_compile_options(test_blend PRIVATE ${GCN_RUNTIME_WARNINGS})
+  endif()
+
+  if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID AND NOT WIN32)
     # The shader switch checks (tools/test_shader_env.cpp): empty and set switches in gen_pixel_shader.
     add_executable(test_shader_env EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_shader_env.cpp ${RT}/gx/shadergen.cpp)
     _gcn_set_standards(test_shader_env)
@@ -879,16 +887,8 @@ function(gcn_add_game)
     target_include_directories(test_anchor_env PRIVATE ${RT})
     target_compile_options(test_anchor_env PRIVATE ${GCN_RUNTIME_WARNINGS})
 
-    # The blend factor checks (tools/test_blend.cpp): runtime/gx/blend.h on its own.
-    add_executable(test_blend EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_blend.cpp)
-    _gcn_set_standards(test_blend)
-    target_include_directories(test_blend PRIVATE ${RT})
-    target_compile_options(test_blend PRIVATE ${GCN_RUNTIME_WARNINGS})
-  endif()
-
-  # The settings.txt checks (tools/test_settings.cpp): loading and saving the file in a
-  # work dir. Needs no disc image, device or SDL. macOS and Linux.
-  if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID AND NOT WIN32)
+    # The settings.txt checks (tools/test_settings.cpp): loading and saving the file in a
+    # work dir. Needs no disc image, device or SDL. macOS and Linux.
     add_executable(test_settings EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_settings.cpp
       ${RT}/settings.cpp ${RT}/platform.cpp)
     _gcn_set_standards(test_settings)
