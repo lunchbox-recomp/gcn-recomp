@@ -450,8 +450,7 @@ moves between stereo and theater, so the first frame after the change can be dum
 The app has no environment of its own, so `gcn_env.txt` in its files directory
 (`/sdcard/Android/data/<package>/files/`), one `KEY=VALUE` per line, is put into it before
 the runtime starts; `gcn_input.txt` there holds a `GCN_INPUT` script, and `GCN_REPLAY=<dir>`
-in the env file replays an input log relative to that directory. An empty `GCN_REPLAY`
-doesn't load an input log. Its log is
+in the env file replays an input log relative to that directory. Its log is
 `adb logcat -s <game>`, with a line every second: compositor and game frames, the longest
 wait between game frames, the render thread's time per stereo frame, how many display frames
 each game frame stayed up (`held 1:a 2:b 3:c 4+:d`; even pacing is all one column), the
@@ -1084,6 +1083,9 @@ and reads `session.json` back. It needs no disc image, device or SDL. `test_sess
 dir>` makes that directory and leaves its files there. It prints `ok` or `FAIL` for each
 check, and the exit code is 0 only if all pass.
 
+`ninja test_feed_dump` builds `tools/test_feed_dump.cpp`. It checks that unset and empty
+paths make no files, and that a failed file open leaves no open dump or index.
+
 ## Textures
 
 `GCN_TEXLOG=1` prints a line per decoded texture: frame, id, guest address, format, size and
@@ -1210,10 +1212,12 @@ so the variants never mix with the real ones).
 - `GCN_RAM_DUMP_AT=<frame>,...` writes the guest RAM at the end of each of those submitted
   frames (the count `GCN_INPUT` keys on) to `GCN_RAM_DUMP_DIR` as `ram_<frame>.bin`, from
   the guest thread; for finding a game's variables by comparing its memory over a scripted
-  run. An empty `GCN_RAM_DUMP_DIR` uses the working directory. The log line names the
+  run. An empty `GCN_RAM_DUMP_DIR` uses the working directory.
+
+  The log line names the
   presented frame it was taken at too, the number the frame dumps carry, so a dump can be
-  matched to what was on screen. The dump is physical RAM: a
-  game that maps memory through its page tables has its paged variables wherever their
+  matched to what was on screen. The dump contains physical RAM, so a game that maps memory
+  through its page tables has its paged variables wherever their
   pages happen to be, and its page table (in the dump too) says which virtual page each is.
 - `GCN_TOKLOG=1` prints every PE token as it is signalled, and every draw-done (finish)
   as it is raised and acknowledged, with a note when one is raised while the last is
@@ -1269,13 +1273,12 @@ left.
   those sites wrote, who else wrote it: `[stwr] <addr> <pc>:<count> ...`. That tells a
   value carried from frame to frame (its only writers are steps) from a temporary that
   something assigns afresh each frame before a step adds to it, which must not be scaled.
-  An empty `GCN_STORE_HIST_PCS` records nothing.
 - `GCN_READERS=<file>` (hex guest addresses or `lo-hi` ranges, one per line) is the
   readers' side: within the same window, which code loads those addresses, printed as
   `[readers] <addr> <pc>:<count> ...`. It answers where a value whose unit the frame rate
   changes (a speed the game measures as this frame's position minus the last one's) is
   consumed, which no static search tells apart from the other structures with a float at
-  the same offset. An empty `GCN_READERS` records nothing.
+  the same offset.
 - `steps.txt` in the game's tables lists, per instruction address, which operand (`A`, `B`
   or `C`) carries the value from the previous frame. The recompiler emits that instruction
   through `runtime/step.cpp` (`ppc.translate_step`): `x += t` becomes `x += s*t`, `x *= k`
@@ -1295,11 +1298,11 @@ left.
   and the game project keeps them in a table of their own that its emitter copies in.
 - `GCN_STEP_SKIP=<file>` leaves the listed sites (hex addresses or `lo-hi` ranges) unscaled
   and `GCN_STEP_ONLY=<file>` scales only those: how a site that breaks the game is bisected
-  out of a list of hundreds without a rebuild.
+  out of a list of hundreds without a rebuild. An empty `GCN_STEP_ONLY` scales every site,
+  as if unset.
 - `GCN_STEP_POW=<file>` (lines of `<hex address> <power>`) gives the listed sites that power
   instead of the table's, for trying a reading of a site -- a force as a rate, a difference
-  converted or not -- against a run at the native rate before it goes into the table. Empty
-  `GCN_STEP_SKIP`, `GCN_STEP_ONLY` or `GCN_STEP_POW` values leave scaling unchanged.
+  converted or not -- against a run at the native rate before it goes into the table.
 - A body the game integrates in N passes a frame, each pass a complete step of a fixed
   size (its forces, dampings and constraint corrections all inside the pass), is not
   served by scaling the sites in the pass: that runs N passes of size s per paced frame,
@@ -1443,6 +1446,9 @@ image, a CISO of it and the files and manifests an overlay names. It compares re
 through the overlay with a disc it builds itself, even from four threads at once. It also
 makes each refusal happen.
 
+`ninja test_feed_dump` builds `tools/test_feed_dump.cpp`. It checks that unset and empty
+paths make no files, and that a failed file open leaves no open dump or index.
+
 ## The command stream
 
 When the GX parser derails -- a draw in a vertex format the game never set, or a partial
@@ -1451,10 +1457,11 @@ question is whether the bytes it was handed are the game's. `GCN_FEED_DUMP=<path
 every byte handed to the parser, in order, with a `<path>.idx` of `offset address length`
 per chunk, so the stream can be decoded offline and each offset mapped back to the FIFO
 address it came from. An empty `GCN_FEED_DUMP` records nothing.
+
 `GCN_FIFO_DUMP=<path>` writes the GP FIFO's memory, base to end, in
 the FIFO dump that the interrupt and fault handlers print. `GCN_RAM_DUMP=<path>` writes the
-guest RAM when `call_indirect` finds no function at its target, for seeing what the code
-there is and where it came from. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record
+guest RAM when `call_indirect` finds no function at its target, to inspect its code and
+origin. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record
 nothing.
 
 ## Panics and faults

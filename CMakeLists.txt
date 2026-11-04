@@ -971,6 +971,12 @@ function(gcn_add_game)
     target_link_libraries(test_disc_overlay PRIVATE Threads::Threads)
     target_compile_options(test_disc_overlay PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The feed dump checks (tools/test_feed_dump.cpp): empty paths and failed file opens.
+    add_executable(test_feed_dump EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_feed_dump.cpp)
+    _gcn_set_standards(test_feed_dump)
+    target_include_directories(test_feed_dump PRIVATE ${RT})
+    target_compile_options(test_feed_dump PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The interpreter's differential checks (tools/test_interp.cpp) run ppc.translate's own C for
     # random and edge-case words of every form it accepts against runtime/interp/, on the same
     # seeded CPUs. recomp/ppc_cases.py writes the cases into <build>/interp_cases/, and they
@@ -1047,10 +1053,6 @@ function(gcn_add_game)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
-    add_executable(test_feed_dump EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_feed_dump.cpp)
-    _gcn_set_standards(test_feed_dump)
-    target_include_directories(test_feed_dump PRIVATE ${RT})
-    target_compile_options(test_feed_dump PRIVATE ${GCN_RUNTIME_WARNINGS})
     set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_bot_link test_code_table test_aid)
     if(TARGET test_ports)
