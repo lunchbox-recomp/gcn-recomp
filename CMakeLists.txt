@@ -860,12 +860,14 @@ function(gcn_add_game)
     target_include_directories(test_anchor PRIVATE ${RT})
     target_compile_options(test_anchor PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The shader switch checks (tools/test_shader_env.cpp): empty and set switches in gen_pixel_shader.
     add_executable(test_shader_env EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_shader_env.cpp ${RT}/gx/shadergen.cpp)
     _gcn_set_standards(test_shader_env)
     target_include_directories(test_shader_env PRIVATE ${RT} ${GLAD_INCLUDE_DIR})
     target_compile_definitions(test_shader_env PRIVATE ${GCN_GL_DEFS})
     target_compile_options(test_shader_env PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The step switch checks (tools/test_step_env.cpp): empty and set switches in runtime/step.cpp.
     add_executable(test_step_env EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_step_env.cpp)
     _gcn_set_standards(test_step_env)
     target_include_directories(test_step_env PRIVATE ${RT})

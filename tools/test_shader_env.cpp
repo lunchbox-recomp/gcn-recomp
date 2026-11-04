@@ -5,7 +5,12 @@
 
 int main() {
     gx::ShaderKey key{};
-    unsetenv("GCN_SHOW");
+    // Each of these changes the program gen_pixel_shader writes, so the caller's must not reach it.
+    for (const char* name : {"GCN_TEV_STOP", "GCN_TEV_STOP_STAGES", "GCN_TEV_REG", "GCN_TEV_ALPHA",
+                             "GCN_NO_ALPHA_TEST", "GCN_NO_FOG", "GCN_RAS_WHITE", "GCN_TEX_WHITE", "GCN_SNAP",
+                             "GCN_FLAT", "GCN_SHOW", "GCN_SHOW_ALPHA", "GCN_SHOW_STAGES", "GCN_SHOW_MIN_STAGES",
+                             "GCN_SHOW_SPLIT"})
+        unsetenv(name);
     const std::string plain = gx::gen_pixel_shader(key);
     setenv("GCN_SHOW", "", 1);
     const std::string empty = gx::gen_pixel_shader(key);

@@ -17,6 +17,7 @@ static std::string run(const char* exe, const char* name, const char* value) {
         dup2(fds[1], 2);
         close(fds[1]);
         unsetenv("GCN_STEP_SKIP");
+        unsetenv("GCN_STEP_ONLY");
         unsetenv("GCN_STEP_POW");
         if (value) setenv(name, value, 1);
         execl(exe, exe, "child", (char*)nullptr);
