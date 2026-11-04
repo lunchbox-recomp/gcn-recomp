@@ -1273,6 +1273,7 @@ left.
   those sites wrote, who else wrote it: `[stwr] <addr> <pc>:<count> ...`. That tells a
   value carried from frame to frame (its only writers are steps) from a temporary that
   something assigns afresh each frame before a step adds to it, which must not be scaled.
+  An empty `GCN_STORE_HIST_PCS` records nothing.
 - `GCN_READERS=<file>` (hex guest addresses or `lo-hi` ranges, one per line) is the
   readers' side: within the same window, which code loads those addresses, printed as
   `[readers] <addr> <pc>:<count> ...`. It answers where a value whose unit the frame rate
