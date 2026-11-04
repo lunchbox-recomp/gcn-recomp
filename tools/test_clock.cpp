@@ -117,6 +117,9 @@ int main(int argc, char** argv) {
     check(unset_none && empty_none && zero_kept,
           "getenv_nonempty has no value for an unset or an empty switch, and gives a set one as it is");
 
+    // timing_init also reads GCN_CLOCK and GCN_CPU_SCALE, so the caller's are cleared.
+    unsetenv("GCN_CLOCK");
+    unsetenv("GCN_CPU_SCALE");
     setenv("GCN_TIMESCALE", "", 1);
     clock_set_scale(1);
     timing_init();
@@ -129,6 +132,7 @@ int main(int argc, char** argv) {
 
     const auto catchup = [&](const char* value) {
         return in_child("GCN_CATCHUP", value, [&] {
+                   // The re-exec needs argv[0] to be a path, as ctest gives it.
                    execl(argv[0], argv[0], "catchup", (char*)nullptr);
                    return 2;
                }).status;
