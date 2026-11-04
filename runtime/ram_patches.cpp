@@ -7,7 +7,7 @@
 
 namespace {
 std::string patch_file;
-constexpr size_t kMaxPatchList = 4u * RAM_SIZE + 4096u;  // 96 MiB and a little slack
+constexpr size_t kMaxPatchList = 4u * RAM_SIZE + 4096u;  // 96 MiB and 4 KiB, which the size message says
 
 [[noreturn]] void refuse(size_t line, const char* reason) {
     fatal("%s:%zu: %s", patch_file.c_str(), line, reason);
@@ -91,7 +91,7 @@ void ram_patches_apply(const char* disc_id) {
     const bool read_failed = ferror(input) != 0;
     fclose(input);
     if (read_failed) refuse_file("the RAM patch list can't be read");
-    if (text.size() > kMaxPatchList) refuse(1, "the file is bigger than 96 MiB, so it isn't a RAM patch list");
+    if (text.size() > kMaxPatchList) refuse_file("the file is bigger than 96 MiB and 4 KiB, so it isn't a RAM patch list");
     if (text.empty()) refuse(1, "the file is empty");
     if (text.back() != '\n')
         refuse(1 + size_t(std::count(text.begin(), text.end(), '\n')), "the last line needs a newline, since it may be cut short");
@@ -150,5 +150,6 @@ void ram_patches_apply(const char* disc_id) {
         count++;
         written += value_bytes.size();
     }
-    LOG(LOG_OS, "RAM patches: %zu patch%s, %zu bytes written", count, count == 1 ? "" : "es", written);
+    LOG(LOG_OS, "RAM patches: %zu patch%s, %zu byte%s written", count, count == 1 ? "" : "es", written,
+        written == 1 ? "" : "s");
 }
