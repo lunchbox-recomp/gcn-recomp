@@ -1310,7 +1310,7 @@ class TestMemory(SdCase):
             return read_blob(patcher, el, host, size)
 
         with mock.patch.object(rpatch.Patcher, '_blob', counted_read):
-            line = self.refusal(r"<memory .*> in a\.xml would make the RAM patches list bigger "
+            line = self.refusal(r"<memory .*> in a\.xml would make the RAM patch list bigger "
                                 r"than 96 MiB and 4 KiB, which the runtime can't read, so "
                                 r"nothing is written")
         self.assertEqual(line['packages'], ['a.xml'])
@@ -1329,7 +1329,7 @@ class TestMemory(SdCase):
         other = os.path.join(self.root, '.other-out')
         with mock.patch.object(rv, 'MAX_RAM_PATCH_LIST', len(expected) - 1):
             with self.assertRaisesRegex(rxml.Refused,
-                                        r"<memory .*> in a\.xml would make the RAM patches "
+                                        r"<memory .*> in a\.xml would make the RAM patch "
                                         r"list bigger than "):
                 rv.apply_packages(self.image, self.root, other, [])
         self.assertFalse(os.path.exists(other))

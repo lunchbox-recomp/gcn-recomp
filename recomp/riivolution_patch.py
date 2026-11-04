@@ -366,7 +366,7 @@ class Patcher:
         if original:
             line_size += 1 + 2 * len(original)
         if self.ram_list_size + line_size > self.max_ram_patch_list:
-            raise el.refuse('would make the RAM patches list bigger than 96 MiB and 4 KiB, '
+            raise el.refuse('would make the RAM patch list bigger than 96 MiB and 4 KiB, '
                             "which the runtime can't read, so nothing is written")
         if blob:
             value = self._blob(el, host, value_size)
