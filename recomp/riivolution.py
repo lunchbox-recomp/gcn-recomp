@@ -45,6 +45,8 @@ from riivolution_paths import PathError, control, cut, fold, match  # noqa: E402
 from riivolution_xml import Package, Refused, read_package  # noqa: E402
 
 RAM_LIST = 'ram-patches.txt'
+# Matches kMaxPatchList in runtime/ram_patches.cpp.
+MAX_RAM_PATCH_LIST = 4 * 0x1800000 + 4096
 OUTPUT_NAMES = (FST_FILE, RAM_LIST, MANIFEST)
 # A temp file is made new and is never followed through a link, since OUT can sit in a folder
 # that a release fills.
@@ -148,6 +150,14 @@ def parse_picks(specs: Sequence[str],
 
 
 def ram_text(disc_id: str, patches: Sequence[RamPatch]) -> bytes:
+    size = len('gcn-ram-patches 1\nbase \n') + len(disc_id)
+    for p in patches:
+        size += len(f'patch {p.addr:08x} ') + 2 * len(p.value) + 1
+        if p.original:
+            size += 1 + 2 * len(p.original)
+        if size > MAX_RAM_PATCH_LIST:
+            raise Refused(f'The output {RAM_LIST} is bigger than 96 MiB and 4 KiB, so it '
+                          "isn't a RAM patch list")
     lines = ['gcn-ram-patches 1', f'base {disc_id}']
     for p in patches:
         line = f'patch {p.addr:08x} {p.value.hex()}'
