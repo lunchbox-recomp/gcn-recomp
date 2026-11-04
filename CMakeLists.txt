@@ -821,7 +821,7 @@ function(gcn_add_game)
     if(_gcn_overlay)
       target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp)
       target_link_libraries(test_ports PRIVATE gcn_imgui)
-      target_compile_definitions(test_ports PRIVATE GCN_OVERLAY)
+      target_compile_definitions(test_ports PRIVATE GCN_OVERLAY GCN_OVERLAY_TEST)
     endif()
   endif()
 

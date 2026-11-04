@@ -112,6 +112,7 @@ void overlay_paths() {
     check(s.ram_patches == path_of("mods/ram.txt"), "RAM patches resolve beside settings.txt");
     for (const std::string& key : {s.disc_overlay, s.ram_patches}) {
         check(settings_choose_path(key, "flag.txt", "variable.txt") == "flag.txt", "a flag beats the variable and key");
+        check(settings_choose_path(key, "flag.txt", "") == "flag.txt", "a flag beats an empty variable");
         check(settings_choose_path(key, nullptr, "variable.txt") == "variable.txt", "a variable beats the key");
         check(settings_choose_path(key, nullptr, nullptr) == key, "the key supplies a path on its own");
         check(settings_choose_path(key, "", "variable.txt").empty(), "an empty flag means none");
@@ -120,6 +121,16 @@ void overlay_paths() {
     write_file(p, "disc_overlay\nram_patches   \n");
     const Settings empty = settings_load(p);
     check(empty.disc_overlay.empty() && empty.ram_patches.empty(), "empty path keys mean none");
+    const int work = open(".", O_RDONLY);
+    const bool entered = work >= 0 && chdir(g_dir.c_str()) == 0;
+    check(entered, "the settings work directory can be entered");
+    if (entered) {
+        write_file("settings.txt", "disc_overlay mods/disc.txt\nram_patches mods/ram.txt\n");
+        const Settings bare = settings_load("settings.txt");
+        check(bare.disc_overlay == "mods/disc.txt" && bare.ram_patches == "mods/ram.txt",
+              "a bare settings.txt keeps relative paths relative and unchanged");
+    }
+    if (work >= 0) { fchdir(work); close(work); }
 }
 
 void byte_order_mark() {

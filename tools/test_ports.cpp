@@ -65,6 +65,9 @@
 #include "vr_game.h"
 #ifdef GCN_OVERLAY
 #include "imgui.h"  // what the menu's navigation reads of the gamepads
+#ifdef GCN_OVERLAY_TEST
+#include "imgui_internal.h"  // inspect and select the registered page's tab
+#endif
 #endif
 #include <climits>
 #include <condition_variable>
@@ -1500,6 +1503,33 @@ void disc_speed(const std::string& dir) {
           "--disc=slow is refused with a line that says what --disc takes");
 }
 
+// ---- main() takes the overlay path from the flag, variable or settings key.
+void disc_overlay_flags() {
+    Settings settings;
+    settings.disc_overlay = "key.txt";
+    char game[] = "game", image[] = "game.iso", flag[] = "--disc-overlay=flag.txt";
+    char empty[] = "--disc-overlay=", later[] = "--disc-overlay=later.txt";
+    char* none[] = {game, image, nullptr};
+    char* one[] = {game, flag, nullptr};
+    char* blank[] = {game, empty, nullptr};
+    char* both[] = {game, flag, later, nullptr};
+    unsetenv("GCN_DISC_OVERLAY");
+    check(take_disc_overlay(settings, 2, none) == "key.txt", "the settings key supplies the overlay path");
+    check(take_disc_overlay(settings, 2, one) == "flag.txt", "the flag beats the settings key");
+    check(take_disc_overlay(settings, 2, blank).empty(), "an empty flag chooses no overlay");
+    check(take_disc_overlay(settings, 3, both) == "later.txt", "the last overlay flag wins");
+    setenv("GCN_DISC_OVERLAY", "variable.txt", 1);
+    check(take_disc_overlay(settings, 2, none) == "variable.txt", "the variable beats the settings key");
+    check(take_disc_overlay(settings, 2, one) == "flag.txt", "the flag beats the variable");
+    check(take_disc_overlay(settings, 2, blank).empty(), "an empty flag beats the variable");
+    setenv("GCN_DISC_OVERLAY", "", 1);
+    check(take_disc_overlay(settings, 2, none).empty(), "an empty variable chooses no overlay");
+    check(take_disc_overlay(settings, 2, one) == "flag.txt", "a nonempty flag beats an empty variable");
+    unsetenv("GCN_DISC_OVERLAY");
+    settings.disc_overlay.clear();
+    check(take_disc_overlay(settings, 2, none).empty(), "an empty settings key chooses no overlay");
+}
+
 // ---- main() takes the bot from --bot=PATH or GCN_BOT (take_bot), which turns the gamepads
 // off. Each check starts with the gamepads on, so one the bot turned off shows.
 void bot_flags(const std::string& dir) {
@@ -1714,6 +1744,7 @@ void draw_added_page(void* user) { ++*static_cast<int*>(user); }
 void overlay(const std::string& dir) {
     static int page_draws = 0;
     page_draws = 0;
+    overlay_test_reset_pages();
     overlay_add_page("Extra", draw_added_page, &page_draws);
     const std::string path = dir + "/settings.txt";
     write_file(path, "# The picture\naspect 4:3\nvsync on\nfullscreen 0\n\nscale 2\ndisc console\n# the end\n");
@@ -1741,7 +1772,7 @@ void overlay(const std::string& dir) {
     host_frame(guest);
     check(frames <= 2 && overlay_open() && paused(), "a gamepad's Back opens the overlay, and the guest is held within 2 host frames");
     host_frame(guest);
-    check(page_draws > 0, "an added page draws while the overlay test has no window");
+    check(page_draws == 0, "a null window never calls an added page without an ImGui context");
 
     // Each pushed all the way, and back to where it rests: a virtual pad's triggers rest at the
     // bottom of their axis.
@@ -2098,7 +2129,23 @@ void overlay_buttons(const std::string& dir) {
     picture.path = dir + "/buttons-settings.txt";
     picture.apply = record_apply;
     const int applies = g_applies;
+    overlay_test_reset_pages();
+    int page_draws = 0;
+    overlay_add_page("Extra", draw_added_page, &page_draws);
+    const std::string page_errors = dir + "/page-errors.txt";
+    capture(page_errors, [&] {
+        overlay_add_page("", draw_added_page, &page_draws);
+        overlay_add_page("Extra", draw_added_page, &page_draws);
+        overlay_add_page("Display", draw_added_page, &page_draws);
+    });
+    check(lines_with(page_errors, "[overlay] page title is empty\n") == 1 &&
+              lines_with(page_errors, "[overlay] page title Extra is already in use\n") == 1 &&
+              lines_with(page_errors, "[overlay] page title Display is already in use\n") == 1,
+          "empty and duplicate page titles each print one refusal");
     overlay_init(window, "Test title", picture);
+    capture(page_errors, [&] { overlay_add_page("Late", draw_added_page, &page_draws); });
+    check(lines_with(page_errors, "[overlay] page registration is closed after init\n") == 1,
+          "a page registered after init prints one refusal");
     gamepads_init();
     Virtual pad{"virtual pad buttons"};
     attach(pad);
@@ -2114,6 +2161,43 @@ void overlay_buttons(const std::string& dir) {
     // A face or a key held as the menu opens stays out of it until it's let go, though the
     // focus is where the menu left it, here on Restart game (below).
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    ImGuiTabBar* pages = nullptr;
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    for (int i = 0; i < context->TabBars.GetMapSize(); i++) {
+        ImGuiTabBar* bar = context->TabBars.TryGetMapData(i);
+        if (!bar) continue;
+        bool display = false, extra = false;
+        for (const ImGuiTabItem& tab : bar->Tabs) {
+            if (tab.NameOffset < 0 || tab.NameOffset >= bar->TabsNames.Buf.Size) continue;
+            const char* title = bar->TabsNames.Buf.Data + tab.NameOffset;
+            display |= strcmp(title, "Display") == 0;
+            extra |= strcmp(title, "Extra") == 0;
+        }
+        if (display && extra) { pages = bar; break; }
+    }
+    bool order = false;
+    if (pages) {
+        int display = -1, extra = -1;
+        for (int i = 0; i < pages->Tabs.Size; i++) {
+            if (pages->Tabs[i].NameOffset < 0 || pages->Tabs[i].NameOffset >= pages->TabsNames.Buf.Size) continue;
+            const char* title = pages->TabsNames.Buf.Data + pages->Tabs[i].NameOffset;
+            if (!strcmp(title, "Display")) display = i;
+            if (!strcmp(title, "Extra")) { extra = i; pages->NextSelectedTabId = pages->Tabs[i].ID; }
+        }
+        order = display >= 0 && extra > display && pages->Tabs.Size == 2;
+        host_frame(guest);
+        host_frame(guest);
+    }
+    check(order, "the added page's tab follows Display and refused pages add no tabs");
+    check(page_draws > 0, "selecting the added page calls its callback in the dummy window");
+    if (pages) {
+        for (const ImGuiTabItem& tab : pages->Tabs)
+            if (tab.NameOffset >= 0 && tab.NameOffset < pages->TabsNames.Buf.Size &&
+                !strcmp(pages->TabsNames.Buf.Data + tab.NameOffset, "Display"))
+                pages->NextSelectedTabId = tab.ID;
+        host_frame(guest);
+        host_frame(guest);
+    }
     for (int i = 0; i < 8; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     for (int i = 0; i < 2; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
@@ -2380,6 +2464,7 @@ int run_ports(const std::string& dir) {
     labels(dir);
     headset_layout();
     disc_speed(dir);
+    disc_overlay_flags();
     bot_flags(dir);
     run_end(dir);
     quit_at_frame(dir);

@@ -378,8 +378,20 @@ void menu_frame() {
 }  // namespace
 
 void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
-    if (!g_ready && title && draw) g_pages.push_back({title, draw, user});
+    if (g_ready) { fprintf(stderr, "[overlay] page registration is closed after init\n"); return; }
+    if (!title || !*title) { fprintf(stderr, "[overlay] page title is empty\n"); return; }
+    if (!strcmp(title, "Display") || std::any_of(g_pages.begin(), g_pages.end(),
+                                                  [&](const AddedPage& page) { return page.title == title; })) {
+        fprintf(stderr, "[overlay] page title %s is already in use\n", title);
+        return;
+    }
+    if (!draw) { fprintf(stderr, "[overlay] page %s has no callback\n", title); return; }
+    g_pages.push_back({title, draw, user});
 }
+
+#ifdef GCN_OVERLAY_TEST
+void overlay_test_reset_pages() { g_pages.clear(); g_ready = false; }
+#endif
 
 void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& picture) {
     g_ready = true;
@@ -482,7 +494,6 @@ void overlay_gate(int port, PadState& p) {
 void overlay_menu_frame() {
     if (!g_open) return;
     if (g_window) menu_frame();
-    else for (const AddedPage& page : g_pages) page.draw(page.user);
 }
 
 void overlay_draw() {

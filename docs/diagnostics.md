@@ -1421,7 +1421,7 @@ times worked out from its numbers, at both speeds. It needs no disc image or dev
 
 ## The disc overlay
 
-`disc_overlay PATH` in `settings.txt` makes the runtime read its disc through the overlay
+`disc_overlay PATH` in `settings.txt` makes the desktop frontend read its disc through the overlay
 that manifest describes (see `docs/disc-overlay.md`). The path is relative to the folder
 holding `settings.txt`.
 
@@ -1429,7 +1429,7 @@ holding `settings.txt`.
 variable. An empty value means no overlay.
 
 `ram_patches PATH` names a RAM patch file in the same folder as `settings.txt` when the
-path is relative. The setting loads now, and a later runtime change will read it.
+path is relative. The desktop frontend loads the key, but nothing reads it yet.
 
 The manifest loads before boot reads the disc header, and every host file it names opens
 once then. The run stops at boot if the manifest or one of its files is wrong or the image
@@ -1438,6 +1438,8 @@ isn't the one it was made for.
 The message names the manifest and the line. A manifest that can't be opened, can't be
 read or is over 16 MiB has no line, so the message names the file alone. An empty
 `--disc-overlay=` disables the overlay for that run.
+
+The overlay remains selected after a console reset relaunches the desktop frontend.
 
 `--log=dvd` prints the load with its file count and bytes, then each piece of a DVD
 command's read that comes from a host file. The audio stream reads a block at a time, so

@@ -8,6 +8,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 // The read the overlay sits on, which is the image, plain or CISO. False if it can't give all
@@ -42,9 +43,10 @@ bool disc_overlay_loaded();
 // Close the host files and drop the overlay.
 void disc_overlay_unload();
 
-// The manifest to load: --disc-overlay=FILE if g_disc_overlay_flag is set, else the
-// GCN_DISC_OVERLAY variable, else null. An empty flag or variable means none.
-extern const char* g_disc_overlay_flag;
+// The desktop frontend sets this from its flag, variable and settings key. Android,
+// visionOS and the benchmark leave it unset and use GCN_DISC_OVERLAY directly.
+// An empty selected path means no overlay.
+extern std::optional<std::string> g_disc_overlay_selected_path;
 const char* disc_overlay_path();
 
 // Where --log=dvd lines go, or null for none. Called with the load and with each piece of a

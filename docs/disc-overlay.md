@@ -61,7 +61,7 @@ Dolphin does the same when it builds a virtual disc for a folder of files. It wr
 
 ## Running with one
 
-`--disc-overlay=FILE` or `GCN_DISC_OVERLAY=FILE` names the manifest, and the flag wins when both are set. An empty variable counts as unset, but an empty `--disc-overlay=` stops the run and says so.
+`disc_overlay PATH` in `settings.txt` names the manifest for the desktop frontend. `GCN_DISC_OVERLAY=FILE` overrides the key, and `--disc-overlay=FILE` overrides the variable. An empty value means no overlay, even when a lower priority source names one.
 
 The runtime loads the manifest before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
 

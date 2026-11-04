@@ -63,7 +63,8 @@ void di_init(const char* iso_path) {
             if (hdr[8 + i] == 1) g_ciso_map[i] = stored++;
         LOG(LOG_DVD, "CISO image: %u-byte blocks, %d stored", g_ciso_block, stored);
     }
-    // --disc-overlay=FILE or GCN_DISC_OVERLAY. Loaded here, before boot reads the header.
+    // The desktop's selected path, or GCN_DISC_OVERLAY on Android, visionOS and the
+    // benchmark. Loaded here, before boot reads the header.
     if (const char* manifest = disc_overlay_path()) {
         if (g_log_enabled[LOG_DVD]) g_disc_overlay_log = [](const char* line) { LOG(LOG_DVD, "%s", line); };
         // The image's bytes as base_read sees them: a CISO's map covers its blocks, and a plain image is its file.

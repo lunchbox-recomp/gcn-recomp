@@ -228,12 +228,14 @@ hundreds of milliseconds (`f19f98d`).
   port the file didn't name it on.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
-  `fullscreen`, `scale` and `disc`. A flag beats the file for that run and isn't written
-  back, and a save rewrites only the owned keys' lines and adds any that are missing.
+  `fullscreen`, `scale` and `disc`, while the desktop frontend also reads `disc_overlay` and
+  `ram_patches`. A flag beats the file for that run and isn't written back, and a save
+  rewrites only the owned keys' lines and adds any that are missing.
 - `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. It pauses the game and
   holds the game's input back while it's open. Its Display page sets the picture and saves
   what it changes to `settings.txt`. Its Restart calls `frontend_restart` (`frontend.h`), as a
-  game's own page can.
+  game's own page can. `overlay_add_page` registers a game's page after Display before the
+  overlay starts.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;
   `xr_desktop.cpp` puts it on the desktop's GL context for PC VR (`--vr`, Windows).

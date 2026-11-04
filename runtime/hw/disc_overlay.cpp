@@ -13,7 +13,7 @@
 #include <set>
 #include <vector>
 
-const char* g_disc_overlay_flag = nullptr;
+std::optional<std::string> g_disc_overlay_selected_path;
 void (*g_disc_overlay_log)(const char* line) = nullptr;
 
 namespace {
@@ -281,7 +281,8 @@ uint64_t disc_overlay_fnv1a64(const void* data, size_t size) {
 }
 
 const char* disc_overlay_path() {
-    if (g_disc_overlay_flag) return *g_disc_overlay_flag ? g_disc_overlay_flag : nullptr;
+    if (g_disc_overlay_selected_path)
+        return g_disc_overlay_selected_path->empty() ? nullptr : g_disc_overlay_selected_path->c_str();
     const char* env = getenv("GCN_DISC_OVERLAY");
     return env && *env ? env : nullptr;
 }

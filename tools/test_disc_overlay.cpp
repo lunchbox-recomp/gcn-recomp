@@ -402,15 +402,15 @@ void file_size() {
 
 void path_choice() {
     unsetenv("GCN_DISC_OVERLAY");
-    g_disc_overlay_flag = nullptr;
+    g_disc_overlay_selected_path.reset();
     check(disc_overlay_path() == nullptr, "with no flag and no variable there is no overlay");
     setenv("GCN_DISC_OVERLAY", "from variable.txt", 1);
     check(std::string(disc_overlay_path()) == "from variable.txt", "GCN_DISC_OVERLAY names the manifest");
-    g_disc_overlay_flag = "from flag.txt";
+    g_disc_overlay_selected_path = "from flag.txt";
     check(std::string(disc_overlay_path()) == "from flag.txt", "--disc-overlay beats the variable");
-    g_disc_overlay_flag = "";
+    g_disc_overlay_selected_path = "";
     check(disc_overlay_path() == nullptr, "an empty flag wins and means no overlay");
-    g_disc_overlay_flag = nullptr;
+    g_disc_overlay_selected_path.reset();
     setenv("GCN_DISC_OVERLAY", "", 1);
     check(disc_overlay_path() == nullptr, "an empty variable counts as unset");
     unsetenv("GCN_DISC_OVERLAY");

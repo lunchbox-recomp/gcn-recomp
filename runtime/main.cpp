@@ -445,6 +445,15 @@ static bool take_disc_speed(const Settings& settings, int argc, char** argv) {
     return true;
 }
 
+// The last flag wins over the variable, which wins over the settings key. An empty value
+// at either level chooses no overlay for this run.
+static std::string take_disc_overlay(const Settings& settings, int argc, char** argv) {
+    const char* flag = nullptr;
+    for (int i = 1; i < argc; i++)
+        if (!strncmp(argv[i], "--disc-overlay=", 15)) flag = argv[i] + 15;
+    return settings_choose_path(settings.disc_overlay, flag, getenv("GCN_DISC_OVERLAY"));
+}
+
 // Sets `bot` to the socket of the bot that drives the pads (bot_link.h). The last --bot=PATH wins,
 // then GCN_BOT, and there's none when neither names one. A bot opens no controller, as under
 // --no-gamepads. The result is false, naming the flag or variable that brought the bot, for a bare
@@ -557,9 +566,6 @@ int main(int argc, char** argv) {
         }
         else if (!strcmp(argv[i], "--telemetry")) telemetry_to = "";
         else if (!strncmp(argv[i], "--telemetry=", 12)) telemetry_to = argv[i] + 12;
-        // --disc-overlay=FILE: read the disc through an overlay (hw/disc_overlay.h). It beats
-        // GCN_DISC_OVERLAY, which di_init checks when there's no flag.
-        else if (!strncmp(argv[i], "--disc-overlay=", 15)) g_disc_overlay_flag = argv[i] + 15;
         else if (!strcmp(argv[i], "--first-person")) first_person = true;
         else if (!strcmp(argv[i], "--no-input-log")) input_log = false;
         else if (!strncmp(argv[i], "--input-log=", 12)) input_log_dir = argv[i] + 12;
@@ -588,9 +594,7 @@ int main(int argc, char** argv) {
         else if (!strcmp(argv[i], "--dump-output")) gx::g_dump_output = true;
         else if (argv[i][0] != '-') iso = argv[i];
     }
-    const std::string disc_overlay_path_for_run =
-        settings_choose_path(settings.disc_overlay, g_disc_overlay_flag, getenv("GCN_DISC_OVERLAY"));
-    g_disc_overlay_flag = disc_overlay_path_for_run.c_str();
+    g_disc_overlay_selected_path = take_disc_overlay(settings, argc, argv);
     // --eye and GCN_THEATER_STEREO (below) show a headset's views on the desktop. A headset's
     // panel keeps the console's 4:3 whatever the output aspect is, so these ignore it: the
     // window opens at 4:3 and the game's hooks see 4:3, not a shape the view isn't drawn at.
