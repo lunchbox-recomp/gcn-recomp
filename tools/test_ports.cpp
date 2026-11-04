@@ -1706,18 +1706,19 @@ void quit_at_frame(const std::string& dir) {
 }
 
 // ---- GCN_INPUT_LOG=1 has a script say how many presses it holds. "x" adds none, so the
-// presses the run started with are left as they were.
+// presses the run started with are left as they were. Each call is captured on its own.
 void input_log_switch(const std::string& dir) {
-    const std::string out = dir + "/input-log-stderr.txt";
-    capture(out, [] {
-        setenv("GCN_INPUT_LOG", "", 1);
-        input_script_init("x");
-        setenv("GCN_INPUT_LOG", "1", 1);
-        input_script_init("x");
-        unsetenv("GCN_INPUT_LOG");
-        input_script_init("x");
-    });
-    check(lines_with(out, "scripted press(es)") == 1,
+    const auto said = [&](const char* name, const char* value) {
+        const std::string out = dir + "/input-log-" + name + ".txt";
+        capture(out, [value] {
+            if (value) setenv("GCN_INPUT_LOG", value, 1);
+            else unsetenv("GCN_INPUT_LOG");
+            input_script_init("x");
+        });
+        return lines_with(out, "scripted press(es)");
+    };
+    const int empty = said("empty", ""), on = said("on", "1"), unset = said("unset", nullptr);
+    check(empty == 0 && on == 1 && unset == 0,
           "an empty GCN_INPUT_LOG logs nothing, as an unset one does, and GCN_INPUT_LOG=1 says what the script holds");
 }
 
