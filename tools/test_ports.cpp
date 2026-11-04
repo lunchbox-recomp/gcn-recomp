@@ -1662,6 +1662,7 @@ void telemetry_flags() {
     char other[] = "--telemetryx=x";
     char* none[] = {game, image, nullptr};
     char* both[] = {game, to_a, image, to_b, nullptr};
+    char* mixed[] = {game, to_a, bare, nullptr};
     char* lone[] = {game, bare, image, nullptr};
     char* blank[] = {game, empty, nullptr};
     char* near[] = {game, other, nullptr};
@@ -1671,6 +1672,7 @@ void telemetry_flags() {
     unsetenv("GCN_TELEMETRY");
     check(take_telemetry(2, none) == nullptr, "with no --telemetry and no GCN_TELEMETRY there's no telemetry");
     check(is(take_telemetry(4, both), "10.0.0.2:5678"), "--telemetry=host:port is the target, the last one winning");
+    check(is(take_telemetry(3, mixed), ""), "a bare --telemetry after --telemetry=host:port wins and uses the default address");
     check(is(take_telemetry(3, lone), ""), "a bare --telemetry is the default address");
     check(is(take_telemetry(2, blank), ""), "--telemetry= is the default address");
     check(take_telemetry(2, near) == nullptr, "--telemetryx= isn't taken for --telemetry=");
