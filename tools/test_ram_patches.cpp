@@ -106,6 +106,12 @@ int main(int argc, char** argv) {
     path = file(head + "patch 80003300 aabbccdd 0000\n");
     check(run(path).empty() && logs.size() == 1 &&
           logs[0] == "RAM patches: 1 patch, 4 bytes written", "OS log counts value bytes, not original bytes");
+    path = file(head + "patch 80007000 aa\n");
+    check(run(path).empty() && logs.size() == 1 && logs[0] == "RAM patches: 1 patch, 1 byte written",
+          "OS log uses singular byte");
+    path = file(head);
+    check(run(path).empty() && logs.size() == 1 && logs[0] == "RAM patches: 0 patches, 0 bytes written",
+          "OS log uses plural for none");
     path = file(head + "patch 817ffffc aabbccdd 00000000\n");
     check(run(path).empty() && !memcmp(g_mem + RAM_SIZE - 4, "\xaa\xbb\xcc\xdd", 4) &&
           writes.size() == 1 && writes[0].addr == 0x817ffffc && writes[0].len == 4,
@@ -162,8 +168,8 @@ int main(int argc, char** argv) {
     const size_t limit = 4u * RAM_SIZE + 4096u;
     path = sparse(limit + 1, 'x');
     error = run(path);
-    check(error.find(path + ":1:") == 0 && error.find("bigger than 96 MiB") != std::string::npos && writes.empty(),
-          "a list a byte over the limit is refused before parsing");
+    check(error.rfind(path + ": ", 0) == 0 && error.find("bigger than 96 MiB and 4 KiB") != std::string::npos &&
+          error.back() != '.' && writes.empty(), "a list a byte over the limit is refused naming no line, before parsing");
     remove(path.c_str());
     path = sparse(limit, '\n');
     error = run(path);
