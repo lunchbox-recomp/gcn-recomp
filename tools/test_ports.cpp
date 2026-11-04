@@ -2130,7 +2130,8 @@ void overlay_buttons(const std::string& dir) {
     picture.apply = record_apply;
     const int applies = g_applies;
     overlay_test_reset_pages();
-    int page_draws = 0;
+    static int page_draws = 0;
+    page_draws = 0;
     overlay_add_page("Extra", draw_added_page, &page_draws);
     const std::string page_errors = dir + "/page-errors.txt";
     capture(page_errors, [&] {

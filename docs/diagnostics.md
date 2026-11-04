@@ -1421,9 +1421,9 @@ times worked out from its numbers, at both speeds. It needs no disc image or dev
 
 ## The disc overlay
 
-`disc_overlay PATH` in `settings.txt` makes the desktop frontend read its disc through the overlay
-that manifest describes (see `docs/disc-overlay.md`). The path is relative to the folder
-holding `settings.txt`.
+`disc_overlay PATH` in `settings.txt` makes the desktop frontend read its disc through the
+overlay that manifest describes (see `docs/disc-overlay.md`). The path is relative to the
+folder holding `settings.txt`.
 
 `GCN_DISC_OVERLAY=FILE` overrides the key, and `--disc-overlay=FILE` overrides the
 variable. An empty value means no overlay.
