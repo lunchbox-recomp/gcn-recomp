@@ -124,7 +124,7 @@ Numbers and byte strings are lowercase hex with no `0x`, and the address has eig
 
 The lines keep the order the patches turn on, with the packages in the order of their XML paths. A line's `original` is what RAM holds once the lines before it are in. That's why a patch can sit inside the bytes a `valuefile` patch wrote, and why overlaps inside one package are fine.
 
-The runtime applies `OUT/ram-patches.txt` at boot when `--ram-patches=OUT/ram-patches.txt` names it. It checks each `original` against RAM before writing that patch's bytes.
+The runtime applies `OUT/ram-patches.txt` at boot when `--ram-patches=OUT/ram-patches.txt`, `GCN_RAM_PATCHES` or a `ram_patches` line in `settings.txt` names it (`docs/diagnostics.md`, "RAM patches at boot"). It checks each `original` against RAM before writing that patch's bytes.
 
 ## Two packages
 
