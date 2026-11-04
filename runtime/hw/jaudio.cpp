@@ -499,7 +499,7 @@ void wav_write(const int16_t* lr, int frames) {
     static bool opened;
     if (!opened) {
         opened = true;
-        if (const char* p = getenv("GCN_JAUDIO_WAV")) g_wav = fopen(p, "wb");
+        if (const char* p = getenv("GCN_JAUDIO_WAV"); p && *p) g_wav = fopen(p, "wb");
     }
     if (!g_wav) return;
     g_wav_bytes += frames * 4;

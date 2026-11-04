@@ -150,7 +150,7 @@ static void pads_down() {
 
 static void on_interrupt() {
     // GCN_RAM_DUMP=<path>: the guest RAM at the interrupt, for reading the game's state offline.
-    if (const char* path = getenv("GCN_RAM_DUMP")) {
+    if (const char* path = getenv("GCN_RAM_DUMP"); path && *path) {
         FILE* f = fopen(path, "wb");
         if (!f) perror("GCN_RAM_DUMP");
         else { fwrite(g_mem, 1, RAM_SIZE, f); fclose(f); fprintf(stderr, "RAM written to %s\n", path); }
@@ -163,7 +163,7 @@ static void on_interrupt() {
 }
 
 static void on_fault(const void* fault_addr, int code) {
-    if (const char* path = getenv("GCN_RAM_DUMP")) {
+    if (const char* path = getenv("GCN_RAM_DUMP"); path && *path) {
         if (FILE* f = fopen(path, "wb")) { fwrite(g_mem, 1, RAM_SIZE, f); fclose(f); fprintf(stderr, "RAM written to %s\n", path); }
     }
     uintptr_t a = (uintptr_t)fault_addr;

@@ -320,5 +320,5 @@ void audio_wav_capture(const int16_t* s, int frames) {
 // GCN_WAV=<path> records exactly what went to the device. Opened here rather than in a
 // backend because it is the mix that is being captured, not the device.
 void audio_open_wav() {
-    if (const char* p = getenv("GCN_WAV")) { g_wav = fopen(p, "wb"); if (g_wav) wav_header(g_wav, 0); }
+    if (const char* p = getenv("GCN_WAV"); p && *p) { g_wav = fopen(p, "wb"); if (g_wav) wav_header(g_wav, 0); }
 }

@@ -571,7 +571,7 @@ void store_hist_init() {
     g_sthist.counts.resize(words);
     g_sthist.last_frame.resize(words);
     g_sthist.streak.resize(words);
-    if (const char* path = getenv("GCN_STORE_HIST_PCS")) {
+    if (const char* path = getenv("GCN_STORE_HIST_PCS"); path && *path) {
         g_sthist.listed.resize(words);
         if (FILE* f = fopen(path, "r")) {
             char line[64];
@@ -637,7 +637,7 @@ struct Readers {
 std::vector<Readers> g_readers = [] {
     std::vector<Readers> v;
     const char* path = getenv("GCN_READERS");
-    if (!path) return v;
+    if (!path || !*path) return v;
     FILE* f = fopen(path, "r");
     if (!f) { fprintf(stderr, "[readers] cannot read %s\n", path); return v; }
     char line[128];

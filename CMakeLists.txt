@@ -1047,7 +1047,11 @@ function(gcn_add_game)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
-    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay
+    add_executable(test_feed_dump EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_feed_dump.cpp)
+    _gcn_set_standards(test_feed_dump)
+    target_include_directories(test_feed_dump PRIVATE ${RT})
+    target_compile_options(test_feed_dump PRIVATE ${GCN_RUNTIME_WARNINGS})
+    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_bot_link test_code_table test_aid)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)

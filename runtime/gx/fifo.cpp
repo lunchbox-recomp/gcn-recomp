@@ -5,6 +5,7 @@
 #include "gx.h"
 #include "render.h"
 #include "render_gl.h"
+#include "feed_dump.h"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -83,7 +84,7 @@ static void ram_dump_frame(uint32_t frame) {
     if (at.empty() || std::find(at.begin(), at.end(), frame) == at.end()) return;
     const char* dir = getenv("GCN_RAM_DUMP_DIR");
     char path[1024];
-    snprintf(path, sizeof path, "%s/ram_%05u.bin", dir ? dir : ".", frame);
+    snprintf(path, sizeof path, "%s/ram_%05u.bin", dir && *dir ? dir : ".", frame);
     if (FILE* f = fopen(path, "wb")) {
         fwrite(g_mem, 1, RAM_SIZE, f);
         fclose(f);
@@ -443,10 +444,9 @@ static uint32_t cp_consume(const uint8_t* data, uint32_t len, uint32_t* need) {
 // Feed bytes to the command processor, handling commands split across chunks.
 static void cp_feed(const uint8_t* data, uint32_t len) {
     // GCN_FEED_DUMP=<path>: every byte handed to the command parser, in order.
-    static FILE* dump = [] { const char* p = getenv("GCN_FEED_DUMP"); return p ? fopen(p, "wb") : nullptr; }();
-    static FILE* index = [] { const char* p = getenv("GCN_FEED_DUMP"); if (!p) return (FILE*)nullptr; std::string s = std::string(p) + ".idx"; return fopen(s.c_str(), "w"); }();
+    static FeedDump files = open_feed_dump(getenv("GCN_FEED_DUMP"));
     static uint64_t fed;
-    if (dump) { fwrite(data, 1, len, dump); fflush(dump); fprintf(index, "%llX %08X %u\n", (unsigned long long)fed, (uint32_t)(data - g_mem), len); fflush(index); fed += len; }
+    if (files.dump) { fwrite(data, 1, len, files.dump); fflush(files.dump); fprintf(files.index, "%llX %08X %u\n", (unsigned long long)fed, (uint32_t)(data - g_mem), len); fflush(files.index); fed += len; }
     uint32_t need = 0;
     if (g_pending.empty()) {
         uint32_t used = cp_consume(data, len, &need);
@@ -795,7 +795,7 @@ void debug_dump_fifo() {
     fprintf(stderr, "  PE token=%04X ctrl=%04X finish raised=%u acked=%u coalesced=%u\n", g_pe_token, g_pe_ctrl, g_pe_finish_raised, g_pe_finish_acked, g_pe_finish_coalesced);
     fprintf(stderr, "  front end: queued %zu bytes in %zu batches, busy=%d sleeping=%d, guest waiting=%d\n", (size_t)g_fe_bytes, g_fe_queue.size(), (int)g_fe_busy, (int)g_fe_sleeping, (int)g_guest_waiting);
     // GCN_FIFO_DUMP=<path>: the GP FIFO's memory, base to end, for decoding offline.
-    if (const char* path = getenv("GCN_FIFO_DUMP")) {
+    if (const char* path = getenv("GCN_FIFO_DUMP"); path && *path) {
         uint32_t base = g_cp_base & 0x03FFFFE0, end = cp_end_excl();
         if (FILE* f = fopen(path, "wb")) {
             fwrite(phys_ptr(base), 1, end > base ? end - base : 0, f);

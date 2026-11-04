@@ -84,9 +84,9 @@ void load_powers(const char* path) {
     fprintf(stderr, "[step] %s: %d sites with their own power\n", path, n);
 }
 const bool lists_loaded = [] {
-    if (const char* e = getenv("GCN_STEP_SKIP")) load_list(e, false);
-    if (const char* e = getenv("GCN_STEP_ONLY")) load_list(e, true);
-    if (const char* e = getenv("GCN_STEP_POW")) load_powers(e);
+    if (const char* e = getenv("GCN_STEP_SKIP"); e && *e) load_list(e, false);
+    if (const char* e = getenv("GCN_STEP_ONLY"); e && *e) load_list(e, true);
+    if (const char* e = getenv("GCN_STEP_POW"); e && *e) load_powers(e);
     return true;
 }();
 inline double scale_at(uint32_t pc, double p) {

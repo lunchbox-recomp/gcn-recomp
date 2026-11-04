@@ -450,7 +450,8 @@ moves between stereo and theater, so the first frame after the change can be dum
 The app has no environment of its own, so `gcn_env.txt` in its files directory
 (`/sdcard/Android/data/<package>/files/`), one `KEY=VALUE` per line, is put into it before
 the runtime starts; `gcn_input.txt` there holds a `GCN_INPUT` script, and `GCN_REPLAY=<dir>`
-in the env file replays an input log relative to that directory. Its log is
+in the env file replays an input log relative to that directory. An empty `GCN_REPLAY`
+doesn't load an input log. Its log is
 `adb logcat -s <game>`, with a line every second: compositor and game frames, the longest
 wait between game frames, the render thread's time per stereo frame, how many display frames
 each game frame stayed up (`held 1:a 2:b 3:c 4+:d`; even pacing is all one column), the
@@ -492,7 +493,8 @@ shell picks the headset's on Meta's runtime by itself).
 timer while `<game>_bench` or `<game>_egl` runs and writes a histogram at the end; it needs no
 perf permissions, which a Quest's shell does not have. The kernel rounds the timer, so the
 counts are proportions rather than milliseconds. `GCN_PROFILE_DELAY=<seconds>` starts
-sampling later, to profile one stretch of a route. `tools/profile_report.py <file>
+sampling later, to profile one stretch of a route. An empty `GCN_PROFILE` records nothing.
+`tools/profile_report.py <file>
 <unstripped binary> --addr2line=<llvm-addr2line>` sums it by function, overall and per
 thread; with `--symbolizer=<llvm-symbolizer> --outer=1` instead it names each sample by the
 outermost function of its inline chain -- the recompiled function a guest load was inlined
@@ -1001,7 +1003,7 @@ which pulls the ring couldn't fill.
 
 `GCN_WAV=<file>` writes what went to the device, the DVD music mixed in, as a 16-bit stereo
 WAV file at 48 kHz. Its header is rewritten after every write, so a run that's stopped from
-outside still leaves a file that reads.
+outside still leaves a file that reads. An empty `GCN_WAV` records nothing.
 
 `GCN_JAUDIO_WAV=<file>` records JAudio's 32 kHz output. Its header is rewritten every frame,
 so a run that's stopped from outside still leaves a file that reads.
@@ -1088,7 +1090,8 @@ check, and the exit code is 0 only if all pass.
 how many top-level texels are not black -- which tells a texture the game never wrote (all
 zero) from one the shader mishandles. For an indexed texture it adds the palette entries the
 texels use, decoded, and which palette variant this is. `GCN_TEXDUMP=<dir>` writes each
-texture's top level as `<dir>/tex_<id>.png`, alpha forced opaque.
+texture's top level as `<dir>/tex_<id>.png`, alpha forced opaque. An empty `GCN_TEXDUMP`
+records nothing.
 
 The texture cache checks a texture's texels once per frame, assuming a game does not rewrite
 a texture between two draws of one frame. `GCN_TEXHASH_ALWAYS=1` checks on every lookup; if
@@ -1137,7 +1140,7 @@ use, which every lookup prolonged.
   as it was produced, twice: its colour, and its alpha as grey (`copy_<frame>_<n>_tex<id>`).
   `GCN_COPYDUMP_SIZE=WxH` writes every copy of that size instead, in whatever frame: a
   render to texture done once, at a moment that differs from run to run, is caught
-  without knowing the frame.
+  without knowing the frame. An empty `GCN_COPYDUMP` records nothing.
 - `GCN_DRAWLOG_COPY=WxH` logs, like `GCN_DRAWLOG`, every batch holding a copy of that
   size, and `GCN_PIXEL` probes it too. Both forms of the log list the copies between the
   draws (`[copy] after draw n`, with the copy's texture id and format), give each draw's
@@ -1207,8 +1210,9 @@ so the variants never mix with the real ones).
 - `GCN_RAM_DUMP_AT=<frame>,...` writes the guest RAM at the end of each of those submitted
   frames (the count `GCN_INPUT` keys on) to `GCN_RAM_DUMP_DIR` as `ram_<frame>.bin`, from
   the guest thread; for finding a game's variables by comparing its memory over a scripted
-  run. The log line names the presented frame it was taken at too, the number the frame
-  dumps carry, so a dump can be matched to what was on screen. The dump is physical RAM: a
+  run. An empty `GCN_RAM_DUMP_DIR` uses the working directory. The log line names the
+  presented frame it was taken at too, the number the frame dumps carry, so a dump can be
+  matched to what was on screen. The dump is physical RAM: a
   game that maps memory through its page tables has its paged variables wherever their
   pages happen to be, and its page table (in the dump too) says which virtual page each is.
 - `GCN_TOKLOG=1` prints every PE token as it is signalled, and every draw-done (finish)
@@ -1265,12 +1269,13 @@ left.
   those sites wrote, who else wrote it: `[stwr] <addr> <pc>:<count> ...`. That tells a
   value carried from frame to frame (its only writers are steps) from a temporary that
   something assigns afresh each frame before a step adds to it, which must not be scaled.
+  An empty `GCN_STORE_HIST_PCS` records nothing.
 - `GCN_READERS=<file>` (hex guest addresses or `lo-hi` ranges, one per line) is the
   readers' side: within the same window, which code loads those addresses, printed as
   `[readers] <addr> <pc>:<count> ...`. It answers where a value whose unit the frame rate
   changes (a speed the game measures as this frame's position minus the last one's) is
   consumed, which no static search tells apart from the other structures with a float at
-  the same offset.
+  the same offset. An empty `GCN_READERS` records nothing.
 - `steps.txt` in the game's tables lists, per instruction address, which operand (`A`, `B`
   or `C`) carries the value from the previous frame. The recompiler emits that instruction
   through `runtime/step.cpp` (`ppc.translate_step`): `x += t` becomes `x += s*t`, `x *= k`
@@ -1293,7 +1298,8 @@ left.
   out of a list of hundreds without a rebuild.
 - `GCN_STEP_POW=<file>` (lines of `<hex address> <power>`) gives the listed sites that power
   instead of the table's, for trying a reading of a site -- a force as a rate, a difference
-  converted or not -- against a run at the native rate before it goes into the table.
+  converted or not -- against a run at the native rate before it goes into the table. Empty
+  `GCN_STEP_SKIP`, `GCN_STEP_ONLY` or `GCN_STEP_POW` values leave scaling unchanged.
 - A body the game integrates in N passes a frame, each pass a complete step of a fixed
   size (its forces, dampings and constraint corrections all inside the pass), is not
   served by scaling the sites in the pass: that runs N passes of size s per paced frame,
@@ -1444,10 +1450,12 @@ command it waits on forever (`FIFO parser waiting on a ...-byte partial command`
 question is whether the bytes it was handed are the game's. `GCN_FEED_DUMP=<path>` writes
 every byte handed to the parser, in order, with a `<path>.idx` of `offset address length`
 per chunk, so the stream can be decoded offline and each offset mapped back to the FIFO
-address it came from. `GCN_FIFO_DUMP=<path>` writes the GP FIFO's memory, base to end, in
+address it came from. An empty `GCN_FEED_DUMP` records nothing.
+`GCN_FIFO_DUMP=<path>` writes the GP FIFO's memory, base to end, in
 the FIFO dump that the interrupt and fault handlers print. `GCN_RAM_DUMP=<path>` writes the
 guest RAM when `call_indirect` finds no function at its target, for seeing what the code
-there is and where it came from.
+there is and where it came from. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record
+nothing.
 
 ## Panics and faults
 
