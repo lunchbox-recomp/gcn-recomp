@@ -76,8 +76,9 @@ struct InterpFrame {
 // Runs f's code from pc, and returns false when the guest returns from it. It returns true instead when
 // it reaches the setjmp or context site at again, which 0 never is, with LR set for it.
 bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again = 0);
-// A loose frame at pc, with its own ENTER and EXIT, for code in RAM that no table knows.
-void interp_run_loose(CPU* c, uint32_t pc);
+// A loose frame at pc, with its own ENTER and EXIT, for code in RAM that no table knows. A blr to
+// entry_lr returns from it.
+void interp_run_loose(CPU* c, uint32_t pc, uint32_t entry_lr);
 // The bl at site_pc to a setjmp or context row's function, with LR set already. It takes the setjmp and
 // calls target when that returns 0, then runs the rest of f's code from the next word. So a longjmp
 // finds the setjmp's frame for as long as the guest function hasn't returned. When a loop through one
@@ -121,7 +122,7 @@ void code_watch_boot();
 void code_watch_check(const std::vector<const CPU*>& threads);
 // GCN_CODE_CHECK's line at exit, with the icbi that ran in the frames it counted.
 std::string code_watch_stats();
-// call_indirect's miss path. An aligned addr in main RAM runs as a loose frame, the first miss at each
-// address since boot prints a line, and it returns true. Anything else returns false having run
-// nothing, and call_indirect stops.
-bool code_watch_run_unknown(CPU* c, uint32_t addr);
+// call_indirect's miss path. An aligned addr in main RAM runs as a loose frame that a blr to entry_lr
+// returns from, the first miss at each address since boot prints a line, and it returns true. Anything
+// else returns false having run nothing, and call_indirect stops.
+bool code_watch_run_unknown(CPU* c, uint32_t addr, uint32_t entry_lr);

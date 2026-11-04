@@ -74,7 +74,7 @@ uint64_t check_stats() {
     return total;
 }
 
-void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc); }
+void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc, g_cpu.lr); }
 
 // A loose frame's words count in the total as well as on their own.
 void check_loose_stats(uint64_t total) {

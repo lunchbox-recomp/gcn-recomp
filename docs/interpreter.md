@@ -73,6 +73,9 @@ there, so a word that changed runs as RAM now holds it. Branches go the way reco
   `IDLE_CHECK` at an `idle.txt` back edge, and a `bctr` jumps with no check, as a jump
   table's `switch` does.
 - A branch out of the range that doesn't link is a call and then a return, as a tail call is.
+  When no table knows its target, it runs as a loose frame that returns at a `blr` to the LR
+  this frame was entered with. LR at a hook that a mod wrote past a call holds that call's
+  return instead.
 - `blr` and `rfi` return. A `blr` in a function `special_calls.txt` lists as a longjmp calls
   `hle_longjmp_resume` with the guest jmp_buf that was in r3 at entry.
 - Running off the end calls the function that starts there, or stops in `unimpl` when none

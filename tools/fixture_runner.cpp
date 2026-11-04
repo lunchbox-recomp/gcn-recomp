@@ -126,7 +126,7 @@ void call_indirect(CPU* c, uint32_t addr) {
     // A blob is code in RAM that no table knows, and it runs as a loose frame.
     if (addr >= FX_BLOB_BASE && addr < FX_BLOB_END) {
         g_blob_runs++;
-        interp_run_loose(c, addr);
+        interp_run_loose(c, addr, c->lr);
         return;
     }
     fatal("call_indirect: no function at %08X (lr=%08X)", addr, c->lr);
@@ -373,7 +373,7 @@ struct Entry {
 void enter(void* p) {
     const Entry& e = *(const Entry*)p;
     if (e.k->loose && e.m != NATIVE) {
-        interp_run_loose(&g_cpu, e.k->entry);
+        interp_run_loose(&g_cpu, e.k->entry, g_cpu.lr);
         return;
     }
     uint32_t a = e.m == NATIVE && e.k->twin ? e.k->twin : e.k->entry;

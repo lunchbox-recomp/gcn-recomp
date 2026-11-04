@@ -1570,7 +1570,7 @@ flushes them (`docs/interpreter.md`). These lines go to stderr whatever the sett
 ```
 
 The first comes at boot. The second comes once for each HLE'd function whose code changes, and
-the third once for each address `call_indirect` runs as a loose frame since boot.
+the third once for each address of unknown code that runs as a loose frame since boot.
 
 `GCN_CODE_CHECK=1` compares all the text with boot's copy at each frame boundary, on the guest
 thread. It reports each changed word whose function nothing marked, once. It also reports a

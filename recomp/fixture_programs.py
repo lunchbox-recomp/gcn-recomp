@@ -250,6 +250,8 @@ BLOB_HELPER = [mflr(0), li(3, 0), bl('.add'), bl('.add'), mtlr(0), BLR, 'add:', 
 BLOB_KNOWN = [mflr(0), li(3, 1), bl('f_callee'), addi(3, 3, 100), mtlr(0), BLR]
 # A mod's blr into a recompiled function, which returns to the LR the mod left in r0.
 BLOB_BLR_KNOWN = [mflr(0)] + address(12, 'f_lr_from_r0') + [mtlr(12), BLR]
+# A hook written past a call in f_hooked_late, where LR holds the call's return and not the function's.
+LATE_HOOK = [addi(3, 3, 1000), b('f_hooked_late.after')]
 
 FUNCS = [
     Code('f_loop', [li(3, 3), li(4, 0), 'loop:', add(4, 4, 3), addi(3, 3, -1), cmpwi(3, 0), bne('.loop'), BLR]),
@@ -362,6 +364,8 @@ FUNCS = [
     # An icbi of the block holding r3's address, for tools/test_code_watch.cpp.
     Code('f_icbi', [x_form(0, 0, 3, 982), BLR]),
     Code('f_lr_from_r0', [li(3, 42), mtlr(0), BLR]),
+    Code('f_hooked_late', P16 + [bl('f_callee'), 'hook:', addi(3, 3, 1), 'after:', addi(3, 3, 2)] + E16),
+    Code('f_hooked_late_twin', P16 + [bl('f_callee'), addi(3, 3, 1000), addi(3, 3, 2)] + E16),
 ] + [Code(f'filler_{k:02d}', [addi(3, 3, 1), BLR]) for k in range(FILLERS)]
 SECOND_FUNCS = [Code('f_second', [addi(3, 3, 7), BLR]), Code('f_second_next', [addi(3, 3, 9), BLR])]
 MODULE_FUNCS = [Code('made_up_module_fn', [li(3, 8), BLR])]
@@ -372,7 +376,7 @@ BLOBS = [(BLOB, Code('blob_loop', BLOB_LOOP)), (BLOB + 0x100, Code('blob_hook', 
          (BLOB + 0x800, Code('blob_mid', BLOB_MID)), (BLOB + 0x900, Code('blob_two_site_loop', TWO_SITE_LOOP)),
          (BLOB + 0xA00, Code('blob_bctr_tail', BLOB_BCTR_TAIL)), (BLOB + 0xB00, Code('blob_floats', BLOB_FLOATS)),
          (BLOB + 0xC00, Code('blob_helper', BLOB_HELPER)), (BLOB + 0xD00, Code('blob_known', BLOB_KNOWN)),
-         (BLOB + 0xE00, Code('blob_blr_known', BLOB_BLR_KNOWN))]
+         (BLOB + 0xE00, Code('blob_blr_known', BLOB_BLR_KNOWN)), (BLOB + 0xF00, Code('blob_late_hook', LATE_HOOK))]
 # The data holds the two jump tables, then the guest jmp_buf, the context and the handler's mark.
 DATA_LABELS = {'jumptable': DATA, 'jumptable_back': DATA + 0x20, 'jmp_buf': DATA + 0x40, 'context': DATA + 0x80,
                'mark': DATA + 0xC0}
@@ -444,7 +448,9 @@ def header(labels, text, second, module, data):
             f'#define FX_BLOB_END 0x{TEXT:08X}u', f'#define FX_FILLER_COUNT {FILLERS}u',
             "/* The words the test writes over f_hooked's first, f_site2's site and f_multi's mid-entry. */",
             f'#define FX_HOOK_WORD 0x{b("blob_hook")(labels["f_hooked"], labels.get):08X}u',
-            f'#define FX_SITE2_WORD 0x{SITE2_WORD:08X}u', f'#define FX_MID_WORD 0x{MID_WORD:08X}u', '',
+            f'#define FX_SITE2_WORD 0x{SITE2_WORD:08X}u', f'#define FX_MID_WORD 0x{MID_WORD:08X}u',
+            "/* The branch the test writes over f_hooked_late's hook. */",
+            f'#define FX_LATE_HOOK_WORD 0x{b("blob_late_hook")(labels["f_hooked_late.hook"], labels.get):08X}u', '',
             'typedef struct { uint32_t addr, count; const uint32_t* words; } FxWords;']
     image = [('fx_text', TEXT, text), ('fx_second_text', SECOND_TEXT, second), ('fx_module', MODULE, module),
              ('fx_data', DATA, data)]

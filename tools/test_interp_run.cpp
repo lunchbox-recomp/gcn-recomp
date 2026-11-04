@@ -5,9 +5,12 @@
 // test_interp_run_trace is built with GCN_TRACE_CALLS, and each of its runs must leave the guest call
 // stack as deep as it found it.
 //
-// After the cases come --log=interp's lines, three loose frames' bl and the stops. The stops are a
-// longjmp frame that returns, a patch with a goto and a loop through two sites in a function frame and
-// in a loose one.
+// After the cases come --log=interp's lines, four loose frames' bl and blr and the stops. The stops
+// are a longjmp frame that returns, a patch with a goto and a loop through two sites in a function
+// frame and in a loose one.
+//
+// A function frame's branch into a blob runs it through the runtime's own miss path, which prints its
+// line for each blob to stderr.
 //
 // usage: test_interp_run
 // Exits 0 only if everything matches.
@@ -119,6 +122,9 @@ const Case kCases[] = {
     // twin anywhere else would hand the setjmp another LR.
     {"a loose frame's setjmp site resumed by a longjmp", FX_F_SJ, 0, nullptr, "hle_longjmp_resume", true},
     {"a loose frame's context site resumed after its frame went on", FX_F_CTX, 0, nullptr, "hle_made_up_load", true},
+    // LR at the hook is f_callee's return, so the hook's loose frame has to return where f_hooked_late does.
+    {"a hook written past a call, whose frame returns where its function does", FX_F_HOOKED_LATE,
+     FX_F_HOOKED_LATE_TWIN, [](CPU*) { poke(FX_F_HOOKED_LATE_HOOK, FX_LATE_HOOK_WORD); }, nullptr, false},
 };
 
 // The cases' runs left one line for the site whose word changed and one for the blr that returned to
@@ -177,7 +183,7 @@ void check_loose_bls() {
     }
 }
 
-void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc); }
+void run_loose(void* pc) { interp_run_loose(&g_cpu, *(const uint32_t*)pc, g_cpu.lr); }
 
 // Runs entry forced, or as a loose frame, and checks that its stop's whole message is one of wants.
 void stop_case(const char* what, uint32_t entry, void (*setup)(CPU*), const std::vector<std::string>& wants,

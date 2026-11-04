@@ -215,10 +215,10 @@ std::string code_watch_stats() {
     return line;
 }
 
-bool code_watch_run_unknown(CPU* c, uint32_t addr) {
+bool code_watch_run_unknown(CPU* c, uint32_t addr, uint32_t entry_lr) {
     if ((addr & 3) || !in_ram(addr)) return false;
     if (g_watch.seen.insert(addr).second)
         fprintf(stderr, "[interp] running unknown code at %08X (lr=%08X)\n", addr, c->lr);
-    interp_run_loose(c, addr);
+    interp_run_loose(c, addr, entry_lr);
     return true;
 }

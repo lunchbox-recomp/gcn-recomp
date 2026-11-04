@@ -137,8 +137,15 @@ bool interp_frame_run(CPU* c, const InterpFrame* f, uint32_t pc, uint32_t again)
             }
             // Out of the function's range, a branch that doesn't link is a call and then a return. A loose
             // frame has no range, so its tail call is a branch onto a function's start.
-            if (f->loose ? starts_function(br.target) : (br.target < f->start || br.target >= f->end)) {
+            if (f->loose && starts_function(br.target)) {
                 call_indirect(c, br.target);
+                return false;
+            }
+            // Code that no table knows returns where this function does. LR may hold something else by
+            // now, as at a hook a mod wrote past a call.
+            if (!f->loose && (br.target < f->start || br.target >= f->end)) {
+                if (!call_known(c, br.target) && !code_watch_run_unknown(c, br.target, f->entry_lr))
+                    call_indirect(c, br.target);  // which stops
                 return false;
             }
             if (br.kind != INTERP_BCTR && br.target <= pc) {
@@ -180,11 +187,11 @@ extern "C" void interp_enter(CPU* c, uint32_t entry) {
               func_name(r.start), r.start);
 }
 
-void interp_run_loose(CPU* c, uint32_t pc) {
+void interp_run_loose(CPU* c, uint32_t pc, uint32_t entry_lr) {
     ENTER(pc);
     InterpFrame f{};
     f.loose = true;
-    f.entry_lr = c->lr;
+    f.entry_lr = entry_lr;
     f.site_hi = g_recomp_site_count;
     f.ran = code_table_counter(g_recomp_range_count);
     f.host = (uintptr_t)GCN_FRAME_ADDRESS();

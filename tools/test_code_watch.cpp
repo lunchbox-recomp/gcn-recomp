@@ -359,7 +359,7 @@ void check_stats() {
 uint32_t g_at;
 bool g_ran;
 
-void run_unknown(void*) { g_ran = code_watch_run_unknown(&g_cpu, g_at); }
+void run_unknown(void*) { g_ran = code_watch_run_unknown(&g_cpu, g_at, g_cpu.lr); }
 
 void check_unknown() {
     reset_ram();

@@ -164,7 +164,7 @@ bool call_known(CPU* c, uint32_t addr) {
 extern "C" void call_indirect(CPU* c, uint32_t addr) {
     if (call_known(c, addr)) return;
     // Code in main RAM that no table knows, such as a blob the game or a mod wrote, runs interpreted.
-    if (code_watch_run_unknown(c, addr)) return;
+    if (code_watch_run_unknown(c, addr, c->lr)) return;
     // GCN_RAM_DUMP=<path>: the guest RAM at this failure, for finding out what the code at
     // `addr` is and where it came from.
     if (const char* path = getenv("GCN_RAM_DUMP"); path && *path) {
