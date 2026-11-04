@@ -1422,9 +1422,10 @@ times worked out from its numbers, at both speeds. It needs no disc image or dev
 ## RAM patches at boot
 
 `--ram-patches=FILE` or `GCN_RAM_PATCHES=FILE` selects a RAM patch list from
-`recomp/riivolution.py apply`. The flag wins over the variable, and an empty value at
-either level means there are no patches. The runtime applies the list at the end of boot,
-after it has loaded the disc and checked the code in RAM.
+`recomp/riivolution.py apply`, for the desktop frontend alone. The flag wins over the
+variable, and an empty value at either level means there are no patches. The runtime
+applies the list at the end of boot, after it has loaded the disc and checked the code in
+RAM.
 
 The run stops with a file and line when the header or a patch line is malformed, a byte
 string has an odd number of digits or a non-hex digit, or an address isn't eight hex
