@@ -370,8 +370,7 @@ class Patcher:
                             "which the runtime can't read, so nothing is written")
         if blob:
             value = self._blob(el, host, value_size)
-        if not value:
-            raise el.refuse('has no value')
+        assert value is not None
         self.ram_list_size += line_size
         self.ram.append(RamPatch(addr, value, original))
         self.writes.append((addr, addr + len(value), self.xml))
