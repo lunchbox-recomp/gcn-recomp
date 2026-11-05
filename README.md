@@ -77,8 +77,8 @@ same shape where it and its frame don't fit the display's usable area. The defau
 | `--aspect=window` | follows the window's shape as it's resized |
 | `--fullscreen` | opens fullscreen |
 
-A window of another shape shows the picture centered between black bars. It opens with
-none, though an odd ratio on a display of two pixels to a point, or a portrait shape, can
+A window of another shape shows the picture centered between black bars. The window opens
+with none, though an odd ratio on a display of two pixels to a point, or a portrait shape, can
 leave a bar a pixel wide.
 
 A game's hooks read the aspect with `gx::output_aspect()` to draw the world wider. A
@@ -88,7 +88,8 @@ F11 switches fullscreen. On a Mac, where F11 is Show Desktop by default, Control
 does it from the Window menu SDL adds.
 
 F1 opens a menu over the game and pauses it until F1 or a gamepad's B closes it. Escape closes
-the menu too, and quits the game when the menu is closed.
+the menu too, and quits the game when the menu is closed. While it's open nothing reaches the
+game, and a button held as it closes stays out of the game until it's let go.
 
 A gamepad opens and closes the menu with Back where SDL maps one. A gamepad with no Back uses
 Guide (Home) instead, and on a Switch 2 GameCube controller ZL does it too. A gamepad with
@@ -157,7 +158,8 @@ ucode's hash.
 | `GCN_AUDIOSTATS` prints the device it opened and each late callback and underrun. It also says where the device's output lines up with the DMA's stream | `3c71be8` |
 | `ninja test_ax`, `test_aid`, `test_clock` and `test_audio_ring` check the mixer, the DMA's hold, the clock's jumps and the sound ring with no disc or device. `test_audio_ring` also checks the held DVD music and the `GCN_AUDIOSTATS` accounting | `3056588`, `a87ab06`, `250ebda`, `3ae8463`, `3c71be8`, `6e361ba`, `26db0da`, `c0a12ea`, `244fa9e`, `84698f6`, `b0dcc2e` |
 
-These changes were measured by program on five routes, with nobody listening.
+These changes were measured by program on five routes through one game on a later AX build,
+with nobody listening.
 
 Passes 1 to 4 and the title at 91 s compare `caf12a2` (before) with `b848158` (after), and
 pass 5 compares `b848158` with `b97c019`. `caf12a2` is upstream plus 13 commits whose only
@@ -184,11 +186,13 @@ run's figure in order.
 
 Over the scored seconds the mixer stage's clicks didn't fall at `b848158`, and what fell
 there was clipping. On the title and the mode select the clicks fell past the seconds the
-totals score.
+totals score. A bisect puts the five new gaps in an intro stream that was digital silence
+before `fd1f6a8`.
 
-Pass 6 played `3a8d154` and `dac449e` four times each, and their unpaced mixer stage scored
-the same as pass 5's `b97c019` on every figure. Their real-time mixer and device clicks
-overlapped across the plays.
+In pass 5 every route made fewer mixer clicks at `b97c019`, and no pass isolates the commit
+that took them away. Pass 6 played `3a8d154` and `dac449e` four times each, and their unpaced
+mixer stage scored the same as pass 5's `b97c019` on every figure. Their real-time mixer and
+device clicks overlapped across the plays.
 
 In passes 1 and 2 the before build's device stage ran at the pace of SDL's dummy driver,
 which took 92.7% and 92.8% of the sound the DMA delivered. That build doesn't log the
@@ -227,9 +231,10 @@ A replay reads at its log's speed (`80e1d38`).
   recompiler didn't see or the game changed; `ram_patches.*` the RAM patch list, applied at
   the end of boot; `main.cpp` the SDL frontend and `bench_main.cpp` the benchmark.
   `gamepads.*` gives each gamepad a port (Controllers above); `input_map.*` binds any
-  joystick or key to a port from a `controls.txt` (wheels, pedals, button boxes), and its
-  `--list-controls` prints what to write for each; `ffb.*` is the wheel's force feedback,
-  from the game's `telemetry::Motion` and the pad's rumble motor.
+  joystick or key to a port from a `controls.txt`
+  (wheels, pedals, button boxes), and its `--list-controls` prints what to write for each;
+  `ffb.*` is the wheel's force feedback, from the game's `telemetry::Motion` and the pad's
+  rumble motor.
 - `runtime/port_memory.*`: `saves/ports.txt`, one line a port, naming the gamepad last there
   by its GUID and serial, with its USB IDs. A saved port is only a preference, and the file
   changes only when a gamepad lands on a port it didn't name for that gamepad.
