@@ -8,7 +8,7 @@ A disc overlay lets a folder of files replace or add files on a GameCube disc wi
 python3 recomp/disc_overlay.py IMAGE OUT --files DIR [--dol FILE]
 ```
 
-IMAGE is a plain image or a CISO. The tool writes `OUT/disc-overlay.txt` and `OUT/fst.bin`, then prints one JSON line. DIR and FILE have to sit inside OUT, so the manifest's paths are relative and OUT can move.
+IMAGE is a plain image or a CISO. The tool writes `OUT/disc-overlay.txt` and `OUT/fst.bin`, then prints one JSON line. DIR has to be a folder below OUT rather than OUT itself, and FILE a file below it, so the manifest's paths are relative and OUT can move.
 
 - Each file under DIR replaces the disc file at the same path. Names match ignoring case, and a replaced file keeps the disc's spelling. Given case twins on the disc, an exact spelling wins and a name that matches several only by case is refused.
 - A file with no match is added with DIR's spelling, inside a new directory when it needs one. New names go in their directory in the order the FST keeps, which compares names in uppercase.
@@ -49,7 +49,7 @@ Each item starts on its own 32 KiB boundary, as Dolphin lays out a virtual disc.
 - `0x428` and `0x42C` change only when the FST grows. `0x428` becomes the new size and `0x42C` becomes the larger of the old max and the new size.
 - `0x420` changes with `--dol`.
 
-A table that doesn't grow is padded with zeros to the old size, so `fst.bin` is always as long as the header says. A replacement alone leaves `0x428` and `0x42C` as the disc has them, unless the rebuilt table comes out larger.
+A table that doesn't grow is padded with zeros to the old size, so `fst.bin` is always as long as the header says.
 
 ## Why fst_max moves and arena hi drops
 
@@ -61,19 +61,19 @@ Dolphin does the same when it builds a virtual disc for a folder of files. It wr
 
 ## Running with one
 
-`disc_overlay PATH` in `settings.txt` names the manifest for the desktop frontend. `GCN_DISC_OVERLAY=FILE` overrides the key, and `--disc-overlay=FILE` overrides the variable. An empty value means no overlay, even when a lower priority source names one.
+`disc_overlay PATH` in `settings.txt` names the manifest for the desktop frontend, and a relative PATH starts at the folder holding `settings.txt`. `GCN_DISC_OVERLAY=FILE` overrides the key and `--disc-overlay=FILE` overrides the variable, while the benchmark and the Android and visionOS frontends read only the variable. An empty value means no overlay, even when a lower priority source names one.
 
-The runtime loads the manifest before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
+The runtime loads the manifest and opens every host file it names before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
 
 Load stops the run with a message when anything is wrong. Most refusals name the manifest and the line. A manifest that can't be opened, can't be read or is over 16 MiB has no line to name, so the message names the file alone.
 
 The image's disc ID and its FST's offset, size and hash have to match the `base` line, and the message names both hashes when they don't. A line that isn't in the format above stops the run too, and so does a range file that's missing, is a folder or is shorter than its range.
 
-A header word reads as the manifest says wherever a read covers it, even when a range covers the same bytes. A read that starts in the image and ends in a file, or crosses several ranges, is joined from each place it passes. Bytes no range covers read from the image.
+A header word reads as the manifest says wherever a read covers it, even when a range covers the same bytes. A read that starts in the image and ends in a file, or crosses several ranges, is joined from each place it passes.
 
-The disc interface reads in 32-byte units, so a read of a file whose size isn't one runs on into the gap after it. The runtime knows how many bytes the image has, which is a plain image's file size or, for a CISO, the entries in its block map times its block size, stored or not. A byte at or past that which no range covers reads as zeros, and that includes the gap and anything farther past every range and the image, so a plain image and a CISO give the game the same bytes and the read succeeds.
+The disc interface reads in 32-byte units, so a read of a file whose size isn't one runs on into the gap after it. The runtime knows how many bytes the image has, which is a plain image's file size or, for a CISO, the entries in its block map times its block size, stored or not. A byte at or past that size which no range covers reads as zero, so the read succeeds and a plain image and a CISO give the game the same bytes.
 
-A byte inside the image's size that no range or header word covers always comes from the image, so a read the image fails fails here too. The runtime never asks the image for a byte past its size, and a run with no overlay still fails past a plain image's end.
+Inside the image's size, a read the image fails fails here too. The runtime never asks the image for a byte past its size, and a run with no overlay still fails past a plain image's end.
 
 The runtime raises its limit on open files when the count needs it, since macOS starts at 256. A load that still runs out of files says where the limit stops.
 
