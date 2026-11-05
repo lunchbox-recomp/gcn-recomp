@@ -5,9 +5,10 @@
 #pragma once
 #include <string>
 
-// Reads GCN_SESSION. When it's set, makes the directory and sets the switches a session
-// turns on, leaving alone any the caller set, and returns the directory the input log goes
-// to. Returns "" without a session. Call it first in main, before anything reads a switch.
+// Reads GCN_SESSION and --no-session-audio from argv. When GCN_SESSION is set, makes the
+// directory and sets the switches a session turns on, leaving alone any the caller set,
+// and returns the directory the input log goes to. Returns "" without a session. Call it
+// first in main, before anything reads a switch.
 std::string session_begin(int argc, char** argv);
 // Writes <dir>/session.json once the audio device is open, or before the guest boots in a
 // run with no window or device. It holds the start time, the host, the engine's commit, the

@@ -1035,8 +1035,7 @@ directory. It turns on these:
 - `GCN_AXSTATS`, `GCN_AUDIOSTATS` and `GCN_FRAMETIME`, whose lines go to stderr with the
   rest of the run's output
 
-Pass `--no-session-audio` to leave both audio switches unset for the session. A nonempty
-`GCN_WAV` or `GCN_AIDWAV` set by hand still applies.
+Pass `--no-session-audio` to leave both audio switches unset for the session.
 
 A switch that's already set keeps its value, and an empty one counts as unset. The stats
 lines don't go into `<dir>`, so keep the run's output beside it, as a script does that runs
@@ -1076,20 +1075,26 @@ values, and `command_line` the process's arguments.
 Each process prints `[session] <dir>` as it starts. A game that resets the console relaunches
 itself, and the switches the session turned on are cleared first, so the new process turns
 them on again for a directory of its own. Finding `session.json` there, it goes on in
-`<dir>/run-2` (or `run-3` after that), so nothing the first run wrote is written over. A
+`<dir>/run-2` (or `run-3` after that), so nothing the first run wrote is written over.
+
+The relaunched process gets the same arguments, so `--no-session-audio` still applies. A
 switch that was set by hand stays as it was, so a file it names is written again from the
 start. The relaunched process prints to wherever the first one did, and a log split at its
-`[session]` lines gives each run its own part. A directory the process can't write gets
-`[session] can't write <dir>, so no session is recorded` on stderr instead. The run goes on
-with none of the switches above, and its input log in the usual place.
+`[session]` lines gives each run its own part.
+
+A directory the process can't write gets `[session] can't write <dir>, so no session is
+recorded` on stderr instead. The run goes on with none of the switches above, and its input
+log in the usual place.
 
 Without `GCN_SESSION` none of this is recorded.
 
 `ninja test_session` builds `tools/test_session.cpp`, which plays the part of the first
-process, the ones the game's resets relaunch and a switch set by hand, all in one process,
-and reads `session.json` back. It needs no disc image, device or SDL. `test_session <new
-dir>` makes that directory and leaves its files there. It prints `ok` or `FAIL` for each
-check, and the exit code is 0 only if all pass.
+process and those relaunched after resets. It covers `--no-session-audio` at the start and
+after other arguments, including a relaunch and a switch set by hand. The test reads
+`session.json` back and needs no disc image, device or SDL.
+
+`test_session <new dir>` makes that directory and leaves its files there. It prints `ok` or
+`FAIL` for each check, and the exit code is 0 only if all pass.
 
 ## Textures
 
