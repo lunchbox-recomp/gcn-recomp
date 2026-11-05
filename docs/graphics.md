@@ -482,9 +482,9 @@ frame, and the right image was whole because the left pass's display copy had cl
 EFB. EFB copies are still dropped at a change of scale, so a copy made before the change
 and sampled after it is missing for a frame.
 
-A change of scale also frees the XFBs that display copies are assembled in, since each is
-sized at the scale it was made at (`xfbs_free`). The next frame shows once all its rows have
-been copied at the new scale.
+A change of scale also frees the XFBs that a frame copied in parts is assembled in, since
+each is sized at the scale it was made at (`xfbs_free`). The next such frame shows once all
+its parts have been copied at the new scale.
 
 
 **What the panel leaves out.** The panel is the flat frame, so the game's eye filter has no
