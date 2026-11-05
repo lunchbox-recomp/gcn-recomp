@@ -595,6 +595,7 @@ int main(int argc, char** argv) {
         }
         else if (!strcmp(argv[i], "--first-person")) first_person = true;
         else if (!strcmp(argv[i], "--no-input-log")) input_log = false;
+        else if (!strcmp(argv[i], "--no-session-audio")) {}
         else if (!strncmp(argv[i], "--input-log=", 12)) input_log_dir = argv[i] + 12;
         else if (!strncmp(argv[i], "--replay=", 9)) replay_dir = argv[i] + 9;
         else if (!strcmp(argv[i], "--sample")) debug_sampler_start();

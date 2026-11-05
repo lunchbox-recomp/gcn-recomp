@@ -145,6 +145,41 @@ int main(int argc, char** argv) {
     check(session_begin(nargs, args).empty() && env("GCN_AIDWAV") == "<unset>", "an empty GCN_SESSION is no session");
     session_write(60, "sha", true);  // writes nothing, anywhere
 
+    char silent[] = "--no-session-audio";
+    char* silent_args[] = {a0, silent};
+    const std::string quiet = g_dir + "/quiet";
+    clear_switches();
+    set_env("GCN_SESSION", quiet);
+    check(session_begin(2, silent_args) == quiet + "/inputs" && env("GCN_WAV") == "<unset>" &&
+              env("GCN_AIDWAV") == "<unset>",
+          "--no-session-audio keeps the input log but sets neither audio switch");
+    check(env("GCN_AXSTATS") == "1" && env("GCN_AUDIOSTATS") == "1" && env("GCN_FRAMETIME") == "1",
+          "--no-session-audio still sets the stats switches");
+    session_write(0, "", true);
+    check(exists(quiet + "/session.json"), "--no-session-audio still writes session.json");
+    session_relaunching();
+    check(session_begin(2, silent_args) == quiet + "/run-2/inputs" && env("GCN_WAV") == "<unset>" &&
+              env("GCN_AIDWAV") == "<unset>",
+          "--no-session-audio holds in run-2 after a relaunch");
+    session_relaunching();
+
+    clear_switches();
+    const std::string hand = g_dir + "/hand";
+    set_env("GCN_SESSION", hand);
+    set_env("GCN_WAV", "hand.wav");
+    check(session_begin(2, silent_args) == hand + "/inputs" && env("GCN_WAV") == "hand.wav" &&
+              env("GCN_AIDWAV") == "<unset>",
+          "--no-session-audio keeps a hand-set GCN_WAV without setting GCN_AIDWAV");
+    session_relaunching();
+
+    clear_switches();
+    const std::string default_dir = g_dir + "/default";
+    set_env("GCN_SESSION", default_dir);
+    check(session_begin(nargs, args) == default_dir + "/inputs" && env("GCN_WAV") == default_dir + "/out.wav" &&
+              env("GCN_AIDWAV") == default_dir + "/aid.raw",
+          "without --no-session-audio both audio switches point into the directory");
+    session_relaunching();
+
     // The first process: one switch set by hand, one set to a value the session would not, and
     // two set empty, which count as unset.
     const std::string dir = g_dir + "/sess";

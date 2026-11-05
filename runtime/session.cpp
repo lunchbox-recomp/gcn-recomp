@@ -7,6 +7,7 @@
 #include "platform.h"
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <vector>
 
@@ -78,6 +79,9 @@ std::string start_text() {
 std::string session_begin(int argc, char** argv) {
     const char* dir = getenv("GCN_SESSION");
     if (!dir || !*dir) return "";
+    bool no_audio = false;
+    for (int i = 1; i < argc; i++)
+        if (!strcmp(argv[i], "--no-session-audio")) no_audio = true;
     g_dir = dir;
     // A process that finds the session already begun (the game reset the console, which
     // relaunches it, or the directory was used before) goes on in one of its own inside, so
@@ -93,8 +97,10 @@ std::string session_begin(int argc, char** argv) {
         g_dir.clear();
         return "";
     }
-    set_default("GCN_WAV", g_dir + "/out.wav");
-    set_default("GCN_AIDWAV", g_dir + "/aid.raw");
+    if (!no_audio) {
+        set_default("GCN_WAV", g_dir + "/out.wav");
+        set_default("GCN_AIDWAV", g_dir + "/aid.raw");
+    }
     set_default("GCN_AXSTATS", "1");
     set_default("GCN_AUDIOSTATS", "1");
     set_default("GCN_FRAMETIME", "1");

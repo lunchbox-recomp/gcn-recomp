@@ -1035,6 +1035,9 @@ directory. It turns on these:
 - `GCN_AXSTATS`, `GCN_AUDIOSTATS` and `GCN_FRAMETIME`, whose lines go to stderr with the
   rest of the run's output
 
+Pass `--no-session-audio` to leave both audio switches unset for the session. A nonempty
+`GCN_WAV` or `GCN_AIDWAV` set by hand still applies.
+
 A switch that's already set keeps its value, and an empty one counts as unset. The stats
 lines don't go into `<dir>`, so keep the run's output beside it, as a script does that runs
 the game with `2>&1 | tee <dir>/stdout.txt`. Once the window and the sound device are open,
