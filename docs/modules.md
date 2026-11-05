@@ -38,9 +38,5 @@ which the function table is keyed by. An instance is re-checked against the modu
 bytes whenever it is used, so a module the game unloaded and replaced with another in
 the same memory is rebound rather than misrun. `--log=os` prints each binding.
 
-An address that no module binds and no REL maps (`docs/rels.md`) falls through to the
-interpreter as unknown code when it's word aligned and in main RAM (`docs/interpreter.md`).
-Any other address stops the game.
-
 The function table is bucketed by megabyte for this (`cpu.cpp`): the recompiled code
 sits in far-apart ranges, and a flat table across them would be most of a gigabyte.
