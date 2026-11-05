@@ -134,9 +134,7 @@ ucode's hash.
 | `GCN_AUDIOSTATS` prints the device it opened and each late callback and underrun. It also says where the device's output lines up with the DMA's stream | `3c71be8` |
 | `ninja test_ax`, `test_aid`, `test_clock` and `test_audio_ring` check the mixer, the DMA's hold, the clock's jumps and the sound ring with no disc or device. `test_audio_ring` also checks the held DVD music and the `GCN_AUDIOSTATS` accounting | `3056588`, `a87ab06`, `250ebda`, `3ae8463`, `3c71be8`, `6e361ba`, `26db0da`, `c0a12ea`, `244fa9e`, `84698f6`, `b0dcc2e` |
 
-The sound of a GameCube racing game on a later AX build was measured by program, with nobody
-listening. The method, the routes and every figure below are in
-[the game project's scorecard](https://github.com/lunchbox-recomp/dragoon/blob/ffa002217b804735ae5bf9c644ec226c04f5ce4a/docs/dev/scorecard.md).
+These changes were measured by program on five routes, with nobody listening.
 
 Passes 1 to 4 and the title at 91 s compare `caf12a2` (before) with `b848158` (after), and
 pass 5 compares `b848158` with `b97c019`. `caf12a2` is upstream plus 13 commits whose only
@@ -163,13 +161,11 @@ run's figure in order.
 
 Over the scored seconds the mixer stage's clicks didn't fall at `b848158`, and what fell
 there was clipping. On the title and the mode select the clicks fell past the seconds the
-totals score. A bisect in the scorecard puts the five new gaps in an intro stream that was
-digital silence before `fd1f6a8`.
+totals score.
 
-In pass 5 every route made fewer mixer clicks at `b97c019`, and the scorecard doesn't say
-which commit took them away. Pass 6 played `3a8d154` and `dac449e` four times each, and
-their unpaced mixer stage scored the same as pass 5's `b97c019` on every figure. Their
-real-time mixer and device clicks overlapped across the plays.
+Pass 6 played `3a8d154` and `dac449e` four times each, and their unpaced mixer stage scored
+the same as pass 5's `b97c019` on every figure. Their real-time mixer and device clicks
+overlapped across the plays.
 
 In passes 1 and 2 the before build's device stage ran at the pace of SDL's dummy driver,
 which took 92.7% and 92.8% of the sound the DMA delivered. That build doesn't log the
