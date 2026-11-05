@@ -8,7 +8,7 @@ A disc overlay lets a folder of files replace or add files on a GameCube disc wi
 python3 recomp/disc_overlay.py IMAGE OUT --files DIR [--dol FILE]
 ```
 
-IMAGE is a plain image or a CISO. The tool writes `OUT/disc-overlay.txt` and `OUT/fst.bin`, then prints one JSON line. DIR has to be a folder below OUT rather than OUT itself, and FILE a file below it, so the manifest's paths are relative and OUT can move.
+IMAGE is a plain image or a CISO. The tool writes `OUT/disc-overlay.txt` and `OUT/fst.bin`, then prints one JSON line. DIR has to be a folder below OUT rather than OUT itself, and FILE a file below OUT, so the manifest's paths are relative and OUT can move.
 
 - Each file under DIR replaces the disc file at the same path. Names match ignoring case, and a replaced file keeps the disc's spelling. Given case twins on the disc, an exact spelling wins and a name that matches several only by case is refused.
 - A file with no match is added with DIR's spelling, inside a new directory when it needs one. New names go in their directory in the order the FST keeps, which compares names in uppercase.
@@ -73,7 +73,7 @@ A header word reads as the manifest says wherever a read covers it, even when a 
 
 The disc interface reads in 32-byte units, so a read of a file whose size isn't one runs on into the gap after it. The runtime knows how many bytes the image has, which is a plain image's file size or, for a CISO, the entries in its block map times its block size, stored or not. A byte at or past that size which no range covers reads as zero, so the read succeeds and a plain image and a CISO give the game the same bytes.
 
-Inside the image's size, a read the image fails fails here too. The runtime never asks the image for a byte past its size, and a run with no overlay still fails past a plain image's end.
+Inside the image's size, a read of bytes no range covers fails whenever the image's own read of them would. The runtime never asks the image for a byte past its size, and a run with no overlay still fails past a plain image's end.
 
 The runtime raises its limit on open files when the count needs it, since macOS starts at 256. A load that still runs out of files says where the limit stops.
 
