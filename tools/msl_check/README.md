@@ -2,8 +2,7 @@
 
 A dev check, macOS only. It shows that shadergen's GLSL can feed Metal. The shader text from
 `void main() {` on compiles as Metal Shading Language under a small prelude, with the
-declarations and entry points written from the `ShaderKey`. The program began as the spike
-that proved this, and its code is kept as it was, split into files that each do one job.
+declarations and entry points written from the `ShaderKey`.
 
 ## What it proves
 
@@ -24,14 +23,16 @@ For any key list, with `gen_pixel_body`, `gen_vertex_body` and `pixel_io` from
 It doesn't check blending, MSAA, points, mipmaps or the VR paths.
 
 Measured on an M4 Max with macOS 26.6 and MSL 3.0, a game's 247 keys and 446 made-up ones
-compile. The made-up ones reach every branch of `gen_pixel_shader`. Fast math on gives
+compile, and the made-up ones reach every branch of `gen_pixel_shader`. Fast math on gives
 bit-exact colors against GL, and on the made-up keys depth within a step of 2^-24 (two with
-`--clipz`). A cold compile is 32 ms a key serially against GL's 11, and 3 ms a key in parallel.
-Once the OS shader cache holds a program it costs about nothing.
+`--clipz`).
+
+A cold compile is 32 ms a key serially against GL's 11, and 3 ms a key in parallel. Once the
+OS shader cache holds a program it costs about nothing.
 
 ## Files
 
-Everything is in `src/`. The program is `msl_spike`, and `dump_glsl` is a second, separate one.
+Everything is in `src/`.
 
 | File | Job |
 |---|---|
@@ -137,11 +138,11 @@ msl_spike logic KEYS.bin OP [options] N...|all
 ```
 Draws a full-screen triangle with each key in GL and in Metal into 256x256 RGBA8 plus Depth32F
 and prints the largest difference per channel, the pixels that differ and the depth
-difference. It exits 0 if every key is within 1 level and its depth within 1e-6. A NaN depth
-difference counts as past it. `logic` does the same over a filled target with GX logic op
-`OP` (0 clear ... 7 or ... 15 set), through framebuffer fetch. On the made-up keys OR and XOR
-fail with fast math off and fog on, for the reason under "What it proves". They pass with
-`--fastmath` or `--nofog`, and COPY passes either way.
+difference. A NaN depth difference counts as past 1e-6.
+
+`logic` does the same over a filled target with GX logic op `OP` (0 clear ... 7 or ... 15
+set), through framebuffer fetch. On the made-up keys OR and XOR need `--fastmath` or
+`--nofog` to pass ("What it proves"), and COPY passes either way.
 
 The depth tolerance comes from the made-up keys. With the default inputs and with
 `--indirect --zplane --screen`, the largest depth difference is 1.19e-07 with fast math off
