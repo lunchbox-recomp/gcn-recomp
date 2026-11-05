@@ -2,7 +2,7 @@
 
 `recomp/riivolution.py` turns a folder of Riivolution mod XMLs and their files into a disc overlay and a list of RAM patches. File and folder patches become the overlay (`docs/disc-overlay.md`) and memory patches become the list. The image is never touched.
 
-The rules are the ones Dolphin follows for a GameCube disc (`DiscIO/RiivolutionParser.cpp` and `RiivolutionPatcher.cpp`), so a release that loads there reads the same way here. Where Dolphin skips something quietly, this reader usually stops and names it.
+The rules are the ones Dolphin follows for a GameCube disc (`DiscIO/RiivolutionParser.cpp` and `RiivolutionPatcher.cpp`), so a release that loads there reads the same way here.
 
 ## The layout
 
@@ -63,11 +63,7 @@ Nothing is written when a package is refused, so earlier outputs stay as they we
 
 OUT usually sits inside ROOT, which a release fills, so `apply` checks it before it writes. It refuses when OUT is a symbolic link, or when one of its three output names is a symbolic link or a folder. OUT is read as `normpath` spells it, so `.out/.` and `.out/../.out` are the same folder as `.out`.
 
-A link in a folder above OUT is the player's own and is followed. OUT itself is opened once, as a folder and not through a link. Every write then goes through that open folder, so a link put in OUT's place later changes nothing.
-
-Each output goes to a new temp file that's never opened through a link. Every temp file is made before any output is replaced, so a write that can't be made leaves the old outputs as they were.
-
-Each output name is looked at again just before its replace. If the folder changes during a run, `apply` can stop part way with exit 1, with some outputs replaced and the rest as they were. Running it again puts all three in place, and the manifest is replaced last.
+`apply` follows a link in a folder above OUT but opens OUT itself once and never through a link, so a link put in OUT's place later changes nothing. Each output goes to a new temp file in OUT before any output is replaced, so a write that fails leaves the old outputs as they were. `apply` can stop part way with exit 1 if the folder changes during a run, and running it again puts every output in place.
 
 A name with a control character (C0 or DEL) is refused, since a manifest line can't hold one. That covers a part of an `external` path, a name in the host folder of a folder patch and a new disc name. It also covers the folders above ROOT that show in a manifest path.
 
@@ -85,7 +81,7 @@ A `--choice` above 0 that names a package with an error stops `apply` with that 
 
 ## Which disc a package fits
 
-The `id` element of the XML narrows a package to some discs, with Dolphin's `IsValidForGame` (`RiivolutionParser.cpp:235-259`). An attribute or child that isn't there doesn't look at that part.
+The `id` element of the XML narrows a package to some discs, with Dolphin's `IsValidForGame` (`RiivolutionParser.cpp`). An attribute or child that isn't there doesn't look at that part.
 
 | In the XML | Matches |
 |---|---|
@@ -109,7 +105,7 @@ A patch can't leave part of the old file in place. `resize="false"` keeps the ol
 
 ## RAM patches
 
-A `memory` patch writes bytes into RAM. Its `offset` is ORed with `0x80000000`, as Dolphin does (`RiivolutionPatcher.cpp:555`). Every byte it writes or checks has to lie in main RAM, `80000000` to `817fffff`.
+A `memory` patch writes bytes into RAM. Its `offset` is ORed with `0x80000000`, as Dolphin does (`RiivolutionPatcher.cpp`). Every byte it writes or checks has to lie in main RAM, `80000000` to `817fffff`.
 
 The bytes come from `value`, which is hex with an optional `0x`, or from the file that `valuefile` names. `original` is optional and holds the bytes the patch expects to find. A file is read whole, and one bigger than main RAM is refused before it's read.
 
@@ -136,7 +132,7 @@ Two packages that are on can't reach the same disc file or the same RAM byte, an
 
 ## Paths
 
-A path in `external`, `valuefile` or `root` follows Dolphin (`RiivolutionPatcher.cpp:29-161`).
+A path in `external`, `valuefile` or `root` follows Dolphin (`RiivolutionPatcher.cpp`).
 
 - A path that starts with `/` starts at ROOT, so an absolute host path means a path under ROOT. Any other path starts at the patch's `root`, or at the XML's folder when it has none.
 - A `root` that starts with `/` starts at ROOT too. Any other `root` starts at the XML's folder.
@@ -147,13 +143,13 @@ A path in `external`, `valuefile` or `root` follows Dolphin (`RiivolutionPatcher
 - A part with a control character is refused.
 - A `file` has to be a file, and a `folder` or a `root` has to be a folder.
 
-The variables `{$__gameid}`, `{$__region}` and `{$__maker}` are filled from the disc ID in a `root`, a `disc`, an `external` and a `valuefile`, as Dolphin does (`RiivolutionParser.cpp:311-316`). Any other variable is refused, and a `{$` that never closes is left as it is.
+The variables `{$__gameid}`, `{$__region}` and `{$__maker}` are filled from the disc ID in a `root`, a `disc`, an `external` and a `valuefile`, as Dolphin does (`RiivolutionParser.cpp`). Any other variable is refused, and a `{$` that never closes is left as it is.
 
 ## Why the manifest's paths can start with `..`
 
 The files of a release stay where the player unzipped them. `disc_overlay.py` wants every file inside its output folder, which a mods folder isn't, so this tool calls `make_overlay` directly with paths from OUT to each host file.
 
-OUT sits next to the files, so a path looks like `../pack/files/x.dat`. The runtime joins the manifest's folder and the path with no `..` check (`runtime/hw/disc_overlay.cpp:327-346`), and it opens each host file once at boot. A manifest only works with OUT in the same place beside the files, so `apply` runs again after either one moves.
+OUT sits next to the files, so a path looks like `../pack/files/x.dat`. The runtime joins the manifest's folder and the path with no `..` check (`runtime/hw/disc_overlay.cpp:324-343`), and it opens each host file once at boot. A manifest only works with OUT in the same place beside the files, so `apply` runs again after either one moves.
 
 ## What is refused
 
@@ -171,8 +167,6 @@ Nothing in a refused package is used. The message names the XML and the element,
 | `length` past the end of the host file | The file would need zeros the overlay doesn't hold |
 | `resize="false"` on a file that ends early | See above |
 
-An overlay item is one host file, or its first bytes. A patch that needs more is refused.
-
 A RAM patch list bigger than 96 MiB and 4 KiB is refused before anything is written, since the runtime can't read one that size.
 
 A message cuts any long value it quotes to 60 characters, so a package can't make a line as long as its XML.
@@ -182,7 +176,6 @@ The reader also stops where Dolphin quietly skips.
 - A path that can't be resolved or doesn't exist.
 - A number or hex string that doesn't parse.
 - A memory patch with no `offset` or no value, or with both `value` and `valuefile`.
-- A memory patch whose bytes or `original` fall outside main RAM.
 - A disc path with an empty or dot part.
 - A choice that names a patch the XML doesn't have.
 
