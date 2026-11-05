@@ -67,19 +67,25 @@ The game project provides:
 
 ## The window
 
-The window opens 960 points high (1920 pixels on a display of two pixels to a point) and
-as wide as the output aspect makes it, or smaller in the same shape where the display's
-usable area is smaller, as for 21:9 on many displays. Its title bar and frame fit in that
-area too. The default aspect is 4:3, the console's own. `--aspect=W:H` stretches the
-picture to another, such as 16:9 or 21:9, with W and H whole numbers from 1 to 9999.
-`--aspect=window` follows the window's own shape as it's resized. A window of another shape
-shows the picture centred between black bars. The window as it opens has none for the usual
-shapes. An odd ratio on a two pixel display, or a portrait shape, can leave a bar a pixel
-wide. A game's hooks read the aspect with `gx::output_aspect()`, so it can draw its world
-wider to match. A headset's view stays 4:3, so `--eye` and `GCN_THEATER_STEREO` ignore
-`--aspect`. `--fullscreen` opens it fullscreen. F11 switches it on Windows and Linux, and
-Control-Command-F on a Mac, from the Window menu SDL adds, where F11 is Show Desktop by
-default.
+The window opens 960 points high and as wide as the output aspect makes it, shrunk in the
+same shape where it and its frame don't fit the display's usable area. The default aspect is
+4:3, the console's own.
+
+| Flag | Does |
+|---|---|
+| `--aspect=W:H` | stretches the picture to W:H, each a whole number from 1 to 9999 |
+| `--aspect=window` | follows the window's shape as it's resized |
+| `--fullscreen` | opens fullscreen |
+
+A window of another shape shows the picture centered between black bars. It opens with
+none, though an odd ratio on a display of two pixels to a point, or a portrait shape, can
+leave a bar a pixel wide.
+
+A game's hooks read the aspect with `gx::output_aspect()` to draw the world wider. A
+headset's view stays 4:3, so `--eye` and `GCN_THEATER_STEREO` ignore `--aspect`.
+
+F11 switches fullscreen. On a Mac, where F11 is Show Desktop by default, Control-Command-F
+does it from the Window menu SDL adds.
 
 F1 opens a menu over the game and pauses it until F1 or a gamepad's B closes it. Escape closes
 the menu too, and quits the game when the menu is closed.
@@ -104,7 +110,7 @@ Quit ends the run as Escape does with the menu closed, saving the memory card on
 Either way, a save the game is part way through gets up to 3 seconds to finish first. Restart
 ends the run the same way, then starts the game again as the game's own reset does.
 
-A game built through an engine kit from `runtime_check`'s objects has no menu, since they leave
+An engine linked from `runtime_check`'s objects has no menu, since `runtime_check` leaves
 the overlay out.
 
 ## Audio
