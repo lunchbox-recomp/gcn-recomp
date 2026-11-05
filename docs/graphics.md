@@ -482,9 +482,9 @@ frame, and the right image was whole because the left pass's display copy had cl
 EFB. EFB copies are still dropped at a change of scale, so a copy made before the change
 and sampled after it is missing for a frame.
 
-The XFBs that frames copied in strips are assembled in are dropped too. Each is sized at the
-scale it was made at, so one kept from scale 2 holds only a corner of a frame copied at 3.
-The next frame shows once all its strips have been copied at the new scale.
+A change of scale also frees the XFBs that display copies are assembled in, since each is
+sized at the scale it was made at (`xfbs_free`). The next frame shows once all its rows have
+been copied at the new scale.
 
 
 **What the panel leaves out.** The panel is the flat frame, so the game's eye filter has no
@@ -631,10 +631,11 @@ The plane is exact for a frozen draw under the same anchor as the triangle it ca
 frozen draw under another anchor reads the plane at its own moved x.
 
 The mark goes into the command stream as a tag does (`g_turns` in `fifo.cpp`), so the
-front end applies it to the states taken from the draws written after it. It's as exact as
-the stream. Up to 31 bytes the game wrote before the call can still be in the gather pipe,
-so a game sets an anchor where it has written some state between the change and the
-nearest draw.
+front end applies it to the states taken from the draws written after it. It's only as exact
+as the stream, since up to 31 bytes the game wrote before the call can still be in the gather
+pipe and a draw that ends just before the call can land on the far side of it. A game sets an
+anchor where it has written some state, such as a projection or a viewport, between the call
+and the nearest draw.
 
 A texture copy reads the EFB as the squeeze left it, so the draws a copy is made from
 should stay unanchored. The front end logs `[anchor] copy N made under an anchor` for a
