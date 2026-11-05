@@ -422,7 +422,8 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
         ImGui_ImplSDL3_InitForOther(window);
         io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
     }
-    // The menu opens no links or files.
+    // The SDL3 backend sets this to SDL_OpenURL and Dear ImGui's duplicate-ID tooltip
+    // carries a link, so clear it after both backend inits.
     ImGui::GetPlatformIO().Platform_OpenInShellFn = nullptr;
     // The backend reads no gamepad, so read_pads can read them all by their labels.
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_Manual, nullptr, 0);
