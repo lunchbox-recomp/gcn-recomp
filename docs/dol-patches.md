@@ -2,7 +2,7 @@
 
 A DOL patch changes a game's executable before the recompiler reads it. `recomp/dol_patch.py` applies patch lists to a DOL, adds new sections and names the new functions in them. The recompiler translates that code with the rest of the game.
 
-So a patch's new code runs natively, with a name in the build's symbols. Code a game or a mod writes into RAM, a Riivolution memory patch's included, runs in the interpreter instead (`docs/interpreter.md`, `docs/riivolution.md`).
+So a patch's new code runs natively, with a name in the build's symbols, in a game without `RELS` (see "Calling it from a build"). Code a game or a mod writes into RAM, a Riivolution memory patch's included, runs in the interpreter instead (`docs/interpreter.md`, `docs/riivolution.md`).
 
 ## Running it
 
@@ -39,7 +39,7 @@ A section starts 32-byte aligned in main RAM and ends below `0x81800000`, where 
 
 A section's file has to be a regular file inside the folder that holds the list, named by a relative path. An absolute path is refused, and so is a `..` or a symlink that leaves the folder. A pipe or a device is refused before it's opened.
 
-Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp:31-55`), so a section can't overlap them. Boot also copies the FST just below the top 8 KiB, at an address the disc's FST size sets. The tool can't check that range, so a list keeps clear of it.
+Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp:31-55`), so a section can't overlap them. Boot also copies the FST just below the top 8 KiB, at an address the header's FST max size (`0x42C`) sets. The tool can't check that range, so a list keeps clear of it.
 
 The SDK's usual layout puts the stacks right after the bss and arena lo above them. So a section past the bss sits above the stacks, and its list moves arena lo past the section with `word` lines specific to the game.
 
