@@ -63,7 +63,9 @@ Nothing is written when a package is refused, so earlier outputs stay as they we
 
 OUT usually sits inside ROOT, which a release fills, so `apply` checks it before it writes. It refuses when OUT is a symbolic link, or when one of its three output names is a symbolic link or a folder. OUT is read as `normpath` spells it, so `.out/.` and `.out/../.out` are the same folder as `.out`.
 
-`apply` follows a link in a folder above OUT but opens OUT itself once and never through a link, so a link put in OUT's place later changes nothing. Each output goes to a new temp file in OUT before any output is replaced, so a write that fails leaves the old outputs as they were. `apply` can stop part way with exit 1 if the folder changes during a run, and running it again puts every output in place.
+`apply` follows a link in a folder above OUT but opens OUT itself once and never through a link, so a link put in OUT's place later changes nothing. Each output goes to a new temp file in OUT before any output is replaced, so a write that fails leaves the old outputs as they were.
+
+Each output name is looked at again just before its replace, and the manifest is replaced last. `apply` can stop part way with exit 1 if the folder changes during a run, and running it again puts every output in place.
 
 A name with a control character (C0 or DEL) is refused, since a manifest line can't hold one. That covers a part of an `external` path, a name in the host folder of a folder patch and a new disc name. It also covers the folders above ROOT that show in a manifest path.
 
@@ -176,6 +178,7 @@ The reader also stops where Dolphin quietly skips.
 - A path that can't be resolved or doesn't exist.
 - A number or hex string that doesn't parse.
 - A memory patch with no `offset` or no value, or with both `value` and `valuefile`.
+- A memory patch whose bytes or `original` fall outside main RAM.
 - A disc path with an empty or dot part.
 - A choice that names a patch the XML doesn't have.
 
