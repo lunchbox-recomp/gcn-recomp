@@ -25,8 +25,8 @@ while any of its function's marks is, and `GCN_INTERPRET` sets the `CODE_FORCED`
 
 Once `boot_load` has put the DOL in RAM, `code_watch_boot` in `runtime/interp/code_watch.cpp`
 copies the text sections that `g_recomp_text` lists. It checks the copy against
-`g_recomp_text_fnv`. When they don't match, it prints `[interp] the text in RAM at boot doesn't
-match what this build was recompiled from, so code changes go unseen` and nothing below happens.
+`g_recomp_text_fnv`. When they don't match, it says so on stderr and nothing below happens
+(`docs/diagnostics.md`, "Code changes at run time").
 
 An `icbi` calls `hle_icbi` whether it runs natively or interpreted. `gcn_code_written(addr, len)`
 does the same for a writer that isn't the guest, and each recounts the words that differ from the
@@ -37,19 +37,18 @@ A caller of either is the guest thread holding the baton, or runs before `thread
 Nothing else serializes boot's copy and the counts.
 
 A function's `CODE_CHANGED` mark is set while its count isn't 0, so writing the old word back and
-flushing it sends the function native again.
+flushing it sends the function native again. A function that's running when its code changes
+goes on natively until it returns, and its next entry is interpreted.
 
-When nothing in the range changed and none of its functions has a count, that's a range lookup
-and a compare of the block, and a range outside the text is a compare with its ends. A function
-that's running when its code changes goes on natively until it returns, and its next entry is
-interpreted.
+When nothing in the range changed and none of its functions has a count, the recount costs a
+range lookup and a compare of the block. A range outside the text costs one compare with the
+text's ends.
 
 A write that nothing flushes isn't seen, which is what `GCN_CODE_CHECK` looks for. A write that
 only `ICFlashInvalidate` flushes isn't seen either, since it sets HID0's ICFI bit through
 `hle_mtspr` and names no range.
 
-A change to an HLE'd function prints `[interp] the HLE'd <name> at <start> changed, and its
-replacement still runs in its place`, once for that function. Its original body runs
+A change to an HLE'd function leaves its replacement running, and its original body runs
 interpreted only where the replacement calls it.
 
 ## Unknown code
@@ -57,12 +56,7 @@ interpreted only where the replacement calls it.
 `call_indirect` runs an aligned address in main RAM that no table knows as a loose frame, such
 as a blob the game or a mod wrote. So does a function frame's branch out of its range that
 doesn't link, through the same `code_watch_run_unknown`. A misaligned address or one outside
-main RAM stops the game as it did before.
-
-The first miss at each address since boot prints `[interp] running unknown code at <addr>
-(lr=<lr>), which returns to <ret>`. `<ret>` is the LR a `blr` returns from the frame at, which
-is the function's own LR for a function frame's branch. A `blr` that pops a frame the entry
-didn't own returns too, under Loose frames below.
+main RAM stops the game.
 
 ## Function frames
 
@@ -141,18 +135,14 @@ above the r1 the frame was entered with. A `blr` to anywhere else goes on at its
 same frame, as a helper's return does. When a table knows the code there, the frame calls it and
 then returns.
 
-The r1 rule is for a frame entered with LR holding an earlier call's return, as native code's
-jump leaves it at a jump table a mod pointed at its own code. The function's epilogue pops a
-frame the entry didn't own, so its `blr` returns.
+The r1 rule covers a loose frame entered by a jump while LR still holds an earlier call's
+return, as at a function's jump table that a mod pointed at its own code. The function's
+epilogue pops a frame the entry didn't own, and the rule makes its `blr` return.
 
-The rule returns early when code moves r1 to a stack above its own. It also does when a frame
-goes on past a pop into mod code whose own frame is smaller than the one popped, at the `blr` of
-a helper that code calls, so the rest of that code doesn't run and its caller gets the wrong r1.
-`--log=interp` prints `blr at <pc> returns to <lr>, and r1 <r1> is above the <entry r1> its
-loose frame was entered with` once for each `blr` the rule returns at.
-
-The runtime calls `interp_run_loose` from `call_indirect`'s miss path and from a function
-frame's branch out of its range, under Unknown code above.
+The rule returns too early in two cases. Code that moves r1 to a stack above its own returns at
+its next `blr`. Mod code reached past a pop, whose own frame is smaller than the one popped,
+returns at the `blr` of a helper it calls, so the rest of it doesn't run and its caller gets the
+wrong r1.
 
 ## What stays native
 
