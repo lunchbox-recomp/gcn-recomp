@@ -3,7 +3,10 @@
 How to drive a game without a controller, record and replay a run, measure the port, and
 find out which guest code or which draw is responsible for something. Environment variables
 are `GCN_*`; none of this is needed to play.
-The engine reads an empty number or on/off switch as unset.
+
+The engine reads an empty switch as unset. An empty `GCN_DISC_OVERLAY` or `GCN_RAM_PATCHES`
+turns off its `settings.txt` key, and an empty `GCN_TELEMETRY` is the default address. An
+empty `GCN_REPLAY` still asks for a replay, and the run stops if that finds no log.
 
 ## Input logging and replay
 
@@ -13,14 +16,13 @@ the memory card and the SRAM beside it. The path is printed at startup. `--no-in
 turns it off; `--input-log=<dir>` chooses the directory.
 
 The SRAM holds what a console keeps on its battery, such as the sound mode. It lives in
-`saves/sram.raw` beside the card. It's read at boot, and a file that's missing, isn't 64
-bytes or fails its checksums gives the defaults every run started from before 2026-10-22.
-It's written through a temp file each time the guest changes it. `ninja test_sram` builds
-`tools/test_sram.cpp`, which checks the load and the save in a work dir. `ninja test_exi`
-builds `tools/test_exi.cpp`, which drives the EXI device the way the guest does to check
-that a changed span is saved when the device is deselected, an unchanged one isn't, a
-failed save is tried again, and the file is the replay's SRAM path or `sram.raw` in the
-save dir.
+`saves/sram.raw` beside the card, read at boot and written through a temp file each time
+the guest changes it. A missing file gives the defaults, as does one that isn't 64 bytes or
+fails its checksums.
+
+`ninja test_sram` builds `tools/test_sram.cpp`, which checks the load and the save in a work
+dir. `ninja test_exi` builds `tools/test_exi.cpp`, which drives the EXI device as the guest
+does and checks when and where it saves the SRAM.
 
 `--replay=<dir>` plays a log back. The guest reads the logged controller instead of the live
 one until the log runs out, then the live controller takes over. The run uses scratch copies
@@ -41,8 +43,8 @@ when the log runs out. It doesn't touch `saves/ports.txt` either, and `--list-co
 `--test-ffb` refuse it.
 
 The log holds every port the guest polls, so a run with more controllers (`--pads`, under
-"Scripted input") replays all of them, whatever `--pads` the replay is given. When the log
-runs out, a port it ends with plugged in stays plugged in, at rest, if the replaying run has
+"Controllers and ports") replays all of them, whatever `--pads` the replay is given. When the
+log runs out, a port it ends with plugged in stays plugged in, at rest, if the replaying run has
 no controller there, rather than being pulled out from under the game.
 
 A replay is exact. Guest time is virtual (see "The clock" below): it is a function of what
@@ -62,16 +64,18 @@ log keyed by them replays at the same instants on a game patched to run at a dif
 frame rate (`GCN_CPU_SCALE`, below): the inputs land at the same virtual times, and what
 differs from there is the game's own doing.
 
-The log format is text: a header (version, game, start time, its epoch and the disc's speed),
-then one line per change of a channel's state --
+The log format is text: a header (version, game, start time and its epoch), then one line
+per change of a channel's state --
 `poll frame chan connected buttons stick_x stick_y cstick_x cstick_y trig_l trig_r`, in
-hex, `chan` 0 for port 1 -- the clock's catch-up jumps where they happened (`jump <back-edge count> <edges>`,
+hex -- the clock's catch-up jumps where they happened (`jump <back-edge count> <edges>`,
 decimal; see "The clock" below), and, when the run ended in a way the runtime saw (a
 normal exit, a fault, a failed guest check or an interrupt), a final `# end <poll> <frame>`. A replay holds the last
 state up to that end before handing over to the live pad; without the marker it hands over
 at the last change, which can be well before where the run stopped, so a log that lacks
 one (a run killed from outside) can be given one by hand. Lines can be edited or written
 by hand; `frame` is for the reader.
+
+The header also gives the disc's speed, and `chan` 0 is port 1.
 
 From version 5 the log also says what the game did with each rumble motor. A
 `motor <poll> <frame> <chan> <0|1>` line, in decimal, marks each poll at which a channel's
@@ -126,20 +130,21 @@ other, so a script is one way to make a log.
 The SI layer applies a script where the guest reads a pad (`pad_get` in `hw/si.cpp`), on
 the guest thread, at the frame count the guest has reached, so a press lands at the same
 instant of the game on every run and a route gives the same frames whatever the host's
-speed, `--fast` included. Until 2026-10-20 each frontend applied it from its own loop, on
-the host's time: under `--fast`, with the game running at thousands of frames a second, a
-press landed wherever the guest was when the loop next looked, a short one could be
-missed, and the same route gave different frames from run to run.
+speed, `--fast` included.
+
+## Controllers and ports
 
 `--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
 power-on (1 to 4; port 1 alone by default), so that the game finds them when it first
-looks. The keyboard drives port 1, `controls.txt` the ports it names, and each gamepad the
-port it takes as it connects (`runtime/gamepads.h`), which plugs that port in while it is
-there. A port plugged in at power-on with nothing on it sits at rest unless a script
-presses it, and stays plugged in when its gamepad is pulled out; past those ports, the
-game sees a port whose gamepad is pulled out as unplugged. A port before the frame
+looks. The keyboard drives port 1 and `controls.txt` the ports it names. Each gamepad
+drives the port it takes as it connects (`runtime/gamepads.h`), which plugs that port in
+while it's there.
+
+A port plugged in at power-on with nothing on it sits at rest unless a script presses it,
+and stays plugged in when its gamepad is pulled out; past those ports, the game sees a port
+whose gamepad is pulled out as unplugged. A port before the frame
 (`2/900:A:10`) names the controller that presses; a press without one is port 1's, and a
-press on a port that is not plugged in does nothing.
+press on a port that isn't plugged in does nothing.
 
 `saves/ports.txt` remembers which gamepad was last on each port (`runtime/port_memory.h`),
 by its GUID, serial and USB IDs, so a gamepad finds its port again whatever order the
@@ -175,8 +180,8 @@ A gamepad that leaves before a frame reads it says `port N was never read` in pl
 
 A gamepad SDL says has no rumble, whose second line says `rumble no`, is never asked for
 one, so its rumble line counts the game's ons with no calls. A pad SDL types as GameCube
-is asked anyway, since SDL never updates what it says of one on Nintendo's adapter that
-landed before the adapter's second cable was in.
+is asked anyway, since on Nintendo's adapter SDL reports no rumble for a pad that connected
+before the adapter's second cable was in, and never updates that.
 
 A rumble call that fails says why once while the gamepad is on its port, as
 `port N rumble failed: <SDL's error>`, with each of SDL's reasons said once. The rumble
@@ -191,12 +196,8 @@ on macOS) builds `tools/test_ports.cpp`, which checks how gamepads get their por
 a controller or the game, using SDL's virtual joysticks. It compiles the frontend's own
 input loop and the SI layer in, so each port is read back as the guest reads it.
 
-`tools/test_ports.sh <test_ports> <work dir>` runs the port checks, a recording of two
-gamepads and its replay with none, a version 4 log's replay, replays of logs recorded at
-`disc console` and at a speed the runtime doesn't know, an interrupt handled beside the
-main loop, the frontend under `--no-gamepads`, the game resetting the console during a
-replay and the game shutting it down. Each check prints `ok` or `FAIL`, and the exit code
-is 0 only if all pass.
+`tools/test_ports.sh <test_ports> <work dir>` runs each `test_ports` mode in turn, as the
+script's header lists them, and exits 0 only if all pass.
 
 Before SDL starts, the test turns off SDL's HIDAPI, IOKit and MFi drivers and HIDAPI's use
 of libusb, for runs on macOS and Linux. Linux's evdev driver has no switch, so the gamepad
@@ -204,17 +205,18 @@ allow list names only a reserved USB vendor, and the environment can't turn thes
 The test also clears `SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD`, which SDL reads from
 the environment ahead of the allow list, and `tools/test_ports.sh` sets it to check that.
 
+## Unit tests and CI
+
+Each program a `ninja test_*` target builds prints `ok` or `FAIL` per check and exits 0
+only if all pass. None needs a disc image or a device, and only `test_ports` needs SDL. One
+that takes `<new dir>` makes that directory and writes its files there.
+
 `ninja test_port_memory` builds `tools/test_port_memory.cpp`, which checks which port each
 gamepad gets from what `ports.txt` remembers. It covers serials, which SDL's virtual
 joysticks can't carry. It also loads and saves the file.
 
-The test needs no disc image, device or SDL. `test_port_memory <new dir>` makes that
-directory and writes its files there, and the exit code is 0 only if all pass.
-
 `ninja test_settings` builds `tools/test_settings.cpp`, which loads and saves `settings.txt`
-files, including saves that are made to fail. It needs no disc image, device or SDL.
-`test_settings <new dir>` makes that directory and writes its files there. It prints `ok`
-or `FAIL` for each check, and the exit code is 0 only if all pass.
+files, including saves that are made to fail.
 
 `ninja unit` builds every check named in this file that needs no disc image, with
 `tools/test_ports.sh`, and runs them through CTest. It gives each one a new work dir under
@@ -225,10 +227,12 @@ root) defines it too, with placeholders for the game, which is what its CI runs 
 runs its jobs by name, so a Mac and a runner run the same steps. The first step that fails
 stops it.
 
-`ninja unit` also runs `recomp/test_*.py` twice, with the Python CMake found and with
-`/usr/bin/python3` where it exists. `test_fst.py` writes its own disc images, plain and CISO.
-With `GCN_TEST_IMAGE` set to a disc image it also checks `fst.py` against that disc, and it
-prints counts but never a name, an offset or a size.
+`ninja unit` also runs `recomp/test_*.py` and `tools/test_*.py` twice, with the Python CMake
+found and with `/usr/bin/python3` where it exists. `test_fst.py` writes its own disc images,
+plain and CISO.
+
+With `GCN_TEST_IMAGE` set to a disc image, `test_fst.py` and `test_disc_overlay.py` also
+check against that disc. They print counts but never a name, an offset or a size.
 
 ## Bots
 
@@ -298,21 +302,23 @@ build/<game> --bot=build/bot.sock
 `nc` prints a `frame` line. Typing `pad 1 0000 128 128 128 128 0 0` and `done` steps one
 frame with the pad at rest, and `pad 1 1000 128 128 128 128 0 0` in its place presses START.
 
-`tools/bot_script.py [--pads=N] SOCKET SCRIPT -- COMMAND` is a small bot that answers each
+`tools/bot_script.py [--pads=N] [--late=MS:N] SOCKET SCRIPT -- COMMAND` answers each
 frame with the presses of a script in `GCN_INPUT`'s syntax, or of a file holding one whose `#`
-lines are comments. It listens on SOCKET first and then runs COMMAND with `GCN_BOT` set to the
-socket's full path, so the game can't start before the bot and nothing is left running in the
-background. It exits with COMMAND's status, and an empty script is a bot that presses nothing.
+lines are comments, and an empty script presses nothing. It listens on SOCKET first and then
+runs COMMAND with `GCN_BOT` set to the socket's full path, so the game can't start before the
+bot and nothing is left running in the background.
 
 ```sh
 python3 tools/bot_script.py build/bot.sock "900:START:10,1200:A:5" -- build/<game> --hidden --fast
 ```
 
-While it listens, `bot_script.py` holds a lock on `SOCKET.lock`, a file it leaves in place. A
-second start that finds the lock taken exits 2 and leaves both files alone, since two bots on
-one socket would take each other's games. One that takes the lock replaces any socket file at
-SOCKET, even one another kind of program listens on. When COMMAND can't be run at all,
-`bot_script.py` exits 127.
+Once COMMAND exits, `bot_script.py` exits with its status, or 1 if the game sent a line it
+doesn't take. It exits 127 when COMMAND can't run, and 2 before COMMAND runs for a bad script
+or a socket it can't listen on.
+
+While it listens it holds `SOCKET.lock`, a file it leaves in place, so a second bot on the
+same socket exits 2 and touches neither file. One that takes the lock replaces any socket
+file at SOCKET, even one another kind of program listens on.
 
 `--late=MS:N` has `bot_script.py` wait MS milliseconds before it answers each frame whose
 number is a multiple of N. The same bot with and without it leaves the same input log
@@ -325,8 +331,6 @@ several times, a jump in frame numbers and reads up to the last byte of RAM. Eac
 the link refuses stops the game in a child process there, as do a line too long and a bot that
 hangs up, but a send or read that fails some other way isn't covered.
 
-`test_bot_link <new dir>` makes that directory and writes its files there. `ninja unit` runs
-it, and `tools/test_*.py` under both Pythons as it runs `recomp/test_*.py`.
 `tools/test_bot_script.py` runs `bot_script.py` against a fake engine.
 
 ## Frame dumps
@@ -350,16 +354,13 @@ window too big for the display's usable area is scaled down in its own shape, an
 checks that none opens past the area.
 
 `ninja test_anchor` builds `tools/test_anchor.cpp`, which checks the draw anchors'
-arithmetic (`runtime/gx/anchor.h`) with no window or GL. At k = 1 every remap returns its
-input bit for bit. A left anchor keeps its rect's left edge, a right one its right edge and
-a centered one its middle, and a remapped viewport uniform lands every point where the
-remapped x does. Stretched to 16:9, 16:10, 21:9 or 32:9, an anchored element sits at its
-4:3 distance from its edge.
+arithmetic (`runtime/gx/anchor.h`) with no window or GL. At 4:3 (k = 1, graphics.md "Draw
+anchors") every remap returns its input bit for bit.
 
-`--exit-after=N` quits after the Nth presented frame, the way closing the window does: the
-frame loop ends, the input log and the movie are finished, and the exit status is 0. With
-`--hidden --fast` it makes a bounded unattended run; a dump on that frame is still written.
-It applies to the desktop window loop, not to `--vr`.
+A left anchor keeps its rect's left edge, a right one its right edge and a centered one its
+middle, and a remapped viewport uniform lands every point where the remapped x does.
+Stretched to 16:9, 16:10, 21:9 or 32:9, an anchored element sits at its 4:3 distance from
+its edge.
 
 ## Recording a movie
 
@@ -407,12 +408,13 @@ ahead with a 90 degree field, so a change to the VR renderer can be looked at on
 before it goes near a headset. `--first-person` puts the eye wherever the game project's eye
 hook says (`render_set_eye_hook` in `runtime/gx/render_gl.h`: the renderer asks the game, per
 frame, for a view transform and the draws to leave out, and a game without a hook keeps the
-chase camera). A headset's view stays 4:3 whatever the output aspect is, so `--eye` ignores
-`--aspect`: the window opens at 4:3 and the game's hooks see 4:3. With
-`--dump-dir`/`--dump-every` the eye's frames are written as `eye_NNNNN.png`.
+chase camera). With `--dump-dir`/`--dump-every` the eye's frames are written as `eye_NNNNN.png`.
 An eye frame presents nothing through the EFB, so the renderer steps its presented count
 once per eye frame instead, and `GCN_DRAWLOG=<n>` names the frame `eye_<n>.png` shows (it
 logged nothing in the eye preview before 2026-10-12, the count never moving).
+
+A headset's view stays 4:3 whatever the output aspect is, so `--eye` ignores `--aspect` and
+says so on stderr. The window opens at 4:3, which is what the game's hooks see.
 
 ## On a headset
 
@@ -439,16 +441,17 @@ eyes' poses there as it does in a headset: without them the replay parts from th
 The desktop build honours `GCN_STEREOLOG` too, numbering frames as its dumps are, so a
 game's stereo hook can be checked against a replayed route without a device.
 `GCN_RAMSNAP=<dir>` (with `GCN_RAMSNAP_EVERY`, `GCN_RAMSNAP_RANGE=a-b`) writes the low 8 MB
-of guest RAM beside the frames, for finding the state such a hook reads. An empty
-`GCN_EYE_MORPH` acts as unset. An empty or zero `GCN_RAMSNAP_EVERY` uses the default
-interval of 150 presented frames. `GCN_THEATER_STEREO=<metres>` draws the flat frame as the
-stereo pair the headset hangs on its panel with `theater_stereo` (see "The theater panel as
-a stereo pair" in `graphics.md`), the eyes that far apart; the dumps come as
-`frame_NNNNN_l.png` and `_r.png`, and the desktop window shows the right eye's. A headset's
-panel stays 4:3, so this ignores `--aspect`, as `--eye` does ("The eye preview").
-`GCN_RESCALE=<frame>:<scale>` (the harness) changes the internal scale before that
-presented frame, as the app does when it moves between stereo and theater, so the first
-frame after the change can be dumped.
+of guest RAM beside the frames, for finding the state such a hook reads.
+`GCN_RAMSNAP_EVERY` defaults to 150 presented frames, and 0 means the default.
+`GCN_THEATER_STEREO=<metres>` draws the flat frame as the stereo pair the headset hangs on
+its panel with `theater_stereo` (see "The theater panel as a stereo pair" in `graphics.md`),
+the eyes that far apart; the dumps come as `frame_NNNNN_l.png` and `_r.png`, and the
+desktop window shows the right eye's. `GCN_RESCALE=<frame>:<scale>` (the harness) changes
+the internal scale before that presented frame, as the app does when it moves between
+stereo and theater, so the first frame after the change can be dumped.
+
+A headset's panel stays 4:3, so `GCN_THEATER_STEREO` ignores `--aspect`, as `--eye` does
+("The eye preview").
 
 The app has no environment of its own, so `gcn_env.txt` in its files directory
 (`/sdcard/Android/data/<package>/files/`), one `KEY=VALUE` per line, is put into it before
@@ -495,8 +498,7 @@ shell picks the headset's on Meta's runtime by itself).
 timer while `<game>_bench` or `<game>_egl` runs and writes a histogram at the end; it needs no
 perf permissions, which a Quest's shell does not have. The kernel rounds the timer, so the
 counts are proportions rather than milliseconds. `GCN_PROFILE_DELAY=<seconds>` starts
-sampling later, to profile one stretch of a route. An empty `GCN_PROFILE` records nothing.
-`tools/profile_report.py <file>
+sampling later, to profile one stretch of a route. `tools/profile_report.py <file>
 <unstripped binary> --addr2line=<llvm-addr2line>` sums it by function, overall and per
 thread; with `--symbolizer=<llvm-symbolizer> --outer=1` instead it names each sample by the
 outermost function of its inline chain -- the recompiled function a guest load was inlined
@@ -572,7 +574,7 @@ on an idle M4 Max ended up to 8 ms late, while in a hidden real-time run the gue
 1 ms sleeps ended a median 0.26 ms late, about a quarter of their length.
 
 `clock_pace` runs at every event poll and waits about six times a frame, so the spin adds
-up. In a real-time race on an M4 Max beside six busy processes it came to 0.78 ms a frame,
+up. In a real-time run on an M4 Max beside six busy processes it came to 0.78 ms a frame,
 and the process used 26% of a core, against 21% with one plain sleep.
 
 Linux, Windows and visionOS take the same steps and spin, though only macOS has been timed.
@@ -627,57 +629,46 @@ Quitting or an interrupt flushes both files, so the last block and its line are 
 fault or the watchdog loses them. A restart starts both files again, unless `GCN_SESSION`
 named them.
 
-An empty `GCN_AIDWAV` records nothing, as an unset one does. If the file won't open, nothing
-is recorded. If the `.txt` won't open, the file named is left empty and nothing is recorded.
+If the file won't open, nothing is recorded. If the `.txt` won't open, the file named is left
+empty and nothing is recorded.
 
 **A block held for the guest.** A block that ends before the guest has queued the next
-buffer is held for up to a quarter block of the guest's own running, with the jumps the
-clock has made since the block started left out (`aid_block_done`). While the jumps
-counted, one that landed inside a block ended it at the guest's next poll, before the guest
-had taken the block's interrupt, and the DMA played the same buffer again. An unpaced run
-of a script never jumps, so there the quarter block is plain virtual time; a replay makes
-only its recording's jumps. The hold is looked at again every 32nd of a block, and the
-block ends at the first look after the guest queues. Waiting out the whole quarter block
-each time, as the hold once did, left the DMA short of its rate when jumps took most of
-virtual time. A guest that doesn't queue within the hold, one that fills its buffers from
-its main loop, gets the whole quarter block, which with the jumps left out lasts longer
-than when they counted: once jumps take four fifths of virtual time or more, its blocks
-come further apart and the DMA falls further short of its rate.
+buffer is held for up to a quarter block of the guest's own running, jumps left out
+(`aid_block_done`). The hold is checked every 32nd of a block and ends at the first check
+after the guest queues. A guest that fills its buffers from its main loop gets the whole
+quarter block, so once jumps take four fifths of virtual time or more its blocks come
+further apart and the DMA falls short of its rate.
 
 `ninja test_aid` builds `tools/test_aid.cpp`, which runs the AI DMA (`hw/dsp.cpp`) on a
 fake clock and event queue. The guest has two buffers and queues the other one whenever
-it's free to take the interrupt. The checks hold blocks with one jump or two landing in
-them while the guest is busy, and check where each held block ends and which buffers play
-twice. One runs the DMA ten blocks behind its clock, where the blocks it owes must come a
-32nd of a block apart. Each check prints `ok` or `FAIL`, and the exit code is 0 only if all
-pass. It needs no disc image, device or SDL.
+it's free to take the interrupt. The checks hold blocks with one jump or two landing in them
+while the guest is busy, and check where each held block ends and which buffers play twice.
 
-Four more checks set `GCN_AIDWAV` empty, to a file, to a file whose `.txt` won't open and to
-a file that won't open itself, each in a child process, since the files are opened on the
-first block. `test_aid` takes a work directory that doesn't exist yet (`test_aid <dir>`).
-The file case's child leaves through `plat_exit_now`, as the engine does, so a tail left in a
-buffer fails the check.
+One check runs the DMA ten blocks behind its clock, where the blocks it owes must come a
+32nd of a block apart. `test_aid` also checks `GCN_AIDWAV`'s four file cases, each in a
+child process.
 
 The sound ring between the DMA and the device keeps a cushion (`audio.cpp`), 100 ms by
 default and `GCN_AUDIO_CUSHION_MS` to change it. Running dry, it stays silent until the
 whole cushion is back, so every underrun is a gap at least that long; 60 ms, as it was, did
-not ride through the 40-60 ms a guest waits on a slow render stage. Neither edge of the gap
-steps. As the ring nears empty its last 5 ms fade to silence, and the sound fades back in
-over 8 ms. Holding 100 ms more than the cushion, the ring cuts back to it with a 10 ms
-crossfade from where it was reading to where it jumped to. A cut does not crossfade when
-the ring was refilling, which is silent anyway, or when the ring was more than half full,
-where the guest could overwrite what the fade reads, and that cut splices. With a cushion
-of 400 ms or more every cut splices, since the cut then always comes with the ring over
-half full. A cut that comes while a crossfade is still running waits for the next pull.
-Each of the three was once a step in the output, heard as a click. A cut on a tone made a
-second difference 300 times the tone's own. `ninja test_audio_ring` builds
-`tools/test_audio_ring.cpp`, which runs `audio.cpp` with a tone for the guest and a device
-that keeps exact time, both on one virtual clock, and checks that a burst and a stall
-leave the output within 3 times the tone's own second difference. It also checks that a
-splice or a hard stop at those points would have stepped the output by over 10 times that,
-so each scenario can fail, and that a cut with the ring over half full arms no crossfade
-and a cut during a running one waits. Each check prints `ok` or `FAIL`, and the exit code
-is 0 only if all pass. It needs no disc image, device or SDL.
+not ride through the 40-60 ms a guest waits on a slow render stage.
+
+Neither edge of the gap steps. As the ring nears empty its last 5 ms fade to silence, and
+the sound fades back in over 8 ms. Holding 100 ms more than the cushion, the ring cuts back
+to it with a 10 ms crossfade from where it was reading to where it jumped to.
+
+A cut doesn't crossfade when the ring was refilling, which is silent anyway, or when the
+ring was more than half full, where the guest could overwrite what the fade reads, and that
+cut splices. With a cushion of 400 ms or more every cut splices, since the cut then always
+comes with the ring over half full. A cut that comes while a crossfade is still running
+waits for the next pull.
+
+`ninja test_audio_ring` builds `tools/test_audio_ring.cpp`, which runs `audio.cpp` with a
+tone for the guest and a device that keeps exact time on one virtual clock. It checks that
+a burst and a stall leave the output within 3 times the tone's own second difference and
+that a splice or a hard stop at those points would have stepped it by over 10 times that,
+so each scenario can fail. It also checks that a cut with the ring over half full arms no
+crossfade and a cut during a running one waits.
 
 SDL's dummy driver (`SDL_AUDIO_DRIVER=dummy`, for runs that make no sound) waits a relative
 10 ms after each pull, so the oversleep and the mix's own time add to every period. It took
@@ -702,9 +693,8 @@ no cost, which is why switching mid-run looked safe in the harness.
 `ninja test_clock` builds `tools/test_clock.cpp`, which runs `cpu.cpp`'s clock as a replay
 runs it, with the guest's running and its recorded jumps, at CPU scales 1, 2 and 0.5. It
 checks that a jump adds to `clock_jumped_ticks()` just what it adds to the clock, so that
-the clock less that total is the guest's own running, which the AI DMA's hold counts. Each
-check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
-image, device or SDL; the linker drops the rest of `cpu.cpp`.
+the clock less that total is the guest's own running, which the AI DMA's hold counts. The
+linker drops the rest of `cpu.cpp`.
 
 `GCN_CLOCK=host` restores wall-clock time (the ticker thread polls for due events every
 200 µs). `GCN_TIMESCALE=N` paces virtual time at N× real time (0: unpaced; `--fast` on
@@ -731,29 +721,35 @@ measuring them.
 `pause_request(true)` (`pause.h`) holds the guest at its next frame boundary, and
 `pause_request(false)` lets it go on. The boundary is a display copy that finishes a frame,
 so a game that copies a frame to the XFB in parts is held only after the last part. The guest
-frame hook has run there, where one runs, though not with the front end inline
-(`GCN_GX_SYNC=1`). A pause asked for while the guest finishes no frames, in a scene load say,
-holds at the next one it finishes. The other guest threads wait on the held one, so none of
-the guest runs. Guest time stands still while it's held. The virtual clock counts only what
-the guest runs, and the hold's host time goes to `clock_hold`, so the pacer doesn't take it
-for time to catch up and makes no jump after the resume. Under `GCN_CLOCK=host` the guest's
-clock leaves it out too.
+frame hook (`gx::set_guest_frame_hook`) has already run there, except under `GCN_GX_SYNC=1`.
+
+A pause asked for while the guest finishes no frames, in a scene load say, holds at the
+next one it finishes. The other guest threads wait on the held one, so none of the guest
+runs.
+
+Guest time stands still while it's held. The virtual clock counts only what the guest runs,
+and the hold's host time goes to `clock_hold`, so the pacer doesn't take it for time to
+catch up and makes no jump after the resume. Under `GCN_CLOCK=host` the guest's clock
+leaves it out too.
 
 While the guest is held, the desktop frontend waits 16 ms at a time for a frame and, when
 none comes, draws the last one again (`render_present_last`), fitted to the output aspect at
 the window's size then, as a running frame is. With `--eye` it draws the eye's last frame
-again. Each one drawn is a host frame, and 300 of them took 5.6 s in a hidden run. Before
-any frame has been presented there's nothing to draw, and no host frame. The display copy
-that presented the frame cleared the EFB, so the renderer keeps a copy of every frame it
-presents for a frontend that asks (`render_keep_last`), as the desktop one does. That costs
-a texture of the frame's size at the internal scale, 5.4 MB for the whole EFB at scale 2 and
-86 MB at scale 8, from the first frame of every desktop run, and a blit into it at each
-present. `render_keep_last(false)` frees it. What's drawn again is always the newest frame
-presented, which is the one the guest is held after once the frames queued before the hold
-have been shown. The presented count doesn't move and nothing is dumped, so a paused run
-writes the same frame dumps as one that never paused. The pad's rumble motor stops while the
-guest is held, on a gamepad and on a wheel's force feedback, and runs again after the resume
-if the game still has it on.
+again. Each one drawn is a host frame, and 300 of them took 5.6 s in a hidden run.
+
+The display copy that presented the frame cleared the EFB, so the renderer keeps a copy of
+every frame it presents for a frontend that asks (`render_keep_last`), as the desktop one
+does. That costs a texture of the frame's size at the internal scale, 5.4 MB for the whole
+EFB at scale 2 and 86 MB at scale 8, from the first frame of every desktop run, and a blit
+into it at each present. `render_keep_last(false)` frees it.
+
+Before any frame has been presented there's nothing to draw, and no host frame. What's
+drawn again is always the newest frame presented, which is the one the guest is held after
+once the frames queued before the hold have been shown. The presented count doesn't move
+and nothing is dumped, so a paused run writes the same frame dumps as one that never paused.
+
+The pad's rumble motor stops while the guest is held, on a gamepad and on a wheel's force
+feedback, and runs again after the resume if the game still has it on.
 
 `GCN_PAUSE_AT=<frame>:<host frames>` pauses once, at the first frame boundary where the
 frames submitted have reached `<frame>` (`0` is the first boundary), and resumes after the
@@ -769,6 +765,13 @@ once `<frame>` frames have been presented, and closes it after it's been drawn o
 frame `<host frames>` times. With `--dump-output` the first draw over the held frame that shows
 the menu goes to `overlay_NNNNN.png` too, which is how a hidden run shows it. Frame and output
 dumps never include it, so a run that opened it writes the same frame dumps as one that didn't.
+
+## Ending a run
+
+`--exit-after=N` ends the run after the Nth presented frame and exits 0, shutting down as
+closing the window does but with no wait for a save. With `--hidden --fast` it makes a
+bounded unattended run, and a dump on that frame is still written. `--vr` and `--headless`
+ignore it.
 
 `GCN_QUIT_AT=<frame>` ends the run once `<frame>` frames have been presented, the way the
 window's close button does (`runtime/main.cpp`). It says so in a `[quit]` line as it asks. The
@@ -788,14 +791,15 @@ and writes no second `# end`, and the run ends as the player asked, relaunching 
 Restart. A console reset that comes first ends the run as it always does, and the loop waits
 for it.
 
-Before `end_run`, the window's loop lets the guest run on for a quiet period after the game's
-last write to the memory card, even when the card's file can't be written. It waits 3 s
-at most, after Quit, Restart, Escape or the window's close button. A run that waits prints
+Before `end_run`, the window's loop lets the guest run on until the game has left the memory
+card alone for 1 s (`MemCard::kQuiet` in `hw/memcard.h`), even when the card's file can't be
+written. It waits 3 s at most, after Quit, Restart, Escape or the window's close button. A
+run that waits prints
 `[quit] the game is writing to the memory card, so the run ends once it's done, 3 s at most`,
 and one with no card or no write lately ends at once, as `--exit-after` always does.
 
-The quiet period counts only time the guest runs (`exi_card_held` in `runtime/runtime.h`), so a
-save the menu held part way still has all of it to come once the menu closes.
+Time the menu holds the guest doesn't count toward that second (`exi_card_held` in
+`runtime/runtime.h`).
 
 Restart then prints `[reset] the overlay's Restart game starts the game again` and relaunches
 the game as a console reset does (`on_reset`), so a tool reading the run's output sees a
@@ -853,7 +857,7 @@ makes only its recording's), so two runs with the same input print every line he
 `[ring]` alike. Comparing two runs at each `list=N` both reached shows whether a change to
 the mixer changed what it made, and from which list.
 
-- `[ax] cmds`: `skipped` counts the commands parsed but not run (08, 0A to 0C, and 12 on the
+- `[ax] cmds`: `skipped` counts the commands parsed but not run (08 and 0A to 0C, plus 12 on the
   2001 ucode build), and `unknown` the IDs past 13, which end their list. Then `ID=count` for
   each command 00 to 13 that appeared, in hex. `0F=` counts the lists that reached the end
   command, so it's 400 when every list did. A list stopped by the 256-command guard, by the
@@ -870,7 +874,7 @@ the mixer changed what it made, and from which list.
   most as `value:count`. `mixer_rest` is the total for every other value. `src0`, `src1`
   and `src2` count resampler types 0 (polyphase), 1 (linear) and 2 (none) from word 4, and
   `src_other` counts anything past 2, which mixes as 2 does. `src0_coef=a/b/c/d` splits
-  `src0` by the coefficient set in word 5: 0, 1, 2 and anything past 2. `delay` counts the
+  `src0` by the coefficient set in word 5 (0, 1, 2 and anything past 2). `delay` counts the
   initial time delay switched on (word 27), which this runtime doesn't apply.
   `stream_loops` counts the times a voice with the stream flag (word 8) looped. `lpf`
   counts the low-pass filter switched on (word 93), on every ucode build but the 2001 one,
@@ -891,22 +895,27 @@ each of the nine buses its own enable bit and ramps them in groups. Every other 
 including one not seen before, gets the later layout.
 
 `GCN_AX_LAYOUT=2001` or `GCN_AX_LAYOUT=later` forces the layout whatever the hash, and the
-log line then ends `(set by GCN_AX_LAYOUT)`. It changes only how the mixer control word is
-decoded, nothing else, so it is for comparing the two decodings on one game: the
-`[ax] hash` lines from a run with each show where the mix first differs. Any other value is
-ignored, with a line on stderr saying so whatever `--log` is set to. An empty
-`GCN_AX_LAYOUT` acts as unset.
+log line then ends `(set by GCN_AX_LAYOUT)`. Any other value is ignored, with a line on
+stderr saying so whatever `--log` is set to.
+
+`GCN_AX_LAYOUT` changes only how the mixer control word is decoded, so it's for comparing
+the two decodings on one game. The `[ax] hash` lines from a run with each show where the
+mix first differs.
 
 Command 12, the compressor, runs on every ucode build but the 2001 one, which has no such
-command and skips it. The ucode hash alone decides this, so `GCN_AX_LAYOUT` does not
-affect it. It reads a threshold, a release length in lists and the address of a table of
+command and skips it. The ucode hash alone decides this, so `GCN_AX_LAYOUT` doesn't
+affect it.
+
+The compressor reads a threshold, a release length in lists and the address of a table of
 160-entry ramps. If the magnitude of any main L or R sample is over the threshold when the
 command runs, it scales both by the attack ramp numbered by the release counter, then sets
 the counter to the release length. Otherwise, while the counter is above zero, it counts
 down and then applies the table's ramp 11 + counter, the release ramps following the 11
-attack ramps. The counter carries from list to list and resets when the AX ucode boots.
-Without it a list whose main L or R passes full scale hard-clips at 0E, so `clipped` falls
-where it runs.
+attack ramps.
+
+The counter carries from list to list and resets when the AX ucode boots. Where the
+compressor runs, `clipped` falls, since without it a list whose main L or R passes full
+scale hard-clips at 0E.
 
 The PB is 93 words on the 2001 build. Every other build adds a one-pole low-pass filter in
 words 93 to 96 (on, last output, a0, b0), so there the runtime reads and writes back 97
@@ -918,10 +927,10 @@ words, 41 to 49 (main L, AuxA L, AuxB L, main R, AuxA R, AuxB R, main S, AuxA S,
 every build. A bus the voice doesn't mix into leaves its word alone. The AX library sums
 those words for each voice it stops while it plays, and fades the sums out through the
 setup command's start and slope for each bus, which `depop` on the `[ax] bus` line counts.
-Until the mixer wrote them, the words held whatever the library had put there, and a voice
-stopped mid-sound cut off at the start of the next list. On the main buses it still does in
-a mode whose lists send 07 or 11. Both commands replace the main buses after setup, so in
-those modes only a fade on an aux bus reaches the output.
+
+On the main buses a voice stopped mid-sound cuts off at the start of the next list in a mode
+whose lists send 07 or 11, since both commands replace the main buses after setup. In those
+modes only a fade on an aux bus reaches the output.
 
 Source type 0 (PB word 4) resamples through a four-tap polyphase filter. For each sample
 out the position steps by the ratio and a sample comes in for each whole step. The last
@@ -938,8 +947,7 @@ falls back to the linear interpolation type 1 runs.
 A voice loops or stops only when it reads the sample at its end address, as the DSP's
 accelerator does. A streaming player can move the loop address to its next buffer before it
 moves the end there, so a voice that loops above its old end plays on from the loop until
-the end catches up. It used to loop again on every sample past the end and sit on the
-loop's first sample for a list or two.
+the end catches up.
 
 An ADPCM end on a frame's header is never read, so the voice neither loops nor stops there.
 As Dolphin found on the DSP, it wraps to its loop address as the frame ends, one nibble on
@@ -964,9 +972,7 @@ them.
 
 `ninja test_ax` builds `tools/test_ax.cpp`, which runs `hw/ax.cpp` over a fake main memory
 and ARAM. Each check writes parameter blocks, samples and a command list by hand, runs the
-list and compares what the mixer wrote or counted with numbers worked out by hand. Each
-check prints `ok` or `FAIL`, and the exit code is 0 only if all pass. It needs no disc
-image, device or SDL.
+list and compares what the mixer wrote or counted with numbers worked out by hand.
 
 ## The sound device
 
@@ -1006,22 +1012,14 @@ which pulls the ring couldn't fill.
 
 `GCN_WAV=<file>` writes what went to the device, the DVD music mixed in, as a 16-bit stereo
 WAV file at 48 kHz. Its header is rewritten after every write, so a run that's stopped from
-outside still leaves a file that reads. An empty `GCN_WAV` records nothing, unless a playtest
-session sets it.
+outside still leaves a file that reads. A playtest session sets it when it's unset.
 
 `GCN_JAUDIO_WAV=<file>` records JAudio's 32 kHz output. Its header is rewritten every frame,
 so a run that's stopped from outside still leaves a file that reads.
 
-`ninja test_audio_ring` checks this accounting too, on the same virtual clock as the ring.
-A device that keeps exact time gets no late callbacks and no underruns. A gap of 1.4 periods
-isn't late, and one of 1.6 prints the late line word for word. The 400th callback's line
-carries the counts so far with the mean and the longest period, and the 800th callback's
-line covers only the 400 gaps since the one before. The stall's pulls print underrun lines
-that start where the ring ran dry and run on without a break. The position lines move at
-the output's pace within half a percent, and the ones at a cut and at the return from the
-stall name the frame the ring read next. So does the return from a stall of 110 ms that
-starts just after a position line and ends before the next one is due. A ring left with
-100 frames runs dry about 149 frames into a pull. The next pull is short by all 512.
+`ninja test_audio_ring` also checks each `[audio]` line on the ring's virtual clock,
+including the 1.5-period late threshold and the underrun and position lines across a
+stall.
 
 ## Playtest sessions
 
@@ -1035,15 +1033,17 @@ directory. It turns on these:
 - `GCN_AXSTATS`, `GCN_AUDIOSTATS` and `GCN_FRAMETIME`, whose lines go to stderr with the
   rest of the run's output
 
-Pass `--no-session-audio` to leave both audio switches unset for the session.
+A switch that's already set keeps its value. `--no-session-audio` keeps the session from
+setting `GCN_WAV` and `GCN_AIDWAV`, and either one set by hand is still written.
 
-A switch that's already set keeps its value, and an empty one counts as unset. The stats
-lines don't go into `<dir>`, so keep the run's output beside it, as a script does that runs
-the game with `2>&1 | tee <dir>/stdout.txt`. Once the window and the sound device are open,
-the process writes `<dir>/session.json`. Under `--vr` that waits for the headset frontend to
-open the device. A `--headless` run has no window or device and writes it before the guest
-boots, with `refresh_hz` and `audio_device` null. For a run on SDL's dummy driver it looks
-like this, with the command line shortened and the game's binary called `game`:
+The stats lines don't go into `<dir>`, so keep the run's output beside it, as a script does
+that runs the game with `2>&1 | tee <dir>/stdout.txt`. Once the window and the sound device
+are open, the process writes `<dir>/session.json`, which under `--vr` waits for the headset
+frontend to open the device.
+
+A `--headless` run has no window or device and writes it before the guest boots, with
+`refresh_hz` and `audio_device` null. For a run on SDL's dummy driver it looks like this,
+with the command line shortened and the game's binary called `game`:
 
 ```json
 {
@@ -1086,15 +1086,10 @@ A directory the process can't write gets `[session] can't write <dir>, so no ses
 recorded` on stderr instead. The run goes on with none of the switches above, and its input
 log in the usual place.
 
-Without `GCN_SESSION` none of this is recorded.
-
 `ninja test_session` builds `tools/test_session.cpp`, which plays the part of the first
 process and those relaunched after resets. It covers `--no-session-audio` at the start and
 after other arguments, including a relaunch and a switch set by hand. The test reads
-`session.json` back and needs no disc image, device or SDL.
-
-`test_session <new dir>` makes that directory and leaves its files there. It prints `ok` or
-`FAIL` for each check, and the exit code is 0 only if all pass.
+`session.json` back.
 
 ## Textures
 
@@ -1102,8 +1097,7 @@ after other arguments, including a relaunch and a switch set by hand. The test r
 how many top-level texels are not black -- which tells a texture the game never wrote (all
 zero) from one the shader mishandles. For an indexed texture it adds the palette entries the
 texels use, decoded, and which palette variant this is. `GCN_TEXDUMP=<dir>` writes each
-texture's top level as `<dir>/tex_<id>.png`, alpha forced opaque. An empty `GCN_TEXDUMP`
-records nothing.
+texture's top level as `<dir>/tex_<id>.png`, alpha forced opaque.
 
 The texture cache checks a texture's texels once per frame, assuming a game does not rewrite
 a texture between two draws of one frame. `GCN_TEXHASH_ALWAYS=1` checks on every lookup; if
@@ -1137,12 +1131,7 @@ use, which every lookup prolonged.
 - `GCN_ANCHOR_ALL=L`, `C` or `R` anchors every draw over the whole 640-pixel frame in
   place of the game's marks. With `--aspect=16:9` the 4:3 picture comes out at its own
   shape against that edge of the window, and `--dump-output` writes what the window shows.
-  Any other value of `GCN_ANCHOR_ALL` is refused with a line on stderr. An empty
-  `GCN_ANCHOR_ALL` acts as unset.
-- `[anchor] copy N made under an anchor` says a texture copy was made while an anchor
-  other than Stretch was set. It prints once for each scene, which ends after 60 frames in a
-  row with no such copy, with N the copies made under an anchor so far. Copies to the
-  display are left out.
+  Any other value of `GCN_ANCHOR_ALL` is refused with a line on stderr.
 - `GCN_PIXEL=x,y[;x,y...]` (EFB pixels) with `GCN_DRAWLOG` reads each listed pixel back
   after every draw of that frame and prints it, colour and 24-bit depth, whenever it
   changed, with the draw's index: which draws touch a pixel and what each leaves there,
@@ -1153,7 +1142,7 @@ use, which every lookup prolonged.
   as it was produced, twice: its colour, and its alpha as grey (`copy_<frame>_<n>_tex<id>`).
   `GCN_COPYDUMP_SIZE=WxH` writes every copy of that size instead, in whatever frame: a
   render to texture done once, at a moment that differs from run to run, is caught
-  without knowing the frame. An empty `GCN_COPYDUMP` records nothing.
+  without knowing the frame.
 - `GCN_DRAWLOG_COPY=WxH` logs, like `GCN_DRAWLOG`, every batch holding a copy of that
   size, and `GCN_PIXEL` probes it too. Both forms of the log list the copies between the
   draws (`[copy] after draw n`, with the copy's texture id and format), give each draw's
@@ -1200,8 +1189,7 @@ so the variants never mix with the real ones).
   `GCN_SHOW_SPLIT=<x>` shows the value only right of EFB column x (in the target's own
   pixels: 640 is the middle at `--scale=2`), so the probe and the normal image are read
   off one frame. Since GCN_SHOW writes an opaque colour too, a blended draw that touches a
-  pixel last covers it; `GCN_PIXEL` is the tool when that is the question. Empty `GCN_SHOW`
-  and `GCN_SHOW_SPLIT` values act as unset.
+  pixel last covers it; `GCN_PIXEL` is the tool when that is the question.
 - `GCN_TEX_WHITE=1` makes every texture sample opaque white, leaving a draw's colour to
   its channels and konstants; `GCN_RAS_WHITE=1` does the same to the rasterised colour.
 - `GCN_DUMP_SHADERS=1` prints every program's source as it is compiled, which at start-up
@@ -1224,9 +1212,7 @@ so the variants never mix with the real ones).
 - `GCN_RAM_DUMP_AT=<frame>,...` writes the guest RAM at the end of each of those submitted
   frames (the count `GCN_INPUT` keys on) to `GCN_RAM_DUMP_DIR` as `ram_<frame>.bin`, from
   the guest thread; for finding a game's variables by comparing its memory over a scripted
-  run. An empty `GCN_RAM_DUMP_DIR` uses the working directory.
-
-  The log line names the
+  run. `GCN_RAM_DUMP_DIR` defaults to the working directory. The log line names the
   presented frame it was taken at too, the number the frame dumps carry, so a dump can be
   matched to what was on screen. The dump contains physical RAM, so a game that maps memory
   through its page tables has its paged variables wherever their
@@ -1285,13 +1271,12 @@ left.
   those sites wrote, who else wrote it: `[stwr] <addr> <pc>:<count> ...`. That tells a
   value carried from frame to frame (its only writers are steps) from a temporary that
   something assigns afresh each frame before a step adds to it, which must not be scaled.
-  An empty `GCN_STORE_HIST_PCS` records nothing.
 - `GCN_READERS=<file>` (hex guest addresses or `lo-hi` ranges, one per line) is the
   readers' side: within the same window, which code loads those addresses, printed as
   `[readers] <addr> <pc>:<count> ...`. It answers where a value whose unit the frame rate
   changes (a speed the game measures as this frame's position minus the last one's) is
   consumed, which no static search tells apart from the other structures with a float at
-  the same offset. An empty `GCN_READERS` acts as unset.
+  the same offset.
 - `steps.txt` in the game's tables lists, per instruction address, which operand (`A`, `B`
   or `C`) carries the value from the previous frame. The recompiler emits that instruction
   through `runtime/step.cpp` (`ppc.translate_step`): `x += t` becomes `x += s*t`, `x *= k`
@@ -1311,12 +1296,10 @@ left.
   and the game project keeps them in a table of their own that its emitter copies in.
 - `GCN_STEP_SKIP=<file>` leaves the listed sites (hex addresses or `lo-hi` ranges) unscaled
   and `GCN_STEP_ONLY=<file>` scales only those: how a site that breaks the game is bisected
-  out of a list of hundreds without a rebuild. An empty `GCN_STEP_ONLY` scales every site,
-  as if unset. An empty `GCN_STEP_SKIP` acts as unset.
+  out of a list of hundreds without a rebuild.
 - `GCN_STEP_POW=<file>` (lines of `<hex address> <power>`) gives the listed sites that power
   instead of the table's, for trying a reading of a site -- a force as a rate, a difference
-  converted or not -- against a run at the native rate before it goes into the table. An
-  empty `GCN_STEP_POW` acts as unset.
+  converted or not -- against a run at the native rate before it goes into the table.
 - A body the game integrates in N passes a frame, each pass a complete step of a fixed
   size (its forces, dampings and constraint corrections all inside the pass), is not
   served by scaling the sites in the pass: that runs N passes of size s per paced frame,
@@ -1399,9 +1382,9 @@ Any other block is a seek, which costs the head's travel and the wait for the bl
 round. After each read the drive keeps the last block and the one before it, and reads on
 until it holds 1 MiB. Every other command takes 300 us.
 
-Two things differ from Dolphin. The disc's turn is timed at the exact time, where Dolphin's
+Three things differ from Dolphin. The disc's turn is timed at the exact time, where Dolphin's
 code rounds down to a whole second, and a read's DIMAR and DILENGTH move only when it
-completes, where Dolphin moves them a block at a time. The data lands in RAM as the read
+completes, where Dolphin moves them a block at a time. And the data lands in RAM as the read
 starts.
 
 A game that waits on a load waits as long as the drive takes, and at `console` the drive's
@@ -1412,28 +1395,20 @@ time is most of it. On one menu route two scene changes froze for 1,485 ms and 1
 Games time things against the disc, so a faster drive changes what they do. The AX library
 drops a voice's loop flag when the game sets the voice's addresses and then its loop, end
 or current address within one 5 ms audio frame. A streaming music player that does both in
-a disc read's callbacks then plays its first buffer and stops, which at the 64 MB/s the
-runtime used to read at it often did.
+a disc read's callbacks then plays its first buffer and stops.
 
 At `fast` such a player kept looping in the one game checked. Its paired updates landed two
 audio frames apart all 46 times, one frame more than the loop flag needs.
 
-A replay reads at the speed its input log was recorded at, whatever the file or the flag
-say, since the guest's timeline runs on its reads. The log's header gives it as `# disc fast`
-or `# disc console`, and a replay asked for the other says so on stderr, as
-`[input] the log was recorded at disc console, so the replay reads at that and not at disc fast`.
-A log without the line replays at `console`, since every log from before the line was
-recorded at console timing or on the faster drive before it, and says
-`[input] the log has no disc line, so the replay reads at disc console and not at disc fast`
-when `fast` was asked for.
-
-A log whose disc line names neither speed replays at `console` too, and says
-`[input] the log's disc line names neither fast nor console, so the replay reads at disc console and not at disc fast`
-when `fast` was asked for.
+A replay reads at the speed its input log was recorded at (`# disc fast` or `# disc console`
+in the header), whatever `settings.txt` or `--disc` say, since the guest's timeline runs
+on its reads. A log with no disc line, or one naming neither speed, replays at `console`.
+When the speed it reads at differs from the one asked for, an `[input]` line on stderr says
+so and why.
 
 `--log=dvd` ends each `read off=` line with the read's time, as `in <N> us`.
 `ninja test_drive` builds `tools/test_drive.cpp`, which checks the model's times against
-times worked out from its numbers, at both speeds. It needs no disc image or device.
+times worked out from its numbers, at both speeds.
 
 ## RAM patches at boot
 
@@ -1451,17 +1426,17 @@ The runtime applies the list at the end of boot, after it has loaded the disc an
 the code in RAM.
 
 The run stops with a file and line when the header or a patch line is malformed, a byte
-string has an odd number of digits or a non-hex digit, or an address isn't eight hex
-digits. It also stops when the `base` differs from the disc's ID or bytes written or
-checked would leave main RAM. An `original` that differs from RAM stops the run with the
-address of the first byte that differs and up to 16 bytes of RAM and of the patch from
-there.
+string has an odd number of digits or a non-hex digit (uppercase included), or an address
+isn't eight lowercase hex digits. It also stops when the `base` differs from the disc's ID or
+bytes written or checked would leave main RAM. An `original` that differs from RAM stops
+the run with the address of the first byte that differs and up to 16 bytes of RAM and of
+the patch from there.
 
 A line with a control character, such as a tab or the CR of a Windows line ending, stops
 the run, as does a last line with no newline, since it may be cut short.
 
 A path that's missing, unreadable or a folder stops the run with the file and no line, and
-so does a list over 96 MiB and 4 KiB. The runtime refuses a list that size before it reads
+so does a list over 96 MiB and 4 KiB. The runtime refuses a list that size before it parses
 any line.
 
 A bare `--ram-patches` prints one line on stderr and exits 1.
@@ -1473,31 +1448,17 @@ writes and code change notifications against fake RAM.
 
 ## The disc overlay
 
-`disc_overlay PATH` in `settings.txt` makes the desktop frontend read its disc through the
-overlay that manifest describes (see `docs/disc-overlay.md`). The path is relative to the
-folder holding `settings.txt`.
+`disc_overlay PATH` in `settings.txt`, `GCN_DISC_OVERLAY=FILE` or `--disc-overlay=FILE`
+reads the disc through an overlay. The flag beats the variable and the variable beats the
+key, and an empty value means none.
 
-`GCN_DISC_OVERLAY=FILE` overrides the key, and `--disc-overlay=FILE` overrides the
-variable. An empty value means no overlay.
+Only the desktop reads the key and the flag. Every other frontend reads `GCN_DISC_OVERLAY`
+alone. The overlay remains selected after a console reset relaunches the desktop frontend.
 
-The manifest loads before boot reads the disc header, and every host file it names opens
-once then. The run stops at boot if the manifest or one of its files is wrong or the image
-isn't the one it was made for.
-
-The message names the manifest and the line. A manifest that can't be opened, can't be
-read or is over 16 MiB has no line, so the message names the file alone. An empty
-`--disc-overlay=` disables the overlay for that run.
-
-The overlay remains selected after a console reset relaunches the desktop frontend.
-
-`--log=dvd` prints the load with its file count and bytes, then each piece of a DVD
-command's read that comes from a host file. The audio stream reads a block at a time, so
-it logs where it starts and not for each block.
-
-`ninja test_disc_overlay` builds `tools/test_disc_overlay.cpp`, which writes a small
-image, a CISO of it and the files and manifests an overlay names. It compares reads
-through the overlay with a disc it builds itself, even from four threads at once. It also
-makes each refusal happen.
+`docs/disc-overlay.md` ("Running with one") has the refusals and the `--log=dvd` lines.
+`ninja test_disc_overlay` builds `tools/test_disc_overlay.cpp`, which compares reads through
+an overlay with a disc it builds, from four threads at once as well. It also makes each
+refusal happen.
 
 ## The command stream
 
@@ -1506,12 +1467,12 @@ command it waits on forever (`FIFO parser waiting on a ...-byte partial command`
 question is whether the bytes it was handed are the game's. `GCN_FEED_DUMP=<path>` writes
 every byte handed to the parser, in order, with a `<path>.idx` of `offset address length`
 per chunk, so the stream can be decoded offline and each offset mapped back to the FIFO
-address it came from. An empty `GCN_FEED_DUMP` records nothing.
+address it came from.
 
 `GCN_FIFO_DUMP=<path>` writes the GP FIFO's memory, base to end, in the FIFO dump that the
-interrupt and fault handlers print. `GCN_RAM_DUMP=<path>` writes the guest RAM when
-`call_indirect` stops at a misaligned target or one outside main RAM, for seeing what handed it
-that address. Empty `GCN_FIFO_DUMP` and `GCN_RAM_DUMP` values record nothing.
+interrupt and fault handlers print. `GCN_RAM_DUMP=<path>` writes the guest RAM on an
+interrupt or a fault, and when `call_indirect` stops at a misaligned target or one outside
+main RAM.
 
 `ninja test_feed_dump` builds `tools/test_feed_dump.cpp`. It checks that unset and empty
 paths make no files, and that a failed file open leaves no open dump or index.
@@ -1591,7 +1552,7 @@ file that can't be read, a directory included, stops it with `GCN_INTERPRET: can
 
 `GCN_INTERPRET_STATS=1` prints on stderr at exit the 30 functions that ran the most
 interpreted instructions, after a line with the total. A fatal stop prints it too, and an
-exit after a fault doesn't. Every word a frame runs counts, a site's included.
+exit after a fault doesn't. The count includes every word a frame runs, a patch site's too.
 
 ```
 [interp] GCN_INTERPRET_STATS: <total> instructions interpreted, <n> of them in loose frames
@@ -1624,9 +1585,10 @@ flushes them (`docs/interpreter.md`). These lines go to stderr whatever the sett
 The first comes at boot. The second comes once for each HLE'd function whose code changes, and
 the third once for each address of unknown code that runs as a loose frame since boot.
 
-The third's `<ret>` is the LR a `blr` returns from the frame at, which isn't `<lr>` at a hook a
-mod wrote past a call. A `blr` that pops a frame the entry didn't own returns too
-(`docs/interpreter.md`).
+`<ret>` is where the loose frame returns, the LR the function that branched there was
+entered with. It differs from `<lr>` when that function branched to the code without
+linking, as a mod's hook placed after a call does. A `blr` that pops a frame the entry
+didn't own returns too (`docs/interpreter.md`).
 
 `GCN_CODE_CHECK=1` compares all the text with boot's copy at each frame boundary, on the guest
 thread. It reports each changed word whose function nothing marked, once. It also reports a
