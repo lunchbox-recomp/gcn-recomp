@@ -820,19 +820,17 @@ Only one of PE control's pixel formats, RGBA6_Z24, keeps alpha in the EFB. On th
 (RGB8_Z24, RGB565_Z16 and the Z and YUV formats) GX reads destination alpha as full, so a
 blend factor of DSTALPHA is one and INVDSTALPHA zero. The GL framebuffer has an alpha
 channel whatever the format, and the renderer masks writes to it on those formats, so it
-holds whatever an earlier pass left there. Until 2026-10-22 the renderer still handed GL
-`GL_DST_ALPHA` and `GL_ONE_MINUS_DST_ALPHA`, and a draw blended by that stale alpha. A
-full-screen pass of ZERO, DSTALPHA on RGB8_Z24 leaves the frame as it is on a console. Here
-it multiplied the frame by the stale alpha, and the whole picture went black.
-`blend_factors` (`runtime/gx/blend.h`) now makes the two factors one and zero on a format
-without alpha, as source factors and as destination ones. `ninja test_blend` builds
-`tools/test_blend.cpp`, which checks all 64 pairs on each of the eight formats with no GL.
+holds whatever an earlier pass left there.
 
-A copy of the EFB into a texture reads alpha as full on those formats too. Until 2026-10-23
-the copy formats that keep alpha took the GL channel's stale alpha, so a render target a game
-copied and drew with alpha could come out empty. `EfbCopyCmd::efb_alpha` carries the format's
-answer to the copy shader (`u_alpha` in `kCopyFS`), and the clear that goes with a copy leaves
-alpha alone on a format that has none.
+Blending by that stale alpha would turn a full-screen ZERO, DSTALPHA pass on RGB8_Z24 black,
+where a console leaves the frame as it is. So `blend_factors` (`runtime/gx/blend.h`) makes the
+two factors one and zero on a format without alpha, as source factors and as destination
+ones. `ninja test_blend` builds `tools/test_blend.cpp`, which checks all 64 pairs on each of
+the eight formats with no GL.
+
+A copy of the EFB into a texture reads alpha as full on those formats too.
+`EfbCopyCmd::efb_alpha` carries the format's answer to the copy shader (`u_alpha` in
+`kCopyFS`), and the clear that goes with a copy leaves alpha alone on a format that has none.
 
 ## Depth past the viewport's range
 
@@ -864,13 +862,10 @@ and a z freeze program writes `gl_FragDepth` from it (`u_zplane`). Before any pl
 frame, a z freeze draw keeps its own depth.
 
 A Z texture (`GXSetZTexture`) has a say in the depth only when the depth test comes after
-texturing: PE control's zcomploc (BP 0x43 bit 6) clear, or the test off. With zcomploc set
-and the test on, the triangle's own depth is tested and written before the texture is
-read, and the Z texture changes nothing. The renderer applied it regardless, so a
-background quad at the far end of the frustum that also carried a Z8 replace texture (texel
-0xFF, bias 0) wrote depth 0x0000FF, the very front of the buffer, and every draw after it
-failed its depth test. The shader key now leaves the Z texture out in that case. The
-verbose draw log prints the two registers as `ztex=<bias>,<type and op>` when one is on.
+texturing, which is when PE control's zcomploc (BP 0x43 bit 6) is clear or the test is off.
+With zcomploc set and the test on, the triangle's own depth is tested and written before the
+texture is read, so the shader key leaves the Z texture out (`runtime/gx/shadergen.cpp:42-46`).
+The verbose draw log prints the two registers as `ztex=<bias>,<type and op>` when one is on.
 
 An eye takes the plane the same way, from the triangle as the eye sees it
 (`zfreeze_plane_eye`): the eye's projection and view, the depth mapped into the draw's band
