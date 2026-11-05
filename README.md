@@ -113,6 +113,23 @@ ends the run the same way, then starts the game again as the game's own reset do
 An engine linked from `runtime_check`'s objects has no menu, since `runtime_check` leaves
 the overlay out.
 
+## Controllers
+
+Each gamepad gets a port as it connects, the one `saves/ports.txt` gives it or else the port
+of its player number (Steam Input's order, or the XInput slot on Windows). When that port's
+taken it gets the lowest free one. Its player light shows the port, except an XInput
+controller's ring, which shows the slot Windows gave it.
+
+A gamepad pulled out frees its port, which the game then sees unplugged unless `--pads` or a
+`controls.txt` line keeps it plugged in, as the keyboard keeps port 1. One that connects with
+no port free gets none until it's pulled out and plugged in again. A `gamecontrollerdb.txt`
+beside the executable, or the file `SDL_GAMECONTROLLERCONFIG_FILE` names, makes a gamepad of
+a controller SDL has no mapping for.
+
+A `controls.txt` line binds its device to port 1 unless it says `port <n>`. A port that a
+`port <n>` line names is kept from gamepads, even when n is 1. The first device present on
+it shows the port on its player light.
+
 ## Audio
 
 This fork changes the audio path from upstream `9b0a2fe` in the commits below. Nothing in it
@@ -216,39 +233,21 @@ hundreds of milliseconds (`f19f98d`).
   registers; `gx/` the graphics pipeline; `interp/` the interpreter, which runs code the
   recompiler didn't see or the game changed; `ram_patches.*` the RAM patch list, applied at
   the end of boot; `main.cpp` the SDL frontend and `bench_main.cpp` the benchmark.
-  `gamepads.*` gives each gamepad a port of its own as it connects. It
-  takes its saved port if that's free. A gamepad the file doesn't name takes the port of
-  its player number if that's free (Steam Input's order, or the XInput slot on Windows),
-  else the lowest free port, and a saved one that finds its port taken takes the lowest
-  free port too. Its player light then shows that port, except an XInput controller's
-  ring, which shows the slot Windows gave it.
-  A gamepad pulled out frees its port, which the game then sees unplugged unless the
-  keyboard (port 1), `--pads` or a `controls.txt` line keeps it plugged in. A gamepad gets
-  no port when none is free, and gets one only after it is unplugged and plugged in again.
-  A gamepad plugged back in takes its saved port if that's free, so two gamepads pulled
-  out and plugged back in the other order keep their ports. A controller SDL has no
-  mapping for is a gamepad once a `gamecontrollerdb.txt` beside the executable maps it; for
-  a file elsewhere, SDL reads the path in `SDL_GAMECONTROLLERCONFIG_FILE`.
-  `input_map.*` binds any joystick or key to a port from a `controls.txt` (wheels, pedals,
-  button boxes; port 1 unless a line says `port <n>`), and its `--list-controls` prints
-  what to write for each. A port a device's `port <n>` line names, `port 1` too, is kept
-  from gamepads, and the first such device present shows the port on its player light;
-  `ffb.*` is the wheel's force feedback, from the game's `telemetry::Motion` and the pad's
-  rumble motor.
-- `runtime/port_memory.*`: `saves/ports.txt`, one line a port, naming the gamepad last put
-  there by its GUID, serial and USB IDs. A saved port is only a preference. Another gamepad
-  can take it while its own is away. The file is written only when a gamepad lands on a
-  port the file didn't name it on.
+  `gamepads.*` gives each gamepad a port (Controllers above); `input_map.*` binds any
+  joystick or key to a port from a `controls.txt` (wheels, pedals, button boxes), and its
+  `--list-controls` prints what to write for each; `ffb.*` is the wheel's force feedback,
+  from the game's `telemetry::Motion` and the pad's rumble motor.
+- `runtime/port_memory.*`: `saves/ports.txt`, one line a port, naming the gamepad last there
+  by its GUID and serial, with its USB IDs. A saved port is only a preference, and the file
+  changes only when a gamepad lands on a port it didn't name for that gamepad.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
   `fullscreen`, `scale` and `disc`, while the desktop frontend also reads `disc_overlay` and
   `ram_patches`. A flag beats the file for that run and isn't written back, and a save
   rewrites only the owned keys' lines and adds any that are missing.
-- `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. It pauses the game and
-  holds the game's input back while it's open. Its Display page sets the picture and saves
-  what it changes to `settings.txt`. Its Restart calls `frontend_restart` (`frontend.h`), as a
-  game's own page can. `overlay_add_page` registers a game's page after Display before the
-  overlay starts.
+- `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. `overlay_add_page`,
+  called before the overlay starts, adds a game's page after Display. A page can call
+  `frontend_restart` (`frontend.h`) as Restart does.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;
   `xr_desktop.cpp` puts it on the desktop's GL context for PC VR (`--vr`, Windows).
