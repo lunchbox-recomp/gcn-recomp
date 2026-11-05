@@ -78,6 +78,7 @@ void overlay_add_page(const char* title, void (*draw)(void* user), void* user);
 // for tests: the overlay still opens, closes and holds input back. A window with no GL
 // context, which tests make with SDL's dummy video driver, has a menu that's driven but
 // never drawn (overlay_menu_frame).
+// The menu asks the OS to open no link or file. Its duplicate-ID tooltip offers no item picker.
 void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& picture);
 #ifdef GCN_OVERLAY_TEST
 // Clear prior registrations so another test can register before its overlay_init.
