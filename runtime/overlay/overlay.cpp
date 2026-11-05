@@ -421,6 +421,8 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
         ImGui_ImplSDL3_InitForOther(window);
         io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
     }
+    // The menu opens no links or files.
+    ImGui::GetPlatformIO().Platform_OpenInShellFn = nullptr;
     // The backend reads no gamepad, so read_pads can read them all by their labels.
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_Manual, nullptr, 0);
     hold_pads();

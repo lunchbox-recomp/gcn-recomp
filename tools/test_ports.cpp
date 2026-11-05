@@ -2273,6 +2273,8 @@ void overlay_buttons(const std::string& dir) {
               lines_with(page_errors, "[overlay] page title Display is already in use\n") == 1,
           "empty and duplicate page titles each print one refusal");
     overlay_init(window, "Test title", picture);
+    check(ImGui::GetPlatformIO().Platform_OpenInShellFn == nullptr,
+          "the menu leaves Dear ImGui's link opener disabled after init");
     capture(page_errors, [&] { overlay_add_page("Late", draw_added_page, &page_draws); });
     check(lines_with(page_errors, "[overlay] page registration is closed after init\n") == 1,
           "a page registered after init prints one refusal");

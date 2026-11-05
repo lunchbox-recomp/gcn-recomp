@@ -769,6 +769,7 @@ once `<frame>` frames have been presented, and closes it after it's been drawn o
 frame `<host frames>` times. With `--dump-output` the first draw over the held frame that shows
 the menu goes to `overlay_NNNNN.png` too, which is how a hidden run shows it. Frame and output
 dumps never include it, so a run that opened it writes the same frame dumps as one that didn't.
+The menu doesn't open links or files through Dear ImGui.
 
 `GCN_QUIT_AT=<frame>` ends the run once `<frame>` frames have been presented, the way the
 window's close button does (`runtime/main.cpp`). It says so in a `[quit]` line as it asks. The
