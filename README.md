@@ -200,21 +200,14 @@ nothing was compared with a real console. Every run was on one machine.
 ## The disc drive
 
 A DVD read takes the time a drive would take over it, where upstream gave every read 100 us
-and 64 MB/s. At that rate a music stream could start in one audio frame, so the AX library
-dropped its loop flag and the music stopped after its first buffer.
+plus its length at 64 MiB/s. The default, `disc fast`, reads every block as one the drive
+has read ahead, as Dolphin's "Speed up disc transfer rate" does (`22bc2c8`, `7968abc`).
+`disc console` in `settings.txt` or `--disc=console` uses Dolphin's model of a console's
+drive, measured on hardware (`04c025f`), which froze two scene changes on one menu route for
+1.5 s each against 0.4 s and 0.2 s at `fast`.
 
-By default every block reads as one the drive has read ahead, so a read costs 600 us and its
-length at 32 MiB/s, as Dolphin's "Speed up disc transfer rate" has it (`22bc2c8`, `7968abc`).
-`disc console` in `settings.txt` or `--disc=console` times reads as a console's drive does,
-with Dolphin's model and numbers, measured on hardware (`04c025f`). On one menu route that
-made two scene changes freeze for 1.5 s each, against 0.4 s and 0.2 s at the default.
-
-A replay reads at the speed its input log was recorded at (`80e1d38`), and `session.json`
-names the speed (`6fe5b37`). [The diagnostics](docs/diagnostics.md#the-disc-drive) give
-both speeds' numbers.
-
-A read's DIMAR and DILENGTH move when it completes, since a read at console speed can take
-hundreds of milliseconds (`f19f98d`).
+A replay reads at its log's speed (`80e1d38`).
+[The diagnostics](docs/diagnostics.md#the-disc-drive) give both speeds' numbers.
 
 ## Layout
 
@@ -264,13 +257,17 @@ hundreds of milliseconds (`f19f98d`).
 
 ## Requirements
 
-CMake 3.20+, Ninja, Python 3 and a C++20 compiler. The first configure downloads SDL
-3.4.18's source release, checks its SHA-256 and builds it static into the build directory.
-`-DGCN_SYSTEM_SDL=ON` uses an installed SDL3 (3.2 or later) instead. If libusb's shared
-library is installed when SDL is configured, SDL also reaches controllers over libusb,
-loading libusb at run time rather than linking it. On macOS that is
-`brew install cmake ninja python`, plus `libusb`.
+CMake 3.20+, Ninja, Python 3 and a C++20 compiler. On macOS that's
+`brew install cmake ninja python`, and `brew install libusb` for controllers over libusb.
+
+The first configure downloads SDL 3.4.18's source release, checks its SHA-256 and builds it
+static into the build directory. `-DGCN_SYSTEM_SDL=ON` uses an installed SDL3 (3.2 or later)
+instead.
+
+If libusb's shared library is installed when SDL is configured, SDL also reaches controllers
+over libusb, loading libusb at run time rather than linking it. A configure that finds
+libusb only as a static library stops, since libusb's license rules out linking it.
 
 The menu over the game needs Dear ImGui 1.92.9b, whose source archive the first configure
-downloads and checks by its SHA-256. `-DGCN_OVERLAY=OFF` builds without the menu, and Android
-builds and the benchmark leave it out.
+downloads and checks by its SHA-256. `-DGCN_OVERLAY=OFF` builds without the menu, and the
+benchmark and the Android and visionOS builds leave it out.
