@@ -5,8 +5,10 @@ find out which guest code or which draw is responsible for something. Environmen
 are `GCN_*`; none of this is needed to play.
 
 The engine reads an empty switch as unset. An empty `GCN_DISC_OVERLAY` or `GCN_RAM_PATCHES`
-turns off its `settings.txt` key, and an empty `GCN_TELEMETRY` is the default address. An
-empty `GCN_REPLAY` still asks for a replay, and the run stops if that finds no log.
+turns off its `settings.txt` key, and an empty `GCN_TELEMETRY` is the default address.
+
+An empty `GCN_REPLAY` still asks for a replay. With no log there, the benchmark and
+`<game>_egl` stop, and the headset app and visionOS run on without one.
 
 ## Input logging and replay
 
@@ -19,6 +21,9 @@ The SRAM holds what a console keeps on its battery, such as the sound mode. It l
 `saves/sram.raw` beside the card, read at boot and written through a temp file each time
 the guest changes it. A missing file gives the defaults, as does one that isn't 64 bytes or
 fails its checksums.
+
+A failed SRAM save is tried again the next time the guest writes the SRAM and deselects the
+device.
 
 `ninja test_sram` builds `tools/test_sram.cpp`, which checks the load and the save in a work
 dir. `ninja test_exi` builds `tools/test_exi.cpp`, which drives the EXI device as the guest
@@ -142,7 +147,7 @@ while it's there.
 
 A port plugged in at power-on with nothing on it sits at rest unless a script presses it,
 and stays plugged in when its gamepad is pulled out; past those ports, the game sees a port
-whose gamepad is pulled out as unplugged. A port before the frame
+whose gamepad is pulled out as unplugged. In a script, a port before the frame
 (`2/900:A:10`) names the controller that presses; a press without one is port 1's, and a
 press on a port that isn't plugged in does nothing.
 
@@ -629,8 +634,8 @@ Quitting or an interrupt flushes both files, so the last block and its line are 
 fault or the watchdog loses them. A restart starts both files again, unless `GCN_SESSION`
 named them.
 
-If the file won't open, nothing is recorded. If the `.txt` won't open, the file named is left
-empty and nothing is recorded.
+If `GCN_AIDWAV`'s file won't open, nothing is recorded. If the `.txt` won't open, the file
+named is left empty and nothing is recorded.
 
 **A block held for the guest.** A block that ends before the guest has queued the next
 buffer is held for up to a quarter block of the guest's own running, jumps left out
@@ -662,6 +667,8 @@ ring was more than half full, where the guest could overwrite what the fade read
 cut splices. With a cushion of 400 ms or more every cut splices, since the cut then always
 comes with the ring over half full. A cut that comes while a crossfade is still running
 waits for the next pull.
+
+Without the fades a cut on a tone made a second difference 300 times the tone's own.
 
 `ninja test_audio_ring` builds `tools/test_audio_ring.cpp`, which runs `audio.cpp` with a
 tone for the guest and a device that keeps exact time on one virtual clock. It checks that
@@ -766,6 +773,17 @@ frame `<host frames>` times. With `--dump-output` the first draw over the held f
 the menu goes to `overlay_NNNNN.png` too, which is how a hidden run shows it. Frame and output
 dumps never include it, so a run that opened it writes the same frame dumps as one that didn't.
 
+The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
+then fades back in once the cushion has refilled after the resume, as after any stall. Under
+`GCN_AUDIOSTATS` a pause shows as a run of `[audio] underrun` lines from where the ring ran
+dry, and an `[audio] output frame F plays DMA frame D` line where it plays again ("The sound
+device", below).
+
+DVD streamed music is held with the guest. The audio thread reads `paused()`, fades the music
+out over 5 ms as the ring does when it runs dry, then keeps it silent with its place on the
+disc unmoved. The resume fades it back in over 8 ms from the next sample, and a pause that's
+asked for but not yet held leaves it playing.
+
 ## Ending a run
 
 `--exit-after=N` ends the run after the Nth presented frame and exits 0, shutting down as
@@ -817,17 +835,6 @@ again in `end_run`. Its own at-exit function checks for one `# end` and Restart'
 `[reset]` line, then ends the process. `--quit` does the same for a quit, which has no
 `[reset]` line and no relaunch, and `--restart-replay` finds no Restart game in a replay's
 menu once its log has run out.
-
-The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
-then fades back in once the cushion has refilled after the resume, as after any stall. Under
-`GCN_AUDIOSTATS` a pause shows as a run of `[audio] underrun` lines from where the ring ran
-dry, and an `[audio] output frame F plays DMA frame D` line where it plays again ("The sound
-device", below).
-
-DVD streamed music is held with the guest. The audio thread reads `paused()`, fades the music
-out over 5 ms as the ring does when it runs dry, then keeps it silent with its place on the
-disc unmoved. The resume fades it back in over 8 ms from the next sample, and a pause that's
-asked for but not yet held leaves it playing.
 
 ## The AX mixer
 
@@ -1041,8 +1048,8 @@ that runs the game with `2>&1 | tee <dir>/stdout.txt`. Once the window and the s
 are open, the process writes `<dir>/session.json`, which under `--vr` waits for the headset
 frontend to open the device.
 
-A `--headless` run has no window or device and writes it before the guest boots, with
-`refresh_hz` and `audio_device` null. For a run on SDL's dummy driver it looks like this,
+A `--headless` run has no window or device and writes `session.json` before the guest boots,
+with `refresh_hz` and `audio_device` null. For a run on SDL's dummy driver it looks like this,
 with the command line shortened and the game's binary called `game`:
 
 ```json
@@ -1212,7 +1219,7 @@ so the variants never mix with the real ones).
 - `GCN_RAM_DUMP_AT=<frame>,...` writes the guest RAM at the end of each of those submitted
   frames (the count `GCN_INPUT` keys on) to `GCN_RAM_DUMP_DIR` as `ram_<frame>.bin`, from
   the guest thread; for finding a game's variables by comparing its memory over a scripted
-  run. `GCN_RAM_DUMP_DIR` defaults to the working directory. The log line names the
+  run (`GCN_RAM_DUMP_DIR` is the working directory when unset). The log line names the
   presented frame it was taken at too, the number the frame dumps carry, so a dump can be
   matched to what was on screen. The dump contains physical RAM, so a game that maps memory
   through its page tables has its paged variables wherever their
@@ -1404,7 +1411,8 @@ A replay reads at the speed its input log was recorded at (`# disc fast` or `# d
 in the header), whatever `settings.txt` or `--disc` say, since the guest's timeline runs
 on its reads. A log with no disc line, or one naming neither speed, replays at `console`.
 When the speed it reads at differs from the one asked for, an `[input]` line on stderr says
-so and why.
+so and why, such as
+`[input] the log has no disc line, so the replay reads at disc console and not at disc fast`.
 
 `--log=dvd` ends each `read off=` line with the read's time, as `in <N> us`.
 `ninja test_drive` builds `tools/test_drive.cpp`, which checks the model's times against
@@ -1450,7 +1458,8 @@ writes and code change notifications against fake RAM.
 
 `disc_overlay PATH` in `settings.txt`, `GCN_DISC_OVERLAY=FILE` or `--disc-overlay=FILE`
 reads the disc through an overlay. The flag beats the variable and the variable beats the
-key, and an empty value means none.
+key, and an empty value means none. A relative `PATH` in the key is read from the folder
+holding `settings.txt`.
 
 Only the desktop reads the key and the flag. Every other frontend reads `GCN_DISC_OVERLAY`
 alone. The overlay remains selected after a console reset relaunches the desktop frontend.
@@ -1585,9 +1594,9 @@ flushes them (`docs/interpreter.md`). These lines go to stderr whatever the sett
 The first comes at boot. The second comes once for each HLE'd function whose code changes, and
 the third once for each address of unknown code that runs as a loose frame since boot.
 
-`<ret>` is where the loose frame returns, the LR the function that branched there was
-entered with. It differs from `<lr>` when that function branched to the code without
-linking, as a mod's hook placed after a call does. A `blr` that pops a frame the entry
+`<ret>` is where the loose frame returns. After a call that links it's `<lr>`, and after a
+branch that doesn't, as at a mod's hook placed after a call, it's the LR the function that
+branched there was entered with. A `blr` that pops a frame the entry
 didn't own returns too (`docs/interpreter.md`).
 
 `GCN_CODE_CHECK=1` compares all the text with boot's copy at each frame boundary, on the guest
