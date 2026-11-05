@@ -9,8 +9,10 @@
 // line, whose quotes, backslashes and control characters have to be escaped. The game
 // resetting the console relaunches it, so the switches the session set are cleared and a
 // second and third process go on in run-2 and run-3 without touching the first's files.
-// Without GCN_SESSION nothing is set or written. A directory that can't be written must be
-// said out loud and leave no session, where the recordings after it would fail without a word.
+// Without GCN_SESSION nothing is set or written. --no-session-audio leaves both default
+// audio switches unset, including when it follows other arguments or the process relaunches,
+// but keeps any switch set by hand. A directory that can't be written must be said out loud
+// and leave no session, where the recordings after it would fail without a word.
 //
 // usage: test_session <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
@@ -161,6 +163,16 @@ int main(int argc, char** argv) {
     check(session_begin(2, silent_args) == quiet + "/run-2/inputs" && env("GCN_WAV") == "<unset>" &&
               env("GCN_AIDWAV") == "<unset>",
           "--no-session-audio holds in run-2 after a relaunch");
+    session_relaunching();
+
+    char pads[] = "--pads=1";
+    char* late_silent_args[] = {a0, a1, pads, silent};
+    const std::string late_quiet = g_dir + "/late-quiet";
+    clear_switches();
+    set_env("GCN_SESSION", late_quiet);
+    check(session_begin(4, late_silent_args) == late_quiet + "/inputs" && env("GCN_WAV") == "<unset>" &&
+              env("GCN_AIDWAV") == "<unset>",
+          "--no-session-audio after other arguments sets neither audio switch");
     session_relaunching();
 
     clear_switches();
