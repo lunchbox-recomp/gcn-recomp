@@ -2,9 +2,7 @@
 
 A DOL patch changes a game's executable before the recompiler reads it. `recomp/dol_patch.py` applies patch lists to a DOL, adds new sections and names the new functions in them. The recompiler translates that code with the rest of the game.
 
-The recompiled game can run PowerPC the recompiler didn't translate too. Code the game or a mod writes into RAM runs in the interpreter, and so does a recompiled function whose words change after an `icbi`, unless it's HLE'd or in a module or REL (`docs/interpreter.md`). A Riivolution release's memory patches write at boot, and the code they change runs in the interpreter the same way (`docs/riivolution.md`).
-
-A DOL patch is still how new code gets recompiled, so it runs as native code and gets a name in the build's symbols. The interpreter runs the same code a word at a time.
+So a patch's new code runs natively, with a name in the build's symbols. Code a game or a mod writes into RAM, a Riivolution memory patch's included, runs in the interpreter instead (`docs/interpreter.md`, `docs/riivolution.md`).
 
 ## Running it
 
@@ -32,7 +30,7 @@ A list is UTF-8, with or without a byte order mark. Only a newline ends a line, 
 
 A list is a regular file or a link to one, and it's no bigger than 1 MiB. A pipe or a device is refused before it's opened.
 
-- `dol` comes first in every list, and its SHA-1 has to match `IN`. Patches apply to a copy, so the check that the build starts from the supported DOL never relaxes.
+- `dol` comes first in every list, and its SHA-1 has to match `IN`.
 - `section` adds a section. It's zero-filled, or it starts with the bytes of `<file>`. The file's path is the rest of the line, so it can hold spaces.
 - `word` replaces one word, and `expect` is the word it replaces.
 - `function` names code in an added text section, so the recompiler compiles it.
@@ -41,7 +39,9 @@ A section starts 32-byte aligned in main RAM and ends below `0x81800000`, where 
 
 A section's file has to be a regular file inside the folder that holds the list, named by a relative path. An absolute path is refused, and so is a `..` or a symlink that leaves the folder. A pipe or a device is refused before it's opened.
 
-Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp`), so a section can't overlap them. The SDK's usual layout puts the stacks right after the bss and arena lo after them, so a section past the bss starts above the stacks, and its list raises arena lo past the section with `word` lines that are game-specific. Boot also copies the FST just under the top 8 KiB, at a place the disc's FST size sets, so the tool can't check that range and a list stays clear of it.
+Boot writes the low-memory words and the top 8 KiB after it loads the sections (`runtime/boot.cpp:31-55`), so a section can't overlap them. Boot also copies the FST just below the top 8 KiB, at an address the disc's FST size sets. The tool can't check that range, so a list keeps clear of it.
+
+The SDK's usual layout puts the stacks right after the bss and arena lo above them. So a section past the bss sits above the stacks, and its list moves arena lo past the section with `word` lines specific to the game.
 
 The game's own startup writes its exception vectors and OS globals below the DOL's first section, so a section in low memory has to stay clear of what the game uses there.
 
@@ -51,7 +51,7 @@ A function lies inside one added text section that an earlier line added, and it
 
 A name also has to stay clear of the names in a game's `hle.txt` and of `OSLink`, `OSLinkFixed` and `OSUnlink`. The tool can't see those tables, and `recomp.py` would send the new code to the hook instead of running it.
 
-Lists apply in the order given. A section belongs to the list that adds it, so a `word` or a `function` from a later list can't land inside. Two lines that write one word are refused, and so are two sections that overlap, each with a message that names both lines.
+A section belongs to the list that adds it, so a `word` or a `function` from a later list can't land inside. Two lines that write one word are refused, and so are two sections that overlap, each with a message that names both lines.
 
 ## What it writes
 
@@ -76,7 +76,7 @@ section text 80020000 20 hook.bin
 function 80020000 8 hook
 ```
 
-Here `hook.bin` holds `38600001` and `4BFF0004`, which is `b 80010008`. The recompiler already handles this.
+Here `hook.bin` holds `38600001` and `4BFF0004`, which is `b 80010008`.
 
 A branch into the middle of another function registers an entry there, and a branch out of a function becomes a C call followed by `RET()`. The hooked word calls the new function and returns. The new function ends by calling the entry at `80010008`, so the rest of the host function runs as a nested call.
 
@@ -104,7 +104,7 @@ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
              ${CMAKE_CURRENT_SOURCE_DIR}/code.txt ${CMAKE_CURRENT_SOURCE_DIR}/hook.bin)
 ```
 
-A game with `RELS` needs `rel.py link` to carry `.syms` through first. It runs after the fixup and writes its own `.syms` from the modules' symbols, so the patch tool's file beside its input doesn't survive. Link also adds a text and a data section of its own, so a patch list for such a game leaves a slot of each kind free.
+In a game with `RELS`, `rel.py link` runs after the fixup and writes `.syms` from the modules' symbols alone, so the symbols the recompiler reads hold none of the patch's new functions. Link also adds a text and a data section of its own, so a patch list for such a game leaves a slot of each kind free.
 
 ## Why the boot DOL has to be the patched one
 
