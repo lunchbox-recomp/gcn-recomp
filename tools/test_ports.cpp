@@ -2275,6 +2275,8 @@ void overlay_buttons(const std::string& dir) {
     overlay_init(window, "Test title", picture);
     check(ImGui::GetPlatformIO().Platform_OpenInShellFn == nullptr,
           "the menu leaves Dear ImGui's link opener disabled after init");
+    check(!ImGui::GetIO().ConfigDebugHighlightIdConflictsShowItemPicker,
+          "the menu leaves Dear ImGui's duplicate-ID item picker disabled after init");
     capture(page_errors, [&] { overlay_add_page("Late", draw_added_page, &page_draws); });
     check(lines_with(page_errors, "[overlay] page registration is closed after init\n") == 1,
           "a page registered after init prints one refusal");

@@ -403,6 +403,7 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;  // nothing written to the game's directory
+    io.ConfigDebugHighlightIdConflictsShowItemPicker = false;
     io.LogFilename = nullptr;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
