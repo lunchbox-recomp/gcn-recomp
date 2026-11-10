@@ -121,8 +121,8 @@ game boots. Deleting the file is always safe. The startup line reports what happ
 ```
 
 The header holds a version and the size of `ShaderKey`; bump `kShaderKeyVersion`
-(`shadergen.h`) whenever a record's
-layout or a key field's meaning changes (a new field changes the size by itself). A
+(`shadergen.h`) whenever a record's layout or a key field's meaning changes (a new field
+changes the size by itself). A
 file with any other header is replaced (`[shaders] replacing unrecognised cache`). It used
 to be only skipped. The programs compiled after that were then appended behind the old
 header, so the file was skipped on every later run as well. From the version bump on

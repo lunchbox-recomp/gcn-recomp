@@ -262,10 +262,10 @@ struct InVertex {
     uint8_t texmtx[8];
 };
 
-// Reads `N` components of one format into floats, one
-// specialisation per format and count. Which one an attribute uses is fixed by the vertex
-// layout, so it is chosen once per layout (make_layout) rather than switched on for every
-// component of every vertex -- the decode is the largest thing left on the guest thread.
+// Reads `N` components of one format into floats, one specialisation per format and count.
+// Which one an attribute uses is fixed by the vertex layout, so it is chosen once per layout
+// (make_layout) rather than switched on for every component of every vertex -- the decode is
+// the largest thing left on the guest thread.
 using CompReader = void (*)(const uint8_t* q, float* dst, float scale);
 template <uint32_t FMT>
 static inline float read_one(const uint8_t* q, float scale) {
