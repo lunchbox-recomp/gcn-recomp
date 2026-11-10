@@ -190,7 +190,8 @@ static double display_hz(SDL_Window* win) {
 }
 
 // ---------------------------------------------------------------------------
-// Input: the keyboard on port 1, each gamepad on the port it is given (gamepads.h), and
+// Input: the keyboard on port 1 or the port gamepads_assign gives it, which it plugs in, each
+// gamepad on the port it is given (gamepads.h), and
 // controls.txt on the ports it names (input_map.h). --pads=N plugs in ports 1 to N
 // whether or not anything drives them, at rest unless a script presses them (the SI layer
 // applies scripts, input_script.h).
@@ -203,6 +204,7 @@ static int g_port_count = 1;  // plugged in from power-on: --pads, or the ports 
 static bool g_gamepads = true;
 
 static void merge_keyboard(PadState& p) {
+    p.connected = true;
     const bool* k = SDL_GetKeyboardState(nullptr);
     if (k[SDL_SCANCODE_RETURN]) p.buttons |= PAD_START;
     if (k[SDL_SCANCODE_X]) p.buttons |= PAD_A;
@@ -236,7 +238,7 @@ static bool g_guest_held;  // the loop's, from paused() (pause.h)
 static void merge_port(int port, PadState& p) {
     const bool motor = pad_motor(port) && !g_guest_held;
     std::lock_guard<std::mutex> lk(g_pads_mutex);
-    if (port == 0) merge_keyboard(p);
+    if (port == gamepads_keyboard_port()) merge_keyboard(p);
     gamepads_merge(port, p);
     input_map_apply(p, port, motor);
     gamepads_rumble(port, motor);

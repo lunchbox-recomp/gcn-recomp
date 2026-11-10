@@ -1,5 +1,5 @@
 // The overlay's set-up, opening and closing, and the input it holds back; see overlay.h. The
-// Display page is overlay_display.cpp.
+// Display page is overlay_display.cpp and the notices notices.cpp.
 #include "overlay/overlay.h"
 #include "frontend.h"
 #include "gamepads.h"
@@ -25,6 +25,15 @@ bool write_png(const char* path, const uint8_t* rgba, int w, int h);
 // overlay_display.cpp's.
 void display_init(const OverlayPicture& picture);
 void display_page(SDL_Window* window);
+// notices.cpp's.
+void notices_init(SDL_Window* window, bool gl);
+void notices_frame();
+// Below, for the notices too: a Dear ImGui context over `window`, made current, with the GL
+// backend where `gl` says the window has a GL context and none otherwise, so it's laid out and
+// never drawn. It writes no file, opens no link, offers no item picker and reads no gamepad
+// itself. The menu and the notices each have one, so a frame of notices with the menu closed
+// leaves the menu's focus as it was.
+void overlay_imgui_context(SDL_Window* window, bool gl);
 
 namespace {
 
@@ -400,12 +409,19 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     display_init(picture);
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) parse_at(e);
     if (!window) return;
-    ImGui::CreateContext();
+    g_gl = SDL_GL_GetCurrentContext() != nullptr;
+    notices_init(window, g_gl);
+    overlay_imgui_context(window, g_gl);  // the menu's, current from here on
+    ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+    hold_pads();
+}
+
+void overlay_imgui_context(SDL_Window* window, bool gl) {
+    ImGui::SetCurrentContext(ImGui::CreateContext());
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;  // nothing written to the game's directory
     io.ConfigDebugHighlightIdConflictsShowItemPicker = false;
     io.LogFilename = nullptr;
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
     ImGui::StyleColorsDark();
     // Twice Dear ImGui's own size, to be read from a couch, times the display's content scale.
     const float content = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
@@ -413,12 +429,11 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     style.FontScaleMain = 2.0f;
     style.FontScaleDpi = content > 0.0f ? content : 1.0f;
     style.ScaleAllSizes(style.FontScaleMain * style.FontScaleDpi);
-    g_gl = SDL_GL_GetCurrentContext() != nullptr;
-    if (g_gl) {
+    if (gl) {
         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
         ImGui_ImplOpenGL3_Init();
     } else {
-        // Nothing draws the menu, so the texture its font is baked into is never made.
+        // Nothing draws it, so the texture its font is baked into is never made.
         ImGui_ImplSDL3_InitForOther(window);
         io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
     }
@@ -427,7 +442,6 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     ImGui::GetPlatformIO().Platform_OpenInShellFn = nullptr;
     // The backend reads no gamepad, so read_pads can read them all by their labels.
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_Manual, nullptr, 0);
-    hold_pads();
 }
 
 bool overlay_open() { return g_open; }
@@ -496,8 +510,9 @@ void overlay_gate(int port, PadState& p) {
 }
 
 void overlay_menu_frame() {
-    if (!g_open) return;
-    if (g_window) menu_frame();
+    if (!g_window) return;
+    if (g_open) menu_frame();
+    notices_frame();
 }
 
 void overlay_draw() {
@@ -506,11 +521,13 @@ void overlay_draw() {
         g_at_frame = -1;
         set_open(true);
     }
-    if (!g_open) return;
-    ImGui_ImplOpenGL3_NewFrame();
-    menu_frame();
-    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-    if (!paused()) return;
+    if (g_open) {
+        ImGui_ImplOpenGL3_NewFrame();
+        menu_frame();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    }
+    notices_frame();
+    if (!g_open || !paused()) return;
     // A menu's first frame only lays it out and draws nothing, so the dump waits for one that drew.
     if (!g_dumped && gx::g_dump_output && gx::g_dump_dir && ImGui::GetDrawData()->TotalVtxCount > 0) {
         g_dumped = true;

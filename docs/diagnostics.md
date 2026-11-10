@@ -141,7 +141,8 @@ speed, `--fast` included.
 
 `--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
 power-on (1 to 4; port 1 alone by default), so that the game finds them when it first
-looks. The keyboard drives port 1 and `controls.txt` the ports it names. Each gamepad
+looks. The keyboard drives port 1, or the port `gamepads_assign` gives it for the run, and
+keeps that port plugged in. `controls.txt` drives the ports it names. Each gamepad
 drives the port it takes as it connects (`runtime/gamepads.h`), which plugs that port in
 while it's there.
 
@@ -154,7 +155,9 @@ press on a port that isn't plugged in does nothing.
 `saves/ports.txt` remembers which gamepad was last on each port (`runtime/port_memory.h`),
 by its GUID, serial and USB IDs, so a gamepad finds its port again whatever order the
 controllers connect in. It's written when a gamepad lands on a port the file didn't have
-it on, and not when one is pulled out.
+it on, and not when one is pulled out. A move by `gamepads_assign`, `gamepads_swap` or
+`gamepads_unassign` (`runtime/gamepads.h`) writes each port it changes as what's on it now,
+or `none`.
 
 A saved port is only a preference. Another gamepad can take it while its own is away. A
 gamepad that finds its port taken goes to the lowest free port, and a port `controls.txt`
@@ -173,6 +176,12 @@ button the game takes as A is the one that picks there.
 
 A pad that passes for another gets that pad's labels, whatever's printed on it. An 8BitDo
 in its X-input mode is an Xbox 360 pad to SDL, so its south button is A.
+
+With the overlay built in, a gamepad that connects, disconnects or changes player also gets a
+`[pads]` line, in the words of the notice over the game (`runtime/overlay/overlay.h`), such as
+`[pads] Xbox Wireless Controller connected as player 1`. One taken off its port says
+`gamepads: "<name>" taken off port N`, then its `sent` and rumble lines as if it were pulled
+out.
 
 When it's pulled out, or when the run ends with it still on its port, a `port N sent` line
 gives each SDL button's presses and each axis's lowest and highest raw value, whether the
@@ -771,7 +780,8 @@ frame N after T ms, output frame F`, where F is how far a `GCN_WAV` recording ha
 once `<frame>` frames have been presented, and closes it after it's been drawn over the held
 frame `<host frames>` times. With `--dump-output` the first draw over the held frame that shows
 the menu goes to `overlay_NNNNN.png` too, which is how a hidden run shows it. Frame and output
-dumps never include it, so a run that opened it writes the same frame dumps as one that didn't.
+dumps never include it or the notices about controllers, so a run that opened it writes the
+same frame dumps as one that didn't.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under

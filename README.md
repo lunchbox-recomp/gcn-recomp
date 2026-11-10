@@ -103,6 +103,9 @@ The menu's Display page sets the aspect and the internal scale and turns fullscr
 Each change applies at once and is saved to `settings.txt`, which the window reads at start.
 With `--eye` or `GCN_THEATER_STEREO` the aspect choices are there but can't be picked.
 
+A notice at the bottom of the window says for 2 seconds that a controller connected or
+disconnected, with the menu open or closed. It doesn't pause the game.
+
 Restart game and Quit game sit below every page, and each asks first, with Cancel picked.
 Cancel, B or Escape goes back with nothing done. A replay has no Restart game, even once its
 log runs out, since the log can't hold one.
@@ -237,14 +240,17 @@ A replay reads at its log's speed (`80e1d38`).
   rumble motor.
 - `runtime/port_memory.*`: `saves/ports.txt`, one line a port, naming the gamepad last there
   by its GUID and serial, with its USB IDs. A saved port is only a preference, and the file
-  changes only when a gamepad lands on a port it didn't name for that gamepad.
+  changes only when a gamepad lands on a port it didn't name for that gamepad, or when
+  `gamepads_assign` or another move in `gamepads.h` changes a port. That port's line then
+  names what's on it, or `none`.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
   `fullscreen`, `scale` and `disc`, while the desktop frontend also reads `disc_overlay` and
   `ram_patches`. A flag beats the file for that run and isn't written back, and a save
   rewrites only the owned keys' lines and adds any that are missing.
-- `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. `overlay_add_page`,
-  called before the overlay starts, adds a game's page after Display. A page can call
+- `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. `notices.cpp` draws the
+  notices about controllers. `overlay_add_page`, called before the overlay starts, adds a
+  game's page after Display. A page can call
   `frontend_restart` (`frontend.h`) as Restart does.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;

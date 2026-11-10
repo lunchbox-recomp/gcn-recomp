@@ -41,6 +41,11 @@
 // With the aspect held at 4:3, as --eye and GCN_THEATER_STEREO hold it, its choices are shown
 // disabled with a note saying so.
 //
+// A notice over the bottom of the window says for 2 s of host time that a controller
+// connected, disconnected or moved, and logs the same as a `[pads]` line. It shows with the
+// menu closed too, never pauses the game and takes no input. Frame and output dumps never
+// include it.
+//
 // GCN_OVERLAY_AT=<frame>:<host frames> opens it once <frame> frames have been presented and
 // closes it after it's been drawn over the held frame <host frames> times, for a run nobody is
 // at. With --dump-output the first draw over the held frame that shows the menu goes to
@@ -50,6 +55,7 @@
 #include "hw/pad.h"
 #include "settings.h"
 #include <string>
+#include <vector>
 
 struct SDL_Window;
 union SDL_Event;
@@ -109,7 +115,13 @@ void overlay_menu_frame();
 // What the Display page does with `next`, the picture with its change made: the frontend applies
 // it, and each key where it differs from the picture now is saved.
 void overlay_display_change(const Settings& next);
+// A notice about a controller (notices.cpp), and its `[pads]` line.
+void overlay_pads_notice(const std::string& text);
+// The notices still showing, oldest first, and how many frames have shown them. For the tests.
+std::vector<std::string> overlay_notices();
+long overlay_notice_frames();
 #else
+inline void overlay_pads_notice(const std::string&) {}
 inline void overlay_add_page(const char*, void (*)(void*), void*) {}
 inline void overlay_init(SDL_Window*, const char*, const OverlayPicture&) {}
 inline bool overlay_event(const SDL_Event&) { return false; }

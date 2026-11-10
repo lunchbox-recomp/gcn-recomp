@@ -1,6 +1,7 @@
 // See gamepads.h.
 #include "gamepads.h"
 #include "input_map.h"
+#include "overlay/overlay.h"  // the notices
 #include "platform.h"
 #include "port_memory.h"
 #include <algorithm>
@@ -116,10 +117,24 @@ void say_sent(int i) {
             g.rumbles == 1 ? "" : "s", g.failed, g.calls, g.calls == 1 ? "" : "s");
 }
 
+// A notice over the game and its [pads] line (overlay.h), as `name` `what` player `port` + 1.
+void notice(const char* name, const char* what, int port) {
+    overlay_pads_notice(name + std::string(what) + std::to_string(port + 1));
+}
+
+int g_keyboard_port = 0;    // the keyboard's port, which only gamepads_assign moves
 std::string g_memory_path;  // where the saved ports are kept, empty for nowhere
 SavedPorts g_saved;         // what the file said, and what has been put on a port since
 bool g_saved_loaded = false;
 bool g_may_save = true;  // false once the file turned out to exist and not be readable
+
+// The saved ports, read when a gamepad or a move first needs them and not before, so that a
+// launch with no gamepad reads nothing.
+void load_saved() {
+    if (g_memory_path.empty() || g_saved_loaded) return;
+    g_saved = ports_load(g_memory_path, g_may_save);
+    g_saved_loaded = true;
+}
 
 // What tells the gamepad from another across launches.
 PortDevice device_of(SDL_Gamepad* g) {
@@ -169,11 +184,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
         arrivals.push_back({g, which});
     }
     if (!arrivals.empty()) {
-        // The file is read here and not before, so that a launch with no gamepad reads nothing.
-        if (!g_memory_path.empty() && !g_saved_loaded) {
-            g_saved = ports_load(g_memory_path, g_may_save);
-            g_saved_loaded = true;
-        }
+        load_saved();
         std::vector<PresentDevice> present;
         for (int i = 0; i < 4; i++)
             if (g_ports[i].pad) present.push_back({device_of(g_ports[i].pad), SDL_GetGamepadPlayerIndex(g_ports[i].pad), i});
@@ -189,6 +200,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
             const int i = got[first + k];
             if (i < 0) {
                 fprintf(stderr, "gamepads: \"%s\" left out: no port is free\n", pad_name(a.pad));
+                overlay_pads_notice(pad_name(a.pad) + std::string(" has no player: all four are taken"));
                 SDL_SetGamepadPlayerIndex(a.pad, -1);
                 SDL_CloseGamepad(a.pad);
                 g_left_out.push_back(a.which);
@@ -198,6 +210,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
             if (!g_memory_path.empty() && ports_assign(g_saved, i, present[first + k].id)) moved = true;
             fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(a.pad), i + 1);
             say_landed(i);
+            notice(pad_name(a.pad), " connected as player ", i);
         }
         if (moved && g_may_save) ports_save(g_memory_path, g_saved);
     }
@@ -219,6 +232,88 @@ uint8_t axis_to_u8(int v, bool invert) {
 bool may_rumble(SDL_Gamepad* g) {
     return SDL_GetGamepadType(g) == SDL_GAMEPAD_TYPE_GAMECUBE ||
            SDL_GetBooleanProperty(SDL_GetGamepadProperties(g), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false);
+}
+
+// ---- The list and the moves (gamepads.h)
+
+bool changeable(int port) { return port >= 0 && port < 4 && !input_map_pins(port); }
+
+const char* type_name(SDL_GamepadType t) {
+    switch (t) {
+    case SDL_GAMEPAD_TYPE_XBOX360: return "Xbox 360";
+    case SDL_GAMEPAD_TYPE_XBOXONE: return "Xbox One";
+    case SDL_GAMEPAD_TYPE_PS3: return "PS3";
+    case SDL_GAMEPAD_TYPE_PS4: return "PS4";
+    case SDL_GAMEPAD_TYPE_PS5: return "PS5";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO: return "Switch Pro";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT: return "Joy-Con (L)";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT: return "Joy-Con (R)";
+    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return "Joy-Con pair";
+    case SDL_GAMEPAD_TYPE_GAMECUBE: return "GameCube";
+    default: return "gamepad";
+    }
+}
+
+// Whether a button of `g` is down, or a stick or trigger is pushed past a quarter of its travel.
+bool pushed(SDL_Gamepad* g) {
+    for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; k++)
+        if (SDL_GetGamepadButton(g, (SDL_GamepadButton)k)) return true;
+    for (int k = 0; k < SDL_GAMEPAD_AXIS_COUNT; k++) {
+        const int v = SDL_GetGamepadAxis(g, (SDL_GamepadAxis)k);
+        if ((k >= SDL_GAMEPAD_AXIS_LEFT_TRIGGER ? v : abs(v)) > 8192) return true;
+    }
+    return false;
+}
+
+// The gamepad `which` as gamepads_list has it, on `port` or on none (-1). Its light reads the
+// overlay's own handle when this file has let it go.
+PadDevice entry(SDL_JoystickID which, int port) {
+    PadDevice d{which, port};
+    const char* n = SDL_GetJoystickNameForID(which);
+    d.name = n ? n : "?";
+    const SDL_GamepadType type = SDL_GetGamepadTypeForID(which), real = SDL_GetRealGamepadTypeForID(which);
+    d.type = type_name(type);
+    if (real != type) d.type = type_name(real) + std::string(", mapped as ") + d.type;
+    if (SDL_Gamepad* g = SDL_GetGamepadFromID(which)) d.active = pushed(g);
+    return d;
+}
+
+// The gamepad on port `i` taken off it, with no port until it's given one or plugged in again.
+void leave(int i) {
+    Port& g = g_ports[i];
+    fprintf(stderr, "gamepads: \"%s\" taken off port %d\n", pad_name(g.pad), i + 1);
+    say_sent(i);
+    notice(pad_name(g.pad), " is no longer player ", i);
+    if (g.rumbling) gamepads_rumble(i, false);
+    SDL_SetGamepadPlayerIndex(g.pad, -1);
+    SDL_CloseGamepad(g.pad);
+    g_left_out.push_back(g.which);
+    g = Port();
+}
+
+// The gamepad on each port, by its instance ID, 0 for none: what a move is checked against.
+std::array<SDL_JoystickID, 4> occupants() {
+    std::array<SDL_JoystickID, 4> on;
+    for (int i = 0; i < 4; i++) on[i] = g_ports[i].which;
+    return on;
+}
+
+// After a move: each placed gamepad's light shows its port again, and each port whose gamepad
+// isn't the one it had `before` is saved as what's on it now. A port the move left as it was
+// keeps its line, which may name a gamepad that's pulled out.
+void settle(const std::array<SDL_JoystickID, 4>& before) {
+    set_indexes();
+    if (g_memory_path.empty()) return;
+    load_saved();
+    bool changed = false;
+    for (int i = 0; i < 4; i++) {
+        if (g_ports[i].which == before[i]) continue;
+        std::optional<PortDevice> now;
+        if (g_ports[i].pad) now = device_of(g_ports[i].pad);
+        changed = changed || g_saved[i] != now;
+        g_saved[i] = now;
+    }
+    if (changed && g_may_save) ports_save(g_memory_path, g_saved);
 }
 
 }  // namespace
@@ -258,6 +353,7 @@ void gamepads_event(const SDL_Event& e) {
         if (i < 0) return;
         fprintf(stderr, "gamepads: \"%s\" pulled out of port %d\n", pad_name(g_ports[i].pad), i + 1);
         say_sent(i);
+        notice(pad_name(g_ports[i].pad), " disconnected from player ", i);
         SDL_CloseGamepad(g_ports[i].pad);
         g_ports[i] = Port();
     }
@@ -331,6 +427,7 @@ void gamepads_shutdown() {
         g_ports[i] = Port();
     }
     g_left_out.clear();
+    g_keyboard_port = 0;
     // The next launch in this process reads the file again.
     g_saved = SavedPorts{};
     g_saved_loaded = false;
@@ -341,3 +438,57 @@ std::array<int, 4> gamepads_faces(SDL_Gamepad* g) {
     const std::array<SDL_GamepadButton, 4> f = faces(g);
     return {f[0], f[1], f[2], f[3]};
 }
+
+PadList gamepads_list() {
+    PadList list;
+    for (int i = 0; i < 4; i++) list.pinned[i] = input_map_pins(i);
+    int keys = 0;
+    const bool* k = SDL_GetKeyboardState(&keys);
+    list.devices.push_back({kKeyboard, g_keyboard_port, "Keyboard", "", std::any_of(k, k + keys, [](bool d) { return d; })});
+    for (int i = 0; i < 4; i++)
+        if (g_ports[i].pad) list.devices.push_back(entry(g_ports[i].which, i));
+    for (const SDL_JoystickID which : g_left_out) list.devices.push_back(entry(which, -1));
+    return list;
+}
+
+bool gamepads_swap(int a, int b) {
+    if (!changeable(a) || !changeable(b)) return false;
+    const std::array<SDL_JoystickID, 4> before = occupants();
+    std::swap(g_ports[a], g_ports[b]);
+    for (const int i : {a, b})
+        if (g_ports[i].pad && a != b) notice(pad_name(g_ports[i].pad), " is now player ", i);
+    settle(before);
+    return true;
+}
+
+bool gamepads_unassign(int port) {
+    if (!changeable(port) || !g_ports[port].pad) return false;
+    const std::array<SDL_JoystickID, 4> before = occupants();
+    leave(port);
+    settle(before);
+    return true;
+}
+
+bool gamepads_assign(uint32_t device, int port) {
+    if (!changeable(port)) return false;
+    if (device == kKeyboard) {
+        if (g_keyboard_port != port) overlay_pads_notice("Keyboard is now player " + std::to_string(port + 1));
+        g_keyboard_port = port;
+        return true;
+    }
+    if (port_of(device) >= 0) return gamepads_swap(port_of(device), port);
+    const auto out = std::find(g_left_out.begin(), g_left_out.end(), device);
+    SDL_Gamepad* g = out != g_left_out.end() ? SDL_OpenGamepad(device) : nullptr;
+    if (!g) return false;
+    const std::array<SDL_JoystickID, 4> before = occupants();
+    g_left_out.erase(out);
+    if (g_ports[port].pad) leave(port);
+    g_ports[port] = {g, device, false, faces(g)};
+    fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(g), port + 1);
+    say_landed(port);
+    notice(pad_name(g), " is now player ", port);
+    settle(before);
+    return true;
+}
+
+int gamepads_keyboard_port() { return g_keyboard_port; }

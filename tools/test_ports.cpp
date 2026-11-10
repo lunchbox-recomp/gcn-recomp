@@ -2248,6 +2248,119 @@ void tap(Guest& g, const Virtual& v, int button) {
 // The menu open over the held game, asking `asking`, and no restart on its way.
 bool waiting(OverlayAsk asking) { return overlay_open() && paused() && overlay_asking() == asking && !g_restart; }
 
+// ---- What the Controllers page changes (gamepads.h), each move checked on the ports as the game
+// reads them and in ports.txt, then the notices a change makes.
+
+// The port gamepads_list has `id` on, 1 to 4, 0 for none, or -1 if it doesn't list it.
+int listed(uint32_t id) {
+    for (const PadDevice& d : gamepads_list().devices)
+        if (d.id == id) return d.port + 1;
+    return -1;
+}
+
+// The last notice queued, or nothing.
+std::string last_notice() {
+    const std::vector<std::string> n = overlay_notices();
+    return n.empty() ? "" : n.back();
+}
+
+void port_changes(Guest& guest, const std::string& dir) {
+    const std::string file = dir + "/saves/ports.txt";
+    fresh_file(file);
+    gamepads_init();
+    Virtual a{"virtual pad move a"}, b{"virtual pad move b"}, c{"virtual pad move c"};
+    for (Virtual* v : {&a, &b, &c}) {
+        attach(*v);
+        host_frame(guest);
+    }
+    const PadList start = gamepads_list();
+    check(start.devices.size() == 4 && start.devices[0].id == kKeyboard && start.devices[0].name == "Keyboard" &&
+              listed(kKeyboard) == 1 && start.devices[1].name == "virtual pad move a" && listed(c.id) == 3 &&
+              !start.pinned[0],
+          "the list has the keyboard on port 1 first, then each gamepad by its port");
+
+    const bool swapped = gamepads_swap(0, 2);
+    const std::string after_swap = read_file(file);
+    check(swapped && port(c) == 1 && port(a) == 3 && port(b) == 2 && has(after_swap, line_for(1, c)) &&
+              has(after_swap, line_for(3, a)) && gamepads_keyboard_port() == 0,
+          "a swap trades two gamepads' ports and lights, ports.txt follows, and the keyboard stays on port 1");
+    const bool moved = gamepads_swap(1, 3);
+    const std::string after_move = read_file(file);
+    check(moved && port(b) == 4 && has(after_move, "\n2 none\n") && has(after_move, line_for(4, b)),
+          "a swap with an empty port moves the gamepad there, and ports.txt has none where it was");
+    const bool removed = gamepads_unassign(2);
+    const std::string after_removal = read_file(file);
+    check(removed && port(a) == 0 && listed(a.id) == 0 && player(a) == -1 && has(after_removal, "\n3 none\n") &&
+              last_notice() == "virtual pad move a is no longer player 3",
+          "a gamepad taken off its port drives none, its light is off, it's listed with none, and ports.txt has none there");
+    check(gamepads_assign(a.id, 1) && port(a) == 2 && has(read_file(file), line_for(2, a)),
+          "given a port again, it drives that port, and ports.txt names it there");
+
+    const bool unplugged = !read(2).connected;
+    const uint64_t unkeyed = file_id(file);
+    const bool keys = gamepads_assign(kKeyboard, 2);
+    frame();
+    check(unplugged && keys && gamepads_keyboard_port() == 2 && listed(kKeyboard) == 3 && read(2).connected &&
+              file_id(file) == unkeyed && last_notice() == "Keyboard is now player 3",
+          "the keyboard given an empty port plugs it in, and ports.txt doesn't name it");
+    gamepads_assign(kKeyboard, 0);
+    check(!gamepads_swap(0, 4) && !gamepads_unassign(2) && !gamepads_assign(12345, 2) && !gamepads_assign(kKeyboard, -1),
+          "a port out of range, an empty port to clear and a device that isn't here are refused");
+
+    const std::string controls = dir + "/moves-controls.txt";
+    write_file(controls, "A = \"virtual pad nobody\" button 0 port 3\n");
+    input_map_load(controls.c_str());
+    const uint64_t kept = file_id(file);
+    check(gamepads_list().pinned[2] && !gamepads_list().pinned[0] && !gamepads_swap(0, 2) && !gamepads_assign(a.id, 2) &&
+              !gamepads_assign(kKeyboard, 2) && !gamepads_unassign(2) && file_id(file) == kept,
+          "a port controls.txt pins is listed as pinned, and nothing moves a device onto it or off it");
+    input_map_load((dir + "/no-controls.txt").c_str());
+    const std::string b_on_4 = line_for(4, b);
+    unplug({&a, &b, &c});
+    const uint64_t empty = file_id(file);
+    check(gamepads_swap(2, 3) && file_id(file) == empty && has(read_file(file), b_on_4),
+          "two empty ports swapped leave ports.txt as it was, still naming the gamepad pulled out of one");
+
+    // Each notice lasts 2 s of host time, and the ones so far have gone after that. With the menu
+    // closed and no notice, no frame is made for them.
+    g_host_ns += 2000000000;
+    const long idle = overlay_notice_frames();
+    host_frame(guest);
+    const bool cleared = overlay_notices().empty() && overlay_notice_frames() == idle;
+    Virtual d{"virtual pad notice"};
+    const std::string said = dir + "/notices-stderr.txt";
+    std::vector<std::string> connected, after_moving, held, expired;
+    bool running = false, drawn = false;
+    capture(said, [&] {
+        attach(d);
+        host_frame(guest);
+        connected = overlay_notices();
+        drawn = overlay_notice_frames() > idle;
+        running = !overlay_open() && !pause_requested() && !paused() && guest.passed == guest.asked;
+        gamepads_swap(0, 1);
+        after_moving = overlay_notices();
+        g_host_ns += 1999000000;
+        detach(d);
+        host_frame(guest);
+        held = overlay_notices();
+        g_host_ns += 1000000;
+        expired = overlay_notices();
+    });
+    const std::vector<std::string> kConnected = {"virtual pad notice connected as player 1"};
+    const std::vector<std::string> kMoved = {kConnected[0], "virtual pad notice is now player 2"};
+    const std::vector<std::string> kDropped = {"virtual pad notice disconnected from player 2"};
+    const std::vector<std::string> kHeld = {kMoved[0], kMoved[1], kDropped[0]};
+    check(cleared && connected == kConnected && after_moving == kMoved,
+          "with no notice and the menu closed no frame is made for them; a gamepad connecting queues one notice, and a move one more");
+    check(drawn && running, "with the menu closed a notice is laid out over the game, which goes on unpaused");
+    check(held == kHeld && expired == kDropped && lines_with(said, "[pads] ") == 3,
+          "pulled out it queues one more, each logs one [pads] line, and each lasts 2 s of host time");
+    g_host_ns += 2000000000;
+    check(overlay_notices().empty(), "after 2 s more none is left");
+    gamepads_shutdown();
+    gamepads_remember(nullptr);
+}
+
 void overlay_buttons(const std::string& dir) {
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
     SDL_Window* window = SDL_InitSubSystem(SDL_INIT_VIDEO) ? SDL_CreateWindow("test_ports", 1280, 960, SDL_WINDOW_HIDDEN) : nullptr;
@@ -2553,6 +2666,7 @@ void overlay_buttons(const std::string& dir) {
 
     unplug({&pad, &nintendo});
     gamepads_shutdown();
+    port_changes(guest, dir);
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }

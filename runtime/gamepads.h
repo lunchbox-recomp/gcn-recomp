@@ -20,8 +20,9 @@
 // port is only a preference. A gamepad that finds its port taken goes to the lowest free
 // port, and none already on a port is moved.
 //
-// A port reads as plugged in only while a gamepad is on it. The keyboard (port 1), `--pads`
-// or a port controls.txt names keeps it plugged in (main.cpp).
+// A port reads as plugged in only while a gamepad is on it. The keyboard (port 1 unless
+// gamepads_assign moves it), `--pads` or a port controls.txt names keeps it plugged in
+// (main.cpp).
 //
 // A port a controls.txt line names with `port <n>`, `port 1` too, is pinned to the device
 // on that line, and no gamepad takes it (input_map.h). That beats a saved port.
@@ -57,6 +58,9 @@
 #pragma once
 #include "hw/pad.h"
 #include <array>
+#include <cstdint>
+#include <string>
+#include <vector>
 
 union SDL_Event;
 struct SDL_Gamepad;
@@ -98,3 +102,34 @@ void gamepads_shutdown();
 // open gamepad `g`, by its labels as above, the ones gamepads_merge reads. The overlay's menu
 // takes a gamepad's faces from here too, on a port or not (overlay.h).
 std::array<int, 4> gamepads_faces(SDL_Gamepad* g);
+
+// ---- Each device and its port, and moves between ports
+//
+// A device is a gamepad, by its SDL instance ID, or the keyboard. The keyboard shares its
+// port with any gamepad there, and a port it's on is plugged in. Its port isn't saved, so
+// each launch starts it on port 1.
+constexpr uint32_t kKeyboard = 0;  // SDL gives no joystick the ID 0
+struct PadDevice {
+    uint32_t id = kKeyboard;
+    int port = -1;         // 0 is port 1, -1 for none
+    std::string name;      // as controls.txt names it
+    std::string type;      // SDL's type, with what the pad really is where SDL's two differ
+    bool active = false;   // a button down or a stick or trigger pushed
+};
+struct PadList {
+    std::vector<PadDevice> devices;  // the keyboard, the gamepads on ports by port, then those on none
+    std::array<bool, 4> pinned{};    // the ports controls.txt pins, which nothing here changes
+};
+PadList gamepads_list();
+// Each of these refuses a pinned port or one out of range, or a device that isn't here, and
+// returns false with nothing changed. Each port whose gamepad one changes is saved as what's on
+// it now, or `none`, and a port it leaves with the same gamepad, or with none still, keeps its
+// line. Each device that moves says so in a notice (overlay.h).
+// `device` onto `port`. A gamepad there goes to the port `device` leaves, or to none.
+bool gamepads_assign(uint32_t device, int port);
+// The gamepads on ports `a` and `b` change places. Either port may have none.
+bool gamepads_swap(int a, int b);
+// The gamepad on `port` has none until it's given one or plugged in again.
+bool gamepads_unassign(int port);
+// The keyboard's port, which main.cpp merges the keyboard into.
+int gamepads_keyboard_port();

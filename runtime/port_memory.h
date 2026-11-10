@@ -12,9 +12,10 @@
 // sign. A line that can't be read is reported and skipped.
 //
 // A saved port is a preference, not a reservation. A gamepad that's on a port stays there,
-// so no player moves in the middle of a game, and a port whose gamepad isn't plugged in
-// goes to whichever gamepad comes. A gamepad pulled out doesn't change the file either, so
-// one that comes back later is still remembered.
+// so no player moves in the middle of a game unless one is moved by gamepads_assign and the
+// others (gamepads.h), and a port whose gamepad isn't plugged in goes to whichever gamepad
+// comes. A gamepad pulled out doesn't change the file either, so one that comes back later is
+// still remembered. A move saves each port it changes as what's on it now, or `none`.
 //
 // This file needs no SDL. gamepads.cpp reads a gamepad's identity from SDL and calls it.
 #pragma once
