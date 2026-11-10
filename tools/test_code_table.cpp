@@ -13,7 +13,6 @@
 #include <cstring>
 #include <string>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <vector>
 
 using namespace fx;
@@ -96,14 +95,6 @@ std::string g_forced;
 
 void force_spec(void* spec) { g_forced = code_table_force((const char*)spec); }
 
-// The functions whose bits are set, by start.
-std::vector<uint32_t> set_bits() {
-    std::vector<uint32_t> out;
-    for (uint32_t n = 0; n < g_recomp_range_count; n++)
-        if (bit(n)) out.push_back(g_recomp_ranges[n].start);
-    return out;
-}
-
 void write_file(const std::string& path, const std::string& text) {
     FILE* f = fopen(path.c_str(), "w");
     if (!f) {
@@ -112,19 +103,6 @@ void write_file(const std::string& path, const std::string& text) {
     }
     fputs(text.c_str(), f);
     fclose(f);
-}
-
-std::string read_file(const std::string& path) {
-    FILE* f = fopen(path.c_str(), "r");
-    if (!f) {
-        fprintf(stderr, "can't read %s\n", path.c_str());
-        exit(2);
-    }
-    std::string text;
-    char b[4096];
-    for (size_t n; (n = fread(b, 1, sizeof b, f)) > 0;) text.append(b, n);
-    fclose(f);
-    return text;
 }
 
 // What GCN_INTERPRET prints for a line of path that isn't a recompiled function's start.
@@ -139,20 +117,8 @@ std::string bad_line(const std::string& path, unsigned no, const char* line) {
 // stop.
 void check_bad_file(const char* what, const std::string& path, const std::string& lines, const std::string& stop,
                     const std::string& err) {
-    fflush(stderr);
-    const int saved = dup(2);
-    FILE* f = fopen(err.c_str(), "w");
-    if (saved < 0 || !f) {
-        fprintf(stderr, "can't send stderr to %s\n", err.c_str());
-        exit(2);
-    }
-    dup2(fileno(f), 2);
-    const bool went_on = guarded(force_spec, (void*)path.c_str());
-    fflush(stderr);
-    dup2(saved, 2);
-    close(saved);
-    fclose(f);
-    const std::string printed = read_file(err);
+    bool went_on;
+    const std::string printed = printed_to(err, force_spec, (void*)path.c_str(), went_on);
     if (went_on) fail(std::string("GCN_INTERPRET took ") + what);
     else if (printed != lines) fail("GCN_INTERPRET printed\n" + printed + "for " + what + ", where it should print\n" + lines);
     else if (g_fatal != stop) fail("GCN_INTERPRET stopped with \"" + g_fatal + "\", not \"" + stop + "\"");
@@ -261,11 +227,6 @@ void check_interpret(const std::string& dir) {
     force_none();
 }
 
-bool exists(const std::string& path) {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0;
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -274,7 +235,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     const std::string dir = argv[1];
-    if (exists(dir) || mkdir(dir.c_str(), 0755) != 0) {
+    if (mkdir(dir.c_str(), 0755) != 0) {
         fprintf(stderr, "%s exists or can't be made: give a new directory\n", dir.c_str());
         return 2;
     }

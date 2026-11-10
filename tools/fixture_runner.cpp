@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unistd.h>
 #include <unordered_map>
 
 namespace fx {
@@ -335,12 +336,44 @@ void force_all() {
 
 bool bit(uint32_t n) { return GCN_CODE_CHANGED(n) != 0; }
 
+std::vector<uint32_t> set_bits() {
+    std::vector<uint32_t> out;
+    for (uint32_t n = 0; n < g_recomp_range_count; n++)
+        if (bit(n)) out.push_back(g_recomp_ranges[n].start);
+    return out;
+}
+
 bool guarded(void (*fn)(void*), void* arg) {
     if (GCN_SETJMP(g_fatal_jb)) return false;
     g_fatal_armed = true;
     fn(arg);
     g_fatal_armed = false;
     return true;
+}
+
+std::string printed_to(const std::string& path, void (*fn)(void*), void* arg, bool& went_on) {
+    fflush(stderr);
+    const int saved = dup(2);
+    FILE* f = fopen(path.c_str(), "w");
+    if (saved < 0 || !f) {
+        fprintf(stderr, "can't send stderr to %s\n", path.c_str());
+        exit(2);
+    }
+    dup2(fileno(f), 2);
+    went_on = guarded(fn, arg);
+    fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+    fclose(f);
+    if (!(f = fopen(path.c_str(), "r"))) {
+        fprintf(stderr, "can't read %s\n", path.c_str());
+        exit(2);
+    }
+    std::string text;
+    char b[4096];
+    for (size_t n; (n = fread(b, 1, sizeof b, f)) > 0;) text.append(b, n);
+    fclose(f);
+    return text;
 }
 
 void call_at(void* p) {

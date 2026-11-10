@@ -70,9 +70,14 @@ bool guarded_range(uint32_t n);
 void force_none();
 void force_all();
 bool bit(uint32_t n);
+// The functions whose bits are set, by start.
+std::vector<uint32_t> set_bits();
 
 // Calls fn(arg), and returns false with g_fatal holding the message if fatal stopped it.
 bool guarded(void (*fn)(void*), void* arg);
+// guarded(fn, arg) with stderr sent to the file at path, setting went_on to what it returned, and returns
+// what it printed.
+std::string printed_to(const std::string& path, void (*fn)(void*), void* arg, bool& went_on);
 void call_at(void* p);
 // Runs the entry at a on g_cpu, and returns fatal's message if it stopped, or "".
 std::string call(uint32_t a);

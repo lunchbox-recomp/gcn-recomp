@@ -14,7 +14,6 @@
 #include <cstdlib>
 #include <string>
 #include <sys/stat.h>
-#include <unistd.h>
 #include <vector>
 
 using namespace fx;
@@ -26,52 +25,19 @@ constexpr uint32_t kNop = 0x60000000u;  // ori 0,0,0, which is none of the progr
 std::string g_dir;
 unsigned g_files;
 
-std::string read_file(const std::string& path) {
-    FILE* f = fopen(path.c_str(), "r");
-    if (!f) {
-        fprintf(stderr, "can't read %s\n", path.c_str());
-        exit(2);
-    }
-    std::string text;
-    char b[4096];
-    for (size_t n; (n = fread(b, 1, sizeof b, f)) > 0;) text.append(b, n);
-    fclose(f);
-    return text;
-}
-
 // Runs fn(arg) with stderr sent to a file of its own, and returns what it printed. A stop fails the
 // check.
 std::string printed(void (*fn)(void*), void* arg = nullptr) {
-    const std::string path = g_dir + "/stderr_" + std::to_string(g_files++) + ".txt";
-    fflush(stderr);
-    const int saved = dup(2);
-    FILE* f = fopen(path.c_str(), "w");
-    if (saved < 0 || !f) {
-        fprintf(stderr, "can't send stderr to %s\n", path.c_str());
-        exit(2);
-    }
-    dup2(fileno(f), 2);
-    const bool went_on = guarded(fn, arg);
-    fflush(stderr);
-    dup2(saved, 2);
-    close(saved);
-    fclose(f);
+    bool went_on;
+    const std::string said = printed_to(g_dir + "/stderr_" + std::to_string(g_files++) + ".txt", fn, arg, went_on);
     if (!went_on) fail("stopped with \"" + g_fatal + "\"");
-    return read_file(path);
+    return said;
 }
 
 std::string hex(uint32_t a) {
     char s[16];
     snprintf(s, sizeof s, "%08X", a);
     return s;
-}
-
-// The functions whose bits are set, by start.
-std::vector<uint32_t> set_bits() {
-    std::vector<uint32_t> out;
-    for (uint32_t n = 0; n < g_recomp_range_count; n++)
-        if (bit(n)) out.push_back(g_recomp_ranges[n].start);
-    return out;
 }
 
 std::string starts(const std::vector<uint32_t>& v) {
@@ -425,11 +391,6 @@ void check_unknown() {
     if (none) printf("match  a misaligned call, or one outside main RAM, runs nothing and call_indirect stops\n");
 }
 
-bool exists(const std::string& path) {
-    struct stat st;
-    return stat(path.c_str(), &st) == 0;
-}
-
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -438,7 +399,7 @@ int main(int argc, char** argv) {
         return 2;
     }
     g_dir = argv[1];
-    if (exists(g_dir) || mkdir(g_dir.c_str(), 0755) != 0) {
+    if (mkdir(g_dir.c_str(), 0755) != 0) {
         fprintf(stderr, "%s exists or can't be made: give a new directory\n", g_dir.c_str());
         return 2;
     }
