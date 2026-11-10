@@ -708,18 +708,12 @@ void debug_sampler_start() {
             std::this_thread::sleep_for(std::chrono::seconds(1));
             for (auto* h : g_threads) {
                 CPU* c = &h->cpu;
-                // Walk the guest's own stack: the PowerPC ABI keeps the caller's frame
-                // pointer at [sp] and its return address at [sp+4], so this is a real
-                // guest backtrace read straight out of guest memory. It needs no
-                // instrumentation at all, which is why it, rather than anything ENTER()
-                // keeps, is what --sample reports.
+                // The guest's own stack is a real guest backtrace read straight out of guest
+                // memory. It needs no instrumentation at all, which is why it, rather than
+                // anything ENTER() keeps, is what --sample reports.
                 std::string bt, s;
                 uint32_t seen[8]; int ns = 0;
-                uint32_t sp = c->r[1];
-                for (int d = 0; d < 24 && sp >= 0x80000000u && sp < 0x81800000u; d++) {
-                    uint32_t prev = mem_r32(sp);
-                    if (prev < 0x80000000u || prev >= 0x81800000u || prev <= sp) break;
-                    uint32_t ret = mem_r32(prev + 4);
+                for (uint32_t ret : guest_returns(c->r[1], 24)) {
                     char buf[16]; snprintf(buf, sizeof(buf), " %08X", ret); bt += buf;
                     // Name the distinct ones that fall in the DOL's code.
                     if (ret >= g_recomp_code_base && ret < g_recomp_code_end && ns < 8) {
@@ -730,7 +724,6 @@ void debug_sampler_start() {
                             char b2[24]; snprintf(b2, sizeof(b2), " %08X", ret); s += b2;
                         }
                     }
-                    sp = prev;
                 }
                 static uint32_t last_frames;
                 uint32_t fr = gx_frames_submitted();

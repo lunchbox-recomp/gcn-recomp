@@ -290,19 +290,22 @@ void check_unmarked() {
 CPU g_thread;  // a guest thread whose stack the check reads
 
 void check_live() {
+    // The frames' back chain and saved LRs, read as the ABI lays them out. The outer frame returns into
+    // f_call after its bl, and the inner one into f_midcaller, which didn't change.
+    const uint32_t sp0 = FX_STACK - 0x60, sp1 = FX_STACK - 0x40, sp2 = FX_STACK - 0x20;
+    const auto put_frames = [=] {
+        poke(sp0, sp1);
+        poke(sp1, sp2);
+        poke(sp1 + 4, FX_F_MIDCALLER + 16);
+        poke(sp2, 0);
+        poke(sp2 + 4, FX_F_CALL + 16);
+    };
     setenv("GCN_CODE_CHECK", "1", 1);
     boot();
     unsetenv("GCN_CODE_CHECK");
     poke(FX_F_CALL + 16, kNop);
     icbi(FX_F_CALL + 16);
-    // The frames' back chain and saved LRs, read as the ABI lays them out. The outer frame returns into
-    // f_call after its bl, and the inner one into f_midcaller, which didn't change.
-    const uint32_t sp0 = FX_STACK - 0x60, sp1 = FX_STACK - 0x40, sp2 = FX_STACK - 0x20;
-    poke(sp0, sp1);
-    poke(sp1, sp2);
-    poke(sp1 + 4, FX_F_MIDCALLER + 16);
-    poke(sp2, 0);
-    poke(sp2 + 4, FX_F_CALL + 16);
+    put_frames();
     base_cpu(&g_thread);
     g_thread.r[1] = sp0;
     g_thread.lr = FX_F_CALL + 16;  // and LR too, which mustn't report f_call a second time
@@ -314,6 +317,21 @@ void check_live() {
     if (first != want) fail("GCN_CODE_CHECK printed\n" + first + "where it should print\n" + want);
     else if (!again.empty()) fail("GCN_CODE_CHECK's next check printed \"" + again + "\"");
     else printf("match  GCN_CODE_CHECK reports a changed function live on a guest stack, at the first check\n");
+
+    // The same frames with LR outside every changed function, so only the stack walk can find f_call.
+    setenv("GCN_CODE_CHECK", "1", 1);
+    boot();
+    unsetenv("GCN_CODE_CHECK");
+    poke(FX_F_CALL + 16, kNop);
+    icbi(FX_F_CALL + 16);
+    put_frames();
+    base_cpu(&g_thread);
+    g_thread.r[1] = sp0;
+    g_thread.lr = 0;
+    const std::string walk = printed([](void*) { code_watch_check({&g_thread}); });
+    if (walk != want)
+        fail("GCN_CODE_CHECK with f_call only on the stack printed\n" + walk + "where it should print\n" + want);
+    else printf("match  GCN_CODE_CHECK finds a changed function by the stack walk alone\n");
 
     // A thread stopped in a call that f_call made, whose LR no frame on the stack has saved yet.
     setenv("GCN_CODE_CHECK", "1", 1);
@@ -328,6 +346,34 @@ void check_live() {
     const std::string lr = printed([](void*) { code_watch_check({&g_thread}); });
     if (lr != want) fail("GCN_CODE_CHECK with f_call live in LR printed\n" + lr + "where it should print\n" + want);
     else printf("match  GCN_CODE_CHECK reports a changed function that a thread's LR returns into\n");
+
+    // The walk itself, innermost first. A cap ends it early. A back chain that points at itself or down, or
+    // out past RAM, ends it where it stands, and an sp below RAM gives nothing, whether it's empty memory or
+    // the address the frames are at less 0x80000000, which reads the frames. The cap on those calls keeps
+    // them from running on if a guard is broken.
+    reset_ram();
+    put_frames();
+    const std::vector<uint32_t> inner = {FX_F_MIDCALLER + 16}, both = {FX_F_MIDCALLER + 16, FX_F_CALL + 16};
+    const std::vector<uint32_t> capped = guest_returns(sp0, 1), walked = guest_returns(sp0);
+    const std::vector<uint32_t> below = guest_returns(0x7FFFFFFCu, 8), aliased = guest_returns(sp0 - 0x80000000u, 8);
+    poke(sp2, sp2);
+    const std::vector<uint32_t> circled = guest_returns(sp0, 8);
+    poke(sp2, sp0);
+    const std::vector<uint32_t> down = guest_returns(sp0, 8);
+    poke(sp2, 0x81800000u);
+    const std::vector<uint32_t> past = guest_returns(sp0, 8);
+    if (capped != inner) fail("guest_returns capped at 1 gave " + starts(capped) + ", not " + starts(inner));
+    else if (walked != both) fail("guest_returns gave " + starts(walked) + ", not " + starts(both));
+    else if (!below.empty()) fail("guest_returns from an sp below RAM gave " + starts(below) + ", not none");
+    else if (!aliased.empty())
+        fail("guest_returns from an sp below RAM that reads the frames gave " + starts(aliased) + ", not none");
+    else if (circled != both)
+        fail("guest_returns past a frame that points at itself gave " + starts(circled) + ", not " + starts(both));
+    else if (down != both)
+        fail("guest_returns past a frame that points down gave " + starts(down) + ", not " + starts(both));
+    else if (past != both)
+        fail("guest_returns past a frame that points out of RAM gave " + starts(past) + ", not " + starts(both));
+    else printf("match  guest_returns lists returns innermost first, within its cap, and stops at a wild back chain\n");
 }
 
 void check_stats() {

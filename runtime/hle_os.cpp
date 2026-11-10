@@ -78,10 +78,8 @@ extern "C" void hle_OSReport(CPU* c) {
     LOG(LOG_OS, "%s", s.c_str());
 }
 
-// Walks the guest's stack, innermost first, into `out`. PowerPC EABI: a frame's first word
-// is the back chain to its caller's frame, and a function's return address is saved at
-// offset 4 of the frame below it -- which is why each step needs both. The innermost return
-// address is still in lr, since the callee's prologue has not run.
+// Walks the guest's stack, innermost first, into `out`. The innermost return address is still
+// in lr, since the callee's prologue has not run.
 static void guest_backtrace(CPU* c, std::string& out, int max_frames) {
     char line[256];
     auto frame = [&](uint32_t pc) {
@@ -91,17 +89,9 @@ static void guest_backtrace(CPU* c, std::string& out, int max_frames) {
         out += line;
     };
     frame(c->lr);
-    uint32_t sp = c->r[1];
-    for (int i = 0; i < max_frames; i++) {
-        // Stack grows down, so the back chain must climb; anything else is a wild pointer
-        // and following it would walk off into guest RAM printing noise.
-        if (sp < 0x80000000u || sp >= 0x81800000u) break;
-        uint32_t next = mem_r32(sp);
-        if (next <= sp || next >= 0x81800000u) break;
-        uint32_t lr = mem_r32(next + 4);
+    for (uint32_t lr : guest_returns(c->r[1], max_frames)) {
         if (lr < 0x80003000u || lr >= 0x81800000u) break;
         frame(lr);
-        sp = next;
     }
 }
 

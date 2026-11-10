@@ -66,11 +66,8 @@ struct Live { uint32_t size, caller, caller2, heap; };
 struct Pending { uint32_t size, caller, caller2, heap; };
 
 uint32_t caller_above(CPU* c) {
-    uint32_t sp = c->r[1];
-    if (!in_ram(sp)) return 0;
-    uint32_t chain = mem_r32(sp);
-    if (!in_ram(chain) || chain <= sp) return 0;
-    return mem_r32(chain + 4);
+    const std::vector<uint32_t> ret = guest_returns(c->r[1], 1);
+    return ret.empty() ? 0 : ret[0];
 }
 
 bool g_trace = false;

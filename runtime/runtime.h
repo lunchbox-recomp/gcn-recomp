@@ -187,6 +187,18 @@ void code_watch_frame();
 // takes any address inside one, which is what a return address off the stack is.
 const char* func_name(uint32_t addr);
 const char* func_containing(uint32_t addr, uint32_t* start);
+// The return addresses saved on the guest stack at sp, innermost first, at most max of them. The ABI
+// keeps the caller's frame at [sp] and its return address 4 past that. The stack grows down, so the
+// walk stops at a back chain that doesn't climb or leaves main RAM, which is a wild pointer.
+inline std::vector<uint32_t> guest_returns(uint32_t sp, size_t max = SIZE_MAX) {
+    std::vector<uint32_t> out;
+    for (uint32_t prev; out.size() < max && sp - 0x80000000u < RAM_SIZE; sp = prev) {
+        prev = mem_r32(sp);
+        if (prev <= sp || prev - 0x80000000u >= RAM_SIZE) break;
+        out.push_back(mem_r32(prev + 4));
+    }
+    return out;
+}
 
 // ---- hw modules ----
 void vi_init(); uint16_t vi_read16(uint32_t off); void vi_write16(uint32_t off, uint16_t v);

@@ -180,16 +180,10 @@ void code_watch_check(const std::vector<const CPU*>& threads) {
                 func_name(g_recomp_ranges[n].start), g_recomp_ranges[n].start, ret);
     };
     // A guest thread's LR returns into the function that made the call the thread is in, until something
-    // saves it. The check reads it, then the thread's back chain as debug_sampler_start in threads.cpp
-    // walks it. The word at [sp] is the caller's frame, and the word 4 past it holds the return address.
+    // saves it. The check reads it, then the return addresses on the thread's stack.
     for (const CPU* t : threads) {
         live(t->lr);
-        for (uint32_t sp = t->r[1]; in_ram(sp);) {
-            const uint32_t prev = mem_r32(sp);
-            if (!in_ram(prev) || prev <= sp) break;
-            live(mem_r32(prev + 4));
-            sp = prev;
-        }
+        for (uint32_t ret : guest_returns(t->r[1])) live(ret);
     }
 }
 
