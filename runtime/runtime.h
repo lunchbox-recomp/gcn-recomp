@@ -90,7 +90,6 @@ void clock_set_cpu_scale(double n);
 // The step scale (step.cpp): 1 normally; a game running at twice its native frame rate
 // sets 0.5 and calls step_frame() once a game frame.
 void step_set_scale(double s);
-double step_scale();
 void step_frame();
 // While a finite value is set it replaces the step scale at every site (step.cpp, a body
 // the game integrates in several passes a frame); NAN ends the override.
@@ -166,8 +165,6 @@ uint32_t pi_read32(uint32_t off);
 void pi_write32(uint32_t off, uint32_t v);
 
 // ---- threads ----
-struct HostThread;
-HostThread* host_current();
 CPU* cpu_current();
 void threads_start_boot(uint32_t entry);
 void threads_request_quit();

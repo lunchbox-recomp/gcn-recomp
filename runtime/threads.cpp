@@ -23,6 +23,7 @@
 #include <unordered_map>
 #include <vector>
 
+struct HostThread;
 
 enum BindKind { BIND_NONE, BIND_SAVED, BIND_EXC };
 
@@ -52,7 +53,6 @@ static std::unordered_map<uint32_t, Binding> g_bindings;
 static std::vector<HostThread*> g_threads;
 static std::atomic<bool> g_quit{false};
 
-HostThread* host_current() { return t_self; }
 CPU* cpu_current() { return t_self ? &t_self->cpu : nullptr; }
 
 std::vector<const CPU*> guest_threads() {

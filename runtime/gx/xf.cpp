@@ -230,16 +230,6 @@ static inline float tf(XfRegion region, uint32_t i) {
 static inline uint16_t rd16(const uint8_t* p) { return (uint16_t)((p[0] << 8) | p[1]); }
 static inline uint32_t rd32(const uint8_t* p) { return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3]; }
 
-static inline float read_comp(const uint8_t*& p, uint32_t fmt, float scale) {
-    switch (fmt) {
-    case 0: return (float)(*p++) * scale;
-    case 1: return (float)(int8_t)(*p++) * scale;
-    case 2: { float v = (float)rd16(p) * scale; p += 2; return v; }
-    case 3: { float v = (float)(int16_t)rd16(p) * scale; p += 2; return v; }
-    case 4: { uint32_t u = rd32(p); p += 4; float f; memcpy(&f, &u, 4); return f; }
-    default: return 0;
-    }
-}
 static inline uint32_t comp_size(uint32_t fmt) { static const uint32_t s[8] = {1, 1, 2, 2, 4, 0, 0, 0}; return s[fmt & 7]; }
 
 // color as 0xRRGGBBAA
@@ -272,7 +262,7 @@ struct InVertex {
     uint8_t texmtx[8];
 };
 
-// Reads `N` components of one format into floats, exactly as read_comp would, one
+// Reads `N` components of one format into floats, one
 // specialisation per format and count. Which one an attribute uses is fixed by the vertex
 // layout, so it is chosen once per layout (make_layout) rather than switched on for every
 // component of every vertex -- the decode is the largest thing left on the guest thread.

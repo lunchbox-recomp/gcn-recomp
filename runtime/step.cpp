@@ -104,7 +104,6 @@ inline double scale_at(uint32_t pc, double p) {
 }
 
 void step_set_scale(double s) { g_scale = s > 0.0 ? s : 1.0; }
-double step_scale() { return g_scale; }
 void step_override(double s) { g_override = s; }
 void step_frame() { g_frame++; }
 

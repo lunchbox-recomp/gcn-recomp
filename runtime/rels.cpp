@@ -172,12 +172,6 @@ void rels_unlinked(uint32_t info) {
     }
 }
 
-uint32_t rels_section_address(uint32_t module_id, uint32_t section) {
-    const int k = module_index(module_id);
-    if (k < 0 || section >= REL_MAX_SECTIONS) return 0;
-    return g_rel_base[k * REL_MAX_SECTIONS + section];
-}
-
 uint32_t rels_canon(uint32_t a) {
     int n = g_live_count.load(std::memory_order_acquire);
     for (int i = 0; i < n; i++) {
