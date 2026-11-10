@@ -365,8 +365,8 @@ void failed_save_says_why() {
     const std::string open_fails = path_of("open-fails.txt");
     mkdir((open_fails + ".tmp").c_str(), 0755);
     const std::string said_open = stderr_of([&] { ports_save(open_fails, saved_of({{0, device('a')}})); });
-    check(contains(said_open, "can't write it (" + std::string(strerror(EISDIR)) + ")"),
-          "and one that can't open its new file says why too");
+    check(said_open == open_fails + ".tmp: can't write it (" + strerror(EISDIR) + "), so " + open_fails + " isn't saved\n",
+          "and one that can't open its new file says why too, and that the ports file isn't saved");
     rmdir((open_fails + ".tmp").c_str());
 }
 

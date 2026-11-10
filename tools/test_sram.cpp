@@ -15,9 +15,11 @@
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
 // every check passes.
 #include "hw/sram.h"
+#include <cerrno>
 #include <csignal>
 #include <cstdio>
 #include <cstring>
+#include <fcntl.h>
 #include <string>
 #include <sys/resource.h>
 #include <sys/stat.h>
@@ -66,6 +68,22 @@ bool exists(const std::string& path) {
 bool is_dir(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+
+// What stderr got while `run` ran.
+template <class F>
+std::string stderr_during(F run) {
+    const std::string path = path_of("stderr.txt");
+    fflush(stderr);
+    const int saved = dup(2);
+    const int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    dup2(fd, 2);
+    close(fd);
+    run();
+    fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+    return read_file(path);
 }
 
 bool is_defaults(const uint8_t* s) {
@@ -196,8 +214,12 @@ void failed_save_no_temp() {
     write_file(p, before, SRAM_SIZE);
     mkdir((p + ".tmp").c_str(), 0755);
     sram_defaults(s);
-    check(!sram_save(p, s), "a save fails when a directory holds its temp file's name");
+    bool saved = true;
+    const std::string said = stderr_during([&] { saved = sram_save(p, s); });
+    check(!saved, "a save fails when a directory holds its temp file's name");
     check(read_file(p) == bytes(before), "and leaves the old file whole");
+    check(said == p + ".tmp: can't write it (" + strerror(EISDIR) + "), so the SRAM isn't saved\n",
+          "and says why, and that the SRAM isn't saved");
 }
 
 // The temp file is written and closed whole, then the replace fails because a non-empty

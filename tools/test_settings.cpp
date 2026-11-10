@@ -17,9 +17,11 @@
 // every check passes.
 #include "gx/aspect.h"
 #include "settings.h"
+#include <cerrno>
 #include <cmath>
 #include <csignal>
 #include <cstdio>
+#include <cstring>
 #include <fcntl.h>
 #include <string>
 #include <sys/resource.h>
@@ -380,8 +382,12 @@ void failed_save_no_temp() {
     mkdir((p + ".tmp").c_str(), 0755);
     Settings s;
     s.aspect = "16:9";
-    check(!settings_save(p, s), "a save fails when a directory holds its temp file's name");
+    bool saved = true;
+    const std::string said = stderr_during([&] { saved = settings_save(p, s); });
+    check(!saved, "a save fails when a directory holds its temp file's name");
     check(read_file(p) == before, "and leaves the old file whole");
+    check(said == p + ".tmp: can't write it (" + strerror(EISDIR) + "), so " + p + " isn't saved\n",
+          "and says why, and that the settings file isn't saved");
 }
 
 struct LimitedSave {

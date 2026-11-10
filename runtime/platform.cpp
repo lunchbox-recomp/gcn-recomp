@@ -3,6 +3,7 @@
 #include "platform.h"
 #include <atomic>
 #include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <ctime>
 #include <cstdio>
@@ -621,6 +622,32 @@ void plat_make_dirs(const std::string& path) {
     if (path.empty()) return;
     std::error_code ec;
     std::filesystem::create_directories(path, ec);
+}
+
+bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved) {
+    const std::string tmp = path + ".tmp";
+    FILE* f = fopen(tmp.c_str(), "wb");
+    if (!f) {
+        fprintf(stderr, "%s: can't write it (%s), so %s isn't saved\n", tmp.c_str(), strerror(errno), unsaved);
+        return false;
+    }
+    const bool wrote = fwrite(data, 1, size, f) == size;
+    const bool closed = fclose(f) == 0;
+    if (!wrote || !closed || !plat_replace_file(tmp.c_str(), path.c_str())) {
+#ifdef _WIN32
+        // MoveFileExA reports through GetLastError and leaves errno as it was. Any call can
+        // change the last error, so it's read before anything else is.
+        const DWORD win_error = GetLastError();
+#endif
+        std::string why = strerror(errno);
+#ifdef _WIN32
+        if (wrote && closed) why = "Windows error " + std::to_string(win_error);
+#endif
+        fprintf(stderr, "%s: the save failed (%s), and the old file is as it was\n", path.c_str(), why.c_str());
+        remove(tmp.c_str());
+        return false;
+    }
+    return true;
 }
 
 std::string plat_find_file(const char* dir, const char* suffix) {

@@ -83,6 +83,10 @@ bool plat_readable(const char* path);
 void plat_make_dirs(const std::string& path);
 // Replace `to` with `from`, overwriting an existing file.
 bool plat_replace_file(const char* from, const char* to);
+// Writes `size` bytes to `path` through `path`.tmp, which then replaces it, so a save that fails
+// leaves the old file whole and no temporary file. It says on stderr what failed, and a temporary
+// file it can't make ends the line "so <unsaved> isn't saved".
+bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved);
 // First entry in `dir` whose name ends with `suffix` (case-insensitive), or "".
 std::string plat_find_file(const char* dir, const char* suffix);
 

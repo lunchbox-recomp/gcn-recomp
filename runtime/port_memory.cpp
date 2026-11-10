@@ -5,12 +5,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#include <windows.h>
-#endif
 
 namespace {
 
@@ -235,27 +229,5 @@ bool ports_save(const std::string& path, const SavedPorts& saved) {
     const size_t slash = path.find_last_of("/\\");
     if (slash != std::string::npos && slash > 0) plat_make_dirs(path.substr(0, slash));
     const std::string text = ports_format(saved);
-    const std::string tmp = path + ".tmp";
-    FILE* f = fopen(tmp.c_str(), "wb");
-    if (!f) {
-        fprintf(stderr, "%s: can't write it (%s), so %s isn't saved\n", tmp.c_str(), strerror(errno), path.c_str());
-        return false;
-    }
-    const bool wrote = fwrite(text.data(), 1, text.size(), f) == text.size();
-    const bool closed = fclose(f) == 0;
-    if (!wrote || !closed || !plat_replace_file(tmp.c_str(), path.c_str())) {
-#ifdef _WIN32
-        // MoveFileExA reports through GetLastError and leaves errno as it was. Any call can
-        // change the last error, so it's read before anything else is.
-        const DWORD win_error = GetLastError();
-#endif
-        std::string why = strerror(errno);
-#ifdef _WIN32
-        if (wrote && closed) why = "Windows error " + std::to_string(win_error);
-#endif
-        fprintf(stderr, "%s: the save failed (%s), and the old file is as it was\n", path.c_str(), why.c_str());
-        remove(tmp.c_str());
-        return false;
-    }
-    return true;
+    return plat_save_file(path, text.data(), text.size(), path.c_str());
 }
