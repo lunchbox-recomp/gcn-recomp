@@ -122,13 +122,9 @@ game boots. Deleting the file is always safe. The startup line reports what happ
 
 The header holds a version and the size of `ShaderKey`; bump `kShaderKeyVersion`
 (`shadergen.h`) whenever a record's layout or a key field's meaning changes (a new field
-changes the size by itself). A
-file with any other header is replaced (`[shaders] replacing unrecognised cache`). It used
-to be only skipped. The programs compiled after that were then appended behind the old
-header, so the file was skipped on every later run as well. From the version bump on
-2026-10-12 to 2026-10-13, every run compiled every program in the middle of play, about a
-thousand of them at 15-40 ms each on a Quest 3, while the file grew to 60 MB that nothing
-read. If the startup line is missing, look for that message.
+changes the size by itself). A file with any other header is replaced
+(`[shaders] replacing unrecognised cache`). If the startup line is missing, look for that
+message.
 
 **Keys are canonical** (`canonicalize_shader_key`): everything `gen_pixel_shader` does not
 read is cleared before a key is used -- the order of stages past the last, swap tables no
@@ -142,9 +138,7 @@ canonical too, and duplicates dropped, so the file shrinks on its next rewrite w
 version bump: a canonical key generates the same source as the raw one, so a stored
 binary's source hash still matches. That equality is the invariant to keep when the
 generator starts reading a new field -- clear nothing it reads. A check over a cache file
-(generate each key raw and canonical, compare) is how it was established; the step that
-also lowered `num_texgens` to the coordinates used was dropped because it changed dead
-declarations in the source.
+(generate each key raw and canonical, compare) is how it was established.
 
 **Some state is a uniform rather than a key**, because a game changes it with the scene and
 each change otherwise built every program on screen again, with nothing drawn differently:

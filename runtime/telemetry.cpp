@@ -145,16 +145,10 @@ void set_default(const char* k, float value) { g_defaults[k] = value; }
 // 3. Limits, off unless asked for. A key sets a range or a rate of change on the motion
 //    channels: `max_angle` degrees for pitch, roll and yaw, `angle_rate` degrees a second
 //    for pitch and roll and `yaw_rate` for yaw, `max_accel` m/s^2 and `accel_rate` m/s^2 a
-//    second for the accelerations; 0, the default, is no limit. They used to be on (25
-//    degrees, 120 and 60 a second, 15 m/s^2 and 300 a second), and were taken off when a
-//    rider found them unnecessary: a platform has its own travel and its own speed, and the
-//    jerks a limit would catch are the discontinuities stages 1 and 2 already take out. At
-//    60 degrees and 60 m/s^2 a second, before that, they had been smoothing as well, and the
-//    motion was tame: a wave's chop held the accelerations at the limit four frames in five,
-//    a collision reached the platform as a few m/s^2 and sometimes the wrong way, and a dive
-//    off a ramp (the hull pitching at some 300 degrees a second) as a slow lean. Smoothing
-//    belongs upstream, where the game knows what is noise. The speed and the slide keep
-//    their bounds; they are not motion.
+//    second for the accelerations; 0, the default, is no limit. A platform has its own travel
+//    and its own speed, and the jerks a limit would catch are the discontinuities stages 1
+//    and 2 already take out. Smoothing belongs upstream, where the game knows what is noise.
+//    The speed and the slide keep their bounds; they are not motion.
 //
 // Between the gains and the limits, a road texture (4), eased in and out with the rest of the
 // motion and scaled by `texture_gain`. A platform that sat dead still on a straight felt like

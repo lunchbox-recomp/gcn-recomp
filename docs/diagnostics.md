@@ -1346,8 +1346,8 @@ The motion never steps where the game did not: a motion platform moves a person.
 eases to and from rest and crossfades across anything the game marks
 `Motion::discontinuity`. It is not limited in range or rate unless a `telemetry.txt` key
 asks (`max_angle`, `angle_rate`, `yaw_rate`, `max_accel`, `accel_rate`; 0, the default, is
-none): a platform has its own travel and speed, and the limits, which used to be on, only
-made the motion tamer than the game's. The reasons are in `publish()`. A game still has to
+none), since a platform has its own travel and speed and a limit only makes the motion tamer
+than the game's. The reasons are in `publish()`. A game still has to
 mark its own discontinuities and must not difference across a pause: a frozen vehicle reads
 as a dead stop. Noise the game sends arrives as noise; smoothing is the game's.
 
