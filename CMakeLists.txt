@@ -795,7 +795,8 @@ function(gcn_add_game)
 
   # The gamepad port checks (tools/test_ports.sh runs them): the frontend's input loop and
   # the SI layer against SDL's virtual joysticks. Needs no disc image, and nothing of the
-  # game: tools/test_ports.cpp includes main.cpp and hw/si.cpp itself. macOS and Linux.
+  # game: tools/test_ports.cpp includes main.cpp and hw/si.cpp itself, then its checks from
+  # tools/test_ports_*.cpp, which aren't compiled on their own. macOS and Linux.
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
