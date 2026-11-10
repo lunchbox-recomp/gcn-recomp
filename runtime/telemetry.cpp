@@ -156,14 +156,6 @@ void set_default(const char* k, float value) { g_defaults[k] = value; }
 //    belongs upstream, where the game knows what is noise. The speed and the slide keep
 //    their bounds; they are not motion.
 //
-// There used to be a fourth, ahead of the limits: a yaw washout, for a game that sent its
-// vehicle's heading. The heading was unwrapped and what went out was how far it had turned
-// from where it was `yaw_washout_s` ago, so every turn turned the platform and let it drift
-// back. Game after game had to be moved off it onto the slip: a platform turning with
-// every corner was jarring, while the slip, which a rider feels through the seat, holds
-// still on a clean line. A heading is the wrong input, not one to wash out, so the option
-// is gone and `yaw` is only ever the platform's own angle.
-//
 // Between the gains and the limits, a road texture (4), eased in and out with the rest of the
 // motion and scaled by `texture_gain`. A platform that sat dead still on a straight felt like
 // no road at all; one that hummed with band-limited noise felt like noise, all one note.

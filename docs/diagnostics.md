@@ -1344,10 +1344,7 @@ as a dead stop. Noise the game sends arrives as noise; smoothing is the game's.
 `yaw` is the angle the platform itself turns to, never the vehicle's heading: a platform
 turns a couple of dozen degrees at most, so yaw is always relative, and the game decides
 when there is any -- the nose against the way the vehicle is moving in a slide, a spin --
-from what a driver feels through the seat. There used to be a `yaw_heading` flag that took
-a heading and washed it out instead (`yaw_washout_s`). It turned the platform with every
-corner, which was jarring, and game after game had to be moved off it onto the slip; it is
-gone, so that a new game does not start from it.
+from what a driver feels through the seat.
 
 Two things more are the game's to choose. `suspension` (each wheel's compression, with
 `has_suspension`) is the road texture: the springs' movement about their running mean, on
