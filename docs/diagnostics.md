@@ -141,8 +141,8 @@ speed, `--fast` included.
 
 `--pads=N`, on the desktop and the benchmark, plugs in controllers on ports 1 to N at
 power-on (1 to 4; port 1 alone by default), so that the game finds them when it first
-looks. The keyboard drives port 1, or the port `gamepads_assign` gives it for the run, and
-keeps that port plugged in. `controls.txt` drives the ports it names. Each gamepad
+looks. The keyboard drives port 1, or the port the overlay's Controllers page gives it for the
+run, and keeps that port plugged in. `controls.txt` drives the ports it names. Each gamepad
 drives the port it takes as it connects (`runtime/gamepads.h`), which plugs that port in
 while it's there.
 
@@ -155,9 +155,9 @@ press on a port that isn't plugged in does nothing.
 `saves/ports.txt` remembers which gamepad was last on each port (`runtime/port_memory.h`),
 by its GUID, serial and USB IDs, so a gamepad finds its port again whatever order the
 controllers connect in. It's written when a gamepad lands on a port the file didn't have
-it on, and not when one is pulled out. A move by `gamepads_assign`, `gamepads_swap` or
-`gamepads_unassign` (`runtime/gamepads.h`) writes each port it changes as what's on it now,
-or `none`.
+it on, and not when one is pulled out. A move the overlay's Controllers page makes
+(`gamepads_assign`, `gamepads_swap` and `gamepads_unassign` in `runtime/gamepads.h`) writes
+each port it changes as what's on it now, or `none`.
 
 A saved port is only a preference. Another gamepad can take it while its own is away. A
 gamepad that finds its port taken goes to the lowest free port, and a port `controls.txt`

@@ -10,8 +10,8 @@
 // default gamepad layout) and settings.cpp are linked as they are. Stubbed: force feedback
 // (ffb_configure, ffb_attach, ffb_update, ffb_shutdown; ffb_update keeps the motor it was
 // given), the RTC (rtc_set_base), the event queue and interrupt request (event_schedule_in,
-// irq_request), and the frame counter (gx::g_frames_submitted, gx_frames_submitted), which a
-// check sets by hand. The renderer's aspect and internal scale (gx::render_set_output_aspect,
+// irq_request), and the frame counters (gx::g_frames_submitted, gx_frames_submitted, and the
+// presented frames, gx::present_count), which a check sets by hand. The renderer's aspect and internal scale (gx::render_set_output_aspect,
 // gx::render_set_internal_scale) keep what they were last given. The interrupt handler's
 // thread dump (debug_dump_threads) and guest memory (g_mem) are stubbed too, and fatal, which
 // says why and exits 1, and the session's note that the game is starting again
@@ -43,6 +43,8 @@
 //                                              replay, with a gamepad rumbling
 //        test_ports --shutdown <empty work dir>   the game shutting the console down,
 //                                                 with a gamepad rumbling
+//        test_ports --exit-held <empty work dir>   the same exit with the gamepads' lock
+//                                                  held, as the menu's draw holds it
 //        test_ports --restart <empty work dir>   a restart asked for (frontend_restart), to
 //                                                the relaunch, with the game resetting the
 //                                                console as the run ends
@@ -79,10 +81,12 @@
 
 static float g_output_aspect;  // what the frontend last gave the renderer, 0 before any
 static int g_internal_scale;
+static uint32_t g_presented;  // what gx::present_count says
 namespace gx {
 std::atomic<uint32_t> g_frames_submitted{0};
 void render_set_output_aspect(float aspect) { g_output_aspect = aspect; }
 void render_set_internal_scale(int scale) { g_internal_scale = scale; }
+uint32_t present_count() { return g_presented; }
 }
 uint32_t gx_frames_submitted() { return gx::g_frames_submitted.load(); }
 void rtc_set_base(time_t) {}
@@ -1883,6 +1887,17 @@ void overlay(const std::string& dir) {
     unsetenv("GCN_OVERLAY_AT");
     check(lines_with(at_said, "GCN_OVERLAY_AT") == 0,
           "an empty GCN_OVERLAY_AT opens nothing and says nothing, as an unset one does");
+    // Once GCN_OVERLAY_AT's frame is presented the menu is due before overlay_draw opens it, so
+    // show_frame takes the gamepads' lock for that first frame of it too.
+    setenv("GCN_OVERLAY_AT", "5:1", 1);
+    overlay_init(nullptr, "Test title", picture);
+    unsetenv("GCN_OVERLAY_AT");
+    g_presented = 4;
+    const bool early = !overlay_menu_due();
+    g_presented = 5;
+    check(early && overlay_menu_due() && !overlay_open(),
+          "the menu is due once GCN_OVERLAY_AT's frame is presented, before it opens, and not a frame sooner");
+    g_presented = 0;
     power_on(1);
     gamepads_init();
     Virtual pad{"virtual pad overlay"};
@@ -2361,6 +2376,209 @@ void port_changes(Guest& guest, const std::string& dir) {
     gamepads_remember(nullptr);
 }
 
+// ---- The Controllers page (overlay/overlay_controllers.cpp) over the same window, and its
+// press-A order, checked on the ports and in ports.txt.
+
+// The menu's tab titled `title` picked, as a click on it would, then drawn. False if there's none.
+bool pick_tab(Guest& g, const char* title) {
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    for (int i = 0; i < context->TabBars.GetMapSize(); i++) {
+        ImGuiTabBar* bar = context->TabBars.TryGetMapData(i);
+        if (!bar) continue;
+        for (const ImGuiTabItem& tab : bar->Tabs) {
+            if (tab.NameOffset < 0 || tab.NameOffset >= bar->TabsNames.Buf.Size ||
+                strcmp(bar->TabsNames.Buf.Data + tab.NameOffset, title))
+                continue;
+            bar->NextSelectedTabId = tab.ID;
+            host_frame(g);
+            host_frame(g);
+            return true;
+        }
+    }
+    return false;
+}
+
+// Whether the menu's last frame showed its tabs.
+bool tabs_shown() {
+    ImGuiContext* context = ImGui::GetCurrentContext();
+    for (int i = 0; i < context->TabBars.GetMapSize(); i++) {
+        const ImGuiTabBar* bar = context->TabBars.TryGetMapData(i);
+        if (bar && bar->CurrFrameVisible == context->FrameCount) return true;
+    }
+    return false;
+}
+
+void controllers_order(Guest& guest, const std::string& dir) {
+    const std::string file = dir + "/saves/ports.txt";
+    fresh_file(file);
+    gamepads_init();
+    Virtual a{"virtual pad order a"}, b{"virtual pad order b"}, c{"virtual pad order c"};
+    for (Virtual* v : {&a, &b, &c}) {
+        attach(*v);
+        host_frame(guest);
+    }
+    const bool start = port(a) == 1 && port(b) == 2 && port(c) == 3 && gamepads_keyboard_port() == 0;
+
+    // Set player order is the page's first button, below the tabs.
+    tap(guest, a, SDL_GAMEPAD_BUTTON_BACK);
+    const bool picked = pick_tab(guest, "Controllers");
+    for (int i = 0; i < 20; i++) tap(guest, a, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    tap(guest, a, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, a, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(start && picked && overlay_open() && overlay_controllers_asking() == 0,
+          "the Controllers page is laid out in a window with no GL, and its Set player order asks for player 1");
+
+    const long shown = overlay_notice_frames();
+    tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
+    const std::string first = read_file(file);
+    check(listed(c.id) == 1 && listed(a.id) == 3 && listed(b.id) == 2 && overlay_controllers_asking() == 1 &&
+              has(first, line_for(1, c)) && has(first, line_for(3, a)) && has(first, line_for(2, b)),
+          "the first A to go down takes player 1, the gamepad there takes the port it left, ports.txt says so, and it asks for player 2");
+    check(overlay_notice_frames() > shown, "the notices of that move are laid out over the open menu");
+
+    key(guest, SDL_SCANCODE_X, SDLK_X, true);
+    key(guest, SDL_SCANCODE_X, SDLK_X, false);
+    const bool keyboard = gamepads_keyboard_port() == 1 && listed(kKeyboard) == 2 && listed(b.id) == 2 &&
+                          overlay_controllers_asking() == 2;
+    tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(keyboard && listed(c.id) == 1 && overlay_controllers_asking() == 2,
+          "the keyboard's X takes player 2 beside the gamepad there, and a device already placed is passed over");
+
+    tap(guest, b, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool b_third = listed(b.id) == 3 && listed(a.id) == 2 && overlay_controllers_asking() == 3;
+    tap(guest, a, SDL_GAMEPAD_BUTTON_SOUTH);
+    const std::string done = read_file(file);
+    check(b_third && listed(a.id) == 4 && overlay_controllers_asking() == -1 && overlay_open() &&
+              has(done, line_for(1, c)) && has(done, "\n2 none\n") && has(done, line_for(3, b)) && has(done, line_for(4, a)),
+          "the next presses take players 3 and 4, the order ends after player 4, the last, and ports.txt names each");
+
+    tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool again = overlay_controllers_asking() == 0;
+    const uint64_t ordered = file_id(file);
+    tap(guest, c, SDL_GAMEPAD_BUTTON_BACK);
+    check(again && overlay_controllers_asking() == -1 && overlay_open() && file_id(file) == ordered && listed(c.id) == 1,
+          "Set player order is focused again after, and Back ends the order with nothing moved, the menu still open");
+    tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool b_asked = overlay_controllers_asking() == 0;
+    tap(guest, c, SDL_GAMEPAD_BUTTON_EAST);
+    check(b_asked && overlay_controllers_asking() == -1 && overlay_open() && file_id(file) == ordered,
+          "B ends the order with nothing moved, the menu still open");
+    tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool f1_asked = overlay_controllers_asking() == 0;
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    const bool f1_closed = !overlay_open() && overlay_controllers_asking() == -1;
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    check(f1_asked && f1_closed && overlay_open() && overlay_controllers_asking() == -1 && tabs_shown(),
+          "F1 during the order closes the menu and ends the order, and opened again the menu shows its tabs, not the prompt");
+    key(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    key(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    check(!overlay_open() && port(c) == 1 && port(b) == 3 && port(a) == 4,
+          "with the menu closed the game reads each gamepad on its new port, and each player light shows it");
+
+    // Port 3 pinned with no gamepad on it.
+    gamepads_unassign(2);
+    const std::string controls = dir + "/order-controls.txt";
+    write_file(controls, "A = \"virtual pad nobody\" button 0 port 3\n");
+    input_map_load(controls.c_str());
+    tap(guest, a, SDL_GAMEPAD_BUTTON_BACK);
+    overlay_controllers_order();
+    tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
+    tap(guest, a, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool skips = listed(c.id) == 1 && listed(a.id) == 2 && listed(b.id) == 0 && overlay_controllers_asking() == 3;
+    key(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    key(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    check(skips && overlay_controllers_asking() == -1 && overlay_open(),
+          "the order passes over a pinned port, asking for player 4 after player 2, and Escape ends it with the menu open");
+    tap(guest, a, SDL_GAMEPAD_BUTTON_BACK);
+    input_map_load((dir + "/no-controls.txt").c_str());
+    unplug({&a, &b, &c});
+    gamepads_shutdown();
+    gamepads_remember(nullptr);
+}
+
+// A two-gamepad order with a Switch Pro pad, then the page's Swap and Remove pressed, with the
+// keyboard on a player beside them.
+void controllers_buttons(Guest& guest, const std::string& dir) {
+    const std::string file = dir + "/saves/ports.txt";
+    fresh_file(file);
+    gamepads_init();
+    Virtual pad{"virtual pad page"}, nintendo{"virtual switch pro page"};
+    nintendo.vendor = 0x057e;
+    nintendo.product = 0x2009;
+    for (Virtual* v : {&pad, &nintendo}) {
+        attach(*v);
+        host_frame(guest);
+    }
+    const bool start = listed(pad.id) == 1 && listed(nintendo.id) == 2;
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    const bool picked = pick_tab(guest, "Controllers");
+    overlay_controllers_order();
+    tap(guest, nintendo, SDL_GAMEPAD_BUTTON_EAST);
+    check(start && picked && listed(nintendo.id) == 1 && listed(pad.id) == 2 && overlay_controllers_asking() == 1,
+          "a Switch Pro pad's east, the button labeled A, takes player 1 in the order");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(listed(pad.id) == 2 && overlay_controllers_asking() == -1 && overlay_open(),
+          "with two gamepads the order ends at player 2, once both are placed");
+
+    // Set player order is focused after it, and down from there is player 1's Swap.
+    detach(nintendo);
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(listed(pad.id) == 1 && gamepads_keyboard_port() == 1 && has(read_file(file), line_for(1, pad)),
+          "the page's Swap trades players 1 and 2, the keyboard too: the gamepad ends on player 1 and the keyboard on 2");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    const std::string back = read_file(file);
+    check(listed(pad.id) == 2 && gamepads_keyboard_port() == 0 && has(back, line_for(2, pad)) && has(back, "\n1 none\n"),
+          "pressed again with only the keyboard on player 2, it trades them back, and ports.txt has the gamepad on 2 and none on 1");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    const std::string removed = read_file(file);
+    check(listed(pad.id) == 0 && gamepads_keyboard_port() == 0 && has(removed, "\n2 none\n"),
+          "player 2's Remove, right of its Swap, takes its gamepad off, and ports.txt has none there");
+    const uint64_t kept = file_id(file);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(overlay_asking() != OverlayAsk::none && gamepads_keyboard_port() == 0 && file_id(file) == kept,
+          "with no gamepad on any player, each Swap and Remove is off, so down from player 2 is the row below the page");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
+    overlay_close();
+    host_frame(guest);
+    unplug({&pad});
+    gamepads_shutdown();
+    gamepads_remember(nullptr);
+}
+
+// A gamepad on no player, left out as it came with all four taken, takes an occupied player in
+// the order, and the gamepad there goes to none.
+void order_left_out(Guest& guest, const std::string& dir) {
+    const std::string file = dir + "/saves/ports.txt";
+    fresh_file(file);
+    gamepads_init();
+    Virtual a{"virtual pad four a"}, b{"virtual pad four b"}, c{"virtual pad four c"}, d{"virtual pad four d"},
+        e{"virtual pad fifth"};
+    for (Virtual* v : {&a, &b, &c, &d, &e}) {
+        attach(*v);
+        host_frame(guest);
+    }
+    check(listed(e.id) == 0 &&
+              last_notice() == "virtual pad fifth has no player: all four are taken. The menu's Controllers page can give it one.",
+          "a fifth gamepad gets no player, and its notice says the Controllers page can give it one");
+    tap(guest, a, SDL_GAMEPAD_BUTTON_BACK);
+    overlay_controllers_order();
+    tap(guest, e, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(listed(e.id) == 1 && listed(a.id) == 0 && has(read_file(file), line_for(1, e)) && overlay_controllers_asking() == 1,
+          "its A in the order takes player 1, the gamepad there is listed on none, and ports.txt names the newcomer");
+    key(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    key(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    overlay_close();
+    host_frame(guest);
+    unplug({&a, &b, &c, &d, &e});
+    gamepads_shutdown();
+    gamepads_remember(nullptr);
+}
+
 void overlay_buttons(const std::string& dir) {
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "dummy");
     SDL_Window* window = SDL_InitSubSystem(SDL_INIT_VIDEO) ? SDL_CreateWindow("test_ports", 1280, 960, SDL_WINDOW_HIDDEN) : nullptr;
@@ -2380,10 +2598,12 @@ void overlay_buttons(const std::string& dir) {
         overlay_add_page("", draw_added_page, &page_draws);
         overlay_add_page("Extra", draw_added_page, &page_draws);
         overlay_add_page("Display", draw_added_page, &page_draws);
+        overlay_add_page("Controllers", draw_added_page, &page_draws);
     });
     check(lines_with(page_errors, "[overlay] page title is empty\n") == 1 &&
               lines_with(page_errors, "[overlay] page title Extra is already in use\n") == 1 &&
-              lines_with(page_errors, "[overlay] page title Display is already in use\n") == 1,
+              lines_with(page_errors, "[overlay] page title Display is already in use\n") == 1 &&
+              lines_with(page_errors, "[overlay] page title Controllers is already in use\n") == 1,
           "empty and duplicate page titles each print one refusal");
     overlay_init(window, "Test title", picture);
     check(ImGui::GetPlatformIO().Platform_OpenInShellFn == nullptr,
@@ -2424,18 +2644,19 @@ void overlay_buttons(const std::string& dir) {
     }
     bool order = false;
     if (pages) {
-        int display = -1, extra = -1;
+        int display = -1, controllers = -1, extra = -1;
         for (int i = 0; i < pages->Tabs.Size; i++) {
             if (pages->Tabs[i].NameOffset < 0 || pages->Tabs[i].NameOffset >= pages->TabsNames.Buf.Size) continue;
             const char* title = pages->TabsNames.Buf.Data + pages->Tabs[i].NameOffset;
             if (!strcmp(title, "Display")) display = i;
+            if (!strcmp(title, "Controllers")) controllers = i;
             if (!strcmp(title, "Extra")) { extra = i; pages->NextSelectedTabId = pages->Tabs[i].ID; }
         }
-        order = display >= 0 && extra > display && pages->Tabs.Size == 2;
+        order = display >= 0 && controllers > display && extra > controllers && pages->Tabs.Size == 3;
         host_frame(guest);
         host_frame(guest);
     }
-    check(order, "the added page's tab follows Display and refused pages add no tabs");
+    check(order, "Controllers follows Display, the added page's tab follows them, and refused pages add no tabs");
     check(page_draws > 0, "selecting the added page calls its callback in the dummy window");
     if (pages) {
         for (const ImGuiTabItem& tab : pages->Tabs)
@@ -2667,6 +2888,9 @@ void overlay_buttons(const std::string& dir) {
     unplug({&pad, &nintendo});
     gamepads_shutdown();
     port_changes(guest, dir);
+    controllers_order(guest, dir);
+    controllers_buttons(guest, dir);
+    order_left_out(guest, dir);
     SDL_DestroyWindow(window);
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
@@ -2949,6 +3173,21 @@ void after_interrupt() {
     _exit(g_failed ? 1 : 0);
 }
 
+// An event watch, which SDL calls as it queues an event: for each gamepad press, whether
+// another thread found the gamepads' lock free then.
+int g_presses_queued, g_queued_unlocked;
+bool SDLCALL lock_probe(void*, SDL_Event* e) {
+    if (e->type != SDL_EVENT_GAMEPAD_BUTTON_DOWN) return true;
+    bool unlocked = false;
+    std::thread([&] {
+        unlocked = g_pads_mutex.try_lock();
+        if (unlocked) g_pads_mutex.unlock();
+    }).join();
+    g_presses_queued++;
+    g_queued_unlocked += unlocked;
+    return true;
+}
+
 int run_interrupt(const std::string& dir) {
     if (!sdl_up()) return 1;
     input_map_load((dir + "/no-controls.txt").c_str());
@@ -2960,6 +3199,12 @@ int run_interrupt(const std::string& dir) {
     g_outbuf[0] = 0x00400001;  // port 1's motor on from here
     frame();
     check(a.rumbles == 1 && a.stops == 0, "port 1's motor rumbles its gamepad");
+    SDL_AddEventWatch(lock_probe, nullptr);
+    press(a, SDL_GAMEPAD_BUTTON_SOUTH, true);
+    press(a, SDL_GAMEPAD_BUTTON_SOUTH, false);
+    SDL_RemoveEventWatch(lock_probe, nullptr);
+    check(g_presses_queued == 1 && g_queued_unlocked == 1,
+          "SDL queues the window's events with the gamepads' lock free, so a loop SDL runs in there keeps no interrupt waiting");
     g_rumbling = &a;
     plat_at_exit(after_interrupt);
     std::thread(on_interrupt).detach();
@@ -3037,9 +3282,13 @@ int run_reset(const std::string& dir) {
 
 // ---- The game shutting the console down ends the process with no reset handler
 // (guest_reset), so what stops a rumbling gamepad and has it say what it sent is the
-// shutdown open_controllers leaves for the exit.
+// shutdown open_controllers leaves for the exit. --exit-held exits the same way with the
+// gamepads' lock held on the exiting thread, as show_frame holds it while the menu is drawn,
+// where the Display page's change of scale can be fatal: the shutdown takes the lock again
+// there. A hang ends at a 2 s watchdog, with 2.
 Virtual* g_shut;
 int g_stderr = -1;  // the test's stderr, while the exit's goes to a file
+bool g_held;        // --exit-held
 
 // The exit runs this last, after open_controllers' shutdown.
 void after_shutdown() {
@@ -3047,13 +3296,14 @@ void after_shutdown() {
     dup2(g_stderr, 2);
     printf("---- stderr\n%s----\n", read_file("shutdown-stderr.txt").c_str());
     check(g_shut->stops == 1 && lines_with("shutdown-stderr.txt", "gamepads: port 1 rumble on 1 time, 0 of 2 calls failed\n") == 1,
-          "the game shutting the console down stops a rumbling gamepad, which says what it sent");
-    printf("test_ports --shutdown: %d of %d checks passed\n", g_checks - g_failed, g_checks);
+          g_held ? "an exit with the gamepads' lock held on its thread stops a rumbling gamepad, which says what it sent"
+                 : "the game shutting the console down stops a rumbling gamepad, which says what it sent");
+    printf("test_ports %s: %d of %d checks passed\n", g_held ? "--exit-held" : "--shutdown", g_checks - g_failed, g_checks);
     fflush(stdout);
     _exit(g_failed ? 1 : 0);
 }
 
-int run_shutdown(const std::string& dir) {
+int run_shutdown(const std::string& dir, bool held) {
     // main()'s saves/ports.txt is relative to where it runs.
     if (chdir(dir.c_str()) != 0 || !sdl_up()) return 1;
     open_controllers("no-controls.txt");
@@ -3072,8 +3322,14 @@ int run_shutdown(const std::string& dir) {
         fclose(f);
     }
     plat_at_exit(after_shutdown);
-    // What guest_reset does for a shutdown: no reset handler, only the exit.
-    plat_exit_now(0);
+    g_held = held;
+    if (held) {
+        plat_watchdog(2, 2);
+        g_pads_mutex.lock();
+    }
+    // What guest_reset does for a shutdown, and fatal before it aborts: no reset handler, only
+    // the exit. Its code isn't 0, so the run passes only by after_shutdown's own exit.
+    plat_exit_now(3);
 }
 
 // ---- A restart asked for (frontend_restart, which the overlay's Restart calls) stops the
@@ -3257,11 +3513,12 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--interrupt")) return run_interrupt(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--no-gamepads")) return run_no_gamepads(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--reset")) return run_reset(argv[2]);
-    if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "--shutdown")) return run_shutdown(argv[2], false);
+    if (argc == 3 && !strcmp(argv[1], "--exit-held")) return run_shutdown(argv[2], true);
     if (argc == 3 && !strcmp(argv[1], "--restart")) return run_restart(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--quit")) return run_quit(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--restart-replay")) return run_restart_replay(argv[2]);
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown|--restart|--quit|--restart-replay] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay] <work dir>\n");
     return 2;
 }

@@ -200,7 +200,8 @@ void add(const std::vector<SDL_JoystickID>& ids) {
             const int i = got[first + k];
             if (i < 0) {
                 fprintf(stderr, "gamepads: \"%s\" left out: no port is free\n", pad_name(a.pad));
-                overlay_pads_notice(pad_name(a.pad) + std::string(" has no player: all four are taken"));
+                overlay_pads_notice(pad_name(a.pad) + std::string(" has no player: all four are taken. "
+                                                                  "The menu's Controllers page can give it one."));
                 SDL_SetGamepadPlayerIndex(a.pad, -1);
                 SDL_CloseGamepad(a.pad);
                 g_left_out.push_back(a.which);

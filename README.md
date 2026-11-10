@@ -103,8 +103,18 @@ The menu's Display page sets the aspect and the internal scale and turns fullscr
 Each change applies at once and is saved to `settings.txt`, which the window reads at start.
 With `--eye` or `GCN_THEATER_STEREO` the aspect choices are there but can't be picked.
 
-A notice at the bottom of the window says for 2 seconds that a controller connected or
-disconnected, with the menu open or closed. It doesn't pause the game.
+The Controllers page lists the controllers on each player, with a light that's lit while one
+is pressed, and the controllers on no player. Each player has Swap with the next player and
+Remove. Set player order asks for player 1's controller, then player 2's and so on. The first
+controller whose A goes down takes that player, and on the keyboard X is A. Back, B or Escape
+stops it, and the players set so far keep their controllers. Each change applies at once and
+is saved to `saves/ports.txt`, except the keyboard's player, which is player 1 again at the
+next launch. Swap takes the keyboard along. Remove saves the player as empty, and the removed
+gamepad takes a free player again at the next launch. A player that a `controls.txt`
+`port <n>` line sets can't be changed there.
+
+A notice at the bottom of the window says for 2 seconds that a controller connected,
+disconnected or changed player, with the menu open or closed. It doesn't pause the game.
 
 Restart game and Quit game sit below every page, and each asks first, with Cancel picked.
 Cancel, B or Escape goes back with nothing done. A replay has no Restart game, even once its
@@ -125,8 +135,9 @@ taken it gets the lowest free one. Its player light shows the port, except an XI
 controller's ring, which shows the slot Windows gave it.
 
 A gamepad pulled out frees its port, which the game then sees unplugged unless `--pads` or a
-`controls.txt` line keeps it plugged in, as the keyboard keeps port 1. One that connects with
-no port free gets none until it's pulled out and plugged in again. A `gamecontrollerdb.txt`
+`controls.txt` line keeps it plugged in, as the keyboard keeps its port, port 1 unless the
+menu's Controllers page moves it. One that connects with no port free gets none until the
+Controllers page gives it one or it's pulled out and plugged in again. A `gamecontrollerdb.txt`
 beside the executable, or the file `SDL_GAMECONTROLLERCONFIG_FILE` names, makes a gamepad of
 a controller SDL has no mapping for.
 
@@ -240,17 +251,17 @@ A replay reads at its log's speed (`80e1d38`).
   rumble motor.
 - `runtime/port_memory.*`: `saves/ports.txt`, one line a port, naming the gamepad last there
   by its GUID and serial, with its USB IDs. A saved port is only a preference, and the file
-  changes only when a gamepad lands on a port it didn't name for that gamepad, or when
-  `gamepads_assign` or another move in `gamepads.h` changes a port. That port's line then
-  names what's on it, or `none`.
+  changes only when a gamepad lands on a port it didn't name for that gamepad, or when the
+  Controllers page changes a port. That port's line then names what's on it, or `none`.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
   `fullscreen`, `scale` and `disc`, while the desktop frontend also reads `disc_overlay` and
   `ram_patches`. A flag beats the file for that run and isn't written back, and a save
   rewrites only the owned keys' lines and adds any that are missing.
 - `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. `notices.cpp` draws the
-  notices about controllers. `overlay_add_page`, called before the overlay starts, adds a
-  game's page after Display. A page can call
+  notices about controllers and `overlay_controllers.cpp` is the Controllers page.
+  `overlay_add_page`, called before the overlay starts, adds a game's page after Display and
+  Controllers. A page can call
   `frontend_restart` (`frontend.h`) as Restart does.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;

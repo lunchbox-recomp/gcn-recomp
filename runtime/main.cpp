@@ -138,13 +138,15 @@ static void* gl_proc(const char* name) { return reinterpret_cast<void*>(SDL_GL_G
 
 // The gamepads and a wheel's force feedback are the main loop's, but an interrupt stops
 // their rumble and force from the interrupt thread (plat_install_crash_handlers). Every
-// use of them holds this.
-static std::mutex g_pads_mutex;
+// use of them holds this. It's recursive because an exit can come while the loop holds it,
+// as a fatal from the menu's draw (show_frame), and the shutdown left for the exit
+// (pads_down) takes it again on that thread.
+static std::recursive_mutex g_pads_mutex;
 
 // The gamepads and a wheel shut down: none is left rumbling or pushing, and each gamepad
 // says what it sent.
 static void pads_down() {
-    std::lock_guard<std::mutex> lk(g_pads_mutex);
+    std::lock_guard<std::recursive_mutex> lk(g_pads_mutex);
     input_map_shutdown();
     gamepads_shutdown();
 }
@@ -237,7 +239,7 @@ static void merge_keyboard(PadState& p) {
 static bool g_guest_held;  // the loop's, from paused() (pause.h)
 static void merge_port(int port, PadState& p) {
     const bool motor = pad_motor(port) && !g_guest_held;
-    std::lock_guard<std::mutex> lk(g_pads_mutex);
+    std::lock_guard<std::recursive_mutex> lk(g_pads_mutex);
     if (port == gamepads_keyboard_port()) merge_keyboard(p);
     gamepads_merge(port, p);
     input_map_apply(p, port, motor);
@@ -266,13 +268,18 @@ static bool pump_events() {
     SDL_Event e;
     bool running = true;
     while (SDL_PollEvent(&e)) {
-        if (overlay_event(e)) continue;
-        // Under --no-gamepads SDL announces no device, unless something else in the process
-        // started its joysticks, and even then none is opened here.
-        if (g_gamepads) {
-            std::lock_guard<std::mutex> lk(g_pads_mutex);
-            input_map_event(e);
-            gamepads_event(e);
+        {
+            // Each event with the gamepads' lock, since the overlay moves gamepads as it takes a
+            // press. SDL_PollEvent and overlay_poll go without it, so a loop SDL runs in there
+            // (a live resize, a menu tracked) keeps no interrupt waiting for it.
+            std::lock_guard<std::recursive_mutex> lk(g_pads_mutex);
+            if (overlay_event(e)) continue;
+            // Under --no-gamepads SDL announces no device, unless something else in the process
+            // started its joysticks, and even then none is opened here.
+            if (g_gamepads) {
+                input_map_event(e);
+                gamepads_event(e);
+            }
         }
         if (e.type == SDL_EVENT_QUIT) running = false;
         // Not a repeat, which an Escape held after it closed the overlay would make.
@@ -304,7 +311,7 @@ static void open_controllers(const char* controls) {
         plat_at_exit(pads_down);
     }
     if (g_gamepads && !SDL_InitSubSystem(SDL_INIT_GAMEPAD | SDL_INIT_HAPTIC)) fatal("SDL_Init: %s", SDL_GetError());
-    std::lock_guard<std::mutex> lk(g_pads_mutex);
+    std::lock_guard<std::recursive_mutex> lk(g_pads_mutex);
     input_map_load(controls);
     if (!g_gamepads) return;
     gamepads_load_mappings();
@@ -317,7 +324,13 @@ static void open_controllers(const char* controls) {
 static void show_frame(SDL_Window* win) {
     // macOS (GL on Metal) only presents correctly with the window framebuffer bound.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    overlay_draw();
+    {
+        // The Controllers page changes the gamepads as it's drawn. The notices drawn with the menu
+        // closed touch none, so the lock is taken only while it's open or opening.
+        std::unique_lock<std::recursive_mutex> lk(g_pads_mutex, std::defer_lock);
+        if (overlay_menu_due()) lk.lock();
+        overlay_draw();
+    }
     if (record::active()) {
         int rw, rh;
         SDL_GetWindowSizeInPixels(win, &rw, &rh);

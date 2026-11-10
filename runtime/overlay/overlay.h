@@ -1,6 +1,6 @@
 // The in-game overlay: a menu drawn over the game with Dear ImGui (github.com/ocornut/imgui),
 // in the desktop frontend (main.cpp) when the build has GCN_OVERLAY on. Its Display page sets
-// the picture.
+// the picture, and its Controllers page which controller is which player.
 //
 // F1 or a gamepad's Back opens it, and the guest is paused (pause.h) at its next frame
 // boundary. F1, Back or B closes it and the guest goes on. Escape closes it too, and the
@@ -41,6 +41,17 @@
 // With the aspect held at 4:3, as --eye and GCN_THEATER_STEREO hold it, its choices are shown
 // disabled with a note saying so.
 //
+// The Controllers page, after Display, lists each player's controllers with a light that's lit
+// while one is pressed or pushed, and the controllers on no player (gamepads_list in
+// gamepads.h). Each player has Swap with the next one, which takes the keyboard along and is off
+// while neither has a gamepad, and Remove, off while it has none. A port controls.txt pins says
+// so and has neither. Set player order asks for player 1's controller, then player 2's
+// and so on past any pinned port: the first device whose A goes down (the face labeled A, as
+// the menu takes it, or X, the keyboard's A) takes that player, and one already placed is
+// passed over. It ends once every gamepad has been placed or no port is left, and Back, B or
+// Escape ends it sooner. Each press moves its device at once (gamepads_assign), and the page
+// then has nothing to focus, so no press reaches a button.
+//
 // A notice over the bottom of the window says for 2 s of host time that a controller
 // connected, disconnected or moved, and logs the same as a `[pads]` line. It shows with the
 // menu closed too, never pauses the game and takes no input. Frame and output dumps never
@@ -76,8 +87,8 @@ struct OverlayPicture {
 enum class OverlayAsk { none, restart, quit };
 
 #ifdef GCN_OVERLAY
-// Add a page after Display before overlay_init. The callback draws that page with ImGui.
-// A page added after overlay_init, with an empty or taken title or with no callback,
+// Add a page after Display and Controllers before overlay_init. The callback draws that page
+// with ImGui. A page added after overlay_init, with an empty or taken title or with no callback,
 // prints one line on stderr and is refused.
 void overlay_add_page(const char* title, void (*draw)(void* user), void* user);
 // Once the window's GL context is current, with the menu's title. A null window draws no menu,
@@ -99,6 +110,9 @@ bool overlay_event(const SDL_Event& e);
 // been held its second, which no event marks.
 void overlay_poll();
 bool overlay_open();
+// Whether overlay_draw lays out the menu this time: it's open, or GCN_OVERLAY_AT's frame has been
+// presented, so that overlay_draw opens it first.
+bool overlay_menu_due();
 // Closes it if it's open, and the guest goes on.
 void overlay_close();
 // What the menu is asking, none when it isn't. For the tests (tools/test_ports.cpp).
@@ -120,6 +134,10 @@ void overlay_pads_notice(const std::string& text);
 // The notices still showing, oldest first, and how many frames have shown them. For the tests.
 std::vector<std::string> overlay_notices();
 long overlay_notice_frames();
+// What the Controllers page's Set player order does. For the tests.
+void overlay_controllers_order();
+// The port the press-A order asks for next (0 is port 1), or -1 when it isn't asking.
+int overlay_controllers_asking();
 #else
 inline void overlay_pads_notice(const std::string&) {}
 inline void overlay_add_page(const char*, void (*)(void*), void*) {}
@@ -127,6 +145,7 @@ inline void overlay_init(SDL_Window*, const char*, const OverlayPicture&) {}
 inline bool overlay_event(const SDL_Event&) { return false; }
 inline void overlay_poll() {}
 inline bool overlay_open() { return false; }
+inline bool overlay_menu_due() { return false; }
 inline void overlay_close() {}
 inline void overlay_gate(int, PadState&) {}
 inline void overlay_draw() {}

@@ -1,5 +1,6 @@
 // The overlay's set-up, opening and closing, and the input it holds back; see overlay.h. The
-// Display page is overlay_display.cpp and the notices notices.cpp.
+// Display page is overlay_display.cpp, the Controllers page overlay_controllers.cpp and the
+// notices notices.cpp.
 #include "overlay/overlay.h"
 #include "frontend.h"
 #include "gamepads.h"
@@ -25,9 +26,15 @@ bool write_png(const char* path, const uint8_t* rgba, int w, int h);
 // overlay_display.cpp's.
 void display_init(const OverlayPicture& picture);
 void display_page(SDL_Window* window);
-// notices.cpp's.
+// overlay_controllers.cpp's and notices.cpp's.
+void controllers_page();
+bool controllers_event(const SDL_Event& e);
+void controllers_stop();
 void notices_init(SDL_Window* window, bool gl);
 void notices_frame();
+// Below, for the Controllers page too: the buttons each held gamepad has down stay out of the
+// menu until each is let go.
+void overlay_latch_pads();
 // Below, for the notices too: a Dear ImGui context over `window`, made current, with the GL
 // backend where `gl` says the window has a GL context and none otherwise, so it's laid out and
 // never drawn. It writes no file, opens no link, offers no item picker and reads no gamepad
@@ -83,13 +90,14 @@ void set_open(bool on) {
     g_ask = g_asked = OverlayAsk::none;
     pause_request(on);
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
+    if (!on) controllers_stop();
     if (!on || !g_window) return;
     // Keys and buttons let go while it was closed never reached the menu. One held as it opens
     // stays out of it until it's let go, though Dear ImGui keeps the focus from the last time,
     // so that it presses nothing: a key's repeats never reach the menu (overlay_event), and a
     // gamepad's buttons are latched here.
     ImGui::GetIO().ClearInputKeys();
-    for (HeldPad& h : g_pads) h.latched = buttons_down(h.pad);
+    overlay_latch_pads();
     g_focus = true;
     g_dumped = false;
 }
@@ -263,6 +271,9 @@ void parse_at(const char* e) {
     fprintf(stderr, "[overlay] GCN_OVERLAY_AT=%s isn't <frame>:<host frames>, so it doesn't open\n", e);
 }
 
+// GCN_OVERLAY_AT's frame has been presented, so overlay_draw opens the menu.
+bool at_frame_due() { return g_at_frame >= 0 && gx::present_count() >= g_at_frame; }
+
 // --dump-output: the menu over the held frame in a target of the window's size, read back from
 // there, since a hidden window's own framebuffer has nothing to read.
 void dump() {
@@ -356,10 +367,16 @@ void draw_menu() {
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
     if (g_ask != OverlayAsk::none) {
         asking();
+    } else if (overlay_controllers_asking() >= 0) {
+        controllers_page();  // the press-A order alone, with nothing to focus
     } else {
         if (ImGui::BeginTabBar("pages")) {
             if (ImGui::BeginTabItem("Display")) {
                 display_page(g_window);
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Controllers")) {
+                controllers_page();
                 ImGui::EndTabItem();
             }
             for (const AddedPage& page : g_pages) {
@@ -386,11 +403,15 @@ void menu_frame() {
 
 }  // namespace
 
+void overlay_latch_pads() {
+    for (HeldPad& h : g_pads) h.latched = buttons_down(h.pad);
+}
+
 void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
     if (g_ready) { fprintf(stderr, "[overlay] page registration is closed after init\n"); return; }
     if (!title || !*title) { fprintf(stderr, "[overlay] page title is empty\n"); return; }
-    if (!strcmp(title, "Display") || std::any_of(g_pages.begin(), g_pages.end(),
-                                                  [&](const AddedPage& page) { return page.title == title; })) {
+    if (!strcmp(title, "Display") || !strcmp(title, "Controllers") ||
+        std::any_of(g_pages.begin(), g_pages.end(), [&](const AddedPage& page) { return page.title == title; })) {
         fprintf(stderr, "[overlay] page title %s is already in use\n", title);
         return;
     }
@@ -446,12 +467,15 @@ void overlay_imgui_context(SDL_Window* window, bool gl) {
 
 bool overlay_open() { return g_open; }
 
+bool overlay_menu_due() { return g_open || at_frame_due(); }
+
 void overlay_close() { set_open(false); }
 
 OverlayAsk overlay_asking() { return g_ask; }
 
 bool overlay_event(const SDL_Event& e) {
     if (!g_ready) return false;
+    if (g_open && controllers_event(e)) return true;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
     const bool pressed = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
     const bool cancel = g_open && (key == SDL_SCANCODE_ESCAPE || (pressed && is_b(e.gbutton)));
@@ -517,7 +541,7 @@ void overlay_menu_frame() {
 
 void overlay_draw() {
     if (!g_window || !g_gl) return;
-    if (g_at_frame >= 0 && gx::present_count() >= g_at_frame) {
+    if (at_frame_due()) {
         g_at_frame = -1;
         set_open(true);
     }
