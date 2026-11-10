@@ -67,9 +67,6 @@ class Dol:
                 return self.data[o + addr - a:o + addr - a + n]
         raise KeyError(hex(addr))
 
-    def in_text(self, addr):
-        return any(t and a <= addr < a + s for a, s, _, t in self.sections)
-
     def text_sections(self):
         return [(a, s, o) for a, s, o, t in self.sections if t]
 
