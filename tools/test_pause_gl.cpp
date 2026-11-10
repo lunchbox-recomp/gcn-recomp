@@ -1,8 +1,8 @@
-// The paused redraw's checks, which tools/test_pause.cpp runs: render_gl.cpp's present()
-// and render_present_last() over a fake GL, and render_set_internal_scale(), which the
-// overlay's Display page calls while the game is paused.
+// The paused redraw's checks, which tools/test_pause.cpp runs: render_gl_present.cpp's
+// present() and render_present_last() over a fake GL, and render_set_internal_scale(), which
+// the overlay's Display page calls while the game is paused.
 //
-// render_gl.cpp is compiled into this file as the GL ES build of it, whose entry points are
+// The renderer's files are compiled into this one as their GL ES build, whose entry points are
 // glad's pointers, and the ones those functions reach are pointed at fakes. The fake keeps
 // one number per texture for what it holds, a frame's id, and the size it was given, and
 // the window has its own number. A blit copies the number, a clear makes it 0, and a draw
@@ -12,6 +12,16 @@
 // of the renderer, which nothing here reaches.
 #define GCN_GL_ES
 #include "gx/render_gl.cpp"
+#include "gx/render_gl_batch.cpp"
+#include "gx/render_gl_copy.cpp"
+#include "gx/render_gl_eye.cpp"
+#include "gx/render_gl_filter.cpp"
+#include "gx/render_gl_passes.cpp"
+#include "gx/render_gl_present.cpp"
+#include "gx/render_gl_programs.cpp"
+#include "gx/render_gl_state.cpp"
+#include "gx/render_gl_textures.cpp"
+#include "gx/render_gl_view.cpp"
 #include <cstdio>
 #include <cstdarg>
 #include <map>

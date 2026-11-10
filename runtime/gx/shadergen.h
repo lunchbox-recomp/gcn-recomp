@@ -62,7 +62,7 @@ void stage_konsts(const uint32_t* bp, const int konst[16], int out[64]);
 
 // Bumped whenever a key field's meaning or the shader cache's record layout changes. With
 // the key's size beside it, so that a field added to ShaderKey counts as a change by itself,
-// it is the format of both the cache file (render_gl.cpp) and a game's key list
+// it is the format of both the cache file (render_gl_programs.cpp) and a game's key list
 // (render_set_shader_keys, tools/shader_keys.cpp), and either one in another format is
 // not read.
 constexpr uint32_t kShaderKeyVersion = 3;

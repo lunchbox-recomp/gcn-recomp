@@ -12,7 +12,7 @@
 // counts the frames as xf.cpp does inline and records whether the batch would end there;
 // the skim's sync counts them as fifo.cpp does. The VI shows 480 rows.
 //
-// tools/test_pause_gl.cpp has the paused redraw's checks, render_gl.cpp on a fake GL.
+// tools/test_pause_gl.cpp has the paused redraw's checks, the renderer on a fake GL.
 //
 // usage: test_pause
 // Exits 0 only if every check passes. A guest thread still held after 2 s is a failure, and

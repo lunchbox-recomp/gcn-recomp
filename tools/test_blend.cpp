@@ -1,12 +1,13 @@
 // Blend factor checks: the `test_blend` target. Runs with no window, GL, disc or game.
 //
-// runtime/gx/blend.h picks the factors render_gl.cpp hands glBlendFunc. GX reads destination
-// alpha as full when the EFB's pixel format has no alpha channel, so on any format but
-// RGBA6_Z24 a DSTALPHA factor must be ONE and INVDSTALPHA ZERO, as a source factor and as a
-// destination one. The GL framebuffer keeps an alpha channel whatever the format, and on
-// those formats the renderer masks writes to it, so it holds whatever an earlier pass left.
-// A draw that blended by it multiplied the frame by an alpha the game never set, and a
-// full-screen ZERO, DSTALPHA pass on RGB8_Z24 turned the whole picture black.
+// runtime/gx/blend.h picks the factors render_gl_state.cpp hands glBlendFunc. GX reads
+// destination alpha as full when the EFB's pixel format has no alpha channel, so on any
+// format but RGBA6_Z24 a DSTALPHA factor must be ONE and INVDSTALPHA ZERO, as a source
+// factor and as a destination one. The GL framebuffer keeps an alpha channel whatever
+// the format, and on those formats the renderer masks writes to it, so it holds whatever
+// an earlier pass left. A draw that blended by it multiplied the frame by an alpha the
+// game never set, and a full-screen ZERO, DSTALPHA pass on RGB8_Z24 turned the whole
+// picture black.
 //
 // usage: test_blend
 // Exits 0 only if every check passes.

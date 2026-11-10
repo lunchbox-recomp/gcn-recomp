@@ -575,12 +575,17 @@ function(gcn_add_game)
   file(GLOB OVERLAY_SOURCES ${RT}/overlay/*.cpp)
   list(REMOVE_ITEM RUNTIME_SOURCES ${OVERLAY_SOURCES})
 
+  # The renderer, a file per job; runtime/gx/render_gl_internal.h is what they share.
+  set(RENDER_GL_SOURCES ${RT}/gx/render_gl.cpp ${RT}/gx/render_gl_batch.cpp ${RT}/gx/render_gl_copy.cpp
+    ${RT}/gx/render_gl_eye.cpp ${RT}/gx/render_gl_filter.cpp ${RT}/gx/render_gl_passes.cpp
+    ${RT}/gx/render_gl_present.cpp ${RT}/gx/render_gl_programs.cpp ${RT}/gx/render_gl_state.cpp
+    ${RT}/gx/render_gl_textures.cpp ${RT}/gx/render_gl_view.cpp)
   # Everything below the renderer and the SDL frontend -- the CPU, OS, hardware and GX
   # front end, including the batch queue in gx/xf.cpp -- is free of both GL and SDL.
   set(CORE_SOURCES ${RUNTIME_SOURCES})
   list(REMOVE_ITEM CORE_SOURCES
     ${RT}/main.cpp ${RT}/input_map.cpp ${RT}/gamepads.cpp ${RT}/ffb.cpp ${RT}/audio.cpp ${RT}/audio_sdl.cpp
-    ${RT}/png.cpp ${RT}/record.cpp ${RT}/gx/render_gl.cpp ${RT}/gx/gl_load.cpp ${RT}/gx/shadergen.cpp)
+    ${RT}/png.cpp ${RT}/record.cpp ${RENDER_GL_SOURCES} ${RT}/gx/gl_load.cpp ${RT}/gx/shadergen.cpp)
   list(APPEND CORE_SOURCES ${RT}/audio_stub.cpp)
   # The benchmark compiles the game's SOURCES too (gcn_add_game), and a game's eye hook
   # installs itself into the renderer; render_stub.cpp answers those calls with nothing.
@@ -923,9 +928,9 @@ function(gcn_add_game)
 
     # The pause checks (tools/test_pause.cpp): runtime/pause.cpp on a fake host clock, with a
     # thread for the guest's, gx/cmd.cpp taking it to its frame boundaries, and the paused
-    # redraw in gx/render_gl.cpp on a fake GL (tools/test_pause_gl.cpp, the GL ES build, whose
-    # entry points are glad's pointers). Needs no disc image, window or GL. The linker drops
-    # the rest of the renderer, which would otherwise want the whole runtime.
+    # redraw in gx/render_gl_present.cpp on a fake GL (tools/test_pause_gl.cpp, the GL ES
+    # build, whose entry points are glad's pointers). Needs no disc image, window or GL. The
+    # linker drops the rest of the renderer, which would otherwise want the whole runtime.
     find_package(Threads REQUIRED)
     add_executable(test_pause EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_pause.cpp
       ${GCN_RECOMP_DIR}/tools/test_pause_gl.cpp ${RT}/gx/glad_es/src/gles2.c)
@@ -1264,7 +1269,7 @@ function(gcn_add_game)
     # What the harness and the app share past gcn_core -- the mix and its AAudio device, the
     # renderer and the game's sources -- compiled once for both.
     add_library(${G_NAME}_android OBJECT ${RT}/audio.cpp ${AND_DIR}/audio_aaudio.cpp
-      ${RT}/gx/render_gl.cpp ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp
+      ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp
       ${GLAD_SOURCE} ${G_SOURCES})
     _gcn_set_standards(${G_NAME}_android)
     target_include_directories(${G_NAME}_android PRIVATE ${AND_DIR} ${RT} ${RECOMP_GEN_DIR} ${GLAD_INCLUDE_DIR})
@@ -1334,7 +1339,7 @@ function(gcn_add_game)
       endif()
     endif()
     set(GCN_APPLE_TEAM "" CACHE STRING "The Apple development team that signs the visionOS app")
-    set(VOS_SOURCES ${CORE_SOURCES} ${RT}/audio.cpp ${RT}/gx/render_gl.cpp ${RT}/gx/shadergen.cpp
+    set(VOS_SOURCES ${CORE_SOURCES} ${RT}/audio.cpp ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp
       ${RT}/gx/gl_load.cpp ${RT}/png.cpp ${GLAD_SOURCE} ${GCN_RECOMP_DIR}/openxr/xr_frontend.cpp
       ${VOS_DIR}/xr_runtime.mm ${VOS_DIR}/angle.mm ${VOS_DIR}/visionos_main.mm ${VOS_DIR}/audio_coreaudio.mm
       ${VOS_DIR}/App.swift
@@ -1401,7 +1406,7 @@ function(gcn_add_game)
   set(GCN_HAVE_GAME_ISO ${HAVE_GAME_ISO} PARENT_SCOPE)
   set(GCN_CORE_SOURCES ${CORE_SOURCES} PARENT_SCOPE)
   set(GCN_AUDIO_SOURCES ${RT}/audio.cpp PARENT_SCOPE)
-  set(GCN_RENDER_SOURCES ${RT}/gx/render_gl.cpp ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp PARENT_SCOPE)
+  set(GCN_RENDER_SOURCES ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp PARENT_SCOPE)
   set(GCN_GLAD_INCLUDE_DIR ${GLAD_INCLUDE_DIR} PARENT_SCOPE)
   set(GCN_GLAD_SOURCE ${GLAD_SOURCE} PARENT_SCOPE)
   set(GCN_RUNTIME_WARNINGS ${GCN_RUNTIME_WARNINGS} PARENT_SCOPE)

@@ -10,7 +10,7 @@
 
 namespace spike {
 
-static constexpr uint32_t kCacheMagic = 0x43535257;  // render_gl.cpp's
+static constexpr uint32_t kCacheMagic = 0x43535257;  // render_gl_programs.cpp's
 
 inline bool read_file(const char* path, std::vector<uint8_t>& out) {
     FILE* f = fopen(path, "rb");

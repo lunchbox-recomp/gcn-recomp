@@ -144,7 +144,7 @@ Image gl_draw(const ShaderKey& k, const Inputs& in, int logic_op) {
     if (g_cull_back) {
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
-        glFrontFace(GL_CCW);  // GL's default, which render_gl.cpp keeps
+        glFrontFace(GL_CCW);  // GL's default, which the renderer keeps
     } else {
         glDisable(GL_CULL_FACE);
     }

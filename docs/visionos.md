@@ -69,7 +69,7 @@ The renderer at GL ES 3.0 (`GCN_GL_ES30`): GLSL `#version 300 es`, and the two t
 takes from 3.2 have fallbacks. `glDrawElementsBaseVertex` comes from
 `GL_OES_draw_elements_base_vertex` or the `EXT` one when the context is below 3.2
 (`gl_load.cpp`), and failing both, each draw's base vertex is added into its indices as
-they are uploaded (`render_gl.cpp`). Pointing the vertex arrays at the base vertex
+they are uploaded (`render_gl_batch.cpp`). Pointing the vertex arrays at the base vertex
 instead, the first attempt, cannot work: a base vertex is often negative. Clip distances and dual-source blending are extensions the renderer
 already checks for.
 

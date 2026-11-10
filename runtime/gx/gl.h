@@ -24,8 +24,8 @@
 #ifdef GCN_GL_ES30
 // ANGLE's Metal backend, which is what visionOS renders through, offers GL ES 3.0. What the
 // renderer takes from 3.2 is optional there: glDrawElementsBaseVertex has a fallback in
-// render_gl.cpp, and the extensions it asks for by name it does without when they are
-// missing.
+// render_gl_batch.cpp, and the extensions it asks for by name it does without when they
+// are missing.
 #define GCN_GL_MINOR 0
 #define GCN_GLSL_VERSION "#version 300 es\nprecision highp float;\nprecision highp int;\n"
 #else

@@ -187,10 +187,11 @@ the same batch took 30-40 ms, and one of 87 (12.4 MB) 54-62 ms against 460 at fi
 
 ## Stereo scaffolding
 
-`gx/render_gl.cpp` and `gx/shadergen.cpp` carry the stereo machinery: `render_execute_eye`,
-the theater/stereo morph, the world-pitch rotation, and the eye grab/refraction handling. The
-desktop frontend runs it through `--eye`. Where the eye stands beyond the game's camera is the
-game's business: `render_set_eye_hook` takes a per-frame callback that returns a view
+`gx/render_gl_eye.cpp`, `gx/render_gl_view.cpp` and `gx/shadergen.cpp` carry the stereo
+machinery: `render_execute_eye` and the eye grab/refraction handling in the first, the
+theater/stereo morph and the world-pitch rotation in the second. The desktop frontend
+runs it through `--eye`. Where the eye stands beyond the game's camera is the game's
+business: `render_set_eye_hook` takes a per-frame callback that returns a view
 transform, a HUD transform and the draws to leave out, and a game project installs it.
 Nothing here knows what the game is.
 
@@ -725,7 +726,7 @@ anything itself.
 **Copies a game's CPU reads.** A game that copies the frame out and then moves or reads
 the bytes with the CPU needs the copy in RAM, in its texture format. `gx::set_copy_writeback`
 takes a filter from the game; a copy it accepts is flagged, the renderer reads it back as it
-makes it and encodes it (whole tiles, edges repeated; `copy_writeback` in `render_gl.cpp`),
+makes it and encodes it (whole tiles, edges repeated; `copy_writeback` in `render_gl_copy.cpp`),
 and the guest thread puts the bytes at the destination at a later display copy
 (`copy_writebacks_land` in `xf.cpp`). It encodes RGB565, RGB5A3 and RGBA8 from colour, and
 the one-byte (I8, A8, R8, G8, B8; Z8, Z8M, Z8L) and two-byte (IA8, RG8, GB8; Z16, Z16L)
@@ -850,7 +851,7 @@ plane with a triangle it culls: one placed at the far end of the frustum, then a
 drawn with z freeze, keeps the sky behind planets, distant craft and far terrain whatever
 the sky's own geometry. Ignored, the sky wrote its own depth, a hundred units out, and
 everything farther failed the depth test behind it. The flat pass now takes the plane of
-each triangle draw's last triangle as it goes (`zfreeze_plane` in `render_gl.cpp`: the
+each triangle draw's last triangle as it goes (`zfreeze_plane` in `render_gl_batch.cpp`: the
 vertex shader's own placement, in the target's window coordinates, culled draws included)
 and a z freeze program writes `gl_FragDepth` from it (`u_zplane`). Before any plane in a
 frame, a z freeze draw keeps its own depth.
@@ -873,7 +874,7 @@ left.
 
 A game whose EFB cannot hold its frame (anti-aliased, the EFB is 640x264) renders it in
 parts and copies each to its place in the XFB, with strips to a scratch buffer between
-them; the renderer assembles the parts (`Xfb` in `render_gl.cpp`). A batch used to end at
+them; the renderer assembles the parts (`Xfb` in `render_gl_present.cpp`). A batch used to end at
 every display copy, so such a frame arrived as five batches, and that broke both headset
 paths: the OpenXR frontend takes one batch per display frame, which would have run the game
 at a fraction of its speed, and an eye drew every batch as a frame of its own, the last of

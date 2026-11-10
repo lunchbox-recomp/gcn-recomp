@@ -1,11 +1,11 @@
 // Whether a display copy finishes a frame. A game whose EFB cannot hold a whole frame renders
-// it in parts and copies each to its place in the XFB (render_gl.cpp assembles them, see Xfb
-// there); ending a batch at every part handed a frontend several batches per game frame, and
-// one that takes a batch per display frame ran the game at a fraction of its speed, while an
-// eye drew each part as a frame of its own. So the rows each XFB has had written are tracked
-// here as the renderer tracks them, and only the copy that completes one, or a copy of the
-// whole frame, ends a frame. Copies to an address that never fills up (strips to a scratch
-// buffer) then simply ride along in the next frame.
+// it in parts and copies each to its place in the XFB (render_gl_present.cpp assembles them,
+// see Xfb there); ending a batch at every part handed a frontend several batches per
+// game frame, and one that takes a batch per display frame ran the game at a fraction of
+// its speed, while an eye drew each part as a frame of its own. So the rows each XFB has
+// had written are tracked here as the renderer tracks them, and only the copy that
+// completes one, or a copy of the whole frame, ends a frame. Copies to an address that
+// never fills up (strips to a scratch buffer) then simply ride along in the next frame.
 //
 // A frame's batch ends there (xf.cpp), and a pause may hold the guest there (pause.h). The
 // command parser and the guest thread's skim each keep their own (cmd.cpp), since with the
