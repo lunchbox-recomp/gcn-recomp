@@ -15,6 +15,7 @@
 // The encoder is the first of h264_nvenc, h264_amf and libx264 that ffmpeg can open on
 // this machine (a one-frame trial each), or GCN_RECORD_VCODEC's arguments as they are.
 #include "record.h"
+#include "env.h"
 #include "gx/gl.h"
 #include <atomic>
 #include <chrono>
@@ -102,7 +103,7 @@ constexpr const char* kNull = "/dev/null";
 #endif
 
 std::string pick_encoder() {
-    if (const char* e = getenv("GCN_RECORD_VCODEC"); e && *e) return e;
+    if (const char* e = getenv_nonempty("GCN_RECORD_VCODEC")) return e;
     struct Option { const char* name; const char* args; };
     static const Option options[] = {
         {"h264_nvenc", "-c:v h264_nvenc -preset p5 -rc vbr -cq 18 -b:v 0 -pix_fmt yuv420p"},
@@ -232,8 +233,8 @@ bool start(const char* path, int w, int h, int fps) {
     g.w = (w + 1) & ~1;
     g.h = (h + 1) & ~1;
     g.fps = fps > 0 ? fps : 60;
-    const char* f = getenv("GCN_FFMPEG");
-    g.ffmpeg = f && *f ? f : "ffmpeg";
+    const char* f = getenv_nonempty("GCN_FFMPEG");
+    g.ffmpeg = f ? f : "ffmpeg";
     g.video_path = g.path + ".video.mkv";
     g.audio_path = g.path + ".audio.wav";
     const std::string codec = pick_encoder();

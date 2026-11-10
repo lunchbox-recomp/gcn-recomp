@@ -167,7 +167,7 @@ extern "C" void call_indirect(CPU* c, uint32_t addr) {
     if (code_watch_run_unknown(c, addr, c->lr)) return;
     // GCN_RAM_DUMP=<path>: the guest RAM at this failure, for finding out what the code at
     // `addr` is and where it came from.
-    if (const char* path = getenv("GCN_RAM_DUMP"); path && *path) {
+    if (const char* path = getenv_nonempty("GCN_RAM_DUMP")) {
         if (FILE* f = fopen(path, "wb")) { fwrite(g_mem, 1, RAM_SIZE, f); fclose(f); }
     }
     fatal("call_indirect: no function at %08X (lr=%08X)", addr, c->lr);

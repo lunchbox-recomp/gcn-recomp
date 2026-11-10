@@ -52,8 +52,8 @@ void on_prof(int, siginfo_t*, void* ctx) {
 }  // namespace
 
 void host_profile_start() {
-    const char* path = getenv("GCN_PROFILE");
-    if (!path || !*path || g_samples) return;
+    const char* path = getenv_nonempty("GCN_PROFILE");
+    if (!path || g_samples) return;
     g_samples = (Sample*)calloc(kMaxSamples, sizeof(Sample));
     struct sigaction sa{};
     sa.sa_sigaction = on_prof;
@@ -82,8 +82,8 @@ void host_profile_start() {
 }
 
 void host_profile_dump() {
-    const char* path = getenv("GCN_PROFILE");
-    if (!path || !*path || !g_samples) return;
+    const char* path = getenv_nonempty("GCN_PROFILE");
+    if (!path || !g_samples) return;
     itimerval off{};
     setitimer(ITIMER_PROF, &off, nullptr);
     const size_t n = std::min(g_count.load(), kMaxSamples);

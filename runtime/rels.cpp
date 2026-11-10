@@ -97,8 +97,8 @@ std::string module_name(uint32_t info) {
 // run once those are written.
 void rels_linking(uint32_t info) {
     if (module_index(LD32(info)) >= 0) return;
-    const char* dir = getenv("GCN_REL_DUMP");
-    if (!dir || !*dir) return;
+    const char* dir = getenv_nonempty("GCN_REL_DUMP");
+    if (!dir) return;
     const std::string name = module_name(info);
     const uint32_t size = unlinked_size(info);
     const std::string path = std::string(dir) + "/" + name + ".rel";

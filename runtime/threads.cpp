@@ -578,7 +578,7 @@ void store_hist_init() {
     g_sthist.counts.resize(words);
     g_sthist.last_frame.resize(words);
     g_sthist.streak.resize(words);
-    if (const char* path = getenv("GCN_STORE_HIST_PCS"); path && *path) {
+    if (const char* path = getenv_nonempty("GCN_STORE_HIST_PCS")) {
         g_sthist.listed.resize(words);
         if (FILE* f = fopen(path, "r")) {
             char line[64];

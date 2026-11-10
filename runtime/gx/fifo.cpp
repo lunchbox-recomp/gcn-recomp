@@ -82,9 +82,9 @@ static void ram_dump_frame(uint32_t frame) {
         return v;
     }();
     if (at.empty() || std::find(at.begin(), at.end(), frame) == at.end()) return;
-    const char* dir = getenv("GCN_RAM_DUMP_DIR");
+    const char* dir = getenv_nonempty("GCN_RAM_DUMP_DIR");
     char path[1024];
-    snprintf(path, sizeof path, "%s/ram_%05u.bin", dir && *dir ? dir : ".", frame);
+    snprintf(path, sizeof path, "%s/ram_%05u.bin", dir ? dir : ".", frame);
     if (FILE* f = fopen(path, "wb")) {
         fwrite(g_mem, 1, RAM_SIZE, f);
         fclose(f);
@@ -796,7 +796,7 @@ void debug_dump_fifo() {
     fprintf(stderr, "  PE token=%04X ctrl=%04X finish raised=%u acked=%u coalesced=%u\n", g_pe_token, g_pe_ctrl, g_pe_finish_raised, g_pe_finish_acked, g_pe_finish_coalesced);
     fprintf(stderr, "  front end: queued %zu bytes in %zu batches, busy=%d sleeping=%d, guest waiting=%d\n", (size_t)g_fe_bytes, g_fe_queue.size(), (int)g_fe_busy, (int)g_fe_sleeping, (int)g_guest_waiting);
     // GCN_FIFO_DUMP=<path>: the GP FIFO's memory, base to end, for decoding offline.
-    if (const char* path = getenv("GCN_FIFO_DUMP"); path && *path) {
+    if (const char* path = getenv_nonempty("GCN_FIFO_DUMP")) {
         uint32_t base = g_cp_base & 0x03FFFFE0, end = cp_end_excl();
         if (FILE* f = fopen(path, "wb")) {
             fwrite(phys_ptr(base), 1, end > base ? end - base : 0, f);

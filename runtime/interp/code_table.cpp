@@ -142,8 +142,7 @@ std::string code_table_stats() {
 }
 
 void code_table_boot() {
-    const char* spec = getenv("GCN_INTERPRET");
-    if (spec && *spec) fprintf(stderr, "%s\n", code_table_force(spec).c_str());
+    if (const char* spec = getenv_nonempty("GCN_INTERPRET")) fprintf(stderr, "%s\n", code_table_force(spec).c_str());
     static bool reporting;
     const char* stats = getenv("GCN_INTERPRET_STATS");
     if (!reporting && stats && !strcmp(stats, "1")) {

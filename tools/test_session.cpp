@@ -144,7 +144,10 @@ int main(int argc, char** argv) {
     check(session_begin(nargs, args).empty() && env("GCN_WAV") == "<unset>" && env("GCN_AXSTATS") == "<unset>",
           "without GCN_SESSION nothing is set and no input directory is given");
     set_env("GCN_SESSION", "");
-    check(session_begin(nargs, args).empty() && env("GCN_AIDWAV") == "<unset>", "an empty GCN_SESSION is no session");
+    std::string empty_dir = "<unset>";
+    const std::string empty_said = stderr_during([&] { empty_dir = session_begin(nargs, args); });
+    check(empty_dir.empty() && env("GCN_AIDWAV") == "<unset>" && line_starting(empty_said, "[session]") == "<none>",
+          "an empty GCN_SESSION is no session, and says nothing");
     session_write(60, "sha", true);  // writes nothing, anywhere
 
     char silent[] = "--no-session-audio";

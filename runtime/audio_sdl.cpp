@@ -94,7 +94,7 @@ bool audio_open() {
     // 1024, twice the latency the mix's cushion (audio.cpp) was tuned against.
     SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "512");
     g_stream = nullptr;
-    if (const char* e = getenv("GCN_AUDIO_DEVICE"); e && *e) g_device = e;
+    if (const char* e = getenv_nonempty("GCN_AUDIO_DEVICE")) g_device = e;
     if (!g_device.empty()) {
         if (const SDL_AudioDeviceID dev = find_device(g_device))
             g_stream = SDL_OpenAudioDeviceStream(dev, &spec, audio_callback, nullptr);

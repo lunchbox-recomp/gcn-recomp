@@ -1,5 +1,6 @@
 // A disc overlay at run time. See disc_overlay.h.
 #include "disc_overlay.h"
+#include "../env.h"
 #include "../platform.h"
 #include <algorithm>
 #include <atomic>
@@ -283,8 +284,7 @@ uint64_t disc_overlay_fnv1a64(const void* data, size_t size) {
 const char* disc_overlay_path() {
     if (g_disc_overlay_selected_path)
         return g_disc_overlay_selected_path->empty() ? nullptr : g_disc_overlay_selected_path->c_str();
-    const char* env = getenv("GCN_DISC_OVERLAY");
-    return env && *env ? env : nullptr;
+    return getenv_nonempty("GCN_DISC_OVERLAY");
 }
 
 bool disc_overlay_loaded() { return g_overlay != nullptr; }

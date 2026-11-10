@@ -85,7 +85,7 @@ void load_powers(const char* path) {
 }
 const bool lists_loaded = [] {
     if (const char* e = getenv_nonempty("GCN_STEP_SKIP")) load_list(e, false);
-    if (const char* e = getenv("GCN_STEP_ONLY"); e && *e) load_list(e, true);
+    if (const char* e = getenv_nonempty("GCN_STEP_ONLY")) load_list(e, true);
     if (const char* e = getenv_nonempty("GCN_STEP_POW")) load_powers(e);
     return true;
 }();

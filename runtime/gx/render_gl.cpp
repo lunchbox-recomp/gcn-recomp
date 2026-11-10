@@ -1257,8 +1257,8 @@ static void upload_texture(const TexData& t, bool from_pbo = false, size_t pbo_o
     g_textures[t.id] = g;
     // GCN_TEXDUMP=<dir> writes every texture's top level as <dir>/tex_<id>.png, alpha
     // forced opaque, so a decoded texture can be looked at apart from the draw using it.
-    static const char* dump = getenv("GCN_TEXDUMP");
-    if (dump && *dump) {
+    static const char* dump = getenv_nonempty("GCN_TEXDUMP");
+    if (dump) {
         std::vector<uint8_t> px((size_t)t.width * t.height * 4);
         memcpy(px.data(), t.levels[0].data(), px.size());
         for (size_t i = 3; i < px.size(); i += 4) px[i] = 255;
@@ -2591,7 +2591,7 @@ static void do_efb_copy(const EfbCopyCmd& c) {
         // frame is written out as it was produced, twice -- its colour, and its alpha
         // as grey -- named by the frame, the copy's order in it and its texture id.
         {
-            static const char* copydump = getenv("GCN_COPYDUMP");
+            static const char* copydump = getenv_nonempty("GCN_COPYDUMP");
             static const uint32_t copydump_frame = getenv("GCN_DRAWLOG") ? (uint32_t)atoi(getenv("GCN_DRAWLOG")) : 0;
             static uint32_t copydump_n = 0;
             // GCN_COPYDUMP_SIZE=WxH dumps every copy of that size, in whatever frame: a copy
@@ -2603,7 +2603,7 @@ static void do_efb_copy(const EfbCopyCmd& c) {
             }();
             (void)size_parsed;
             const bool by_size = size_w && c.dst_w == size_w && c.dst_h == size_h;
-            if (copydump && *copydump && (by_size || (copydump_frame && g_present_count + 1 == copydump_frame))) {
+            if (copydump && (by_size || (copydump_frame && g_present_count + 1 == copydump_frame))) {
                 const int w = c.dst_w * g_scale, h = c.dst_h * g_scale;
                 std::vector<uint8_t> px((size_t)w * h * 4), out((size_t)w * h * 4);
                 glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());

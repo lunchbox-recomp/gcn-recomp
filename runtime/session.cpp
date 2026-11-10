@@ -77,8 +77,8 @@ std::string start_text() {
 }  // namespace
 
 std::string session_begin(int argc, char** argv) {
-    const char* dir = getenv("GCN_SESSION");
-    if (!dir || !*dir) return "";
+    const char* dir = getenv_nonempty("GCN_SESSION");
+    if (!dir) return "";
     bool no_audio = false;
     for (int i = 1; i < argc; i++)
         if (!strcmp(argv[i], "--no-session-audio")) no_audio = true;
