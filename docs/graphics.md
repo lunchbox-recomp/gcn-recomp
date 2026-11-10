@@ -884,7 +884,7 @@ every display copy, so such a frame arrived as five batches, and that broke both
 paths: the OpenXR frontend takes one batch per display frame, which would have run the game
 at a fraction of its speed, and an eye drew every batch as a frame of its own, the last of
 them a strip with nothing in it. Now the front end tracks the XFB rows each display copy
-writes as the renderer does (`display_copy_ends_frame` in `xf.cpp`) and ends a batch only at
+writes as the renderer does (`XfbRows::copy_ends_frame` in `xfb_rows.h`) and ends a batch only at
 the copy that completes a frame, or one that is a whole frame by itself. Strips to an
 address that never fills ride along in the next batch. A game whose display copies are
 whole frames sees no change; the flat frames of a game in parts are byte-identical.
