@@ -57,8 +57,7 @@ ShaderKey make_shader_key(const PixelState& st);
 // equal. make_shader_key's keys already are; a key read from an older cache file is not.
 void canonicalize_shader_key(ShaderKey& k);
 // The konstant each of the 16 stages reads (u_kstage), from its selectors (bp[0xF6..0xFD])
-// and the konstant registers as the shader takes them (u_konst's layout: four registers,
-// r g b a each).
+// and the konstant registers (four registers, r g b a each).
 void stage_konsts(const uint32_t* bp, const int konst[16], int out[64]);
 
 // Bumped whenever a key field's meaning or the shader cache's record layout changes. With
