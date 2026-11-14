@@ -49,7 +49,9 @@ static bool disc_read(uint64_t offset, void* dst, uint32_t len, bool run) {
 
 bool iso_read(uint64_t offset, void* dst, uint32_t len) { return disc_read(offset, dst, len, true); }
 
+// Once: the desktop's boot splash opens the disc for its banner (splash.h) before boot does.
 void di_init(const char* iso_path) {
+    if (g_iso) return;
     g_drive.fast = g_fast_disc;
     g_iso = plat_open_read(iso_path);
     if (!g_iso) fatal("cannot open disc image %s", iso_path);

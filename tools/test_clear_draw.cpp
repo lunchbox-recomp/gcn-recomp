@@ -22,6 +22,13 @@ Rect g_scissor;
 std::vector<Rect> g_cleared;
 
 void GLAD_API_PTR scissor(GLint x, GLint y, GLsizei w, GLsizei h) { g_scissor = {x, y, w, h}; }
+float g_colour[4];
+void GLAD_API_PTR clear_colour(GLfloat r, GLfloat g, GLfloat b, GLfloat a) {
+    g_colour[0] = r;
+    g_colour[1] = g;
+    g_colour[2] = b;
+    g_colour[3] = a;
+}
 void GLAD_API_PTR clear(GLbitfield mask) {
     if (mask & GL_COLOR_BUFFER_BIT) g_cleared.push_back(g_scissor);
 }
@@ -44,6 +51,7 @@ void check(bool ok, const char* what) {
 int main() {
     glad_glScissor = scissor;
     glad_glClear = clear;
+    glad_glClearColor = clear_colour;
 
     // "L" alone at 2 px: 6 columns wide with its space, so it starts 6 px left of the centre.
     // Rows 0 to 5 are its stem, one pixel each, and row 6 (the bottom) one run of five.
@@ -76,6 +84,13 @@ int main() {
         }
     check(missing == 0, "the loading screen's messages have every glyph they use");
     check(draw(" ", 0, 0, 1).empty(), "a space draws nothing");
+
+    // clear_rect: one clear of its rect, in its colour, opaque.
+    g_cleared.clear();
+    gx::clear_rect(3, 4, 50, 60, 0xFF8000);
+    check(g_cleared.size() == 1 && g_cleared[0] == (Rect{3, 4, 50, 60}), "clear_rect clears its rect once");
+    check(g_colour[0] == 1.0f && g_colour[1] > 0.5f && g_colour[1] < 0.51f && g_colour[2] == 0.0f && g_colour[3] == 1.0f,
+          "in 0xRRGGBB's colour, opaque");
 
     return g_failed ? 1 : 0;
 }

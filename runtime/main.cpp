@@ -21,6 +21,8 @@
 #include "session.h"
 #include "pause.h"
 #include "ready_file.h"
+#include "splash.h"
+#include "gx/splash_look.h"
 #include "overlay/overlay.h"
 #ifdef GCN_OPENXR
 #include "xr_desktop.h"
@@ -603,6 +605,8 @@ int main(int argc, char** argv) {
     // --disc=fast or --disc=console, which the loop below passes over.
     if (!take_disc_speed(settings, argc, argv)) return 1;
     if (!take_ram_patches(settings, argc, argv)) return 1;
+    uint32_t splash_rgb;  // --splash-color=RRGGBB, which the loop below passes over
+    if (!gx::take_splash_color(argc, argv, &splash_rgb)) return 1;
     int pads = 1;
     // --aspect=W:H, or --aspect=window to follow the window's shape: what the picture is
     // stretched to (gx::output_aspect). settings.txt's, which is 4:3, the console's own, by
@@ -839,7 +843,11 @@ int main(int argc, char** argv) {
         plat_exit_now(rc);
     }
 #endif
+    // The boot splash (splash.h) covers the window from here until the game's first frame.
+    const bool splash = gx::splash_wanted(GCN_SPLASH_DEFAULT, hidden);
+    if (splash) splash_begin(win, splash_rgb, iso);
     gx::render_init(scale);
+    if (splash) splash_load(win, pump_events);
     // A paused guest's frame is drawn again in the loop below (render_present_last).
     gx::render_keep_last(true);
     // Before the guest starts, whose hooks may read it from the first frame. --vr has gone

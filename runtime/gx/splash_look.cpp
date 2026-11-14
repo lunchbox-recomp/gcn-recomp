@@ -1,7 +1,10 @@
 // See splash_look.h.
 #include "gx/splash_look.h"
 #include "banner.h"
+#include "env.h"
 #include <algorithm>
+#include <cstdio>
+#include <cstring>
 
 namespace gx {
 namespace {
@@ -41,6 +44,25 @@ bool parse_rrggbb(const char* s, uint32_t* rgb) {
     if (s[6]) return false;
     *rgb = v;
     return true;
+}
+
+bool take_splash_color(int argc, char** argv, uint32_t* rgb) {
+    *rgb = kSplashColor;
+    for (int i = 1; i < argc; i++)
+        if (!strncmp(argv[i], "--splash-color=", 15) && !parse_rrggbb(argv[i] + 15, rgb)) {
+            fprintf(stderr, "--splash-color: RRGGBB, six hex digits, not %s\n", argv[i] + 15);
+            return false;
+        }
+    return true;
+}
+
+bool splash_wanted(bool on, bool hidden) {
+    if (hidden) return false;
+    if (const char* e = getenv_nonempty("GCN_SPLASH")) {
+        if (!strcmp(e, "0") || !strcmp(e, "1")) return e[0] == '1';
+        fprintf(stderr, "[splash] GCN_SPLASH=%s isn't 0 or 1, so the build's choice holds\n", e);
+    }
+    return on;
 }
 
 std::vector<SplashRect> banner_runs(const uint8_t* rgba, uint32_t bg) {

@@ -825,7 +825,7 @@ asked for but not yet held leaves it playing.
 launcher can keep its own window up until the game's has something on it
 (`runtime/ready_file.h`). `window <ms>` goes in at the first frame the window shows and
 `frame <ms>` at the first frame the game presents, each once, in milliseconds since the
-process started. With nothing before the game's first frame, both go in then.
+process started. With no boot splash (below), both go in at the game's first frame.
 
 Each line goes in through `<path>.tmp`, which then replaces the file, so a reader never sees
 a line cut short. A watcher of the file itself sees it renamed over, so it watches the
@@ -836,6 +836,20 @@ a line on stderr and the run goes on. `--headless` and `--vr` write nothing.
 `ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
 order, that a reader polling the file never sees part of one, and that the times count from
 before `main`.
+
+The boot splash (docs/graphics.md, "The boot splash") is the window's first frame unless
+`gcn_add_game(... SPLASH OFF)` or `GCN_SPLASH=0` leaves it out, or the run is `--hidden`.
+`GCN_SPLASH=1` shows it in a build without it. It prints `[splash] the disc's banner, read in
+<ms> ms` (or `[splash] the disc has no banner to show`), then `[splash] <n> frames in <ms> ms`
+once the cache is built. A `--splash-color` that isn't six hex digits stops the run before the
+window opens, and a `GCN_SPLASH` that isn't 0 or 1 says so and leaves the build's choice.
+
+`ninja test_banner` builds `tools/test_banner.cpp`, which decodes banners and walks file
+tables the test makes up. It covers every pixel mode and alpha, the tile order and both
+banner kinds, and the tables and banners to refuse. `ninja test_splash_look` builds
+`tools/test_splash_look.cpp`, which checks the colour flag, `GCN_SPLASH`, the 300 ms rule,
+the banner's runs and where they and the bar go. `ninja test_clear_draw` checks the
+clear-drawn font and rects on a fake GL.
 
 ## Ending a run
 

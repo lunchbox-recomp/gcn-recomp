@@ -60,4 +60,10 @@ void clear_text(const char* s, int cx, int bottom, int px) {
     }
 }
 
+void clear_rect(int x, int y, int w, int h, uint32_t rgb) {
+    glClearColor((float)(rgb >> 16 & 0xFF) / 255.0f, (float)(rgb >> 8 & 0xFF) / 255.0f, (float)(rgb & 0xFF) / 255.0f, 1.0f);
+    glScissor(x, y, w, h);
+    glClear(GL_COLOR_BUFFER_BIT);
+}
+
 }  // namespace gx

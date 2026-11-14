@@ -47,7 +47,7 @@ extern const char* g_memcard_path;
 // Overrides the SRAM's file, <save dir>/sram.raw, when set (see exi.cpp).
 extern const char* g_sram_path;
 // True reads every disc block at the rate of one the drive holds, and false times reads as
-// a console's drive does (hw/drive.h). The drive takes it once, as the guest boots
+// a console's drive does (hw/drive.h). The drive takes it once, as the disc is opened
 // (di_init). It's true unless a frontend sets it before then, as the desktop's does from
 // settings.txt's `disc` or --disc and a replay does from its log (input_log.h).
 extern bool g_fast_disc;

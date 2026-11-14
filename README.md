@@ -76,6 +76,12 @@ same shape where it and its frame don't fit the display's usable area. The defau
 | `--aspect=W:H` | stretches the picture to W:H, each a whole number from 1 to 9999 |
 | `--aspect=window` | follows the window's shape as it's resized |
 | `--fullscreen` | opens fullscreen |
+| `--splash-color=RRGGBB` | the boot splash's background, six hex digits; a dark grey by default |
+
+Until the game's first frame the window shows a boot splash, the disc's own banner on that
+background with a thin bar under it while the shaders load. A game built with
+`gcn_add_game(... SPLASH OFF)` has none, `GCN_SPLASH=0` or `1` overrides that for a run, and
+`--hidden` never shows it (`docs/graphics.md`, "The boot splash").
 
 A window of another shape shows the picture centered between black bars. The window opens
 with none, though an odd ratio on a display of two pixels to a point, or a portrait shape, can

@@ -185,6 +185,32 @@ batch; with the 23,673 programs loaded that took a batch of 47 new textures (5.7
 390-580 ms to 255 ms, and the first draw from them from about 100 ms to 2. With the 2,193
 the same batch took 30-40 ms, and one of 87 (12.4 MB) 54-62 ms against 460 at first.
 
+## The boot splash
+
+Without the splash the desktop window shows nothing until the game's first frame, while
+`render_init` builds the cache and the disc boots. The splash (`runtime/splash.cpp`) covers
+that time from the window's first frame. It's a background colour (`--splash-color=RRGGBB`,
+a neutral dark grey by default), the disc's own `opening.bnr` (`runtime/banner.cpp`, read
+through the file table, decoded from RGB5A3) at a whole-number scale, and a thin bar of the
+cache's progress under it. Every GameCube disc carries the banner, so nothing about the game
+is needed. A disc without one gets the colour and the bar.
+
+No program exists yet, so it's all scissored clears (`gx/clear_draw.cpp`), like the
+headset's loading screen. The banner is blended over the colour on the CPU once, as one rect
+per run of one colour along a row (`gx/splash_look.cpp`), and each frame clears the window
+to the colour and then each rect. The bar shows only once the splash has been up 300 ms, so
+a quick start has none.
+
+The cache is built in 30 ms steps (`render_set_shader_cache_deferred`, as the headset
+frontends build theirs), with the window's events taken between them and a frame drawn only
+when the picture changed. Escape or closing the window then builds the rest at once and
+hands the quit on to the window's loop. The splash swaps straight to the window and never
+goes through the renderer's present, so `present_count`, frame dumps, `GCN_QUIT_AT` and a
+movie are as they were. The last frame stays up while the disc boots.
+
+`gcn_add_game(... SPLASH OFF)` builds a game without it, `GCN_SPLASH=0` or `1` overrides
+that for a run, and a `--hidden` run never shows it.
+
 ## Stereo scaffolding
 
 `gx/render_gl_eye.cpp`, `gx/render_gl_view.cpp` and `gx/shadergen.cpp` carry the stereo

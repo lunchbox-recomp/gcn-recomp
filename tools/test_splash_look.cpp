@@ -1,15 +1,16 @@
 // The boot splash's look, worked out with no GL: the `test_splash_look` target. Runs with no
 // window, GL, disc or game.
 //
-// runtime/gx/splash_look.cpp parses --splash-color, decides when the bar shows, blends the
-// banner over the colour into runs and places them and the bar in a window. The banners here
-// are made up by this file.
+// runtime/gx/splash_look.cpp takes --splash-color, reads GCN_SPLASH, decides when the bar
+// shows, blends the banner over the colour into runs and places them and the bar in a window.
+// The banners here are made up by this file.
 //
 // usage: test_splash_look
 // Exits 0 only if every check passes.
 #include "gx/splash_look.h"
 #include "banner.h"
 #include <cstdio>
+#include <cstdlib>
 #include <vector>
 
 using namespace gx;
@@ -45,6 +46,31 @@ int main() {
 
     check(!splash_bar_shown(0) && !splash_bar_shown(299.9), "no bar in the first 300 ms");
     check(splash_bar_shown(300) && splash_bar_shown(5000), "and a bar from then on");
+
+    // --splash-color among the flags: the default without one, the last one given, and a bad one
+    // refused.
+    char prog[] = "game", other[] = "--fast", c1[] = "--splash-color=102030", c2[] = "--splash-color=405060",
+         bad[] = "--splash-color=red";
+    char* none_argv[] = {prog, other};
+    char* two_argv[] = {prog, c1, other, c2};
+    char* bad_argv[] = {prog, bad};
+    check(take_splash_color(2, none_argv, &rgb) && rgb == kSplashColor, "no --splash-color is the neutral default");
+    check(take_splash_color(4, two_argv, &rgb) && rgb == 0x405060, "the last --splash-color given is the colour");
+    check(!take_splash_color(2, bad_argv, &rgb), "a --splash-color that isn't RRGGBB stops the run");
+
+    // On by the build, off with GCN_SPLASH=0, on with 1 over a build that has it off, never hidden.
+    unsetenv("GCN_SPLASH");
+    check(splash_wanted(true, false) && !splash_wanted(false, false), "the build's SPLASH decides by default");
+    check(!splash_wanted(true, true), "a --hidden run shows none");
+    setenv("GCN_SPLASH", "0", 1);
+    check(!splash_wanted(true, false), "GCN_SPLASH=0 turns it off");
+    setenv("GCN_SPLASH", "1", 1);
+    check(splash_wanted(false, false) && !splash_wanted(false, true), "GCN_SPLASH=1 turns it on, but not for --hidden");
+    setenv("GCN_SPLASH", "yes", 1);
+    check(splash_wanted(true, false) && !splash_wanted(false, false), "another value leaves the build's choice");
+    setenv("GCN_SPLASH", "", 1);
+    check(splash_wanted(true, false), "and an empty one is unset");
+    unsetenv("GCN_SPLASH");
 
     // A row of three opaque reds, a half-clear white, a clear pixel and a pixel the colour of
     // the background; a red on the next row.

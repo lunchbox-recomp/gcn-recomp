@@ -1,6 +1,6 @@
 // What the boot splash (splash.h) draws, worked out with no GL: its colour, where the banner and
 // the progress bar go, and the banner as runs of one colour, so a frame is a list of rects to
-// clear (clear_draw.h).
+// clear (clear_draw.h); and its switches, --splash-color and GCN_SPLASH.
 #pragma once
 #include <cstdint>
 #include <vector>
@@ -16,6 +16,15 @@ constexpr double kSplashBarAfterMs = 300.0;
 bool parse_rrggbb(const char* s, uint32_t* rgb);
 
 inline bool splash_bar_shown(double ms_up) { return ms_up >= kSplashBarAfterMs; }
+
+// --splash-color=RRGGBB among `argv`, the background, which main's own loop passes over: the
+// last one given, or kSplashColor without one. False, having said why, for a colour that isn't
+// six hex digits.
+bool take_splash_color(int argc, char** argv, uint32_t* rgb);
+
+// Whether a run shows the splash: `on` is the build's (gcn_add_game's SPLASH), which
+// GCN_SPLASH=0 or 1 overrides, and a --hidden run never does.
+bool splash_wanted(bool on, bool hidden);
 
 // x, y, w, h and a colour: in window pixels with y up, as glScissor takes them, or in the banner's
 // own pixels with y down (banner_runs).

@@ -343,6 +343,8 @@ endmacro()
 #                              every target, so that a fresh install compiles them before
 #                              the game starts (render_set_shader_keys in
 #                              runtime/gx/render_gl.h; docs/graphics.md, "Shader cache")
+#   [SPLASH OFF]               no boot splash in the desktop window (runtime/splash.h), which
+#                              is on by default; GCN_SPLASH=1 still shows it for a run
 #   [ANDROID_PACKAGE <id>]     e.g. com.example.game. On an Android build, also build the
 #                              headset app (lib<target>.so, a NativeActivity that
 #                              tools/package-apk.ps1 packages) and <target>_egl, the
@@ -353,7 +355,7 @@ endmacro()
 # )
 # The user's image may also be given as -DGAME_ISO=<path>.
 function(gcn_add_game)
-  cmake_parse_arguments(G "" "NAME;TITLE;LABEL;DISC_ID;DOL_SHA1;SYMBOLS;TABLES;FPS;IMAGE_DIR;ANDROID_PACKAGE;VISIONOS_BUNDLE_ID;DOL_FIXUP;REL_SYMBOLS;SHADER_KEYS" "SOURCES;RELS;REL_RUNTIME" ${ARGN})
+  cmake_parse_arguments(G "" "NAME;TITLE;LABEL;DISC_ID;DOL_SHA1;SYMBOLS;TABLES;FPS;IMAGE_DIR;ANDROID_PACKAGE;VISIONOS_BUNDLE_ID;DOL_FIXUP;REL_SYMBOLS;SHADER_KEYS;SPLASH" "SOURCES;RELS;REL_RUNTIME" ${ARGN})
   if(NOT G_LABEL)
     set(G_LABEL "${G_TITLE}")
   endif()
@@ -584,8 +586,9 @@ function(gcn_add_game)
   # front end, including the batch queue in gx/xf.cpp -- is free of both GL and SDL.
   set(CORE_SOURCES ${RUNTIME_SOURCES})
   list(REMOVE_ITEM CORE_SOURCES
-    ${RT}/main.cpp ${RT}/input_map.cpp ${RT}/gamepads.cpp ${RT}/pad_numbers.cpp ${RT}/ffb.cpp ${RT}/audio.cpp ${RT}/audio_sdl.cpp
-    ${RT}/png.cpp ${RT}/record.cpp ${RENDER_GL_SOURCES} ${RT}/gx/gl_load.cpp ${RT}/gx/shadergen.cpp)
+    ${RT}/main.cpp ${RT}/splash.cpp ${RT}/input_map.cpp ${RT}/gamepads.cpp ${RT}/pad_numbers.cpp ${RT}/ffb.cpp
+    ${RT}/audio.cpp ${RT}/audio_sdl.cpp ${RT}/png.cpp ${RT}/record.cpp ${RENDER_GL_SOURCES} ${RT}/gx/gl_load.cpp
+    ${RT}/gx/shadergen.cpp)
   list(APPEND CORE_SOURCES ${RT}/audio_stub.cpp)
   # The benchmark compiles the game's SOURCES too (gcn_add_game), and a game's eye hook
   # installs itself into the renderer; render_stub.cpp answers those calls with nothing.
@@ -729,6 +732,13 @@ function(gcn_add_game)
     GCN_DEFAULT_ISO="${GAME_ISO}"
     GCN_APP_LABEL="${G_LABEL}"
     GCN_GAME_FPS=${G_FPS})
+  # SPLASH OFF leaves out the window's boot splash (runtime/splash.h), which GCN_SPLASH=1 can
+  # still turn on for a run; it's on by default.
+  if(NOT DEFINED G_SPLASH OR G_SPLASH)
+    list(APPEND GCN_ENTRY_DEFS GCN_SPLASH_DEFAULT=1)
+  else()
+    list(APPEND GCN_ENTRY_DEFS GCN_SPLASH_DEFAULT=0)
+  endif()
 
   # CORE_SOURCES but the audio stub, as objects every target links: the benchmark, the
   # desktop executable, the harness and the headset app each compiled their own copy
