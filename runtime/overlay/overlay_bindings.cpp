@@ -17,7 +17,7 @@ void overlay_latch_pads();  // overlay_input.cpp's
 
 namespace {
 
-bool g_shown;                       // the view is up in place of the tabs
+bool g_shown;                       // the view is up in place of a page
 uint32_t g_device;                  // the gamepad it shows
 std::optional<BindListen> g_listen;  // press-to-bind, while it waits
 std::string g_said;                 // what the last change did

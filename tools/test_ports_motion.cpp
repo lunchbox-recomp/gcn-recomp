@@ -163,7 +163,7 @@ Look look() {
     return w ? Look{w->SizeFull, w->DrawList->VtxBuffer.Size} : Look{};
 }
 
-// F1 closes the menu from a view shown in place of its tabs, which `showing` says is up. Whether
+// F1 closes the menu from a view shown in place of a page, which `showing` says is up. Whether
 // the fade's first frame drew the view as the last open frame did, no larger or smaller, with
 // it still up, and whether it had ended once the fade was over.
 bool kept_through_fade(Guest& guest, bool (*showing)()) {
@@ -245,7 +245,7 @@ void views_kept(SDL_Window* window, const std::string& dir) {
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     check(asked && overlay_open() && overlay_animating() && overlay_asking() == OverlayAsk::none,
-          "closed from Quit? and opened again before the fade is over, it's back on its tabs");
+          "closed from Quit? and opened again before the fade is over, it's back on its page");
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns += 1000 * kMs;
     host_frame(guest);

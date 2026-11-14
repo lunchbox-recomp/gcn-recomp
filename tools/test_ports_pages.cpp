@@ -173,16 +173,13 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         else if (any && !dumping) run.ms.push_back(ms);
         if (drew && run.first_drawn < 0) {
             run.first_drawn = f;
-            const TabAt tab = find_tab(kTitles[expect]);
-            run.on_page = tab.bar && tab.bar->SelectedTabId == tab.bar->Tabs[tab.index].ID;
+            run.on_page = overlay_page() == expect && overlay_test_pages()[expect] == kTitles[expect];
         }
         if (dumping) run.dumped_at = f;
         // A frame after the dump Display is picked, as a click would pick it, and the page the menu
         // opened on doesn't take it back.
-        const TabAt display = find_tab(kTitles[0]);
-        if (display.bar && run.dumped_at >= 0 && f == run.dumped_at + 1)
-            display.bar->NextSelectedTabId = display.bar->Tabs[display.index].ID;
-        if (display.bar && f == held - 2) run.let_go = display.bar->SelectedTabId == display.bar->Tabs[display.index].ID;
+        if (run.dumped_at >= 0 && f == run.dumped_at + 1) overlay_test_pick_page(0);
+        if (f == held - 2) run.let_go = overlay_page() == 0;
         guest_on(guest);
     }
     const ImTextureData* tex = fonts_atlas()->TexData;

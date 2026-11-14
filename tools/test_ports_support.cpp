@@ -350,23 +350,16 @@ void bottom_row(Guest& g) {
 
 bool waiting(OverlayAsk asking) { return overlay_open() && paused() && overlay_asking() == asking && !g_restart; }
 
-TabAt find_tab(const char* title) {
-    ImGuiContext* context = ImGui::GetCurrentContext();
-    for (int i = 0; i < context->TabBars.GetMapSize(); i++) {
-        ImGuiTabBar* bar = context->TabBars.TryGetMapData(i);
-        if (!bar) continue;
-        for (int t = 0; t < bar->Tabs.Size; t++) {
-            const int at = bar->Tabs[t].NameOffset;
-            if (at >= 0 && at < bar->TabsNames.Buf.Size && !strcmp(bar->TabsNames.Buf.Data + at, title)) return {bar, t};
-        }
-    }
-    return {};
+int page_at(const char* title) {
+    const std::vector<std::string>& pages = overlay_test_pages();
+    const auto at = std::find(pages.begin(), pages.end(), title);
+    return at == pages.end() ? -1 : (int)(at - pages.begin());
 }
 
-bool pick_tab(Guest& g, const char* title) {
-    const TabAt tab = find_tab(title);
-    if (!tab.bar) return false;
-    tab.bar->NextSelectedTabId = tab.bar->Tabs[tab.index].ID;
+bool pick_page(Guest& g, const char* title) {
+    const int page = page_at(title);
+    if (page < 0) return false;
+    overlay_test_pick_page(page);
     host_frame(g);
     host_frame(g);
     return true;

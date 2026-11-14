@@ -12,7 +12,7 @@
 #ifdef GCN_OVERLAY
 #include "imgui.h"  // what the menu's navigation reads of the gamepads
 #ifdef GCN_OVERLAY_TEST
-#include "imgui_internal.h"  // inspect and select the registered page's tab
+#include "imgui_internal.h"  // inspect the menu's window
 #endif
 #endif
 
@@ -175,14 +175,11 @@ void bottom_row(Guest& g);
 // The menu open over the held game, asking `asking`, and no restart on its way.
 bool waiting(OverlayAsk asking);
 
-// Where the menu's tab titled `title` is: its tab bar and its place there. Null and -1 for none.
-struct TabAt {
-    ImGuiTabBar* bar = nullptr;
-    int index = -1;
-};
-TabAt find_tab(const char* title);
-// The menu's tab titled `title` picked, as a click on it would, then drawn. False if there's none.
-bool pick_tab(Guest& g, const char* title);
+// The place in the menu's header of the page titled `title`, 0 for Display, or -1 for none.
+int page_at(const char* title);
+// The menu's page titled `title` picked, as a click on its pill would, then drawn. False if
+// there's none.
+bool pick_page(Guest& g, const char* title);
 #endif
 
 }  // namespace

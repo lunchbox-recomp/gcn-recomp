@@ -13,6 +13,10 @@
 // doesn't the triggers past kGamepadTriggerClick, as gamepads_merge takes them. A device
 // controls.txt binds is the file's alone (input_map.h), so the menu never reads it.
 //
+// The panel is the theme's share of the window's width (theme.h) and as tall as its page. Its
+// header has the menu's title on the left and a pill for each page centred between the
+// shoulders' names, the page showing on the accent. A click on a pill shows its page.
+//
 // A gamepad's A presses what's focused and its B goes back, and they're the faces labeled A and
 // B, the game's own A and B (gamepads_faces in gamepads.h). So a Switch Pro's east button
 // presses and its south one goes back, the other way round from an Xbox pad's, and with both
@@ -62,7 +66,7 @@
 // then has nothing to focus, so no press reaches a button.
 //
 // Change buttons, right of Set player order and off while there's no gamepad, puts up the
-// Buttons view (overlay_bindings.cpp) in place of the tabs, on the first gamepad listed. It
+// Buttons view (overlay_bindings.cpp) in place of a page, on the first gamepad listed. It
 // picks a gamepad, on a player or not, and lists the ones controls.txt binds as locked. Each
 // control's button, named as the gamepad labels it (pad_glyph.h), starts press-to-bind
 // (pad_bindings.h), which takes the next press on that gamepad within 5 s. Its prompt has
@@ -131,7 +135,15 @@ void overlay_test_reset_pages();
 void overlay_test_end();
 // The notices' context, null with none.
 struct ImGuiContext* overlay_test_notices_context();
+// Every page's title in the header's order, and the page `page` shown as a click on its pill
+// shows it.
+const std::vector<std::string>& overlay_test_pages();
+void overlay_test_pick_page(int page);
+// Whether the menu's last frame showed a page, not a question or a view in its place.
+bool overlay_test_page_shown();
 #endif
+// The page showing, 0 for Display, 1 for Controllers and 2 on for the pages added. For the tests.
+int overlay_page();
 // Each of the window's events, before the frontend's own. True for one the overlay takes, which
 // nothing else should see: F1, Back (Guide on a gamepad with no Back, and ZL on a Switch 2
 // GameCube controller), B or Escape opening or closing it or going back from a question, and

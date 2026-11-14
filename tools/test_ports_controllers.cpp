@@ -140,11 +140,10 @@ void controllers_order(Guest& guest, const std::string& dir) {
     const std::string file = launch_in_menu(guest, dir, {&a, &b, &c});
     const bool start = port(a) == 1 && port(b) == 2 && port(c) == 3 && gamepads_keyboard_port() == 0;
 
-    // Set player order is the page's first button, below the tabs.
+    // Set player order is the page's first button, at its top.
     tap(guest, a, SDL_GAMEPAD_BUTTON_BACK);
-    const bool picked = pick_tab(guest, "Controllers");
+    const bool picked = pick_page(guest, "Controllers");
     for (int i = 0; i < 20; i++) tap(guest, a, SDL_GAMEPAD_BUTTON_DPAD_UP);
-    tap(guest, a, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     tap(guest, a, SDL_GAMEPAD_BUTTON_SOUTH);
     check(start && picked && overlay_open() && overlay_controllers_asking() == 0,
           "the Controllers page is laid out in a window with no GL, and its Set player order asks for player 1");
@@ -190,8 +189,8 @@ void controllers_order(Guest& guest, const std::string& dir) {
     host_frame(guest);
     const bool f1_closed = !overlay_open() && overlay_controllers_asking() == -1;
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
-    check(f1_asked && f1_closed && overlay_open() && overlay_controllers_asking() == -1 && tabs_shown(),
-          "F1 during the order closes the menu and ends the order, and opened again the menu shows its tabs, not the prompt");
+    check(f1_asked && f1_closed && overlay_open() && overlay_controllers_asking() == -1 && overlay_test_page_shown(),
+          "F1 during the order closes the menu and ends the order, and opened again the menu shows its page, not the prompt");
 
     // Escape ends the order and F1 closes the menu in one pump, with player 1's Swap focused. The
     // fade draws the page, and Set player order takes the focus when the menu opens again, not as
@@ -246,7 +245,7 @@ void controllers_buttons(Guest& guest, const std::string& dir) {
     const std::string file = launch_in_menu(guest, dir, {&pad, &nintendo});
     const bool start = listed(pad.id) == 1 && listed(nintendo.id) == 2;
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
-    const bool picked = pick_tab(guest, "Controllers");
+    const bool picked = pick_page(guest, "Controllers");
     overlay_controllers_order();
     tap(guest, nintendo, SDL_GAMEPAD_BUTTON_EAST);
     check(start && picked && listed(nintendo.id) == 1 && listed(pad.id) == 2 && overlay_controllers_asking() == 1,

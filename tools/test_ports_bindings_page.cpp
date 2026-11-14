@@ -14,17 +14,17 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
 
     // Change buttons is right of Set player order, the page's first button.
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
-    pick_tab(guest, "Controllers");
+    pick_page(guest, "Controllers");
     for (int i = 0; i < 20; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
-    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
     check(overlay_bindings_shown() && overlay_open() && !overlay_bindings_listening(),
           "Change buttons, right of Set player order, puts up the Buttons view");
 
-    // A D-pad press down from where the view opens is A's row. The A that starts press-to-bind
+    // Down past the two gamepads at the view's top is A's row. The A that starts press-to-bind
     // starts it as the A goes down, so it's still down as it starts, and passed over.
-    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    for (int i = 0; i < 20; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    for (int i = 0; i < 2; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
     host_frame(guest);
     const bool on_press = overlay_bindings_listening();
