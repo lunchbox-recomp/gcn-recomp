@@ -59,6 +59,7 @@ constexpr Hint kListeningNoButton[] = {{"Esc", "Cancel"}, {"Wait", "Cancel"}};
 #ifdef GCN_OVERLAY_TEST
 std::string g_hints;  // the hints last drawn, each key and what it does, for the tests
 std::vector<OverlayGlyph> g_glyphs;
+ImVec2 g_hints_min, g_hints_max;  // and where they were
 #endif
 
 // The hints from `at`, centred in a row `height` tall, and how wide they are: glyphs of the
@@ -151,6 +152,10 @@ void footer(bool on_page) {
                        : overlay_bindings_listening() ? hints(kListeningNoButton, at, height, pad)
                        : on_page                      ? hints(kOnPage, at, height, pad)
                                                       : hints(kInView, at, height, pad);
+#ifdef GCN_OVERLAY_TEST
+    g_hints_min = at;
+    g_hints_max = ImVec2(at.x + wide, at.y + height);
+#endif
     if (!on_page) {
         ImGui::Dummy(ImVec2(wide, height));
         ImGui::PopFont();
@@ -240,4 +245,8 @@ OverlayAsk overlay_asking() { return g_ask; }
 #ifdef GCN_OVERLAY_TEST
 const std::string& footer_test_hints() { return g_hints; }
 const std::vector<OverlayGlyph>& footer_test_glyphs() { return g_glyphs; }
+void footer_test_hints_rect(float rect[4]) {
+    const float r[4] = {g_hints_min.x, g_hints_min.y, g_hints_max.x, g_hints_max.y};
+    std::copy(r, r + 4, rect);
+}
 #endif

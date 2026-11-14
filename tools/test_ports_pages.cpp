@@ -1,13 +1,16 @@
 // ---- The menu's review dumps over a hidden window with a GL context, at 16:9 and at 4:3:
 // GCN_OVERLAY_PAGE opens it on each page in turn, and --dump-output writes each page once its
 // frame has settled, over GCN_OVERLAY_PLAIN's grey, since no game frame is kept here. Each
-// page's menu frame time, overlay_draw's on the CPU, is printed. The PNGs are for a person to
+// page's menu frame time, overlay_draw's on the CPU, is printed. After every page, the Buttons
+// view is dumped at each size too, as it opens and at its foot. The PNGs are for a person to
 // look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
 // a view the menu closed from once the fade is over. With no GL window, as on a machine with no
 // display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend,
 // with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/fonts.h"  // the atlas the menu and the notices share
+#include "overlay/footer.h"  // where the footer drew its hints
+#include "overlay/review.h"  // the Buttons view's dumps
 #include <cstdio>
 
 namespace {
@@ -232,6 +235,69 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
 // menu closed.
 void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
 
+// The Buttons view at a size, over a gamepad plugged in for it, in place of the Controllers
+// page: dumped to buttons/overlay_buttons_top.png as it opens with its first gamepad focused, and
+// to buttons/overlay_buttons_end.png once the D-pad has taken the focus down to Done, its last
+// item. At each the footer's hints and the item with the focus are whole on the panel
+// (on_panel), and where the panel, the hints and the last row are is printed.
+void buttons_review(SDL_Window* window, const std::string& out, const std::string& at) {
+    static std::string dump_dir;
+    dump_dir = out + "/buttons";
+    plat_make_dirs(dump_dir);
+    Virtual pad{"virtual pad buttons review"};
+    attach(pad);
+    frame();
+    setenv("GCN_OVERLAY_PAGE", "1", 1);
+    setenv("GCN_OVERLAY_AT", "0:1000", 1);  // open at the first draw, and closed below
+    overlay_test_reset_pages();
+    overlay_add_page("Sample", sample_page, nullptr);
+    OverlayPicture picture;
+    picture.path = dump_dir + "/settings.txt";
+    picture.apply = record_apply;
+    gx::g_dump_dir = nullptr;  // no dump of the menu's own as it settles, only the two below
+    overlay_init(window, "Test title", picture);
+    unsetenv("GCN_OVERLAY_PAGE");
+    unsetenv("GCN_OVERLAY_AT");
+    overlay_bindings_open(pad.id);
+    Guest guest;
+    const auto draw = [&] {
+        pump_events();
+        update_pads(0);
+        overlay_draw();
+        SDL_GL_SwapWindow(window);
+        guest_on(guest);
+    };
+    const auto dump = [&](const char* name, const char* where) {
+        gx::g_dump_dir = dump_dir.c_str();
+        review_write(window, ImGui::GetDrawData(), name, true);
+        gx::g_dump_dir = nullptr;
+        const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
+        float hints[4], last[4];
+        footer_test_hints_rect(hints);
+        overlay_bindings_test_last_row(last);
+        printf("[pages] %s Buttons view, %s: panel y %.0f to %.0f, footer hints y %.0f to %.0f, last row y %.0f to %.0f\n",
+               at.c_str(), where, panel ? panel->Pos.y : 0.0f, panel ? panel->Pos.y + panel->Size.y : 0.0f, hints[1],
+               hints[3], last[1], last[3]);
+        return exists_path(dump_dir + "/" + name);
+    };
+    for (int f = 0; f < 6; f++) draw();
+    const bool top = dump("overlay_buttons_top.png", "as it opens") && on_panel() && focused(first_pad());
+    for (int i = 0; i < 40; i++) {
+        set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
+        draw();
+        set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false);
+        draw();
+    }
+    const bool end = dump("overlay_buttons_end.png", "at Done") && on_panel() && focused("Done");
+    overlay_close();
+    overlay_test_end();
+    detach(pad);
+    frame();
+    check(top && end, (at + ": the Buttons view is dumped as it opens and at Done, the item with the focus and the "
+                            "footer's hints whole on the panel at each")
+                          .c_str());
+}
+
 double percentile(std::vector<double> v, double p) {
     if (v.empty()) return 0.0;
     std::sort(v.begin(), v.end());
@@ -321,6 +387,20 @@ int run_pages(const std::string& dir) {
             check(order_ends_at_draw(window, out + "/bare"),
                   "at overlay_draw's frames, the press-A order up as the menu closes ends once the fade is over");
         }
+        gl_window_close(window);
+    }
+    // The Buttons view at each size once every page's dump is done, so the gamepad plugged in for
+    // it is in none of theirs.
+    for (const auto& size : kSizes) {
+        SDL_Window* window = gl_window(size.w, size.h);
+        if (!window) {
+            printf("test_ports pages: skipped\n");
+            return kSkipped;
+        }
+        int pw = 0, ph = 0;
+        SDL_GetWindowSizeInPixels(window, &pw, &ph);
+        const std::string at = std::to_string(pw) + "x" + std::to_string(ph);
+        buttons_review(window, dir + "/" + at, at);
         gl_window_close(window);
     }
     return finish("pages");
