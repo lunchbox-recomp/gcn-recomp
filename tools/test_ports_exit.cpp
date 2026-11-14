@@ -121,6 +121,21 @@ int run_interrupt(const std::string& dir) {
     SDL_RemoveEventWatch(lock_probe, nullptr);
     check(g_presses_queued == 1 && g_queued_unlocked == 1,
           "SDL queues the window's events with the gamepads' lock free, so a loop SDL runs in there keeps no interrupt waiting");
+    // With no event queued, the overlay's poll is all of pump_events that takes the lock. Another
+    // thread holds it 200 ms, and pump_events returns only after that thread lets it go.
+    pump_events();
+    std::atomic<bool> held{false}, letting_go{false};
+    std::thread holder([&] {
+        std::lock_guard<std::recursive_mutex> lk(g_pads_mutex);
+        held = true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        letting_go = true;
+    });
+    while (!held) std::this_thread::yield();
+    pump_events();
+    const bool waited = letting_go;
+    holder.join();
+    check(waited, "the overlay's poll in pump_events takes the gamepads' lock, so it waits while another thread has it");
     g_rumbling = &a;
     plat_at_exit(after_interrupt);
     std::thread(on_interrupt).detach();
