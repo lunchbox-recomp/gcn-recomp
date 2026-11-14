@@ -109,10 +109,27 @@ struct PageRun {
     bool on_page = false;    // the page asked for was selected as the menu first drew
     bool ended = false;      // its Dear ImGui contexts were destroyed once it was done
     bool atlas_made = false;  // the shared font atlas had its GL texture before they were (fonts.h)
+    bool notices_on_atlas = false;  // the notices' context was on it and last drew with its texture
     bool let_go = false;     // Display, picked after the dump, was still selected near the end
     double first_ms = -1;    // overlay_draw on the CPU as it first drew, making its GL objects
     std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
 };
+
+// Whether the notices' context is on the atlas the menu's is made on, and each draw command of
+// its last frame takes that atlas's texture.
+bool notices_on_atlas() {
+    ImGuiContext* menu = ImGui::GetCurrentContext();
+    ImGuiContext* notices = overlay_test_notices_context();
+    if (!notices) return false;
+    ImGui::SetCurrentContext(notices);
+    const ImDrawData* d = ImGui::GetDrawData();
+    const ImTextureID atlas_tex = fonts_atlas()->TexData->TexID;
+    bool on = ImGui::GetIO().Fonts == fonts_atlas() && atlas_tex != ImTextureID_Invalid && d && d->CmdListsCount > 0;
+    for (int i = 0; on && i < d->CmdListsCount; i++)
+        for (const ImDrawCmd& cmd : d->CmdLists[i]->CmdBuffer) on = on && cmd.GetTexID() == atlas_tex;
+    ImGui::SetCurrentContext(menu);
+    return on;
+}
 
 // The menu opened by GCN_OVERLAY_AT=0:<held> with GCN_OVERLAY_PAGE=`page`, over the plain
 // background or not, dumping to `out`, for as long as it stays open and a few frames more.
@@ -165,6 +182,7 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
     }
     const ImTextureData* tex = fonts_atlas()->TexData;
     run.atlas_made = tex->Status == ImTextureStatus_OK && tex->TexID != ImTextureID_Invalid;
+    run.notices_on_atlas = notices_on_atlas();
     overlay_test_end();
     run.ended = !ImGui::GetCurrentContext() && !overlay_test_notices_context();
     return run;
@@ -275,7 +293,8 @@ int run_pages(const std::string& dir) {
                 overlay_pads_notice("A notice over the menu: \xC3\xA0 \xC3\xA9 \xC3\xBC");
                 shared = open_on(window, "0", 0, true, notice);
             });
-            check(overlay_notice_frames() > notices && exists_path(notice + "/overlay_page0.png") && shared.atlas_made,
+            check(overlay_notice_frames() > notices && exists_path(notice + "/overlay_page0.png") && shared.atlas_made &&
+                      shared.notices_on_atlas,
                   "a notice over the open menu draws from the atlas the menu's GL renderer made, both contexts on it");
             const std::string bad = dir + "/bad-page-stderr.txt";
             PageRun past, word;
