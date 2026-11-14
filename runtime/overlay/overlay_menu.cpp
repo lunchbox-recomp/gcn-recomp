@@ -42,6 +42,9 @@ long g_menu_frames;         // frames that have laid out the menu
 ImDrawList* g_panel_list;   // the menu window's draw list at its last frame
 int g_panel_vtx;            // and how many of its vertices were the panel's own, before its contents
 bool g_on_page;             // its last frame showed a page, not a question or a view
+// The panel's height at its tallest since the menu opened, its least from then on, in pixels at
+// the theme's scale then (panel_place).
+float g_tallest, g_tallest_scale;
 
 // The page showing, drawn by its own callback.
 void page() {
@@ -58,23 +61,29 @@ void section_gap() {
     ImGui::Dummy(ImVec2(0.0f, std::max(0.0f, (t.section_spacing - 2.0f * t.item_spacing) * s)));
 }
 
-// The panel's size: the theme's share of the window's width, at most its widest and inside its
-// margin, and as tall as what's on it up to the theme's share of the window's height.
-void panel_size() {
+// The panel's place and size: centred in the window, the theme's share of its width, at most its
+// widest and inside its margin, and as tall as what's on it up to the theme's share of its
+// height, but never shorter than it's been since the menu opened (g_tallest). So its top is half
+// its tallest yet above the window's middle: a page no taller than one shown since it opened
+// leaves the header where it was, and a taller one grows the panel by half its extra each way.
+// Centring it by Dear ImGui's pivot places it by its height at this frame, a new tallest too.
+void panel_place() {
     const OverlayTheme& t = theme_now();
     const float s = ImGui::GetStyle().FontScaleMain;
-    const ImVec2 v = ImGui::GetMainViewport()->Size;
+    if (s != g_tallest_scale) g_tallest = 0.0f;  // a new window height lays it all out again
+    g_tallest_scale = s;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const ImVec2 v = vp->Size;
     const float w = std::max(1.0f, std::min({t.panel_width * v.x, t.panel_max_width * s, v.x - 2.0f * t.margin * s}));
     const float h = std::max(1.0f, std::min(t.panel_max_height * v.y, v.y - 2.0f * t.margin * s));
-    ImGui::SetNextWindowSizeConstraints(ImVec2(w, 0.0f), ImVec2(w, h));
+    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(w, std::min(g_tallest, h)), ImVec2(w, h));
 }
 
 void draw_menu(uint64_t now) {
-    const ImGuiViewport* vp = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     if (g_focus) ImGui::SetNextWindowFocus();
     g_focus = false;
-    panel_size();
+    panel_place();
     // Begin draws the panel's edge in the Border colour, an item's edge. It takes the theme's
     // fainter panel edge instead. The menu's title is in its header, not a title bar.
     ImGui::PushStyleColor(ImGuiCol_Border, theme_colour(theme_now().panel_edge));
@@ -82,6 +91,7 @@ void draw_menu(uint64_t now) {
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
     ImGui::PopStyleColor();
+    g_tallest = std::max(g_tallest, ImGui::GetWindowHeight());
     g_panel_list = ImGui::GetWindowDrawList();
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
     const bool asking = overlay_asking() != OverlayAsk::none;
@@ -138,6 +148,7 @@ void menu_opened(int page, uint64_t now) {
     if (page >= 0) tabs_show(page);
     g_opened_ns = now;
     g_said_shown = false;
+    g_tallest = 0.0f;  // the panel starts again at the page it opens on
 }
 
 // The menu's frame: its input taken while it's open and its windows laid out, ready to draw,

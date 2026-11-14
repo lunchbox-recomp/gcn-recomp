@@ -15,7 +15,9 @@
 // page turns the same way. A device
 // controls.txt binds is the file's alone (input_map.h), so the menu never reads it.
 //
-// The panel is the theme's share of the window's width (theme.h) and as tall as its page. Its
+// The panel is the theme's share of the window's width (theme.h) and as tall as its page, but
+// never shorter than it's been since the menu opened, centred: a page no taller than one shown
+// since leaves the header where it was, and a taller one grows the panel each way. Its
 // header has the menu's title on the left and a pill for each page centred between the
 // shoulders' names, the page showing on the accent. A click on a pill shows its page, and so
 // does a shoulder: L1, L2 or Q goes back a page and R1, R2 or E on one, no further than the first
