@@ -15,7 +15,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
 
-SDL_Gamepad* overlay_last_pad();
+SDL_Gamepad* overlay_last_pad();  // overlay_input.cpp's
 
 namespace {
 
