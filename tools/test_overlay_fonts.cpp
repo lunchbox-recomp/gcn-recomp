@@ -523,9 +523,11 @@ int main(int argc, char** argv) {
     ImGui::SetAllocatorFunctions(counted_alloc, counted_free);
     lookup();
     chains(dir);
-    // Dear ImGui's own font is wider than the Mac's. A size's glyphs stay in the atlas for two
-    // frames after it's last drawn, and at 2160 lines at twice the density, beside those of 1440,
-    // its text doesn't fit and some glyphs fall back, so its sizes at twice stop at 1440.
+    // Dear ImGui's own font is wider than the Mac's, and at 2160 lines at twice the density right
+    // after 1440 its text doesn't fit beside 1440's glyphs. With asserts off, 238 glyphs fall back
+    // there at first, then 119 more each frame, 1428 over 12 frames. A glyph that fails to pack
+    // is marked not found in that size's bake, so it stays missing while the size is drawn, even
+    // after 1440's glyphs are dropped. So its sizes at twice stop at 1440.
     shared(OverlayFonts{}, "Dear ImGui's own font", 1440.0f);
     system_fonts(dir);
     printf("test_overlay_fonts: %s\n", g_failed ? "FAILED" : "passed");
