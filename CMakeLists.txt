@@ -910,7 +910,7 @@ function(gcn_add_game)
     # and writes its PNGs with png.cpp. Dear ImGui's asserts are on here, and with them every
     # assert in test_ports.
     if(_gcn_overlay)
-      target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp ${RT}/png.cpp ${RT}/ui_sound.cpp)
+      target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp ${RT}/png.cpp ${RT}/ui_sound.cpp ${RT}/ui_sound_synth.cpp)
       if(NOT APPLE)
         target_sources(test_ports PRIVATE ${GLAD_SOURCE} ${RT}/gx/gl_load.cpp)
       endif()
@@ -947,7 +947,7 @@ function(gcn_add_game)
   # guest's. Needs no disc image, no device and no SDL.
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID)
     find_package(Threads REQUIRED)
-    add_executable(test_audio_ring EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_audio_ring.cpp ${RT}/ui_sound.cpp)
+    add_executable(test_audio_ring EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_audio_ring.cpp ${RT}/ui_sound.cpp ${RT}/ui_sound_synth.cpp)
     _gcn_set_standards(test_audio_ring)
     target_include_directories(test_audio_ring PRIVATE ${RT})
     target_link_libraries(test_audio_ring PRIVATE Threads::Threads)
@@ -1045,7 +1045,7 @@ function(gcn_add_game)
     # The menu's sounds checks (tools/test_ui_sound.cpp): each voice as it's made, the queue and
     # the mix, and audio.cpp's GCN_WAV recording left without them, in a work dir. Needs no disc
     # image, device or SDL. macOS and Linux.
-    add_executable(test_ui_sound EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ui_sound.cpp ${RT}/ui_sound.cpp)
+    add_executable(test_ui_sound EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ui_sound.cpp ${RT}/ui_sound.cpp ${RT}/ui_sound_synth.cpp)
     _gcn_set_standards(test_ui_sound)
     target_include_directories(test_ui_sound PRIVATE ${RT})
     target_link_libraries(test_ui_sound PRIVATE Threads::Threads)

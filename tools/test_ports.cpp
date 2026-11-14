@@ -24,9 +24,9 @@
 // the overlay's chord. reset.cpp is linked, for the game's reset (guest_reset). The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
-// With GCN_OVERLAY, overlay/*.cpp, pause.cpp and ui_sound.cpp are linked as well, and the clock
-// they read (host_ns and clock_hold above, and audio_frames_out) is stubbed, as is the memory
-// card's note of a hold (exi_card_held).
+// With GCN_OVERLAY, overlay/*.cpp, pause.cpp, ui_sound.cpp and ui_sound_synth.cpp are linked,
+// and the clock they read (host_ns and clock_hold above, and audio_frames_out) is stubbed, as
+// is the memory card's note of a hold (exi_card_held).
 //
 // The checks are in a file for each area, read in below after the frontend, as main.cpp is,
 // so that they see its statics: none of them is compiled on its own. What more than one area
