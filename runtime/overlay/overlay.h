@@ -258,8 +258,9 @@ float overlay_bindings_test_glyph_height();
 // Where the view's last row, the C-stick's up and down, last drew its button, in the window's
 // pixels: its left, top, right and bottom.
 void overlay_bindings_test_last_row(float rect[4]);
-// Across the window's pixels, where each of the view's rows last drew its name and its button,
-// and the region they're drawn in: the left and right of each, in the rows' order.
+// Across the window, in Dear ImGui's points, where each of the view's rows last drew its name and
+// its button, and the room inside the padding of the region they're drawn in: the left and right
+// of each, in the rows' order.
 struct OverlayBindingsRow {
     float name[2], button[2], region[2];
 };

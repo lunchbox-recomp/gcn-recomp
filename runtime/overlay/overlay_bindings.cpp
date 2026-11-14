@@ -180,7 +180,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
 #ifdef GCN_OVERLAY_TEST
     g_glyphs.clear();
     g_rows.clear();
-    const ImRect region = ImGui::GetCurrentWindow()->InnerClipRect;
+    const ImRect region = ImGui::GetCurrentWindow()->WorkRect;  // inside the region's padding
 #endif
     for (int c = 0; c < kPadControls; c++) {
         ImGui::PushID(c);

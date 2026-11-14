@@ -236,7 +236,7 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
 void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
 
 // Whether each of the Buttons view's rows, as last drawn, has its name whole left of its button,
-// and its button whole across the region the rows scroll in.
+// and its button whole across the region the rows scroll in, inside its padding.
 bool rows_whole() {
     const std::vector<OverlayBindingsRow>& rows = overlay_bindings_test_rows();
     bool whole = rows.size() == kPadControls;
