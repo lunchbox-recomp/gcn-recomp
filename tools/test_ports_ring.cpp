@@ -9,6 +9,7 @@
 // Closed after all that, 600 frames lay out no menu frame. Read in by tools/test_ports.cpp after
 // the frontend and test_ports_bindings_page.cpp, with GCN_OVERLAY.
 #include "test_ports_support.h"
+#include "overlay/footer.h"  // where the footer drew its hints, to click on
 #include "overlay/ring.h"
 #include "overlay/tabs.h"  // how far the page's contents are across as they come in
 #include <cfloat>
@@ -293,6 +294,25 @@ void ring_view(SDL_Window* window, const std::string& dir) {
                   dx > 1.0f && same_rect(drawn_in(accent), around(first.item), 1.0f) && drawn_alpha(accent) == 0xFF,
               "the Buttons view put up as the Controllers page slides in has the ring on its first gamepad still "
               "and whole");
+
+        // A click on the panel past the region the view's rows scroll in, on the footer's hints,
+        // hides the ring and keeps the focus on the row, so the next press down moves it a row
+        // down in the region, never onto the region as a whole.
+        ring_settle(guest);
+        float hints[4];
+        footer_test_hints_rect(hints);
+        mouse(guest, hints[0] + 1.0f, (hints[1] + hints[3]) / 2.0f, true);
+        mouse(guest, hints[0] + 1.0f, (hints[1] + hints[3]) / 2.0f, false);
+        const bool hidden = !ring_now().shown;
+        stroke(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
+        ring_settle(guest);
+        const ImGuiContext& g = *ImGui::GetCurrentContext();
+        const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
+        const Ring row = ring_now();
+        check(hidden && g.NavWindow && g.NavWindow != panel && g.NavWindow->ParentWindow == panel &&
+                  !focused(first_pad()) && row.shown && row.item.GetHeight() < 0.2f * panel->Size.y,
+              "a click on the panel past the Buttons view's rows hides the ring, and a press down then puts it a "
+              "row down");
         stroke(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
         stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
         ring_settle(guest);

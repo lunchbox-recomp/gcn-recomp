@@ -108,9 +108,10 @@ void panel_place() {
 // the panel's bottom, past the region. Those are taken at this frame's scale, so a change of the
 // window's height lays the region out again at once. That first frame sizes the panel at the
 // next as a page's does; a region Dear ImGui sized to its contents would show nothing at its
-// first. Dear ImGui
-// scrolls the region to keep the item with the focus in it, however the focus got there, as it
-// scrolls the panel itself for a page taller than the panel. The region is the panel's width,
+// first. Dear ImGui scrolls the region to keep the item with the focus in it, however the focus
+// got there, as it scrolls the panel itself for a page taller than the panel. The region's items
+// take the focus as the panel's own (NavFlattened), so a click on the panel past the region
+// leaves the focus on its row, not on the region as a whole. The region is the panel's width,
 // with its padding across and its items' width, so the view is laid out across as it would be on
 // the panel, its scroll bar where the panel's would be, and widens nothing the panel could
 // scroll across to.
