@@ -421,6 +421,12 @@ std::array<int, 4> gamepads_faces(SDL_Gamepad* g) {
     return {f[0], f[1], f[2], f[3]};
 }
 
+PadFamily gamepads_family(SDL_Gamepad* g) {
+    const bool trigger =
+        SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) || SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+    return pad_family(SDL_GetGamepadType(g), trigger, SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_MISC1));
+}
+
 PadList gamepads_list() {
     PadList list;
     for (int i = 0; i < 4; i++) list.pinned[i] = input_map_pins(i);

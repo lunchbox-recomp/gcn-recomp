@@ -73,10 +73,7 @@ float hints(const Hint (&list)[N], ImVec2 at, float height) {
     g_glyphs.clear();
 #endif
     SDL_Gamepad* pad = overlay_last_pad();
-    PadFamily family = PadFamily::other;
-    if (pad) family = pad_family(SDL_GetGamepadType(pad),
-        SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) || SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER),
-        SDL_GamepadHasButton(pad, SDL_GAMEPAD_BUTTON_MISC1));
+    const PadFamily family = pad ? gamepads_family(pad) : PadFamily::other;
     for (const Hint& h : list) {
         if (x > at.x) x += 3.0f * gap;
         const bool wait = !strcmp(h.key, "Wait");

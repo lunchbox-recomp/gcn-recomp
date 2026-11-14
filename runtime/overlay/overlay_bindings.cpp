@@ -37,13 +37,10 @@ std::string name_of(uint32_t device) {
     return n ? n : "?";
 }
 
-// What `s` is called on the gamepad `g`, as pad_glyph names it, and whether a stick axis is
-// turned round from the way the map has it.
-std::string glyph(SDL_Gamepad* g, PadControl c, const PadSource& s) {
+// What `s` is called on the gamepad `g` of family `f` (gamepads_family), as pad_glyph names it,
+// and whether a stick axis is turned round from the way the map has it.
+std::string glyph(SDL_Gamepad* g, PadFamily f, PadControl c, const PadSource& s) {
     const int label = !s.axis && s.index <= kPadNorth ? SDL_GetGamepadButtonLabel(g, (SDL_GamepadButton)s.index) : 0;
-    const bool trigger =
-        SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) || SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
-    const PadFamily f = pad_family(SDL_GetGamepadType(g), trigger, SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_MISC1));
     std::string name = pad_glyph(f, s, label);
     const bool y = c == PadControl::StickY || c == PadControl::CStickY;
     if (pad_control_is_stick(c) && s.invert != y) name += " (reversed)";
@@ -93,7 +90,8 @@ void hear(SDL_Gamepad* g) {
         return;
     }
     const std::string row = kRows[(int)c];
-    const std::string still = row + " is still " + glyph(g, c, b.source[(int)c]) + ".";
+    const PadFamily f = gamepads_family(g);
+    const std::string still = row + " is still " + glyph(g, f, c, b.source[(int)c]) + ".";
     switch (bind_hear(*g_listen, gamepads_read(g), host_ns(), got)) {
     case BindHeard::waiting: return;
     case BindHeard::cancelled: end_listen(still); return;
@@ -107,17 +105,17 @@ void hear(SDL_Gamepad* g) {
     const Bound r = gamepads_bind(g_device, b);
     if (r == Bound::refused) return end_listen(refused());
     if (r == Bound::unchanged) return end_listen(still);
-    std::string said = row + " is now " + glyph(g, c, got) + ".";
+    std::string said = row + " is now " + glyph(g, f, c, got) + ".";
     for (int d = 0; d < kPadControls; d++)
         if (d != (int)c && b.source[d] != was.source[d])
-            said += std::string(" ") + kRows[d] + " is now " + glyph(g, (PadControl)d, b.source[d]) + ".";
+            said += std::string(" ") + kRows[d] + " is now " + glyph(g, f, (PadControl)d, b.source[d]) + ".";
     // One way of a stick axis and all of it don't swap, since neither control can take what the
     // other had (pad_binding_set), so that stick drives both.
     for (int d = 0; d < kPadControls; d++) {
         const PadSource& t = b.source[d];
         if (d == (int)c || !got.axis || !t.axis || t.index != got.index || (t.half == 0) == (got.half == 0)) continue;
         if (pad_control_is_stick((PadControl)d)) said += std::string(" ") + kRows[d] + " still moves with it.";
-        else said += " " + glyph(g, (PadControl)d, t) + " still presses " + kRows[d] + " too.";
+        else said += " " + glyph(g, f, (PadControl)d, t) + " still presses " + kRows[d] + " too.";
     }
     end_listen(said + kept(r));
 }
@@ -164,6 +162,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
     ImGui::SeparatorText("Buttons");
     ImGui::TextUnformatted("Pick a control, then press the button or push the stick for it.");
     const float column = ImGui::CalcTextSize(kRows[(int)PadControl::CStickX]).x + ImGui::GetStyle().ItemSpacing.x * 2;
+    const PadFamily family = gamepads_family(g);
     for (int c = 0; c < kPadControls; c++) {
         ImGui::PushID(c);
         ImGui::AlignTextToFramePadding();
@@ -172,9 +171,6 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
         const PadSource& source = b.source[c];
         const bool button = !source.axis || source.index == kPadLeftTrigger || source.index == kPadRightTrigger;
         if (button) {
-            const PadFamily family = pad_family(SDL_GetGamepadType(g),
-                SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) || SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER),
-                SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_MISC1));
             const int face_label = source.index <= kPadNorth ? SDL_GetGamepadButtonLabel(g, (SDL_GamepadButton)source.index) : 0;
             const OverlayTheme& theme = theme_now();
             ImGui::PushFont(fonts_role(FontRole::footer), theme.footer_size);
@@ -190,7 +186,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
             overlay_draw_glyph(ImGui::GetWindowDrawList(), ImVec2(lo.x + (hi.x - lo.x - width) * 0.5f,
                 lo.y + (hi.y - lo.y - height) * 0.5f), height, mark);
             ImGui::PopFont();
-        } else if (ImGui::Button(glyph(g, (PadControl)c, source).c_str())) overlay_bindings_listen((PadControl)c);
+        } else if (ImGui::Button(glyph(g, family, (PadControl)c, source).c_str())) overlay_bindings_listen((PadControl)c);
         if (g_focus == c && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
         ImGui::PopID();
     }
@@ -277,7 +273,7 @@ bool bindings_event(const SDL_Event& e) {
             const PadControl c = g_listen->control;
             PadBinding b;
             gamepads_binding(g_device, b);
-            end_listen(std::string(kRows[(int)c]) + " is still " + glyph(g, c, b.source[(int)c]) + ".");
+            end_listen(std::string(kRows[(int)c]) + " is still " + glyph(g, gamepads_family(g), c, b.source[(int)c]) + ".");
         }
         switch (e.type) {
         case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP: case SDL_EVENT_TEXT_INPUT:
