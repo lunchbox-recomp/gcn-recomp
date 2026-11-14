@@ -195,10 +195,11 @@ through the file table, decoded from RGB5A3) at a whole-number scale, and a thin
 cache's progress under it. Every GameCube disc carries the banner, so nothing about the game
 is needed. A disc without one gets the colour and the bar.
 
-No program exists yet, so it's all scissored clears (`gx/clear_draw.cpp`), like the
-headset's loading screen. The banner is blended over the colour on the CPU once, as one rect
-per run of one colour along a row (`gx/splash_look.cpp`), and each frame clears the window
-to the colour and then each rect. The bar shows only once the splash has been up 300 ms, so
+No program exists yet, so it's all scissored clears through `gx::clear_rect`
+(`gx/clear_draw.cpp`), which the headset's loading bar draws with too, and `gx::clear_text`
+draws the headset's line of text above the bar. The banner is blended over the colour on the
+CPU once, as one rect per run of one colour along a row (`gx/splash_look.cpp`), and each
+frame clears the window to the colour and then each rect. The bar shows only once the splash has been up 300 ms, so
 a quick start has none.
 
 The cache is built in 30 ms steps (`render_set_shader_cache_deferred`, as the headset

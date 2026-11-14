@@ -1236,20 +1236,11 @@ bool build_shaders() {
                 glViewport(0, 0, w, h);
                 glDisable(GL_SCISSOR_TEST);
                 glColorMask(1, 1, 1, 1);
-                glClearColor(0.02f, 0.02f, 0.03f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT);
+                gx::clear_rect(0, 0, w, h, 0x050508);  // the scissor is off, so all of it
                 glEnable(GL_SCISSOR_TEST);
-                glScissor(bx - 3, by - 3, bw + 6, bh + 6);  // the frame
-                glClearColor(0.35f, 0.4f, 0.45f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT);
-                glScissor(bx, by, bw, bh);                  // the track
-                glClearColor(0.06f, 0.07f, 0.08f, 1.0f);
-                glClear(GL_COLOR_BUFFER_BIT);
-                if (fill > 0) {
-                    glScissor(bx, by, fill, bh);            // what is built
-                    glClearColor(0.2f, 0.6f, 0.9f, 1.0f);
-                    glClear(GL_COLOR_BUFFER_BIT);
-                }
+                gx::clear_rect(bx - 3, by - 3, bw + 6, bh + 6, 0x596673);  // the frame
+                gx::clear_rect(bx, by, bw, bh, 0x0F1214);                  // the track
+                if (fill > 0) gx::clear_rect(bx, by, fill, bh, 0x3399E6);  // what is built
                 const int px = std::max(1, std::min(h / 100, bw / (6 * (int)strlen(message))));
                 glClearColor(0.8f, 0.82f, 0.85f, 1.0f);
                 gx::clear_text(message, w / 2, by + bh + 3 + 2 * px * 3, px);
