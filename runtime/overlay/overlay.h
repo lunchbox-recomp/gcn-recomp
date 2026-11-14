@@ -64,6 +64,7 @@
 // output dumps are.
 #pragma once
 #include "hw/pad.h"
+#include "pad_bindings.h"
 #include "settings.h"
 #include <string>
 #include <vector>
@@ -138,6 +139,16 @@ long overlay_notice_frames();
 void overlay_controllers_order();
 // The port the press-A order asks for next (0 is port 1), or -1 when it isn't asking.
 int overlay_controllers_asking();
+// The Buttons view (overlay_bindings.cpp) up, showing gamepad `device`, as Change buttons puts
+// it. False for a device gamepads_binding refuses. For the tests too.
+bool overlay_bindings_open(uint32_t device);
+bool overlay_bindings_shown();
+// Press-to-bind for `c` on the gamepad the view shows. False if the view isn't up or its gamepad
+// is gone. For the tests.
+bool overlay_bindings_listen(PadControl c);
+bool overlay_bindings_listening();
+// What the view says the last change did. For the tests.
+const std::string& overlay_bindings_said();
 #else
 inline void overlay_pads_notice(const std::string&) {}
 inline void overlay_add_page(const char*, void (*)(void*), void*) {}

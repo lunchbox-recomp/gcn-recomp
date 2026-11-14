@@ -30,6 +30,11 @@ void display_page(SDL_Window* window);
 void controllers_page();
 bool controllers_event(const SDL_Event& e);
 void controllers_stop();
+// overlay_bindings.cpp's.
+void bindings_page();
+bool bindings_event(const SDL_Event& e);
+void bindings_poll();
+void bindings_stop();
 void notices_init(SDL_Window* window, bool gl);
 void notices_frame();
 // Below, for the Controllers page too: the buttons each held gamepad has down stay out of the
@@ -90,7 +95,10 @@ void set_open(bool on) {
     g_ask = g_asked = OverlayAsk::none;
     pause_request(on);
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
-    if (!on) controllers_stop();
+    if (!on) {
+        controllers_stop();
+        bindings_stop();
+    }
     if (!on || !g_window) return;
     // Keys and buttons let go while it was closed never reached the menu. One held as it opens
     // stays out of it until it's let go, though Dear ImGui keeps the focus from the last time,
@@ -369,6 +377,8 @@ void draw_menu() {
         asking();
     } else if (overlay_controllers_asking() >= 0) {
         controllers_page();  // the press-A order alone, with nothing to focus
+    } else if (overlay_bindings_shown()) {
+        bindings_page();
     } else {
         if (ImGui::BeginTabBar("pages")) {
             if (ImGui::BeginTabItem("Display")) {
@@ -475,7 +485,7 @@ OverlayAsk overlay_asking() { return g_ask; }
 
 bool overlay_event(const SDL_Event& e) {
     if (!g_ready) return false;
-    if (g_open && controllers_event(e)) return true;
+    if (g_open && (controllers_event(e) || bindings_event(e))) return true;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
     const bool pressed = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
     const bool cancel = g_open && (key == SDL_SCANCODE_ESCAPE || (pressed && is_b(e.gbutton)));
@@ -495,6 +505,7 @@ bool overlay_event(const SDL_Event& e) {
 
 void overlay_poll() {
     if (!g_ready) return;
+    if (g_open) bindings_poll();
     const uint64_t now = host_ns();
     bool toggle = false;
     int n = 0;

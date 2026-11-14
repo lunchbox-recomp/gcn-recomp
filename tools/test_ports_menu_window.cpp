@@ -279,6 +279,7 @@ void overlay_buttons(const std::string& dir) {
     controllers_order(guest, dir);
     controllers_buttons(guest, dir);
     order_left_out(guest, dir);
+    bindings_page_checks(guest, dir);
     close_window(window);
 }
 

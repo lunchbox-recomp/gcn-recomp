@@ -133,6 +133,7 @@ void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display
 // The Controllers checks come before the menu file, whose checks call port_changes,
 // controllers_order, controllers_buttons and order_left_out.
 #include "test_ports_controllers.cpp"     // the Controllers page and its notices
+#include "test_ports_bindings_page.cpp"   // the Buttons view and its press-to-bind
 #include "test_ports_menu_window.cpp"     // the menu over a window, then the Controllers checks
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays

@@ -812,9 +812,9 @@ function(gcn_add_game)
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
-      ${RT}/gamepads.cpp ${RT}/pad_bindings.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp ${RT}/input_defaults.cpp
-      ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/bot_link.cpp ${RT}/platform.cpp ${RT}/hw/mmio.cpp
-      ${RT}/vr_config.cpp ${RT}/settings.cpp ${RT}/reset.cpp ${RT}/ram_patches.cpp)
+      ${RT}/gamepads.cpp ${RT}/pad_bindings.cpp ${RT}/pad_glyph.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp
+      ${RT}/input_defaults.cpp ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/bot_link.cpp ${RT}/platform.cpp
+      ${RT}/hw/mmio.cpp ${RT}/vr_config.cpp ${RT}/settings.cpp ${RT}/reset.cpp ${RT}/ram_patches.cpp)
     _gcn_set_standards(test_ports)
     target_include_directories(test_ports PRIVATE ${RT} ${RECOMP_GEN_DIR} ${GLAD_INCLUDE_DIR})
     target_link_libraries(test_ports PRIVATE ${GCN_SDL_TARGET})
