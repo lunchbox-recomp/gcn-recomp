@@ -1,11 +1,16 @@
 // The overlay's font checks: the `test_overlay_fonts` target. Runs with no window, GL, disc or
-// game.
+// game, on Dear ImGui contexts of its own.
 //
 // A face is found in a font file by its full name in the font's name table, whatever its place
 // in a collection, and never by another name, a prefix of its own, a cut-off file or a face that
 // lacks a table Dear ImGui's loader needs (runtime/overlay/fonts.cpp). The font files here are
 // ones this check writes, a few hundred bytes each with one empty glyph; no real font is kept
-// with the repository.
+// with the repository. Each kind of text takes the first face of its chain that loads, then
+// Dear ImGui's own, with one [overlay] font line on stderr for each step down, and a theme that
+// lists no font at all takes Dear ImGui's own with one line. The menu's and the notices'
+// contexts share one atlas, and the text of every kind at sizes up to 2160 lines at twice the
+// pixel density fits in 8 MB of texture. Where the Mac's own Avenir Next is installed, the
+// default chains load from it with no step down, read where it is and never copied.
 //
 // usage: test_overlay_fonts <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if every
@@ -15,7 +20,10 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <unistd.h>
 #include <vector>
+#include "imgui.h"
+#include "imgui_internal.h"
 
 namespace {
 
@@ -153,8 +161,57 @@ std::vector<uint8_t> font_file(const std::vector<Face>& faces, bool collection) 
     return b;
 }
 
+void write_file(const std::string& path, const std::vector<uint8_t>& b) {
+    FILE* f = fopen(path.c_str(), "wb");
+    if (f) {
+        fwrite(b.data(), 1, b.size(), f);
+        fclose(f);
+    }
+}
+
 int find(const std::vector<uint8_t>& b, const char* name, size_t size = SIZE_MAX) {
     return fonts_find_face(b.data(), std::min(size, b.size()), name);
+}
+
+// ---- What's said on stderr while `fn` runs, a line at a time.
+
+template <class Fn>
+std::vector<std::string> said(const std::string& path, Fn fn) {
+    fflush(stderr);
+    const int saved = dup(2);
+    FILE* f = freopen(path.c_str(), "w", stderr);
+    fn();
+    fflush(stderr);
+    dup2(saved, 2);
+    close(saved);
+    if (f) clearerr(stderr);
+    std::vector<std::string> lines;
+    if (FILE* in = fopen(path.c_str(), "r")) {
+        char line[512];
+        while (fgets(line, sizeof(line), in)) lines.push_back(line);
+        fclose(in);
+    }
+    for (const std::string& l : lines) printf("  said: %s", l.c_str());
+    return lines;
+}
+
+bool has(const std::string& line, const std::string& part) { return line.find(part) != std::string::npos; }
+
+bool all_start(const std::vector<std::string>& lines, const char* prefix) {
+    for (const std::string& l : lines)
+        if (!l.starts_with(prefix)) return false;
+    return true;
+}
+
+constexpr FontRole kRoles[] = {FontRole::title, FontRole::tabs, FontRole::items, FontRole::body, FontRole::footer};
+
+// The face a kind of text took: its name and its index in its file, or "" for Dear ImGui's own.
+std::string took(FontRole r, int* no = nullptr) {
+    const ImFont* f = fonts_role(r);
+    if (!f || f->Sources.empty()) return "?";
+    if (no) *no = (int)f->Sources[0]->FontNo;
+    const std::string name = f->Sources[0]->Name;
+    return name == "ProggyForever.ttf" ? "" : name;
 }
 
 // ---- The checks.
@@ -196,6 +253,165 @@ void lookup() {
           "a file that isn't a font, a collection listing more faces than it holds and no data find nothing");
 }
 
+void chains(const std::string& dir) {
+    const std::string ttc = dir + "/test.ttc", gone = dir + "/missing.ttc";
+    write_file(ttc, font_file({{"Test Sans Bold"}, {"Test Sans Demi Bold"}, {"Test Sans Medium"}, {"Test Sans Heavy"}}, true));
+    OverlayFonts f;
+    f.title = {{gone, "Test Sans Heavy"}, {ttc, "Test Sans Heavy"}};
+    f.tabs = {{ttc, "Test Sans Demi Bold"}};
+    f.items = {{ttc, "Test Sans Nope"}, {ttc, "Test Sans Medium"}};
+    f.body = {{ttc, "Test Sans Medium"}};
+    f.footer = {{gone, "Test Sans Demi Bold"}, {ttc, "Test Sans Nope"}};
+    const auto lines = said(dir + "/chains-stderr.txt", [&] { fonts_build(f); });
+    int title = -1, tabs = -1, items = -1, body = -1;
+    check(took(FontRole::title, &title) == "Test Sans Heavy" && title == 3 && took(FontRole::tabs, &tabs) == "Test Sans Demi Bold" &&
+              tabs == 1 && took(FontRole::items, &items) == "Test Sans Medium" && items == 2 &&
+              took(FontRole::body, &body) == "Test Sans Medium" && body == 2,
+          "each kind of text takes the first face of its chain that loads, at its index in the file");
+    check(fonts_role(FontRole::items) == fonts_role(FontRole::body), "two kinds of text with the same face share one font");
+    check(took(FontRole::footer).empty(), "a kind whose faces all fail takes Dear ImGui's own");
+    check(lines.size() == 4 && all_start(lines, "[overlay] font") && has(lines[0], "missing.ttc, so the title text tries the next") &&
+              has(lines[1], "\"Test Sans Nope\" in " + ttc + ", so the items text tries the next") &&
+              has(lines[3], "so the footer text takes Dear ImGui's own"),
+          "one [overlay] font line for each step down, four here, each naming the face or file and where the text goes");
+    // A theme that lists a face for the body alone.
+    OverlayFonts body_only;
+    body_only.body = {{ttc, "Test Sans Medium"}};
+    const auto only = said(dir + "/body-only-stderr.txt", [&] { fonts_build(body_only); });
+    check(took(FontRole::body) == "Test Sans Medium" && took(FontRole::title).empty() && only.size() == 4 &&
+              has(only[0], "the title text lists no font, so it takes Dear ImGui's own"),
+          "each kind that lists no face, in a theme that lists some, takes Dear ImGui's own with a line of its own");
+    // A theme where every face is in a file that isn't there.
+    OverlayFonts nowhere;
+    for (auto* chain : {&nowhere.title, &nowhere.tabs, &nowhere.items, &nowhere.body, &nowhere.footer})
+        *chain = {{gone, "Test Sans Medium"}, {dir + "/also-missing.ttf", "Test Sans Medium"}};
+    const auto none = said(dir + "/nowhere-stderr.txt", [&] { fonts_build(nowhere); });
+    bool own = true;
+    for (FontRole r : kRoles) own = own && took(r).empty() && fonts_role(r) == fonts_role(FontRole::body);
+    check(own && fonts_atlas()->Fonts.Size == 1, "with no file there, every kind takes Dear ImGui's own, one font for all");
+    check(none.size() == 10 && all_start(none, "[overlay] font"), "and says so once for each of the ten faces");
+    // No font listed at all, as the fork's theme is off macOS.
+    const auto empty = said(dir + "/empty-stderr.txt", [&] { fonts_build(OverlayFonts{}); });
+    own = true;
+    for (FontRole r : kRoles) own = own && took(r).empty();
+    check(own && fonts_atlas()->Fonts.Size == 1 && empty.size() == 1 && has(empty[0], "[overlay] font: the theme lists no font"),
+          "a theme that lists no font takes Dear ImGui's own embedded font and says so in one line");
+}
+
+// A context of the overlay's kind on the shared atlas, with a renderer that takes texture
+// updates but draws nothing, `height` lines tall at `density` pixels to each.
+ImGuiContext* context(float height, float density) {
+    ImGuiContext* c = ImGui::CreateContext(fonts_atlas());
+    ImGui::SetCurrentContext(c);
+    ImGuiIO& io = ImGui::GetIO();
+    io.IniFilename = nullptr;
+    io.BackendFlags |= ImGuiBackendFlags_RendererHasTextures;
+    io.DisplaySize = ImVec2(height * 16.0f / 9.0f, height);
+    io.DisplayFramebufferScale = ImVec2(density, density);
+    io.FontDefault = fonts_role(FontRole::body);
+    return c;
+}
+
+// A frame of `c` with each kind of text's printable ASCII and a few accented letters at its size
+// at `height` lines.
+void frame(ImGuiContext* c, const OverlayTheme& t, float height) {
+    ImGui::SetCurrentContext(c);
+    fonts_new_frame();
+    ImGui::GetIO().DeltaTime = 1.0f / 60.0f;
+    ImGui::NewFrame();
+    ImGui::Begin("text");
+    const float sizes[] = {t.title_size, t.tab_size, t.item_text_size, t.body_size, t.footer_size};
+    std::string ascii;
+    for (char ch = ' '; ch <= '~'; ch++) ascii += ch;
+    ascii += "\xC3\xA9\xC3\xA8\xC3\xBC\xC3\xB1";  // é è ü ñ
+    for (size_t i = 0; i < 5; i++) {
+        ImGui::PushFont(fonts_role(kRoles[i]), sizes[i] * height / 1080.0f);
+        ImGui::TextUnformatted(ascii.c_str());
+        ImGui::PopFont();
+    }
+    ImGui::End();
+    ImGui::Render();
+    // As a renderer would, take each texture's creation and updates.
+    for (ImTextureData* tex : ImGui::GetPlatformIO().Textures) {
+        if (tex->Status == ImTextureStatus_WantCreate || tex->Status == ImTextureStatus_WantUpdates) {
+            tex->SetTexID((ImTextureID)1);
+            tex->SetStatus(ImTextureStatus_OK);
+        } else if (tex->Status == ImTextureStatus_WantDestroy) {
+            tex->SetTexID(ImTextureID_Invalid);
+            tex->SetStatus(ImTextureStatus_Destroyed);
+        }
+    }
+}
+
+size_t texture_bytes() {
+    size_t bytes = 0;
+    for (const ImTextureData* tex : fonts_atlas()->TexList)
+        if (tex->Status != ImTextureStatus_Destroyed) bytes += (size_t)tex->GetSizeInBytes();
+    return bytes;
+}
+
+// Two contexts, the menu's and the notices', on one atlas, at sizes from 1080 to 2160 lines and
+// at one and two pixels to each, as a window on a Retina display moved between screens.
+void shared(const OverlayFonts& f, const char* which) {
+    fonts_build(f);
+    const OverlayTheme t;
+    ImGuiContext* menu = context(1080.0f, 1.0f);
+    ImGuiContext* notices = context(1080.0f, 1.0f);
+    char what[200];
+    snprintf(what, sizeof(what), "%s: the menu's and the notices' contexts share one atlas", which);
+    check(fonts_atlas()->RefCount == 2 && fonts_atlas()->OwnerContext == nullptr, what);
+    frame(menu, t, 1080.0f);
+    const int baked = fonts_atlas()->Builder->BakedPool.Size;
+    const int textures = fonts_atlas()->TexList.Size;
+    frame(notices, t, 1080.0f);
+    snprintf(what, sizeof(what), "%s: text the menu has drawn is drawn by the notices from the same glyphs", which);
+    check(baked > 0 && fonts_atlas()->Builder->BakedPool.Size == baked && fonts_atlas()->TexList.Size == textures, what);
+    size_t most = texture_bytes(), live = 0;
+    for (float density : {1.0f, 2.0f})
+        for (float height : {1080.0f, 1440.0f, 2160.0f}) {
+            for (ImGuiContext* c : {menu, notices}) {
+                ImGui::SetCurrentContext(c);
+                ImGui::GetIO().DisplaySize = ImVec2(height * 16.0f / 9.0f, height);
+                ImGui::GetIO().DisplayFramebufferScale = ImVec2(density, density);
+                frame(c, t, height);
+                most = std::max(most, texture_bytes());
+                live = std::max(live, (size_t)fonts_atlas()->TexData->GetSizeInBytes());
+            }
+        }
+    printf("[fonts] %s: the atlas texture at most %.2f MB, and %.2f MB for the frame of a repack, when the old one is kept\n", which,
+           live / 1048576.0, most / 1048576.0);
+    snprintf(what, sizeof(what), "%s: every kind of text up to 2160 lines at twice the density fits in 8 MB of texture", which);
+    check(most <= 8u << 20, what);
+    for (ImGuiContext* c : {notices, menu}) ImGui::DestroyContext(c);
+}
+
+// The Mac's own fonts, where they're installed, read in place.
+void system_fonts(const std::string& dir) {
+    const OverlayFonts f = overlay_fonts_default();
+    if (f.body.empty() || !std::filesystem::exists(f.body[0].path)) {
+        printf("skipped: %s isn't here\n", f.body.empty() ? "a default chain" : f.body[0].path.c_str());
+        return;
+    }
+    const auto lines = said(dir + "/system-stderr.txt", [&] { fonts_build(f); });
+    bool first = true;
+    const std::vector<OverlayFace>* chains[] = {&f.title, &f.tabs, &f.items, &f.body, &f.footer};
+    for (size_t i = 0; i < 5; i++) {
+        first = first && took(kRoles[i]) == (*chains[i])[0].name.substr(0, 39);
+        printf("  %s\n", took(kRoles[i]).c_str());
+    }
+    check(first && lines.empty(), "the default chains load the Mac's Avenir Next faces with no step down");
+    // The second choice of each, as on a Mac without Avenir Next.
+    OverlayFonts neue = f;
+    for (auto* chain : {&neue.title, &neue.tabs, &neue.items, &neue.body, &neue.footer}) chain->erase(chain->begin());
+    if (std::filesystem::exists(neue.body[0].path)) {
+        const auto said_neue = said(dir + "/neue-stderr.txt", [&] { fonts_build(neue); });
+        bool second = true;
+        for (FontRole r : kRoles) second = second && took(r).starts_with("Helvetica Neue");
+        check(second && said_neue.empty(), "each Helvetica Neue face the chains fall to is there too");
+    }
+    shared(f, "the Mac's fonts");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -209,6 +425,9 @@ int main(int argc, char** argv) {
         return 2;
     }
     lookup();
+    chains(dir);
+    shared(OverlayFonts{}, "Dear ImGui's own font");
+    system_fonts(dir);
     printf("test_overlay_fonts: %s\n", g_failed ? "FAILED" : "passed");
     return g_failed ? 1 : 0;
 }

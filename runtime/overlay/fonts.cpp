@@ -1,8 +1,21 @@
 // The overlay's fonts (fonts.h). A face is found by its full name rather than its index, as a
 // collection's order can change between versions of the system that ships it, and Dear ImGui
 // is told the index as ImFontConfig::FontNo.
+//
+// The atlas is made here, not by a context, so that the menu's and the notices' contexts can
+// each be made on it (ImGui::CreateContext(atlas)) and neither owns it. Dear ImGui 1.92 updates
+// an atlas in NewFrame only for the context that owns it (UpdateTexturesNewFrame in imgui.cpp),
+// so the overlay makes that update itself once a frame (fonts_new_frame). Its glyphs are baked
+// on demand at whatever size the text is drawn at, into textures each context's renderer
+// creates and updates from the frame's texture list, and the two GL renderers share one GL
+// context, so a texture either one made the other draws with.
 #include "overlay/fonts.h"
+#include <cstdio>
+#include <map>
 #include <string>
+#include <vector>
+#include "imgui.h"
+#include "imgui_internal.h"  // ImFontAtlasUpdateNewFrame
 
 namespace {
 
@@ -115,6 +128,67 @@ bool face_is(const Bytes& b, size_t face, std::string_view want) {
     return name.found && named(b, name, want) && loadable(b, face);
 }
 
+// ---- The atlas.
+
+constexpr int kRoles = 5;
+constexpr const char* kRoleNames[kRoles] = {"title", "tabs", "items", "body", "footer"};
+// The atlas's texture is RGBA, as the GL renderer takes it, so 2048 by 1024 is 8 MB. Past that
+// Dear ImGui makes room by dropping glyphs of sizes no longer drawn.
+constexpr int kTexWidth = 2048, kTexHeight = 1024;
+
+ImFontAtlas* g_atlas;
+ImFont* g_roles[kRoles];
+int g_frame;  // fonts_new_frame's count, rising across atlases
+// The font files read, each read once and kept for as long as the process runs: Dear ImGui
+// reads a face's glyphs from its file's bytes as it bakes them, for any atlas made from it.
+std::map<std::string, std::vector<uint8_t>> g_files;
+
+std::vector<uint8_t>* read_file(const std::string& path) {
+    const auto was = g_files.find(path);
+    if (was != g_files.end()) return &was->second;
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return nullptr;
+    std::vector<uint8_t> bytes;
+    uint8_t chunk[65536];
+    for (size_t n; (n = fread(chunk, 1, sizeof(chunk), f)) > 0;) bytes.insert(bytes.end(), chunk, chunk + n);
+    const bool ok = !ferror(f) && !bytes.empty();
+    fclose(f);
+    if (!ok) return nullptr;
+    return &g_files.emplace(path, std::move(bytes)).first->second;
+}
+
+struct Loaded {
+    const OverlayFace* face;
+    ImFont* font;
+};
+
+// The face's font, loaded once for every kind of text that takes it, or null with why not.
+ImFont* load(const OverlayFace& face, std::vector<Loaded>& loaded, std::string& why) {
+    for (const Loaded& l : loaded)
+        if (l.face->path == face.path && l.face->name == face.name) return l.font;
+    std::vector<uint8_t>* file = read_file(face.path);
+    if (!file) {
+        why = "can't read " + face.path;
+        return nullptr;
+    }
+    const int index = fonts_find_face(file->data(), file->size(), face.name);
+    if (index < 0) {
+        why = "no face \"" + face.name + "\" in " + face.path;
+        return nullptr;
+    }
+    ImFontConfig cfg;
+    cfg.FontDataOwnedByAtlas = false;  // g_files keeps it
+    cfg.FontNo = (ImU32)index;
+    snprintf(cfg.Name, sizeof(cfg.Name), "%s", face.name.c_str());
+    ImFont* font = g_atlas->AddFontFromMemoryTTF(file->data(), (int)file->size(), 0.0f, &cfg);
+    if (!font) {
+        why = "Dear ImGui refused \"" + face.name + "\" in " + face.path;
+        return nullptr;
+    }
+    loaded.push_back({&face, font});
+    return font;
+}
+
 }  // namespace
 
 int fonts_find_face(const uint8_t* data, size_t size, std::string_view name) {
@@ -131,4 +205,41 @@ int fonts_find_face(const uint8_t* data, size_t size, std::string_view name) {
     }
     if (version != 0x00010000 && version != tag("true") && version != tag("OTTO")) return -1;
     return face_is(b, 0, name) ? 0 : -1;
+}
+
+void fonts_build(const OverlayFonts& fonts) {
+    g_atlas = IM_NEW(ImFontAtlas)();
+    g_atlas->TexMaxWidth = kTexWidth;
+    g_atlas->TexMaxHeight = kTexHeight;
+    const std::vector<OverlayFace>* chains[kRoles] = {&fonts.title, &fonts.tabs, &fonts.items, &fonts.body, &fonts.footer};
+    bool none = true;
+    for (const auto* chain : chains) none = none && chain->empty();
+    if (none) fprintf(stderr, "[overlay] font: the theme lists no font, so all the text takes Dear ImGui's own\n");
+    std::vector<Loaded> loaded;
+    ImFont* own = nullptr;  // Dear ImGui's, once a kind of text takes it
+    for (int r = 0; r < kRoles; r++) {
+        const std::vector<OverlayFace>& chain = *chains[r];
+        if (chain.empty() && !none)
+            fprintf(stderr, "[overlay] font: the %s text lists no font, so it takes Dear ImGui's own\n", kRoleNames[r]);
+        ImFont* font = nullptr;
+        for (size_t i = 0; i < chain.size() && !font; i++) {
+            std::string why;
+            font = load(chain[i], loaded, why);
+            if (!font)
+                fprintf(stderr, "[overlay] font: %s, so the %s text %s\n", why.c_str(), kRoleNames[r],
+                        i + 1 < chain.size() ? "tries the next" : "takes Dear ImGui's own");
+        }
+        if (!font) font = own ? own : (own = g_atlas->AddFontDefault());
+        g_roles[r] = font;
+    }
+}
+
+ImFontAtlas* fonts_atlas() { return g_atlas; }
+
+ImFont* fonts_role(FontRole role) { return g_roles[(int)role]; }
+
+void fonts_new_frame() {
+    if (!g_atlas) return;
+    const bool textures = (ImGui::GetIO().BackendFlags & ImGuiBackendFlags_RendererHasTextures) != 0;
+    ImFontAtlasUpdateNewFrame(g_atlas, ++g_frame, textures);
 }

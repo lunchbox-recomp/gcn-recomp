@@ -3,6 +3,7 @@
 // notices notices.cpp.
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
+#include "overlay/fonts.h"
 #include "frontend.h"
 #include "gamepads.h"
 #include "input_log.h"
@@ -536,6 +537,7 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_plain = getenv_nonempty("GCN_OVERLAY_PLAIN") != nullptr;
     if (!window) return;
     g_gl = SDL_GL_GetCurrentContext() != nullptr;
+    fonts_build(theme_now().fonts);  // the atlas both contexts are made on
     notices_init(window, g_gl);
     overlay_imgui_context(window, g_gl);  // the menu's, current from here on
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
@@ -543,11 +545,12 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
 }
 
 void overlay_imgui_context(SDL_Window* window, bool gl) {
-    ImGui::SetCurrentContext(ImGui::CreateContext());
+    ImGui::SetCurrentContext(ImGui::CreateContext(fonts_atlas()));
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;  // nothing written to the game's directory
     io.ConfigDebugHighlightIdConflictsShowItemPicker = false;
     io.LogFilename = nullptr;
+    io.FontDefault = fonts_role(FontRole::body);
     int w = 0, h = 0;
     SDL_GetWindowSize(window, &w, &h);
     theme_style(theme_now(), theme_scale(h));
@@ -649,12 +652,14 @@ void overlay_gate(int port, PadState& p) {
 
 void overlay_menu_frame() {
     if (!g_window) return;
+    fonts_new_frame();
     if (menu_lays_out()) menu_frame();
     notices_frame();
 }
 
 void overlay_draw() {
     if (!g_window || !g_gl) return;
+    fonts_new_frame();  // once a frame, before the menu's and the notices' (fonts.h)
     // Opening ends a view left from the last close itself (set_open).
     if (at_frame_due()) {
         g_at_frame = -1;
