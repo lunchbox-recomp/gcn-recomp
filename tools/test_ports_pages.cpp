@@ -235,13 +235,15 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
 // menu closed.
 void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
 
-// Whether each of the Buttons view's rows, as last drawn, has its name whole left of its button,
-// and its button whole across the region the rows scroll in, inside its padding.
-bool rows_whole() {
+// Whether each of the Buttons view's rows, as last drawn, was a gamepad of family `f`'s and has
+// its name whole left of its button, and its button whole across the region the rows scroll in,
+// inside its padding.
+bool rows_whole(PadFamily f) {
     const std::vector<OverlayBindingsRow>& rows = overlay_bindings_test_rows();
     bool whole = rows.size() == kPadControls;
     for (const OverlayBindingsRow& r : rows)
-        whole = whole && r.region[0] <= r.name[0] && r.name[1] < r.button[0] && r.button[1] <= r.region[1];
+        whole = whole && r.family == f && r.region[0] <= r.name[0] && r.name[1] < r.button[0] &&
+                r.button[1] <= r.region[1];
     return whole;
 }
 
@@ -301,27 +303,31 @@ void buttons_review(SDL_Window* window, const std::string& out, const std::strin
     }
     const bool end = dump("overlay_buttons_end.png", "at Done") && on_panel() && focused("Done");
     // The view on that pad and on one of each family whose buttons are named their own way, each
-    // row's name whole left of its button, and its button whole across the region.
-    bool whole = rows_whole();
-    Virtual xbox{"xbox pad buttons review"}, ps{"playstation pad buttons review"}, cube{"gc pad buttons review"},
-        joycon{"joy-con pad buttons review"}, deck{"steam deck pad buttons review"};
-    xbox.vendor = 0x045e;
-    xbox.product = 0x02ea;
-    ps.vendor = 0x054c;
-    ps.product = 0x0ce6;
-    cube.vendor = joycon.vendor = 0x057e;
-    cube.product = 0x0337;
-    joycon.product = 0x2006;
-    deck.vendor = 0x28de;
-    deck.product = 0x1205;
-    for (Virtual* v : {&xbox, &ps, &cube, &joycon, &deck}) {
-        attach(*v);
+    // row's name whole left of its button, and its button whole across the region. A Joy-Con
+    // alone with a trigger axis is held upright, and a Steam Deck has misc1 (pad_glyph.h).
+    bool whole = rows_whole(PadFamily::other);
+    const struct {
+        const char* name;
+        Uint16 vendor, product;
+        PadFamily family;
+    } kFamilies[] = {
+        {"xbox pad buttons review", 0x045e, 0x02ea, PadFamily::xbox},
+        {"playstation pad buttons review", 0x054c, 0x0ce6, PadFamily::ps5},
+        {"gc pad buttons review", 0x057e, 0x0337, PadFamily::gamecube},
+        {"joy-con pad buttons review", 0x057e, 0x2006, PadFamily::joycon_left_upright},
+        {"steam deck pad buttons review", 0x28de, 0x1205, PadFamily::steam},
+    };
+    for (const auto& f : kFamilies) {
+        Virtual v{f.name};
+        v.vendor = f.vendor;
+        v.product = f.product;
+        attach(v);
         frame();
-        overlay_bindings_open(v->id);
+        whole = whole && overlay_bindings_open(v.id);
         draw();
         draw();
-        whole = whole && rows_whole();
-        detach(*v);
+        whole = whole && rows_whole(f.family);
+        detach(v);
         frame();
     }
     check(whole, (at + ": each of the Buttons view's rows has its name whole left of its button, and its button "

@@ -215,7 +215,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
 #ifdef GCN_OVERLAY_TEST
         g_last_min = ImGui::GetItemRectMin();
         g_last_max = ImGui::GetItemRectMax();
-        g_rows.push_back({{name.Min.x, name.Max.x}, {g_last_min.x, g_last_max.x}, {region.Min.x, region.Max.x}});
+        g_rows.push_back({{name.Min.x, name.Max.x}, {g_last_min.x, g_last_max.x}, {region.Min.x, region.Max.x}, family});
 #endif
         if (g_focus == c && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
         ImGui::PopID();
