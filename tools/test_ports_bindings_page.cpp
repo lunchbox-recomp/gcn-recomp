@@ -101,6 +101,33 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     check(file_id(file) == kept && has(overlay_bindings_said(), "A is still "),
           "the button A has already, pressed for A, changes nothing and saves nothing");
 
+    // One way of a stick axis on a button, and all of it on a stick control, don't swap: the
+    // view says the stick drives both. Then each is set back as it was.
+    PadBinding before;
+    gamepads_binding(pad.id, before);
+    auto push_for = [&](PadControl c, int axis, Sint16 value) {
+        overlay_bindings_listen(c);
+        set_axis(pad, axis, value);
+        host_frame(guest);
+        set_axis(pad, axis, 0);
+        host_frame(guest);
+    };
+    push_for(PadControl::DUp, SDL_GAMEPAD_AXIS_LEFTY, -32767);
+    const std::string up = overlay_bindings_said();
+    push_for(PadControl::StickX, SDL_GAMEPAD_AXIS_LEFTY, 32767);
+    const std::string whole = overlay_bindings_said();
+    push_for(PadControl::StickX, SDL_GAMEPAD_AXIS_LEFTX, 32767);
+    push_for(PadControl::StickY, SDL_GAMEPAD_AXIS_LEFTY, -32767);
+    overlay_bindings_listen(PadControl::DUp);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    PadBinding after;
+    check(up == "D-pad up is now Left stick up. Control stick up and down still moves with it." &&
+              has(whole, "Control stick left and right is now Left stick.") &&
+              has(whole, " Left stick up still presses D-pad up too.") && gamepads_binding(pad.id, after) &&
+              after == before,
+          "a stick's up on D-pad up says the control stick still moves with it, the stick's y on the control stick "
+          "says it still presses D-pad up, and each sets back");
+
     // Two gamepads pads.txt can't tell apart both take a change, and the view says so.
     Virtual twin{"virtual pad buttons view"};
     plug({&twin});

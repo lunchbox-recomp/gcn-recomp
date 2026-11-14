@@ -97,6 +97,14 @@ void hear(SDL_Gamepad* g) {
     for (int d = 0; d < kPadControls; d++)
         if (d != (int)c && b.source[d] != was.source[d])
             said += std::string(" ") + kRows[d] + " is now " + glyph(g, (PadControl)d, b.source[d]) + ".";
+    // One way of a stick axis and all of it don't swap, since neither control can take what the
+    // other had (pad_binding_set), so that stick drives both.
+    for (int d = 0; d < kPadControls; d++) {
+        const PadSource& t = b.source[d];
+        if (d == (int)c || !got.axis || !t.axis || t.index != got.index || (t.half == 0) == (got.half == 0)) continue;
+        if (pad_control_is_stick((PadControl)d)) said += std::string(" ") + kRows[d] + " still moves with it.";
+        else said += " " + glyph(g, (PadControl)d, t) + " still presses " + kRows[d] + " too.";
+    }
     end_listen(said + kept(r));
 }
 

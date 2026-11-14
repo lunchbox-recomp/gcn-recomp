@@ -114,8 +114,10 @@ void pad_binding_merge(const PadBinding& b, const PadReading& r, PadState& p);
 
 // `c` given `s`. Another control that had the same input takes what `c` had, a stick axis
 // among the four stick controls and a button, a trigger or one way of a stick axis among the
-// others, so no control is left with nothing and no input drives two. One way of a stick axis
-// on a button may also be all of that axis on a stick control.
+// others, so no control is left with nothing. That keeps an input off two controls, but for
+// one: one way of a stick axis given to a button leaves a stick control on all of that axis,
+// and all of it given to a stick control leaves a button on one way of it, since neither can
+// take what the other had. Pushed that way, the stick then moves and presses the button too.
 void pad_binding_set(PadBinding& b, PadControl c, const PadSource& s);
 
 // ---- Press-to-bind

@@ -118,8 +118,10 @@ Change buttons, beside Set player order, opens the Buttons view for a gamepad. P
 controller and the control, then press the button or push the stick for it within 5 seconds.
 A button held as it starts doesn't count until it's let go, and Back, Guide or Escape cancels.
 Giving A the button X had gives X the button A had, and the same for L, R and the sticks, so
-no control is left without one and no button drives two. The view names each button as the
-controller labels it, and sets the stick and trigger dead zones and where a trigger clicks.
+no control is left without one and no button drives two. A stick pushed one way for a button
+is the exception. A stick can't take a button in its place, so it still moves with that push,
+and the view says so. The view names each button as the controller labels it, and sets the
+stick and trigger dead zones and where a trigger clicks.
 Test rumble runs the motor for 1 second, and Reset to default puts the gamepad back to its
 default buttons. Each change applies at once and is saved to `saves/pads.txt`, a block a
 gamepad, by its GUID and serial. A block's lines are `controls.txt` lines, so a block can be
