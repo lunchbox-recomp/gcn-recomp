@@ -28,6 +28,9 @@ std::string g_said;                 // what the last change did
 int g_focus = -1;                   // the row that takes the focus at the next draw, -1 for none
 bool g_focus_first;                 // the view's first item takes it at its next draw, as it opens
 bool g_back;                        // Change buttons takes it at the page's next draw, after the view
+#ifdef GCN_OVERLAY_TEST
+std::vector<OverlayGlyph> g_glyphs;  // the rows' glyphs last drawn, for the tests
+#endif
 
 const char* const kRows[kPadControls] = {
     "A", "B", "X", "Y", "Z", "Start", "D-pad up", "D-pad down", "D-pad left", "D-pad right", "L", "R",
@@ -167,6 +170,9 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
     ImGui::TextUnformatted("Pick a control, then press the button or push the stick for it.");
     const float column = ImGui::CalcTextSize(kRows[(int)PadControl::CStickX]).x + ImGui::GetStyle().ItemSpacing.x * 2;
     const PadFamily family = gamepads_family(g);
+#ifdef GCN_OVERLAY_TEST
+    g_glyphs.clear();
+#endif
     for (int c = 0; c < kPadControls; c++) {
         ImGui::PushID(c);
         ImGui::AlignTextToFramePadding();
@@ -176,19 +182,22 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
         const bool button = !source.axis || source.index == kPadLeftTrigger || source.index == kPadRightTrigger;
         if (button) {
             const int face_label = source.index <= kPadNorth ? SDL_GetGamepadButtonLabel(g, (SDL_GamepadButton)source.index) : 0;
+            // In the body's font, as the rows' names and the sticks' buttons are, on a button as
+            // tall as theirs.
             const OverlayTheme& theme = theme_now();
-            ImGui::PushFont(fonts_role(FontRole::footer), theme.footer_size);
+            ImGui::PushFont(fonts_role(FontRole::body), theme.body_size);
             const OverlayGlyph mark = overlay_pad_glyph(theme, family, source, face_label);
             const float height = ImGui::GetFontSize() * 1.3f;
             const float width = overlay_glyph_width(mark, height);
-            ImGui::PopFont();
-            if (ImGui::Button("##source", ImVec2(width + 12.0f, std::max(height + 8.0f, ImGui::GetFrameHeight()))))
+            if (ImGui::Button("##source", ImVec2(width + 2.0f * ImGui::GetStyle().FramePadding.x, ImGui::GetFrameHeight())))
                 overlay_bindings_listen((PadControl)c);
-            ImGui::PushFont(fonts_role(FontRole::footer), theme.footer_size);
             const ImVec2 lo = ImGui::GetItemRectMin(), hi = ImGui::GetItemRectMax();
             overlay_draw_glyph(ImGui::GetWindowDrawList(), ImVec2(lo.x + (hi.x - lo.x - width) * 0.5f,
                 lo.y + (hi.y - lo.y - height) * 0.5f), height, mark);
             ImGui::PopFont();
+#ifdef GCN_OVERLAY_TEST
+            g_glyphs.push_back(mark);
+#endif
         } else if (ImGui::Button(glyph(g, family, (PadControl)c, source).c_str())) overlay_bindings_listen((PadControl)c);
         if (g_focus == c && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
         ImGui::PopID();
@@ -229,6 +238,9 @@ const char* overlay_bindings_cancel() {
     return SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_GUIDE) ? "Guide" : nullptr;
 }
 const std::string& overlay_bindings_said() { return g_said; }
+#ifdef GCN_OVERLAY_TEST
+const std::vector<OverlayGlyph>& overlay_bindings_test_glyphs() { return g_glyphs; }
+#endif
 
 bool overlay_bindings_listen(PadControl c) {
     SDL_Gamepad* g = g_shown ? SDL_GetGamepadFromID(g_device) : nullptr;

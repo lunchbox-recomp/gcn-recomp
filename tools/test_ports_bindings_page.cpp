@@ -114,12 +114,36 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
 
     // A key pressed as it listens, the footer still draws the listening gamepad's own Back, by
     // its family's name, never a keycap.
-    Virtual xbox{"xbox pad buttons view"};
+    // Before that, the view's rows draw each pad's own glyphs in its family's colours: an Xbox
+    // pad's A and B discs, its RB for Z and its LT for L as pills on the item's colour with its
+    // edge, and a PlayStation pad's A as a Cross disc with the cross on it.
+    Virtual xbox{"xbox pad buttons view"}, ps{"playstation pad buttons view"};
     xbox.vendor = 0x045e;
     xbox.product = 0x02ea;
+    ps.vendor = 0x054c;
+    ps.product = 0x0ce6;
     attach(xbox);
+    attach(ps);
     host_frame(guest);
+    const OverlayTheme theme = overlay_theme_default();
+    overlay_bindings_open(ps.id);
+    host_frame(guest);
+    const std::vector<OverlayGlyph> ps_rows = overlay_bindings_test_glyphs();
     overlay_bindings_open(xbox.id);
+    host_frame(guest);
+    const std::vector<OverlayGlyph> rows = overlay_bindings_test_glyphs();
+    const auto pill = [&](const OverlayGlyph& g, const char* label) {
+        return g.label == label && g.shape == OverlayGlyphShape::pill && g.fill == theme.item && g.edge == theme.border;
+    };
+    check(rows.size() == 12 && rows[0].label == "A" && rows[0].fill == theme.xbox.a &&
+              rows[0].shape == OverlayGlyphShape::circle && rows[1].label == "B" && rows[1].fill == theme.xbox.b &&
+              pill(rows[(int)PadControl::Z], "RB") && pill(rows[(int)PadControl::L], "LT") &&
+              pill(rows[(int)PadControl::R], "RT"),
+          "the Buttons view draws an Xbox pad's A and B in its colours and RB, LT and RT as edged pills");
+    check(ps_rows.size() == 12 && ps_rows[0].label == "Cross" && ps_rows[0].mark == OverlayGlyphMark::cross &&
+              ps_rows[0].fill == theme.playstation.a && pill(ps_rows[(int)PadControl::L], "L2"),
+          "the Buttons view draws a PlayStation pad's A as a Cross disc with its cross, and L as L2");
+    unplug({&ps});
     overlay_bindings_listen(PadControl::B);
     tap(guest, SDL_SCANCODE_K, SDLK_K);
     const std::vector<OverlayGlyph> keyed = footer_test_glyphs();
