@@ -8,10 +8,18 @@
 #include "pad_bindings.h"
 #include <string>
 
-enum class PadFamily { other, xbox360, xbox, ps3, ps4, ps5, nintendo, joycon_left, joycon_right, gamecube, steam };
+enum class PadFamily {
+    other, xbox360, xbox, ps3, ps4, ps5, nintendo, joycon_left, joycon_right, joycon_left_upright,
+    joycon_right_upright, gamecube, steam, steam_grips
+};
 
-// The family of a gamepad of SDL's type `sdl_type` (an SDL_GamepadType value).
-PadFamily pad_family(int sdl_type);
+// The family of a gamepad of SDL's type `sdl_type` (an SDL_GamepadType value). Two types hold
+// two families each, told apart by what the gamepad's mapping has: `trigger`, either trigger
+// axis, and `misc1`, the misc1 button. A Joy-Con alone held upright, as SDL sets it up under
+// SDL_HINT_JOYSTICK_HIDAPI_VERTICAL_JOY_CONS, sends ZL or ZR as a trigger, and one held
+// sideways has no trigger. A Steam Deck or a later Steam Controller has misc1, its quick access
+// button, and the first Steam Controller has none and sends its back grips as paddles.
+PadFamily pad_family(int sdl_type, bool trigger, bool misc1);
 
 // The name of `s` on a gamepad of family `f`. `face_label` is the SDL_GamepadButtonLabel value
 // SDL gives `s` when it's a face button (south, east, west or north), 0 for none, in which case

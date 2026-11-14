@@ -62,6 +62,23 @@ const Row kRows[] = {
     {PadFamily::joycon_left, button(kPadGuide), 0, "Capture"},
     {PadFamily::joycon_right, button(kPadStart), 0, "+"},
     {PadFamily::joycon_right, axis(kPadLeftX, 1), 0, "Stick right"},
+    // Held upright: L and ZL, or R and ZR, as the shoulder and the trigger, and SL and SR as paddles.
+    {PadFamily::joycon_left_upright, button(kPadLeftShoulder), 0, "L"},
+    {PadFamily::joycon_left_upright, axis(kPadLeftTrigger), 0, "ZL"},
+    {PadFamily::joycon_left_upright, button(17), 0, "SL"},
+    {PadFamily::joycon_left_upright, button(19), 0, "SR"},
+    {PadFamily::joycon_left_upright, button(kPadBack), 0, "-"},
+    {PadFamily::joycon_left_upright, button(15), 0, "Capture"},
+    {PadFamily::joycon_left_upright, button(kPadLeftStick), 0, "Stick click"},
+    {PadFamily::joycon_left_upright, axis(kPadLeftY, -1), 0, "Stick up"},
+    {PadFamily::joycon_right_upright, button(kPadRightShoulder), 0, "R"},
+    {PadFamily::joycon_right_upright, axis(kPadRightTrigger), 0, "ZR"},
+    {PadFamily::joycon_right_upright, button(16), 0, "SR"},
+    {PadFamily::joycon_right_upright, button(18), 0, "SL"},
+    {PadFamily::joycon_right_upright, button(kPadStart), 0, "+"},
+    {PadFamily::joycon_right_upright, button(kPadGuide), 0, "Home"},
+    {PadFamily::joycon_right_upright, button(kPadRightStick), 0, "Stick click"},
+    {PadFamily::joycon_right_upright, axis(kPadRightX, 1), 0, "Stick right"},
     {PadFamily::gamecube, button(15), 0, "Capture"},
     {PadFamily::gamecube, button(21), 0, "C"},
     {PadFamily::gamecube, button(22), 0, "L click"},
@@ -70,6 +87,11 @@ const Row kRows[] = {
     {PadFamily::steam, button(15), 0, "Quick access"},
     {PadFamily::steam, button(17), 0, "L4"},
     {PadFamily::steam, button(18), 0, "R5"},
+    // The first Steam Controller: its back grips as paddles, and no quick access button.
+    {PadFamily::steam_grips, button(16), 0, "Right grip"},
+    {PadFamily::steam_grips, button(17), 0, "Left grip"},
+    {PadFamily::steam_grips, button(kPadGuide), 0, "Steam"},
+    {PadFamily::steam_grips, button(15), 0, "Misc 1"},
     {PadFamily::ps5, button(kPadStart), 0, "Options"},
     {PadFamily::nintendo, button(kPadStart), 0, "+"},
     {PadFamily::nintendo, button(kPadGuide), 0, "Home"},
@@ -115,8 +137,14 @@ int main() {
                                    PadFamily::joycon_right, PadFamily::nintendo,    PadFamily::gamecube,
                                    PadFamily::steam,       PadFamily::other};
     bool families = true;
-    for (int t = 0; t < (int)std::size(kFamilies); t++) families = families && pad_family(t) == kFamilies[t];
+    for (int t = 0; t < (int)std::size(kFamilies); t++) families = families && pad_family(t, false, true) == kFamilies[t];
     check(families, "each of SDL's gamepad types has its family, a Joy-Con pair Nintendo's, and an unknown type other");
+    check(pad_family(8, true, false) == PadFamily::joycon_left_upright &&
+              pad_family(9, true, false) == PadFamily::joycon_right_upright &&
+              pad_family(12, true, false) == PadFamily::steam_grips && pad_family(12, true, true) == PadFamily::steam &&
+              pad_family(3, true, false) == PadFamily::xbox && pad_family(10, true, false) == PadFamily::nintendo,
+          "a Joy-Con alone with a trigger is held upright, a Steam pad with no misc1 is the first Steam Controller, "
+          "and the other types don't change with either");
     check(!strcmp(pad_type_name(3), "Xbox One") && !strcmp(pad_type_name(8), "Joy-Con (L)") &&
               !strcmp(pad_type_name(11), "GameCube") && !strcmp(pad_type_name(12), "gamepad") &&
               !strcmp(pad_type_name(-1), "gamepad") && !strcmp(pad_type_name(13), "gamepad"),

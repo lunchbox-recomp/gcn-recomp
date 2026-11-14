@@ -156,6 +156,22 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
           "Test rumble, above Done, rumbles a GameCube pad SDL says has none, and says it was sent");
     SDL_CloseJoystick(held);
     unplug({&cube});
+
+    // A left Joy-Con alone that has a trigger is held upright, so its shoulder is L and its
+    // trigger ZL (pad_glyph.h).
+    Virtual joycon{"joy-con pad buttons"};
+    joycon.vendor = 0x057e;
+    joycon.product = 0x2006;
+    plug({&joycon});
+    overlay_bindings_open(joycon.id);
+    overlay_bindings_listen(PadControl::L);
+    tap(guest, joycon, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+    const std::string shoulder = overlay_bindings_said();
+    overlay_bindings_listen(PadControl::L);
+    tap(guest, joycon, SDL_GAMEPAD_BUTTON_BACK);
+    check(shoulder == "L is now L." && overlay_bindings_said() == "L is still L.",
+          "an upright left Joy-Con's shoulder, bound to L, is named L");
+    unplug({&joycon});
     overlay_bindings_open(pad.id);
 
     tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);

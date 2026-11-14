@@ -36,7 +36,10 @@ std::string name_of(uint32_t device) {
 // turned round from the way the map has it.
 std::string glyph(SDL_Gamepad* g, PadControl c, const PadSource& s) {
     const int label = !s.axis && s.index <= kPadNorth ? SDL_GetGamepadButtonLabel(g, (SDL_GamepadButton)s.index) : 0;
-    std::string name = pad_glyph(pad_family(SDL_GetGamepadType(g)), s, label);
+    const bool trigger =
+        SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) || SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+    const PadFamily f = pad_family(SDL_GetGamepadType(g), trigger, SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_MISC1));
+    std::string name = pad_glyph(f, s, label);
     const bool y = c == PadControl::StickY || c == PadControl::CStickY;
     if (pad_control_is_stick(c) && s.invert != y) name += " (reversed)";
     return name;

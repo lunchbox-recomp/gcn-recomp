@@ -1,10 +1,10 @@
 // See pad_glyph.h. The labels follow SDL 3.4.18's drivers: what each one sends a printed button
-// as (SDL_hidapi_*.c, the GameCube adapter's mapping in SDL_gamepad.c) and SDL_gamepad.h's notes
-// on misc1 and the paddles.
+// as (SDL_hidapi_*.c, the mappings SDL_gamepad.c makes for the GameCube adapter, the Joy-Cons
+// and the Steam Controllers) and SDL_gamepad.h's notes on misc1 and the paddles.
 #include "pad_glyph.h"
 #include <initializer_list>
 
-PadFamily pad_family(int sdl_type) {
+PadFamily pad_family(int sdl_type, bool trigger, bool misc1) {
     // SDL_GamepadType's values (pad_numbers.cpp checks them): 2 and 3 Xbox 360 and One, 4 to 6
     // PS3 to PS5, 7 the Switch Pro, 8 and 9 a Joy-Con alone, 10 a pair of them, 11 GameCube, 12
     // Steam.
@@ -12,7 +12,11 @@ PadFamily pad_family(int sdl_type) {
         PadFamily::other, PadFamily::other, PadFamily::xbox360, PadFamily::xbox, PadFamily::ps3,
         PadFamily::ps4, PadFamily::ps5, PadFamily::nintendo, PadFamily::joycon_left, PadFamily::joycon_right,
         PadFamily::nintendo, PadFamily::gamecube, PadFamily::steam};
-    return sdl_type >= 0 && sdl_type < (int)std::size(kByType) ? kByType[sdl_type] : PadFamily::other;
+    const PadFamily f = sdl_type >= 0 && sdl_type < (int)std::size(kByType) ? kByType[sdl_type] : PadFamily::other;
+    if (f == PadFamily::joycon_left && trigger) return PadFamily::joycon_left_upright;
+    if (f == PadFamily::joycon_right && trigger) return PadFamily::joycon_right_upright;
+    if (f == PadFamily::steam && !misc1) return PadFamily::steam_grips;
+    return f;
 }
 
 namespace {
@@ -43,45 +47,57 @@ std::string button(F f, int b, int face_label) {
     switch (b) {
     case kPadSouth: case kPadEast: case kPadWest: case kPadNorth:
         return face_label > 0 && face_label < (int)std::size(kLabels) ? kLabels[face_label] : kFaces[b];
+    // A Joy-Con alone held upright sends the left one's - as Back.
     case kPadBack:
         return pick(f, {{F::xbox360, "Back"}, {F::xbox, "View"}, {F::ps3, "Select"}, {F::ps4, "Share"}, {F::ps5, "Create"},
-                        {F::nintendo, "-"}},
+                        {F::nintendo, "-"}, {F::joycon_left_upright, "-"}},
                     "Back");
-    // A Joy-Con alone sends its - or + as Start, and the left one's Capture as Guide.
+    // Held sideways, it sends its - or + as Start, and the left one's Capture as Guide.
     case kPadGuide:
         return pick(f, {{F::xbox, "Xbox"}, {F::ps4, "PS"}, {F::nintendo, "Home"}, {F::joycon_left, "Capture"},
-                        {F::joycon_right, "Home"}, {F::gamecube, "Home"}, {F::steam, "Steam"}},
+                        {F::joycon_right, "Home"}, {F::joycon_right_upright, "Home"}, {F::gamecube, "Home"},
+                        {F::steam, "Steam"}, {F::steam_grips, "Steam"}},
                     "Guide");
     case kPadStart:
         return pick(f, {{F::xbox360, "Start"}, {F::xbox, "Menu"}, {F::ps3, "Start"}, {F::ps4, "Options"},
-                        {F::nintendo, "+"}, {F::joycon_left, "-"}, {F::joycon_right, "+"}},
+                        {F::nintendo, "+"}, {F::joycon_left, "-"}, {F::joycon_right, "+"}, {F::joycon_right_upright, "+"}},
                     "Start");
     case kPadLeftStick:
-        return pick(f, {{F::xbox, "LS"}, {F::ps4, "L3"}, {F::joycon_left, "Stick click"}, {F::joycon_right, "Stick click"}},
+        return pick(f, {{F::xbox, "LS"}, {F::ps4, "L3"}, {F::joycon_left, "Stick click"}, {F::joycon_right, "Stick click"},
+                        {F::joycon_left_upright, "Stick click"}},
                     "Left stick click");
-    case kPadRightStick: return pick(f, {{F::xbox, "RS"}, {F::ps4, "R3"}}, "Right stick click");
-    // A Joy-Con alone, held sideways, sends SL and SR as its shoulders.
+    case kPadRightStick:
+        return pick(f, {{F::xbox, "RS"}, {F::ps4, "R3"}, {F::joycon_right_upright, "Stick click"}}, "Right stick click");
+    // Held sideways, SL and SR are its shoulders; held upright, L or R.
     case kPadLeftShoulder:
         return pick(f, {{F::xbox, "LB"}, {F::ps4, "L1"}, {F::nintendo, "L"}, {F::joycon_left, "SL"},
-                        {F::joycon_right, "SL"}, {F::gamecube, "ZL"}},
+                        {F::joycon_right, "SL"}, {F::joycon_left_upright, "L"}, {F::gamecube, "ZL"}},
                     "Left shoulder");
     case kPadRightShoulder:
         return pick(f, {{F::xbox, "RB"}, {F::ps4, "R1"}, {F::nintendo, "R"}, {F::joycon_left, "SR"},
-                        {F::joycon_right, "SR"}, {F::gamecube, "Z"}},
+                        {F::joycon_right, "SR"}, {F::joycon_right_upright, "R"}, {F::gamecube, "Z"}},
                     "Right shoulder");
     case kPadUp: return "D-pad up";
     case kPadDown: return "D-pad down";
     case kPadLeft: return "D-pad left";
     case kPadRight: return "D-pad right";
+    // The first Steam Controller has no misc1.
     case 15:
         return pick(f, {{F::xbox360, "Misc 1"}, {F::xbox, "Share"}, {F::ps5, "Mute"}, {F::nintendo, "Capture"},
-                        {F::gamecube, "Capture"}, {F::steam, "Quick access"}},
+                        {F::joycon_left_upright, "Capture"}, {F::gamecube, "Capture"}, {F::steam, "Quick access"}},
                     "Misc 1");
-    // And its L or R and ZL or ZR as paddles.
-    case 16: return pick(f, {{F::joycon_right, "R"}, {F::steam, "R4"}}, "Right paddle 1");
-    case 17: return pick(f, {{F::joycon_left, "L"}, {F::steam, "L4"}}, "Left paddle 1");
-    case 18: return pick(f, {{F::joycon_right, "ZR"}, {F::steam, "R5"}}, "Right paddle 2");
-    case 19: return pick(f, {{F::joycon_left, "ZL"}, {F::steam, "L5"}}, "Left paddle 2");
+    // Held sideways, L or R and ZL or ZR are paddles; held upright, SL and SR are. The first
+    // Steam Controller sends its back grips as the first two.
+    case 16:
+        return pick(f, {{F::joycon_right, "R"}, {F::joycon_right_upright, "SR"}, {F::steam, "R4"},
+                        {F::steam_grips, "Right grip"}},
+                    "Right paddle 1");
+    case 17:
+        return pick(f, {{F::joycon_left, "L"}, {F::joycon_left_upright, "SL"}, {F::steam, "L4"},
+                        {F::steam_grips, "Left grip"}},
+                    "Left paddle 1");
+    case 18: return pick(f, {{F::joycon_right, "ZR"}, {F::joycon_right_upright, "SL"}, {F::steam, "R5"}}, "Right paddle 2");
+    case 19: return pick(f, {{F::joycon_left, "ZL"}, {F::joycon_left_upright, "SR"}, {F::steam, "L5"}}, "Left paddle 2");
     case 20: return "Touchpad";
     // A GameCube pad's C button (a Switch 2 one's) and its triggers' clicks.
     case 21: return pick(f, {{F::gamecube, "C"}}, "Misc 2");
@@ -96,14 +112,17 @@ std::string button(F f, int b, int face_label) {
 std::string pad_glyph(PadFamily f, const PadSource& s, int face_label) {
     if (!s.axis) return button(f, s.index, face_label);
     if (s.index == kPadLeftTrigger)
-        return pick(f, {{F::xbox, "LT"}, {F::ps4, "L2"}, {F::nintendo, "ZL"}, {F::gamecube, "L"}}, "Left trigger");
+        return pick(f, {{F::xbox, "LT"}, {F::ps4, "L2"}, {F::nintendo, "ZL"}, {F::joycon_left_upright, "ZL"}, {F::gamecube, "L"}},
+                    "Left trigger");
     if (s.index == kPadRightTrigger)
-        return pick(f, {{F::xbox, "RT"}, {F::ps4, "R2"}, {F::nintendo, "ZR"}, {F::gamecube, "R"}}, "Right trigger");
+        return pick(f, {{F::xbox, "RT"}, {F::ps4, "R2"}, {F::nintendo, "ZR"}, {F::joycon_right_upright, "ZR"}, {F::gamecube, "R"}},
+                    "Right trigger");
     const bool left = s.index == kPadLeftX || s.index == kPadLeftY;
     std::string name = left ? "Left stick" : "Right stick";
     if (f == F::gamecube) name = left ? "Control stick" : "C-stick";
-    // A Joy-Con alone sends its one stick as the left.
-    if (f == F::joycon_left || f == F::joycon_right) name = left ? "Stick" : "Right stick";
+    // A Joy-Con alone sends its one stick as the left, but for the right one held upright.
+    if (f == F::joycon_left || f == F::joycon_right || f == F::joycon_left_upright) name = left ? "Stick" : "Right stick";
+    if (f == F::joycon_right_upright) name = left ? "Left stick" : "Stick";
     if (s.half == 0) return name;
     const bool x = s.index == kPadLeftX || s.index == kPadRightX;
     // SDL's y is down from the centre.
