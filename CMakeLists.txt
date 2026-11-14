@@ -930,6 +930,14 @@ function(gcn_add_game)
     _gcn_set_standards(test_banner)
     target_include_directories(test_banner PRIVATE ${RT})
     target_compile_options(test_banner PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The boot splash's look (tools/test_splash_look.cpp): runtime/gx/splash_look.cpp's colour,
+    # bar rule, banner runs and placement, on banners the test makes up.
+    add_executable(test_splash_look EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_splash_look.cpp
+      ${RT}/gx/splash_look.cpp)
+    _gcn_set_standards(test_splash_look)
+    target_include_directories(test_splash_look PRIVATE ${RT})
+    target_compile_options(test_splash_look PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID AND NOT WIN32)
@@ -1172,7 +1180,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_clock test_pause
+    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_ready_file test_code_table test_code_watch test_aid)
