@@ -227,22 +227,34 @@ void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const c
     host_frame(guest);
 }
 
-// A toast whose text ends in "1", a glyph with much less ink than its advance: the pill's left
-// and right edges are within 1 px of the same distance from the ink its text drew.
+// A toast starting and ending in "1", whose ink is narrower than its advance: the pill's
+// padding matches its text's ink on both sides.
 void toast_padding(SDL_Window* window, const std::string& dir) {
+    SDL_SetWindowSize(window, 1440, 1080);
     Guest guest;
     toasts_init(window, dir, false, false, guest);
-    overlay_pads_notice("Pad one", " connected as player 1");
+    overlay_pads_notice("1Pad one", " connected as player 1");
     host_frame(guest);
     const std::vector<OverlayTestToast> laid = overlay_test_toasts();
     const float left = laid.size() == 1 ? laid[0].ink_left - laid[0].left : -1.0f;
     const float right = laid.size() == 1 ? laid[0].right - laid[0].ink_right : -100.0f;
     char said[256];
-    snprintf(said, sizeof(said), "a toast ending in \"1\" has its padding even: %.1f px left of its ink, %.1f px right",
+    snprintf(said, sizeof(said), "a toast with \"1\" at both ends has even padding: %.1f px left of its ink, %.1f px right",
              left, right);
-    check(left > 0.0f && std::fabs(left - right) <= 1.0f, said);
+    const float pad = overlay_theme_default().padding;
+    check(std::fabs(left - right) < 0.05f && std::fabs(left - pad) < 0.05f, said);
     g_host_ns += 5000 * kToastMsNs;
     host_frame(guest);
+
+    overlay_pads_notice("", " connected as player 1");
+    host_frame(guest);
+    const std::vector<OverlayTestToast> unnamed = overlay_test_toasts();
+    const float unnamed_left = unnamed.size() == 1 ? unnamed[0].ink_left - unnamed[0].left : -1.0f;
+    const float unnamed_right = unnamed.size() == 1 ? unnamed[0].right - unnamed[0].ink_right : -1.0f;
+    check(overlay_notices() == std::vector<std::string>{"connected as player 1"} &&
+              std::fabs(unnamed_left - unnamed_right) < 0.05f && std::fabs(unnamed_left - pad) < 0.05f,
+          "an empty pad name leaves no leading space and keeps the pill's padding even");
+    SDL_SetWindowSize(window, 1280, 960);
 }
 
 void toasts(const std::string& dir) {
