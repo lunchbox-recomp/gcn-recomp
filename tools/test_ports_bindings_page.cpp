@@ -172,6 +172,28 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     check(shoulder == "L is now L." && overlay_bindings_said() == "L is still L.",
           "an upright left Joy-Con's shoulder, bound to L, is named L");
     unplug({&joycon});
+
+    // A Steam Deck has misc1, so its first left paddle is L4, and the first Steam Controller has
+    // none, so its is the left grip (pad_glyph.h). Both have triggers, so a view that mixes up or
+    // drops what it reads of the trigger and misc1 names one of them wrong.
+    Virtual deck{"steam deck pad buttons"}, grips{"steam grips pad buttons"};
+    deck.vendor = grips.vendor = 0x28de;
+    deck.product = 0x1205;
+    grips.product = 0x1102;
+    grips.button_mask = ((1u << SDL_GAMEPAD_BUTTON_COUNT) - 1) & ~(1u << SDL_GAMEPAD_BUTTON_MISC1);
+    std::string paddle[2];
+    Virtual* steam[2] = {&deck, &grips};
+    for (int i = 0; i < 2; i++) {
+        plug({steam[i]});
+        overlay_bindings_open(steam[i]->id);
+        overlay_bindings_listen(PadControl::L);
+        tap(guest, *steam[i], SDL_GAMEPAD_BUTTON_LEFT_PADDLE1);
+        paddle[i] = overlay_bindings_said();
+        unplug({steam[i]});
+    }
+    check(paddle[0] == "L is now L4." && paddle[1] == "L is now Left grip.",
+          "a Steam Deck's first left paddle is L4, with misc1, and the first Steam Controller's its "
+          "left grip, with none");
     overlay_bindings_open(pad.id);
 
     tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
