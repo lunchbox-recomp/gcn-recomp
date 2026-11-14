@@ -36,13 +36,14 @@ void quit() {
 }
 
 // A key's name and what it does there. The names are plain text until F6's glyphs draw each key
-// as the device last pressed labels it. Drafts for the user.
+// as the device last pressed labels it, the pad's names for now. Drafts for the user. On a page
+// B closes the menu; in a view or a question in its place B goes back to the page.
 struct Hint {
     const char* key;
     const char* does;
 };
-constexpr Hint kOnPage[] = {{"A", "Select"}, {"B", "Back"}, {"L R", "Page"}, {"F1", "Close"}};
-constexpr Hint kInView[] = {{"A", "Select"}, {"B", "Back"}, {"F1", "Close"}};
+constexpr Hint kOnPage[] = {{"A", "Select"}, {"B", "Close"}, {"L R", "Page"}};
+constexpr Hint kInView[] = {{"A", "Select"}, {"B", "Back"}};
 // While the Buttons view listens for a press to bind, every button on its gamepad is the
 // binding's, A and B and the shoulders too, so only its way out: Back on any gamepad, Guide too
 // (overlay_bindings.cpp), or Escape.

@@ -16,6 +16,7 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     // Change buttons is right of Set player order, the page's first button.
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     pick_page(guest, "Controllers");
+    const std::string page_hints = footer_test_hints();
     for (int i = 0; i < 20; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
@@ -34,7 +35,9 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     host_frame(guest);
     const bool passed_over = on_press && overlay_bindings_listening();
     const std::string listening_hints = footer_test_hints();
-    check(view_hints == "A Select, B Back, F1 Close" && listening_hints == "Back Cancel, Esc Cancel",
+    check(page_hints == "A Select, B Close, L R Page" && view_hints == "A Select, B Back",
+          "the footer hints B Close on a page and B Back in the Buttons view, as B does there");
+    check(listening_hints == "Back Cancel, Esc Cancel",
           "while press-to-bind listens the footer hints only its way out, Back or Escape, and no page turn");
     tap(guest, other, SDL_GAMEPAD_BUTTON_NORTH);
     const bool other_pad = overlay_bindings_listening();
