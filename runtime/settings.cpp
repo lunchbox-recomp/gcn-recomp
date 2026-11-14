@@ -52,15 +52,10 @@ constexpr const char* kByteOrderMark = "\xEF\xBB\xBF";
 bool read_lines(const std::string& path, std::vector<std::string>& lines, bool& found, bool& bom, bool& crlf,
                 bool& open) {
     bom = crlf = open = false;
-    FILE* f = fopen(path.c_str(), "rb");
-    found = f != nullptr;
-    if (!f) return errno == ENOENT;
     std::string text;
-    char buf[4096];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
-    const bool ok = !ferror(f);
-    fclose(f);
+    int err = 0;
+    found = plat_read_file(path, text, err);
+    if (!found) return err == ENOENT;
     // An editor may put a UTF-8 byte order mark first, which isn't part of the first key.
     bom = text.compare(0, 3, kByteOrderMark) == 0;
     if (bom) text.erase(0, 3);
@@ -73,7 +68,7 @@ bool read_lines(const std::string& path, std::vector<std::string>& lines, bool& 
         lines.push_back(text.substr(start, end - start));
         start = end + 1;
     }
-    return ok;
+    return true;
 }
 
 }  // namespace

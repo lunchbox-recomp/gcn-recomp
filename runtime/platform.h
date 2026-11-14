@@ -87,8 +87,8 @@ bool plat_replace_file(const char* from, const char* to);
 // leaves the old file whole and no temporary file. It says on stderr what failed, and a temporary
 // file it can't make ends the line "so <unsaved> isn't saved".
 bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved);
-// `text` saved to `path` as plat_save_file does, after making the directory it's in.
-bool plat_save_text_making_dirs(const std::string& path, const std::string& text);
+// plat_save_file, after making the directory `path` is in.
+bool plat_save_file_making_dirs(const std::string& path, const void* data, size_t size, const char* unsaved);
 // The whole file at `path` into `text`. False, with `err` the errno, if it can't be read:
 // ENOENT where there's no file.
 bool plat_read_file(const std::string& path, std::string& text, int& err);

@@ -68,7 +68,5 @@ bool sram_load(const std::string& path, uint8_t* s) {
 }
 
 bool sram_save(const std::string& path, const uint8_t* s) {
-    const size_t slash = path.find_last_of("/\\");
-    if (slash != std::string::npos) plat_make_dirs(path.substr(0, slash));
-    return plat_save_file(path, s, SRAM_SIZE, "the SRAM");
+    return plat_save_file_making_dirs(path, s, SRAM_SIZE, "the SRAM");
 }

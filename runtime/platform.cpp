@@ -650,10 +650,10 @@ bool plat_save_file(const std::string& path, const void* data, size_t size, cons
     return true;
 }
 
-bool plat_save_text_making_dirs(const std::string& path, const std::string& text) {
+bool plat_save_file_making_dirs(const std::string& path, const void* data, size_t size, const char* unsaved) {
     const size_t slash = path.find_last_of("/\\");
     if (slash != std::string::npos && slash > 0) plat_make_dirs(path.substr(0, slash));
-    return plat_save_file(path, text.data(), text.size(), path.c_str());
+    return plat_save_file(path, data, size, unsaved);
 }
 
 bool plat_read_file(const std::string& path, std::string& text, int& err) {

@@ -227,5 +227,6 @@ SavedPorts ports_load(const std::string& path, bool& readable) {
 }
 
 bool ports_save(const std::string& path, const SavedPorts& saved) {
-    return plat_save_text_making_dirs(path, ports_format(saved));
+    const std::string text = ports_format(saved);
+    return plat_save_file_making_dirs(path, text.data(), text.size(), path.c_str());
 }

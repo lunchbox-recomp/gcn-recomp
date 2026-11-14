@@ -362,7 +362,8 @@ SavedBindings bindings_load(const std::string& path, bool& readable) {
 }
 
 bool bindings_save(const std::string& path, const SavedBindings& saved) {
-    return plat_save_text_making_dirs(path, bindings_format(saved));
+    const std::string text = bindings_format(saved);
+    return plat_save_file_making_dirs(path, text.data(), text.size(), path.c_str());
 }
 
 // ---- The words of a controls.txt line
