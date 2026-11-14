@@ -49,6 +49,13 @@ struct Settings {
 // A flag wins over a variable, then a loaded key. Null means absent; an empty value
 // means no path and still wins over the lower-priority sources.
 std::string settings_choose_path(const std::string& key, const char* flag, const char* variable);
+// settings_choose_path, except that a path from the key with no file there is skipped: the
+// result is "", and stderr gets "<path>: no such file, so settings.txt's <name> is skipped for
+// this run". settings.txt outlives the files it names, as when a mods folder is deleted, and
+// a start that stopped on one would leave the menu that changes it out of reach. A missing
+// file that a flag or variable names is kept, and stops the run where it's opened.
+std::string settings_choose_present_path(const std::string& key, const char* flag, const char* variable,
+                                         const char* name);
 
 // The settings in the file at `path`, over the defaults. A missing file gives the defaults,
 // and so does one that can't be read, with a line on stderr.

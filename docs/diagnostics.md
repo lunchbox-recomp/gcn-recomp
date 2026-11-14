@@ -1477,7 +1477,10 @@ the run, as does a last line with no newline, since it may be cut short.
 
 A path that's missing, unreadable or a folder stops the run with the file and no line, and
 so does a list over 96 MiB and 4 KiB. The runtime refuses a list that size before it parses
-any line.
+any line. The one exception is a `ram_patches` key whose file is missing, with no flag or
+variable over it. The run goes on with no list, and stderr gets
+`PATH: no such file, so settings.txt's ram_patches is skipped for this run`. `settings.txt`
+outlives the files it names, so a deleted mods folder would otherwise stop every start.
 
 A bare `--ram-patches` prints one line on stderr and exits 1.
 

@@ -135,6 +135,32 @@ void overlay_paths() {
     if (work >= 0) { fchdir(work); close(work); }
 }
 
+// settings_choose_present_path skips a key whose file is missing, in one line, and nothing
+// else: not a key whose file is there or can't be looked for, and not a flag's or variable's.
+void present_paths() {
+    const std::string there = path_of("present.txt"), gone = path_of("mods/gone.txt");
+    write_file(there, "");
+    std::string took;
+    auto choose = [&](const std::string& key, const char* flag, const char* variable) {
+        return stderr_during([&] { took = settings_choose_present_path(key, flag, variable, "ram_patches"); });
+    };
+    check(choose(there, nullptr, nullptr).empty() && took == there, "a key whose file is there is kept");
+    check(choose(gone, nullptr, nullptr) == gone + ": no such file, so settings.txt's ram_patches is skipped for this run\n" &&
+              took.empty(),
+          "a key whose file is missing is skipped, in one line naming the path and the key");
+    check(choose(gone, there.c_str(), nullptr).empty() && took == there, "a flag over it is taken, with nothing said");
+    check(choose(gone, nullptr, there.c_str()).empty() && took == there, "and so is a variable");
+    check(choose(gone, "", nullptr).empty() && took.empty(), "and an empty flag, which means none");
+    check(choose("", gone.c_str(), nullptr).empty() && took == gone, "a flag whose file is missing is kept");
+    check(choose("", nullptr, gone.c_str()).empty() && took == gone, "and so is a variable whose file is missing");
+    check(choose("", nullptr, nullptr).empty() && took.empty(), "an empty key is none, with nothing said");
+    const std::string locked = path_of("locked");
+    mkdir(locked.c_str(), 0);
+    check(choose(locked + "/patches.txt", nullptr, nullptr).empty() && took == locked + "/patches.txt",
+          "a key whose file can't be looked for is kept, to stop the run with the reason");
+    chmod(locked.c_str(), 0755);
+}
+
 void byte_order_mark() {
     // Written as a string, since \xBF in a literal with aspect after it would take the a as
     // another hex digit.
@@ -486,6 +512,7 @@ int main(int argc, char** argv) {
     missing_file();
     parsing();
     overlay_paths();
+    present_paths();
     byte_order_mark();
     aspects();
     aspects_match_the_flag();

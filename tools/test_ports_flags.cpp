@@ -2,6 +2,7 @@
 // --disc-overlay, --bot, --ram-patches, --telemetry and GCN_INPUT_LOG, then the frontend under
 // --no-gamepads, a mode of its own. Read in by tools/test_ports.cpp after the frontend.
 #include "test_ports_support.h"
+#include <filesystem>
 #include <unistd.h>
 
 namespace {
@@ -39,10 +40,14 @@ void disc_speed(const std::string& dir) {
           "--disc=slow is refused with a line that says what --disc takes");
 }
 
-// ---- main() takes the overlay path from the flag, variable or settings key.
-void disc_overlay_flags() {
+// ---- main() takes the overlay path from the flag, variable or settings key. The key's file is
+// there, since a key whose file is missing is skipped (disc_overlay_missing). The flag's and
+// the variable's aren't, which doesn't matter to them.
+void disc_overlay_flags(const std::string& dir) {
     Settings settings;
-    settings.disc_overlay = "key.txt";
+    settings.disc_overlay = dir + "/overlay-key.txt";
+    write_file(settings.disc_overlay, "");
+    const std::string key = settings.disc_overlay;
     char game[] = "game", image[] = "game.iso", flag[] = "--disc-overlay=flag.txt";
     char empty[] = "--disc-overlay=", later[] = "--disc-overlay=later.txt";
     char* none[] = {game, image, nullptr};
@@ -50,7 +55,7 @@ void disc_overlay_flags() {
     char* blank[] = {game, empty, nullptr};
     char* both[] = {game, flag, later, nullptr};
     unsetenv("GCN_DISC_OVERLAY");
-    check(take_disc_overlay(settings, 2, none) == "key.txt", "the settings key supplies the overlay path");
+    check(take_disc_overlay(settings, 2, none) == key, "the settings key supplies the overlay path");
     check(take_disc_overlay(settings, 2, one) == "flag.txt", "the flag beats the settings key");
     check(take_disc_overlay(settings, 2, blank).empty(), "an empty flag chooses no overlay");
     check(take_disc_overlay(settings, 3, both) == "later.txt", "the last overlay flag wins");
@@ -64,6 +69,43 @@ void disc_overlay_flags() {
     unsetenv("GCN_DISC_OVERLAY");
     settings.disc_overlay.clear();
     check(take_disc_overlay(settings, 2, none).empty(), "an empty settings key chooses no overlay");
+}
+
+// A path whose file is missing or there, from each of the key, the variable and the flag.
+// settings.txt outlives the files it names, so a key whose file is missing is skipped in one
+// line and the run goes without an overlay. A missing file the variable or flag names is kept,
+// and the load stops the run on it as before (test_disc_overlay).
+void disc_overlay_missing(const std::string& dir) {
+    const std::string there = dir + "/overlay-there.txt", gone = dir + "/mods/overlay-gone.txt";
+    write_file(there, "");
+    const std::string said = dir + "/disc-overlay-stderr.txt";
+    const std::string skipped = gone + ": no such file, so settings.txt's disc_overlay is skipped for this run\n";
+    std::string flag_there = "--disc-overlay=" + there, flag_gone = "--disc-overlay=" + gone;
+    char game[] = "game", image[] = "game.iso";
+    char* none[] = {game, image, nullptr};
+    char* to_there[] = {game, flag_there.data(), nullptr};
+    char* to_gone[] = {game, flag_gone.data(), nullptr};
+    Settings settings;
+    std::string took;
+    auto take = [&](const std::string& key, char** argv) {
+        settings.disc_overlay = key;
+        capture(said, [&] { took = take_disc_overlay(settings, 2, argv); });
+        return took;
+    };
+
+    unsetenv("GCN_DISC_OVERLAY");
+    check(take(there, none) == there && read_file(said).empty(), "a settings key whose file is there is the overlay");
+    check(take(gone, none).empty() && read_file(said) == skipped,
+          "a settings key whose file is missing is no overlay, in one line naming the path and that it's skipped");
+    check(take(gone, to_there) == there && read_file(said).empty(),
+          "a flag over that key is the overlay, and nothing is said of the key");
+    check(take("", to_gone) == gone && read_file(said).empty(), "a flag whose file is missing is kept, to stop the run");
+    setenv("GCN_DISC_OVERLAY", there.c_str(), 1);
+    check(take(gone, none) == there && read_file(said).empty(),
+          "a variable whose file is there is the overlay over a missing key's, and nothing is said of the key");
+    setenv("GCN_DISC_OVERLAY", gone.c_str(), 1);
+    check(take("", none) == gone && read_file(said).empty(), "a variable whose file is missing is kept, to stop the run");
+    unsetenv("GCN_DISC_OVERLAY");
 }
 
 // ---- main() takes the bot from --bot=PATH or GCN_BOT (take_bot), which turns the gamepads
@@ -159,8 +201,11 @@ void ram_patch_flags(const std::string& dir) {
           "a bare --ram-patches is refused in one line, leaving the list as it was");
     unsetenv("GCN_RAM_PATCHES");
 
-    loaded.ram_patches = "key.txt";
-    check(take(2, none) && ram_patches_file() == "key.txt", "the settings key is the list with no flag or variable");
+    // A key whose file is there, since one whose file is missing is skipped (ram_patches_missing).
+    const std::string key = dir + "/ram-key.txt";
+    write_file(key, "");
+    loaded.ram_patches = key;
+    check(take(2, none) && ram_patches_file() == key, "the settings key is the list with no flag or variable");
     check(take(2, one) && ram_patches_file() == "a.txt", "--ram-patches=FILE beats the settings key");
     check(take(2, blank) && ram_patches_file().empty(), "an empty --ram-patches= beats the settings key and means no list");
     check(!take(3, lone) && ram_patches_file() == "left" &&
@@ -176,17 +221,65 @@ void ram_patch_flags(const std::string& dir) {
 
     // A relative path in the file is read from the file's folder, not the working directory.
     const std::string path = dir + "/ram-patches-settings.txt";
-    auto load = [&](const char* text) {
+    auto load = [&](const std::string& text) {
         write_file(path, text);
         capture(said, [&] { loaded = settings_load(path); });
     };
+    plat_make_dirs(dir + "/mods");
+    write_file(dir + "/mods/ram.txt", "");
     load("ram_patches mods/ram.txt\n");
     check(take(2, none) && ram_patches_file() == dir + "/mods/ram.txt",
           "a relative settings key is read from the folder that holds settings.txt");
-    load("ram_patches /abs/ram.txt\n");
-    check(take(2, none) && ram_patches_file() == "/abs/ram.txt", "an absolute settings key is the list as written");
+    const std::string absolute = std::filesystem::absolute(dir + "/abs-ram.txt").string();
+    write_file(absolute, "");
+    load("ram_patches " + absolute + "\n");
+    check(take(2, none) && ram_patches_file() == absolute, "an absolute settings key is the list as written");
     load("ram_patches\n");
     check(take(2, none) && ram_patches_file().empty(), "a ram_patches line with no path is no list");
+}
+
+// A path whose file is missing or there, from each of the key, the variable and the flag, as
+// disc_overlay_missing does for the overlay. A missing file the variable or flag names is kept,
+// and ram_patches_apply stops the run on it as before (test_ram_patches).
+void ram_patches_missing(const std::string& dir) {
+    const std::string there = dir + "/ram-there.txt", gone = dir + "/mods/ram-gone.txt";
+    write_file(there, "");
+    const std::string said = dir + "/ram-missing-stderr.txt";
+    const std::string skipped = gone + ": no such file, so settings.txt's ram_patches is skipped for this run\n";
+    std::string flag_there = "--ram-patches=" + there, flag_gone = "--ram-patches=" + gone;
+    char game[] = "game", image[] = "game.iso", bare[] = "--ram-patches";
+    char* none[] = {game, image, nullptr};
+    char* to_there[] = {game, flag_there.data(), nullptr};
+    char* to_gone[] = {game, flag_gone.data(), nullptr};
+    char* lone[] = {game, bare, nullptr};
+    Settings loaded;
+    bool took = false;
+    auto take = [&](const std::string& key, char** argv) {
+        loaded.ram_patches = key;
+        ram_patches_set_file("left");
+        capture(said, [&] { took = take_ram_patches(loaded, 2, argv); });
+        return took;
+    };
+
+    unsetenv("GCN_RAM_PATCHES");
+    check(take(there, none) && ram_patches_file() == there && read_file(said).empty(),
+          "a settings key whose file is there is the list");
+    check(take(gone, none) && ram_patches_file().empty() && read_file(said) == skipped,
+          "a settings key whose file is missing is no list, in one line naming the path and that it's skipped");
+    check(take(gone, to_there) && ram_patches_file() == there && read_file(said).empty(),
+          "a flag over that key is the list, and nothing is said of the key");
+    check(take("", to_gone) && ram_patches_file() == gone && read_file(said).empty(),
+          "a flag whose file is missing is kept, to stop the run");
+    check(!take(gone, lone) &&
+              read_file(said) == "--ram-patches: the RAM patch list's path goes after an =, as in --ram-patches=FILE\n",
+          "a bare --ram-patches beside a missing key's file is refused in its one line alone");
+    setenv("GCN_RAM_PATCHES", there.c_str(), 1);
+    check(take(gone, none) && ram_patches_file() == there && read_file(said).empty(),
+          "a variable whose file is there is the list over a missing key's, and nothing is said of the key");
+    setenv("GCN_RAM_PATCHES", gone.c_str(), 1);
+    check(take("", none) && ram_patches_file() == gone && read_file(said).empty(),
+          "a variable whose file is missing is kept, to stop the run");
+    unsetenv("GCN_RAM_PATCHES");
 }
 
 // ---- main() takes the telemetry target from --telemetry[=host:port] or GCN_TELEMETRY

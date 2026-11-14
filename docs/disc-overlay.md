@@ -65,6 +65,8 @@ Dolphin does the same when it builds a virtual disc for a folder of files. It wr
 
 The runtime loads the manifest and opens every host file it names before boot reads the disc header, so boot copies the new FST and the new DOL with no other change. Every later read of an added or replaced file comes from its host file.
 
+A `disc_overlay` key whose manifest is missing, with no variable or flag over it, is skipped. The run goes on with no overlay, and stderr gets `PATH: no such file, so settings.txt's disc_overlay is skipped for this run`. `settings.txt` outlives the files it names, so a deleted mods folder would otherwise stop every start. A missing manifest that the variable or flag names stops the run as below.
+
 Load stops the run with a message when anything is wrong. Most refusals name the manifest and the line. A manifest that can't be opened, can't be read or is over 16 MiB has no line to name, so the message names the file alone.
 
 The image's disc ID and its FST's offset, size and hash have to match the `base` line, and the message names both hashes when they don't. A line that isn't in the format above stops the run too, and so does a range file that's missing, is a folder or is shorter than its range.

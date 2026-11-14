@@ -79,6 +79,15 @@ std::string settings_choose_path(const std::string& key, const char* flag, const
     return key;
 }
 
+std::string settings_choose_present_path(const std::string& key, const char* flag, const char* variable,
+                                         const char* name) {
+    if (flag || variable || key.empty()) return settings_choose_path(key, flag, variable);
+    std::error_code ec;
+    if (std::filesystem::exists(key, ec) || ec) return key;
+    fprintf(stderr, "%s: no such file, so settings.txt's %s is skipped for this run\n", key.c_str(), name);
+    return "";
+}
+
 // A path in the file is relative to the file's folder, not the process's work dir.
 static std::string settings_file_path(const std::string& file, const std::string& value) {
     if (value.empty()) return "";

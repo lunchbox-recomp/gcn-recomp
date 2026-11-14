@@ -237,9 +237,11 @@ int run_ports(const std::string& dir) {
     labels(dir);
     headset_layout();
     disc_speed(dir);
-    disc_overlay_flags();
+    disc_overlay_flags(dir);
+    disc_overlay_missing(dir);
     bot_flags(dir);
     ram_patch_flags(dir);
+    ram_patches_missing(dir);
     telemetry_flags();
     run_end(dir);
     quit_at_frame(dir);

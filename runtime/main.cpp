@@ -473,24 +473,29 @@ static bool take_disc_speed(const Settings& settings, int argc, char** argv) {
 }
 
 // The last flag wins over the variable, which wins over the settings key. An empty value
-// at either level chooses no overlay for this run.
+// at either level chooses no overlay for this run, and so does a key whose file is missing
+// (settings_choose_present_path).
 static std::string take_disc_overlay(const Settings& settings, int argc, char** argv) {
     const char* flag = nullptr;
     for (int i = 1; i < argc; i++)
         if (!strncmp(argv[i], "--disc-overlay=", 15)) flag = argv[i] + 15;
-    return settings_choose_path(settings.disc_overlay, flag, getenv("GCN_DISC_OVERLAY"));
+    return settings_choose_present_path(settings.disc_overlay, flag, getenv("GCN_DISC_OVERLAY"), "disc_overlay");
 }
 
 // The last flag wins over the variable, which wins over the settings key. An empty value at any
-// level chooses no patches for this run. The result is false, with the reason on stderr, for a
-// bare --ram-patches.
+// level chooses no patches for this run, and so does a key whose file is missing
+// (settings_choose_present_path). The result is false, with the reason on stderr, for a bare
+// --ram-patches.
 static bool take_ram_patches(const Settings& settings, int argc, char** argv) {
     std::string file, error;
-    const std::string unflagged = settings_choose_path(settings.ram_patches, nullptr, getenv("GCN_RAM_PATCHES"));
-    if (!ram_patches_choose(unflagged.c_str(), argc, argv, file, error)) {
+    const char* variable = getenv("GCN_RAM_PATCHES");
+    if (!ram_patches_choose(variable, argc, argv, file, error)) {
         fprintf(stderr, "%s\n", error.c_str());
         return false;
     }
+    bool flagged = false;
+    for (int i = 1; i < argc; i++) flagged |= !strncmp(argv[i], "--ram-patches=", 14);
+    if (!flagged && !variable) file = settings_choose_present_path(settings.ram_patches, nullptr, nullptr, "ram_patches");
     ram_patches_set_file(file);
     return true;
 }
