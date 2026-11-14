@@ -177,6 +177,10 @@ int main() {
     // end of a block exactly the table's size, which the sanitizers stop (CMakeLists.txt).
     {
         // 13 bytes: the root's entry, saying there are two, and a NUL. The second isn't there.
+        // Without the bound the walk still refuses it, as every name starts at count * 12 or
+        // later, past the table, so no input gets a wrong answer from it; what it stops is the
+        // read of the missing entry, which only the sanitizers see. A build without them
+        // doesn't check this bound.
         std::unique_ptr<uint8_t[]> t(new uint8_t[13]());
         t[0] = 1;
         t[11] = 2;
