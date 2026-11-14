@@ -3,8 +3,9 @@
 // runtime/ready_file.cpp writes GCN_READY_FILE's lines through a temporary file that then
 // replaces it, so a launcher watching it sees each version whole. These check the lines and
 // their order, that each word goes in once, that a reader polling the file meanwhile never
-// sees a line cut short, that no line waits for a sync, what a console reset leaves for the
-// run after, and that the times count from the process's start. It prints what a line costs.
+// sees a line cut short, that no line waits for a sync, that a run starts the file afresh,
+// what a console reset leaves for the run after, and that the times count from the process's
+// start. It prints what a line costs.
 //
 // usage: test_ready_file WORKDIR
 // Exits 0 only if every check passes.
@@ -64,7 +65,7 @@ int main(int argc, char** argv) {
     check(slurp(a) == "window 12\nframe 345\n", "after the first, which stays");
     check(!exists(a + ".tmp"), "and no temporary file is left");
 
-    // A file the launcher made, or a line from before, is kept and added to.
+    // An append keeps what the file held; a start, a run's first line, replaces it.
     const std::string b = dir + "/b.txt";
     if (FILE* f = fopen(b.c_str(), "wb")) {
         fputs("launch 0\n", f);
@@ -72,6 +73,7 @@ int main(int argc, char** argv) {
     }
     ready_file_append(b.c_str(), "window", 7);
     check(slurp(b) == "launch 0\nwindow 7\n", "what the file held is kept");
+    check(ready_file_start(b.c_str(), "window", 3) && slurp(b) == "window 3\n", "and a start replaces it");
 
     check(!ready_file_append((dir + "/no/such/dir/c.txt").c_str(), "window", 1),
           "a path that can't be written says so, and nothing more happens");
@@ -110,13 +112,18 @@ int main(int argc, char** argv) {
     printf("[ready] a line takes a median of %.3f ms, at most %.3f, over %zu\n", ms[25], ms[49], std::size(ms));
 
     // GCN_READY_FILE: each word once, with the time since the process started. Its directory
-    // comes only after the first mark, so that one fails and the next tries again.
+    // comes only after the first mark, so that one fails and the next tries again, and then
+    // holds an earlier run's lines, which the run's first line replaces.
     const std::string later = dir + "/later", e = later + "/e.txt";
     setenv("GCN_READY_FILE", e.c_str(), 1);
     const double before = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_main).count();
     ready_mark("window");
     check(!exists(e), "a mark whose line can't be written writes nothing");
     plat_make_dirs(later);
+    if (FILE* f = fopen(e.c_str(), "wb")) {
+        fputs("window 1\nframe 2\n", f);
+        fclose(f);
+    }
     ready_mark("window");
     ready_mark("window");
     ready_relaunching();
@@ -128,7 +135,8 @@ int main(int argc, char** argv) {
     const bool parsed = sscanf(got.c_str(), "window %lld\nframe %lld\n", &w, &fr) == 2;
     int lines = 0;
     for (char c : got) lines += c == '\n';
-    check(parsed && lines == 2, "GCN_READY_FILE gets window once its write works, then frame, each once");
+    check(parsed && lines == 2,
+          "GCN_READY_FILE gets window once its write works, over the earlier run's lines, then frame, each once");
     check(parsed && w <= fr, "the frame's time is no earlier than the window's");
     // The process started before main did, and this run is well under a minute.
     check(parsed && (double)w + 1.0 >= before && fr < 60000, "the times count from the process's start");

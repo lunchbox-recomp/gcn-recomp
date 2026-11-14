@@ -832,7 +832,7 @@ waits for both isn't left waiting.
 
 That's one pair a launch. A console reset starts the game again with `GCN_READY_FILE` taken
 out of its environment, so it writes no second pair for a launcher still watching. A reset
-before the game's first frame keeps it, and the run after writes the lines this one didn't,
+before the game's first frame keeps it, and the run after writes its own pair over the file,
 timed from the first run's start on macOS and Linux (the relaunch is the same process) and
 from the new process's on Windows.
 
@@ -840,15 +840,16 @@ Each line goes in through `<path>.tmp`, which then replaces the file, so a reade
 a line cut short. Nothing waits for the disk, since the file is only for a reader at the
 time: a line costs the main thread no sync, and a power cut can leave the file empty. A
 watcher of the file itself sees it renamed over, so it watches the directory or opens the
-file again at each change. What the file held is kept, so a launcher removes it before a
-launch to see only that run's lines. A path that can't be written gets a line on stderr and
-the run goes on, and the line is tried again at the next frame shown, so a write that fails
+file again at each change. The run's first line replaces whatever the file held, so a path
+used again never shows the last run's `window` at once, and a launcher needn't remove it
+first. A path that can't be written gets a line on stderr and the run goes on, and the line is tried again at the next frame shown, so a write that fails
 once (on Windows, while the launcher has the file open) still goes in. `--headless` and
 `--vr` write nothing.
 
 `ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
 order, that a reader polling the file never sees part of one, that no line waits for a sync,
-that a line whose write failed goes in at the next try, and that the times count from
+that a line whose write failed goes in at the next try, that a run's first line replaces an
+earlier run's, and that the times count from
 before `main`. It prints a line's cost on the machine's disk (`[ready] a line takes a median
 of <ms> ms`).
 
