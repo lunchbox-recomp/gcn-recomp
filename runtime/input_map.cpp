@@ -129,7 +129,8 @@ void attach_wheel() {
 
 // The gamepads the file's `gamepad` sources read, held open while it binds them, once SDL's
 // gamepads are up (not under --list-controls or --test-ffb).
-// A joystick SDL has no gamepad mapping for reads nothing on those lines, said once a device.
+// A joystick SDL has no gamepad mapping for, or one SDL can't open as a gamepad, reads nothing
+// on those lines, said once a device with SDL's error for the second.
 std::vector<SDL_Gamepad*> g_gamepads;
 std::vector<SDL_JoystickID> g_unmapped_said;
 void hold_gamepads() {
@@ -137,10 +138,16 @@ void hold_gamepads() {
     for (const auto& b : g_bindings) {
         if (b.kind != Kind::Gamepad || !b.joy || !SDL_WasInit(SDL_INIT_GAMEPAD)) continue;
         const SDL_JoystickID id = SDL_GetJoystickID(b.joy);
-        if (SDL_Gamepad* g = SDL_IsGamepad(id) ? SDL_OpenGamepad(id) : nullptr) held.push_back(g);
-        else if (std::find(g_unmapped_said.begin(), g_unmapped_said.end(), id) == g_unmapped_said.end()) {
-            fprintf(stderr, "%s:%d: \"%s\" has no gamepad mapping, so its gamepad sources read nothing\n", g_path.c_str(),
-                    b.line, b.device.c_str());
+        const bool mapped = SDL_IsGamepad(id);
+        if (SDL_Gamepad* g = mapped ? SDL_OpenGamepad(id) : nullptr) {
+            held.push_back(g);
+        } else if (std::find(g_unmapped_said.begin(), g_unmapped_said.end(), id) == g_unmapped_said.end()) {
+            if (mapped)
+                fprintf(stderr, "%s:%d: \"%s\" can't be opened as a gamepad (%s), so its gamepad sources read nothing\n",
+                        g_path.c_str(), b.line, b.device.c_str(), SDL_GetError());
+            else
+                fprintf(stderr, "%s:%d: \"%s\" has no gamepad mapping, so its gamepad sources read nothing\n",
+                        g_path.c_str(), b.line, b.device.c_str());
             g_unmapped_said.push_back(id);
         }
     }
