@@ -650,6 +650,28 @@ bool plat_save_file(const std::string& path, const void* data, size_t size, cons
     return true;
 }
 
+bool plat_save_text_making_dirs(const std::string& path, const std::string& text) {
+    const size_t slash = path.find_last_of("/\\");
+    if (slash != std::string::npos && slash > 0) plat_make_dirs(path.substr(0, slash));
+    return plat_save_file(path, text.data(), text.size(), path.c_str());
+}
+
+bool plat_read_file(const std::string& path, std::string& text, int& err) {
+    text.clear();
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) {
+        err = errno;
+        return false;
+    }
+    char buf[1024];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
+    const bool ok = !ferror(f);
+    err = ok ? 0 : errno;
+    fclose(f);
+    return ok;
+}
+
 std::string plat_find_file(const char* dir, const char* suffix) {
     std::error_code ec;
     std::filesystem::directory_iterator it(dir, ec), end;

@@ -217,29 +217,15 @@ SavedPorts ports_parse(const std::string& text, const char* name) {
 }
 
 SavedPorts ports_load(const std::string& path, bool& readable) {
-    readable = true;
-    auto refuse = [&](int err) {
-        readable = false;
+    std::string text;
+    int err = 0;
+    readable = plat_read_file(path, text, err) || err == ENOENT;
+    if (!readable)
         fprintf(stderr, "%s: can't read it (%s), so no ports are remembered and it isn't saved over\n", path.c_str(),
                 strerror(err));
-        return SavedPorts{};
-    };
-    FILE* f = fopen(path.c_str(), "rb");
-    if (!f) return errno == ENOENT ? SavedPorts{} : refuse(errno);
-    std::string text;
-    char buf[1024];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
-    const bool ok = !ferror(f);
-    const int err = errno;
-    fclose(f);
-    if (!ok) return refuse(err);
-    return ports_parse(text, path.c_str());
+    return readable ? ports_parse(text, path.c_str()) : SavedPorts{};
 }
 
 bool ports_save(const std::string& path, const SavedPorts& saved) {
-    const size_t slash = path.find_last_of("/\\");
-    if (slash != std::string::npos && slash > 0) plat_make_dirs(path.substr(0, slash));
-    const std::string text = ports_format(saved);
-    return plat_save_file(path, text.data(), text.size(), path.c_str());
+    return plat_save_text_making_dirs(path, ports_format(saved));
 }
