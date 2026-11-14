@@ -11,8 +11,10 @@
 // Each line goes in once. The file is rewritten through PATH.tmp, which then replaces it, so a
 // reader sees it whole, with every line complete; a watcher of the file itself sees it renamed
 // over, so watch its directory or open it again at each change. Nothing waits for the disk
-// (plat_replace_whole_file), so a line costs the main thread no sync. The run's first line
-// replaces whatever the file held, so a path used again never shows an earlier run's window.
+// (plat_replace_whole_file), so a line costs the main thread no sync. A launcher removes the
+// path before it starts the game: an earlier run's file stays there until this run's first
+// line, often hundreds of milliseconds in. That first line replaces whatever the file held,
+// which only guards a launcher that forgets.
 #pragma once
 
 // Appends the word's line to GCN_READY_FILE the first time it's called with that word, and

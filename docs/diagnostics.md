@@ -840,9 +840,11 @@ Each line goes in through `<path>.tmp`, which then replaces the file, so a reade
 a line cut short. Nothing waits for the disk, since the file is only for a reader at the
 time: a line costs the main thread no sync, and a power cut can leave the file empty. A
 watcher of the file itself sees it renamed over, so it watches the directory or opens the
-file again at each change. The run's first line replaces whatever the file held, so a path
-used again never shows the last run's `window` at once, and a launcher needn't remove it
-first. A path that can't be written gets a line on stderr and the run goes on, and the line is tried again at the next frame shown, so a write that fails
+file again at each change. A launcher removes the path before it starts the game, since the
+last run's file stays there until this run's first line, after SDL, the window, the GL
+context and the banner, often hundreds of milliseconds in. A launcher that reads it sooner
+sees the last run's pair. The run's first line replaces whatever the file held, which only
+guards a launcher that forgets. A path that can't be written gets a line on stderr and the run goes on, and the line is tried again at the next frame shown, so a write that fails
 once (on Windows, while the launcher has the file open) still goes in. `--headless` and
 `--vr` write nothing.
 
