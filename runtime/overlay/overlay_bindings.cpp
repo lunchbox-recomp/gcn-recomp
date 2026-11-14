@@ -66,7 +66,7 @@ std::string kept(Bound r) {
         said += (i == 0 ? (others.size() > 1 ? " Players " : " Player ") : i + 1 == others.size() ? " and " : ", ") +
                 std::to_string(others[i] + 1);
     if (!others.empty()) said += others.size() > 1 ? "'s controllers have it too." : "'s controller has it too.";
-    if (r == Bound::unsaved) said += " pads.txt couldn't be written, so this lasts until the game quits.";
+    if (r == Bound::unsaved) said += " pads.txt isn't saved, so this lasts until the game quits.";
     return said;
 }
 

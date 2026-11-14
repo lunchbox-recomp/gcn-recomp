@@ -215,16 +215,16 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
     PadBinding clicked;
     check(gamepads_binding(pad.id, clicked) && clicked.trigger_click == 30473 &&
-              overlay_bindings_said() == "Trigger click is now 93%. pads.txt couldn't be written, so this lasts until "
-                                         "the game quits.",
-          "a slider moved a step and let go says what it's now, and that pads.txt couldn't take it");
+              overlay_bindings_said() == "Trigger click is now 93%. pads.txt isn't saved, so this lasts until the "
+                                         "game quits.",
+          "a slider moved a step and let go says what it's now, and that pads.txt isn't saved");
     for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
     check(overlay_bindings_said() == "virtual pad buttons view has its default buttons, dead zones and trigger click "
-                                     "again. pads.txt couldn't be written, so this lasts until the game quits.",
-          "Reset to default, right of Test rumble, says what it put back, and that pads.txt couldn't take it");
+                                     "again. pads.txt isn't saved, so this lasts until the game quits.",
+          "Reset to default, right of Test rumble, says what it put back, and that pads.txt isn't saved");
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     chmod(locked.c_str(), 0755);
 
