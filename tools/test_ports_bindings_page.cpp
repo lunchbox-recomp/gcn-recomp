@@ -265,6 +265,24 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     check(overlay_open() && focused("Change buttons"),
           "closed from the view and opened again, the Controllers page has Change buttons focused");
 
+    // Escape and F1 in one frame: the view goes back to the page, which the close's fade draws
+    // with the focus where it was, and the menu opened again has Change buttons focused.
+    overlay_bindings_open(pad.id);
+    host_frame(guest);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+    host_frame(guest);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, false);
+    host_frame(guest);
+    const bool went_back = !overlay_open() && !overlay_bindings_shown() && !focused("Change buttons");
+    g_host_ns += 1000000000;  // past the close's fade
+    host_frame(guest);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    host_frame(guest);
+    check(went_back && overlay_open() && focused("Change buttons"),
+          "back from the view as the menu closes, the fade moves no focus, and opened again Change buttons has it");
+
     // Escape and F1 in one frame: the cancel picks the row the focus goes back to, and the menu
     // closes before a draw takes it there. The view opened again has no row picked for it.
     overlay_bindings_open(pad.id);
