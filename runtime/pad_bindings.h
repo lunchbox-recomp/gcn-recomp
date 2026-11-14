@@ -60,7 +60,8 @@ enum PadAxis : int { kPadLeftX, kPadLeftY, kPadRightX, kPadRightY, kPadLeftTrigg
 
 // How far a trigger's axis (0 to 32767) goes before gamepads_merge takes it for the GameCube's
 // digital L or R, the click at the bottom of its travel, unless a player has moved it. The
-// overlay's chord takes them the same way on a gamepad SDL maps no click buttons on (overlay.h).
+// overlay's chord and its menu's page turns take them the same way, the moved click too, on a
+// gamepad SDL maps no click buttons on (overlay.h).
 constexpr int kGamepadTriggerClick = 30000;
 
 // The GameCube pad's controls, as controls.txt names them.

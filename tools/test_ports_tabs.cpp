@@ -1,7 +1,8 @@
 // ---- The menu's pages turned from its header, over a window from SDL's dummy video driver: R1,
 // L1, either trigger and E and Q each move exactly one page, and no further than the first or
 // the last. A shoulder, a trigger or a key held as the menu opens moves nothing, and nothing
-// moves while a slider is active, while the menu asks or during the press-A order. After a
+// moves while a slider is active, while the menu asks or during the press-A order. A trigger
+// turns a page past the gamepad's own trigger click, lowered too. After a
 // change the page's first item has the focus, so A presses it. Read in by tools/test_ports.cpp
 // after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -17,11 +18,13 @@ void knobs_page(void*) {
     ImGui::SliderFloat("##Level", &g_knob_level, 0.0f, 1.0f, "");
 }
 
-// A trigger pulled in all the way and let go, a host frame each.
-void pull(Guest& g, const Virtual& v, int axis) {
-    set_axis(v, axis, 32767);
+// A trigger pulled in to `travel` as SDL's gamepad reads it, 0 to 32767, all the way unless
+// said, and let go to rest, a host frame each. SDL maps a virtual trigger's -32768 to 32767 onto
+// that.
+void pull(Guest& g, const Virtual& v, int axis, int travel = 32767) {
+    set_axis(v, axis, (Sint16)std::clamp(2 * travel - 32767, -32768, 32767));
     host_frame(g);
-    set_axis(v, axis, 0);
+    set_axis(v, axis, -32768);
     host_frame(g);
 }
 
@@ -145,6 +148,20 @@ void tabs_turn(const std::string& dir) {
     tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
     check(ordering && order_kept && overlay_controllers_asking() == -1 && overlay_open(),
           "during the press-A order no shoulder, trigger or key moves a page");
+
+    // A gamepad whose trigger click is lowered, as the Buttons view lowers it for a worn pad,
+    // turns a page with a trigger past that click, as the game takes its L and R there.
+    PadBinding lowered;
+    const bool bound = gamepads_binding(pad.id, lowered);
+    lowered.trigger_click = 20000;
+    gamepads_bind(pad.id, lowered);
+    const int from = overlay_page();
+    pull(guest, pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 19000);
+    const bool short_of = overlay_page() == from;
+    pull(guest, pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 21000);
+    check(bound && from > 0 && short_of && overlay_page() == from - 1,
+          "with the gamepad's trigger click lowered to 20000, a trigger 21000 in turns a page and 19000 in doesn't");
+    gamepads_reset_binding(pad.id);
 
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     unplug({&pad});

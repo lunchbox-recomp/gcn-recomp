@@ -291,6 +291,20 @@ void overlay(const std::string& dir) {
           "where SDL maps no click buttons the triggers past their click stand in, though partway in they don't");
     check(closing.connected && at_rest(closing),
           "the hold that closed it stays out of port 3 until it's let go, the triggers' travel too");
+    // With the gamepad's trigger click lowered, as the Buttons view lowers it for a worn pad, the
+    // triggers past it are the chord's clicks, as they're the game's L and R.
+    PadBinding lowered;
+    const bool bound = gamepads_binding(bare.id, lowered);
+    lowered.trigger_click = 25000;
+    gamepads_bind(bare.id, lowered);
+    chord(bare, true, true, 20000);
+    after(1000);
+    const bool lowered_opens = overlay_open();
+    chord(bare, false, false);
+    const bool lowered_closes = held_for(bare, 1000) && !overlay_open();
+    gamepads_reset_binding(bare.id);
+    check(bound && lowered_opens && lowered_closes,
+          "with the gamepad's trigger click lowered, the triggers partway in past it open and close it");
 
     // A Switch 2 GameCube controller has no Back. Its ZL, a button the GameCube's pad lacks, opens
     // and closes it, and so does its Home, SDL's left shoulder and Guide on it. It has Guide, so

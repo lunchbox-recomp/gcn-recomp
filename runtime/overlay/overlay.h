@@ -10,7 +10,9 @@
 // with neither Back nor Guide, as SDL maps a GameCube controller on Nintendo's adapter, opens
 // and closes it with Z and both triggers clicked in, held for a second with nothing else, once
 // a hold (overlay_poll). The clicks are SDL's MISC3 and MISC4 where SDL maps them, and where it
-// doesn't the triggers past kGamepadTriggerClick, as gamepads_merge takes them. A device
+// doesn't the triggers past the gamepad's trigger click (PadBinding::trigger_click, which the
+// Buttons view sets), as gamepads_merge takes them. The menu takes the triggers' clicks for its
+// page turns the same way. A device
 // controls.txt binds is the file's alone (input_map.h), so the menu never reads it.
 //
 // The panel is the theme's share of the window's width (theme.h) and as tall as its page. Its

@@ -38,8 +38,8 @@ struct HeldPad {
 };
 std::vector<HeldPad> g_pads;
 
-// The triggers, as the menu takes them: buttons past SDL's own, each down while it's in past its
-// click (kGamepadTriggerClick), as the game's default binding clicks it.
+// The triggers, as the menu takes them: buttons past SDL's own, each down while it's clicked in
+// (clicked).
 constexpr int kTriggerL = SDL_GAMEPAD_BUTTON_COUNT, kTriggerR = SDL_GAMEPAD_BUTTON_COUNT + 1;
 static_assert(kTriggerR < 32, "a HeldPad's latch has a bit for each button and trigger");
 
@@ -50,9 +50,27 @@ uint32_t buttons_down(SDL_Gamepad* p) {
     return down;
 }
 
+// Whether `p` has only the GameCube's own buttons, as SDL maps one on Nintendo's adapter: no Back
+// and no Guide, so the chord opens and closes the overlay on it (overlay_poll).
+bool cube_only(SDL_Gamepad* p) {
+    return !SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_BACK) && !SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_GUIDE);
+}
+
+// Whether a trigger of `p` is clicked in. On a gamepad with only the GameCube's buttons it's
+// SDL's `click` button for it where SDL maps one, as for Nintendo's adapter. Elsewhere it's the
+// trigger's `axis` past the click the gamepad's binding has (PadBinding::trigger_click), which
+// the Buttons view moves and gamepads_merge clicks the game's L and R at, since another
+// gamepad's MISC3 and MISC4 may be other buttons.
+bool clicked(SDL_Gamepad* p, SDL_GamepadButton click, SDL_GamepadAxis axis) {
+    if (cube_only(p) && SDL_GamepadHasButton(p, click)) return SDL_GetGamepadButton(p, click);
+    PadBinding b;
+    const int at = gamepads_binding(SDL_GetGamepadID(p), b) ? b.trigger_click : kGamepadTriggerClick;
+    return SDL_GetGamepadAxis(p, axis) > at;
+}
+
 bool is_down(SDL_Gamepad* p, int b) {
-    if (b == kTriggerL) return SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > kGamepadTriggerClick;
-    if (b == kTriggerR) return SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > kGamepadTriggerClick;
+    if (b == kTriggerL) return clicked(p, SDL_GAMEPAD_BUTTON_MISC3, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
+    if (b == kTriggerR) return clicked(p, SDL_GAMEPAD_BUTTON_MISC4, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
     return SDL_GetGamepadButton(p, (SDL_GamepadButton)b);
 }
 
@@ -84,10 +102,8 @@ bool opens(const SDL_GamepadButtonEvent& b) {
 }
 
 // The chord on a gamepad with only the GameCube's own buttons, which SDL maps no Back or Guide
-// on: Z and both trigger clicks held with nothing else for kChordNs. The clicks are SDL's MISC3
-// and MISC4 where it maps them, as for Nintendo's adapter, and the triggers' axes past their
-// click (kGamepadTriggerClick) where it doesn't. It opens or closes the overlay once a hold, and
-// any other button stops it until the hold is let go.
+// on: Z and both trigger clicks (clicked) held with nothing else for kChordNs. It opens or
+// closes the overlay once a hold, and any other button stops it until the hold is let go.
 constexpr uint64_t kChordNs = 1000000000;
 struct ChordHold {
     SDL_JoystickID id;
@@ -95,11 +111,6 @@ struct ChordHold {
     bool spent;      // it's opened or closed the overlay, or another button stopped it
 };
 std::vector<ChordHold> g_holds;
-
-bool clicked(SDL_Gamepad* p, SDL_GamepadButton click, SDL_GamepadAxis axis) {
-    return SDL_GamepadHasButton(p, click) ? SDL_GetGamepadButton(p, click)
-                                          : SDL_GetGamepadAxis(p, axis) > kGamepadTriggerClick;
-}
 
 // Whether `p`'s chord has been held its second by `now`, the once a hold that it acts.
 bool chord(SDL_JoystickID id, SDL_Gamepad* p, uint64_t now) {
@@ -252,9 +263,7 @@ void overlay_poll() {
     SDL_JoystickID* ids = SDL_GetGamepads(&n);
     for (int i = 0; i < n; i++) {
         SDL_Gamepad* p = SDL_GetGamepadFromID(ids[i]);
-        if (!p || input_map_binds(ids[i]) || SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_BACK) ||
-            SDL_GamepadHasButton(p, SDL_GAMEPAD_BUTTON_GUIDE))
-            continue;
+        if (!p || input_map_binds(ids[i]) || !cube_only(p)) continue;
         if (chord(ids[i], p, now)) toggle = true;
     }
     SDL_free(ids);
