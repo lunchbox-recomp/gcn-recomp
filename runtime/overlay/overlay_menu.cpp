@@ -35,10 +35,17 @@ struct AddedPage {
     void (*draw)(void* user);
     void* user;
 };
+// A game adds its pages from a static initializer in its SOURCES, which may run before this
+// file's. So the added pages are constant-initialized, and every page's title, in order, is
+// function-local: built at namespace scope, it would be built again over the game's titles
+// (vr_config.cpp's hooks()).
 std::vector<AddedPage> g_pages;
-const std::vector<std::string> kOwnPages = {"Display", "Controllers"};
-std::vector<std::string> g_titles = kOwnPages;  // every page's, in order
-bool g_focus;             // the menu takes the keyboard's and the gamepads' focus at its next draw
+constexpr const char* kOwnPages[] = {"Display", "Controllers"};
+std::vector<std::string>& titles() {
+    static std::vector<std::string> t(std::begin(kOwnPages), std::end(kOwnPages));
+    return t;
+}
+bool g_focus;            // the menu takes the keyboard's and the gamepads' focus at its next draw
 uint64_t g_opened_ns;       // host_ns as it last opened
 bool g_said_shown;          // its `shown after` line, since it opened
 long g_menu_frames;         // frames that have laid out the menu
@@ -111,7 +118,7 @@ void draw_menu(uint64_t now) {
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
     const bool asking = overlay_asking() != OverlayAsk::none;
     g_on_page = !asking && overlay_controllers_asking() < 0 && !overlay_bindings_shown();
-    tabs_header(g_title, g_titles, g_on_page, now);
+    tabs_header(g_title, titles(), g_on_page, now);
     tabs_no_contents();
     section_gap();
     if (asking) {
@@ -207,7 +214,7 @@ void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
     }
     if (!draw) { fprintf(stderr, "[overlay] page %s has no callback\n", title); return; }
     g_pages.push_back({title, draw, user});
-    g_titles.push_back(title);
+    titles().push_back(title);
 }
 
 #ifdef GCN_OVERLAY_TEST
@@ -215,10 +222,10 @@ int overlay_page() { return tabs_page(); }
 
 void menu_clear_pages() {
     g_pages.clear();
-    g_titles = kOwnPages;
+    titles().assign(std::begin(kOwnPages), std::end(kOwnPages));
 }
 
-const std::vector<std::string>& overlay_test_pages() { return g_titles; }
+const std::vector<std::string>& overlay_test_pages() { return titles(); }
 
 void overlay_test_pick_page(int page) { tabs_pick(page, false); }
 

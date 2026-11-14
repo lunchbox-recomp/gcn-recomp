@@ -9,7 +9,12 @@
 
 namespace {
 
-OverlayTheme g_theme;
+// Function-local, because a game sets its theme from a static initializer in its SOURCES, which
+// may run before this file's and would have it built again over the game's (vr_config.cpp's hooks()).
+OverlayTheme& stored() {
+    static OverlayTheme t;
+    return t;
+}
 
 ImVec4 rgba(uint32_t c, float alpha = 1.0f) {
     return ImVec4((float)(c >> 24 & 0xFF) / 255.0f, (float)(c >> 16 & 0xFF) / 255.0f, (float)(c >> 8 & 0xFF) / 255.0f,
@@ -45,9 +50,9 @@ void colours(const OverlayTheme& t, ImVec4* c) {
 
 }  // namespace
 
-const OverlayTheme& theme_now() { return g_theme; }
+const OverlayTheme& theme_now() { return stored(); }
 
-void theme_set(const OverlayTheme& theme) { g_theme = theme; }
+void theme_set(const OverlayTheme& theme) { stored() = theme; }
 
 float theme_scale(int height) { return height > 0 ? (float)height / 1080.0f : 1.0f; }
 
@@ -76,5 +81,5 @@ uint32_t theme_colour(uint32_t c) { return IM_COL32(c >> 24, c >> 16 & 0xFF, c >
 
 void theme_fit(int height) {
     const float scale = theme_scale(height);
-    if (ImGui::GetStyle().FontScaleMain != scale) theme_style(g_theme, scale);
+    if (ImGui::GetStyle().FontScaleMain != scale) theme_style(stored(), scale);
 }
