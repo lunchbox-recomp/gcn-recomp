@@ -16,12 +16,15 @@ constexpr int kUiSounds = 8;
 constexpr int kUiSoundRate = 48000;
 constexpr float kUiSoundEdgeMs = 2.0f;     // the shortest attack and release
 constexpr float kUiSoundMaxDbfs = -12.0f;  // the loudest peak a theme may ask for
+constexpr float kUiSoundLongestEdgeMs = 1000.0f;  // the longest attack and release
+constexpr float kUiSoundLongestMs = 2000.0f;      // the longest voice
+constexpr float kUiSoundLowestHz = 20.0f;         // a note under it, or one not a number, is 0
 
-// A voice's notes, in Hz, are read by kind:
+// A voice's notes, in Hz, are read by kind; a note of 0 is left out, and a voice of none is silent:
 //   move           notes[0] a sine and notes[1] a triangle over it at a quarter of its level
 //   confirm, back  notes[0] for the first half and notes[1] for the second, the phase carried over
 //   page_*         noise through a band-pass whose centre sweeps from notes[0] to notes[1]
-//   open, close    notes[0], notes[1] and notes[2] together, each a sine; a note of 0 is left out
+//   open, close    notes[0], notes[1] and notes[2] together, each a sine
 //   refused        notes[0], the fundamental of a square built from its odd harmonics under 4 kHz
 struct UiVoice {
     float notes[3];
@@ -48,8 +51,10 @@ struct UiSoundTheme {
 
 inline UiSoundTheme ui_sound_theme_default() { return UiSoundTheme{}; }
 
-// The theme as the voices are made from it: the level no louder than kUiSoundMaxDbfs, each edge
-// at least kUiSoundEdgeMs, a voice at least as long as its two edges, and the pan from 0 to 1.
+// The theme as the voices are made from it: the level no louder than kUiSoundMaxDbfs, each note
+// 0 or from kUiSoundLowestHz to 20 kHz, each edge from kUiSoundEdgeMs to kUiSoundLongestEdgeMs,
+// a voice at least as long as its two edges and no longer than kUiSoundLongestMs, and the pan
+// from 0 to 1. No value, however large or small or not a number, makes a voice that never ends.
 UiSoundTheme ui_sound_fit(const UiSoundTheme& theme);
 // Voice `id` of a fitted theme, interleaved stereo.
 std::vector<int16_t> ui_sound_render(const UiSoundTheme& theme, UiSound id);

@@ -34,7 +34,8 @@ std::vector<double> oscillate(const UiVoice& v, UiSound id, int frames) {
             const double t = (double)n / kUiSoundRate;
             // A triangle from its odd harmonics under 20 kHz, alternating in sign, each 1/k^2.
             double tri = 0.0;
-            for (int k = 1; k * f[1] < 20000.0f; k += 2) tri += ((k / 2) % 2 ? -1.0 : 1.0) * sine(k * f[1], t) / (k * k);
+            for (int k = 1; f[1] > 0.0f && k * f[1] < 20000.0f; k += 2)
+                tri += ((k / 2) % 2 ? -1.0 : 1.0) * sine(k * f[1], t) / (k * k);
             x[n] = sine(f[0], t) + 0.25 * 8.0 / (kPi * kPi) * tri;
         }
         break;
@@ -72,7 +73,8 @@ std::vector<double> oscillate(const UiVoice& v, UiSound id, int frames) {
         break;
     case UiSound::refused:
         for (int n = 0; n < frames; n++)
-            for (int k = 1; k * f[0] < 4000.0f; k += 2) x[n] += sine(k * f[0], (double)n / kUiSoundRate) / k;
+            for (int k = 1; f[0] > 0.0f && k * f[0] < 4000.0f; k += 2)
+                x[n] += sine(k * f[0], (double)n / kUiSoundRate) / k;
         break;
     }
     return x;
@@ -80,17 +82,22 @@ std::vector<double> oscillate(const UiVoice& v, UiSound id, int frames) {
 
 }  // namespace
 
+static_assert(2.0f * kUiSoundLongestEdgeMs <= kUiSoundLongestMs, "a voice's two edges fit in the longest voice");
+
 UiSoundTheme ui_sound_fit(const UiSoundTheme& theme) {
     UiSoundTheme t = theme;
     t.peak_dbfs = std::isfinite(t.peak_dbfs) ? std::min(t.peak_dbfs, kUiSoundMaxDbfs) : kUiSoundMaxDbfs;
     t.pan = std::isfinite(t.pan) ? std::clamp(t.pan, 0.0f, 1.0f) : 0.0f;
     for (UiVoice& v : t.voices) {
-        for (float& hz : v.notes) hz = std::isfinite(hz) ? std::clamp(hz, 0.0f, 20000.0f) : 0.0f;
-        const auto edge = [](float ms) { return std::isfinite(ms) ? std::max(ms, kUiSoundEdgeMs) : kUiSoundEdgeMs; };
+        for (float& hz : v.notes) hz = std::isfinite(hz) && hz >= kUiSoundLowestHz ? std::min(hz, 20000.0f) : 0.0f;
+        const auto edge = [](float ms) {
+            return std::isfinite(ms) ? std::clamp(ms, kUiSoundEdgeMs, kUiSoundLongestEdgeMs) : kUiSoundEdgeMs;
+        };
         v.attack_ms = edge(v.attack_ms);
         v.release_ms = edge(v.release_ms);
         v.decay_ms = std::isfinite(v.decay_ms) ? std::max(v.decay_ms, 0.0f) : 0.0f;
-        v.ms = std::isfinite(v.ms) ? std::clamp(v.ms, v.attack_ms + v.release_ms, 2000.0f) : v.attack_ms + v.release_ms;
+        const float edges = v.attack_ms + v.release_ms;  // never over kUiSoundLongestMs
+        v.ms = std::isfinite(v.ms) ? std::clamp(v.ms, edges, kUiSoundLongestMs) : edges;
     }
     return t;
 }

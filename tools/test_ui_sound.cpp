@@ -10,7 +10,10 @@
 // times the largest step within 2 ms either side of it, and over 1% of its peak. A page's swish is
 // louder on the side the page turns to, and every other voice is the same in both channels.
 // A theme's level, notes and length change the voice, a level over -12 dBFS is held to it, and an
-// attack or release under 2 ms is held to that.
+// attack or release under 2 ms is held to that. No value of a theme hangs or crashes the making:
+// every note 0, below 0, under 20 Hz or not a number makes every voice silent and its length, a
+// single such note is left out, and an attack or release of 1e9 ms, or the largest float, is held
+// to 1 s, each voice keeping its shape and lasting no more than 2 s.
 //
 // The queue: off, the default, a play queues nothing and a pull adds nothing. On, a voice starts
 // in the pull after it's queued, audible in that pull, and plays exactly as it was made across
@@ -37,6 +40,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <numbers>
 #include <string>
 #include <sys/stat.h>
@@ -142,6 +146,56 @@ void voices() {
     check(middle, "every other voice is the same in both channels");
 }
 
+// Themes no one should write, each made without hanging or crashing.
+void odd_values() {
+    const std::pair<float, const char*> odd_notes[] = {
+        {0.0f, "0"}, {-440.0f, "-440 Hz"}, {1e-30f, "1e-30 Hz"}, {std::nanf(""), "not a number"}};
+    for (const auto& [hz, name] : odd_notes) {
+        UiSoundTheme t = ui_sound_theme_default();
+        for (UiVoice& v : t.voices)
+            for (float& note : v.notes) note = hz;
+        bool silent = true;
+        for (int i = 0; i < kUiSounds; i++) {
+            const std::vector<int16_t> s = ui_sound_render(t, (UiSound)i);
+            const UiVoice& v = ui_sound_fit(t).voices[i];
+            silent = silent && s.size() == 2 * (size_t)std::lround(v.ms * kUiSoundRate / 1000.0f) && peak_of(s) == 0;
+        }
+        check(silent, std::string("a theme whose every note is ") + name + " makes every voice silent and its length");
+    }
+    UiSoundTheme no_triangle = ui_sound_theme_default();
+    no_triangle.voices[(int)UiSound::move].notes[1] = 0.0f;
+    shape(no_triangle, UiSound::move, -14.0f, "a theme's move with its triangle's note 0");
+    UiSoundTheme two = ui_sound_theme_default();
+    two.voices[(int)UiSound::open].notes[2] = std::nanf("");
+    shape(two, UiSound::open, -14.0f, "a theme's open with its third note not a number");
+    UiSoundTheme left_out = ui_sound_theme_default();
+    left_out.voices[(int)UiSound::open].notes[2] = 0.0f;
+    check(ui_sound_render(two, UiSound::open) == ui_sound_render(left_out, UiSound::open),
+          "and that note is left out, as a 0 is");
+
+    const auto held = [](const UiSoundTheme& t) {
+        bool ok = true;
+        for (const UiVoice& v : ui_sound_fit(t).voices)
+            ok = ok && v.attack_ms <= kUiSoundLongestEdgeMs && v.release_ms <= kUiSoundLongestEdgeMs &&
+                 v.ms <= kUiSoundLongestMs;
+        return ok;
+    };
+    UiSoundTheme slow = ui_sound_theme_default(), late = ui_sound_theme_default();
+    for (UiVoice& v : slow.voices) v.attack_ms = 1e9f;
+    for (UiVoice& v : late.voices) v.release_ms = 1e9f;
+    for (int i = 0; i < kUiSounds; i++) {
+        shape(slow, (UiSound)i, -14.0f, std::string("a theme's ") + kNames[i] + " with an attack of 1e9 ms");
+        shape(late, (UiSound)i, -14.0f, std::string("a theme's ") + kNames[i] + " with a release of 1e9 ms");
+    }
+    UiSoundTheme longest = ui_sound_theme_default();
+    for (UiVoice& v : longest.voices) v.attack_ms = v.release_ms = v.ms = std::numeric_limits<float>::max();
+    shape(longest, UiSound::refused, -14.0f,
+          "a theme's refused with the largest float for its attack, release and length");
+    check(held(slow) && held(late) && held(longest) &&
+              ui_sound_render(longest, UiSound::refused).size() == 2 * 96000u,
+          "each attack and release held to 1 s and each voice to 2 s");
+}
+
 void themes() {
     UiSoundTheme quiet = ui_sound_theme_default();
     quiet.peak_dbfs = -20.0f;
@@ -159,6 +213,7 @@ void themes() {
     const std::vector<int16_t> given = ui_sound_render(notes, UiSound::confirm);
     check(given.size() == 2 * 1920 && given != ui_sound_render(ui_sound_theme_default(), UiSound::confirm),
           "a theme's notes and length make a confirm of its own, 40 ms long");
+    odd_values();
 }
 
 // `frames` of stereo from ui_sound_mix over `in`.
