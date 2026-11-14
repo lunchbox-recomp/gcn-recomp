@@ -3,10 +3,11 @@
 // runtime/ready_file.cpp writes GCN_READY_FILE's lines through a temporary file that then
 // replaces it, so a launcher watching it sees each version whole. These check the lines and
 // their order, that each word goes in once, that one that can't be written says so once and
-// is tried again a second later and no sooner, that a reader polling the file meanwhile never
-// sees a line cut short, that no line waits for a sync, that a run starts the file afresh,
-// what a console reset leaves for the run after, and that the times count from the process's
-// start. It prints what a line costs.
+// is tried again a second later and no sooner, that a line that can't replace the file says so
+// unless asked not to, that a reader polling the file meanwhile never sees a line cut short,
+// that no line waits for a sync, that a run starts the file afresh, what a console reset
+// leaves for the run after, and that the times count from the process's start. It prints what
+// a line costs.
 //
 // usage: test_ready_file WORKDIR
 // Exits 0 only if every check passes.
@@ -95,6 +96,15 @@ int main(int argc, char** argv) {
 
     check(!ready_file_append((dir + "/no/such/dir/c.txt").c_str(), "window", 1),
           "a path that can't be written says so, and nothing more happens");
+    // A directory with a file in it: its .tmp is written, but can't replace it.
+    const std::string full = dir + "/full";
+    plat_make_dirs(full + "/in");
+    bool replaced = true;
+    const int loud = lines_said(dir + "/full-said.txt", [&] { replaced = ready_file_append(full.c_str(), "window", 1); });
+    const bool failed = !replaced && slurp(dir + "/full-said.txt").find("the save failed") != std::string::npos;
+    const int quiet = lines_said(dir + "/quiet-said.txt", [&] { replaced = ready_file_append(full.c_str(), "window", 1, false); });
+    check(failed && !replaced && loud == 1 && quiet == 0 && !exists(full + ".tmp"),
+          "one whose line can't replace the file says so in one line, or in none when asked not to, and leaves no .tmp");
 
     // A reader polling the file while lines go in sees only whole ones.
     const std::string d = dir + "/d.txt";
