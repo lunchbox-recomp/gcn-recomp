@@ -206,6 +206,7 @@ void ram_patch_flags(const std::string& dir) {
     write_file(key, "");
     loaded.ram_patches = key;
     check(take(2, none) && ram_patches_file() == key, "the settings key is the list with no flag or variable");
+    check(take(2, near) && ram_patches_file() == key, "--ram-patchesx= beside a settings key leaves the key's list");
     check(take(2, one) && ram_patches_file() == "a.txt", "--ram-patches=FILE beats the settings key");
     check(take(2, blank) && ram_patches_file().empty(), "an empty --ram-patches= beats the settings key and means no list");
     check(!take(3, lone) && ram_patches_file() == "left" &&

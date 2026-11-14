@@ -63,16 +63,22 @@ std::vector<std::string> fields(const std::string& line) {
 }
 } // namespace
 
-bool ram_patches_choose(const char* variable, int argc, char** argv, std::string& file, std::string& error) {
+bool ram_patches_choose(const char* variable, int argc, char** argv, std::string& file, std::string& error,
+                        bool* flagged) {
     std::string result = variable ? variable : "";
+    bool from_flag = false;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--ram-patches")) {
             error = "--ram-patches: the RAM patch list's path goes after an =, as in --ram-patches=FILE";
             return false;
         }
-        if (!strncmp(argv[i], "--ram-patches=", 14)) result = argv[i] + 14;
+        if (!strncmp(argv[i], "--ram-patches=", 14)) {
+            result = argv[i] + 14;
+            from_flag = true;
+        }
     }
     file = result;
+    if (flagged) *flagged = from_flag;
     return true;
 }
 

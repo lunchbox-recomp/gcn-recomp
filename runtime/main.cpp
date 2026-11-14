@@ -492,12 +492,11 @@ static std::string take_disc_overlay(const Settings& settings, int argc, char** 
 static bool take_ram_patches(const Settings& settings, int argc, char** argv) {
     std::string file, error;
     const char* variable = getenv("GCN_RAM_PATCHES");
-    if (!ram_patches_choose(variable, argc, argv, file, error)) {
+    bool flagged = false;
+    if (!ram_patches_choose(variable, argc, argv, file, error, &flagged)) {
         fprintf(stderr, "%s\n", error.c_str());
         return false;
     }
-    bool flagged = false;
-    for (int i = 1; i < argc; i++) flagged |= !strncmp(argv[i], "--ram-patches=", 14);
     if (!flagged && !variable) file = settings_choose_present_path(settings.ram_patches, nullptr, nullptr, "ram_patches");
     ram_patches_set_file(file);
     return true;
