@@ -260,11 +260,13 @@ float overlay_bindings_test_glyph_height();
 void overlay_bindings_test_last_row(float rect[4]);
 // Across the window, in Dear ImGui's points, where each of the view's rows last drew its name and
 // its button, and the room inside the padding of the region they're drawn in: the left and right
-// of each, in the rows' order, with the family (pad_glyph.h) of the gamepad the view showed.
+// of each, in the rows' order, with the family (pad_glyph.h) of the gamepad the view showed and
+// the item spacing across they were drawn with.
 enum class PadFamily;
 struct OverlayBindingsRow {
     float name[2], button[2], region[2];
     PadFamily family;
+    float spacing;
 };
 const std::vector<OverlayBindingsRow>& overlay_bindings_test_rows();
 #endif

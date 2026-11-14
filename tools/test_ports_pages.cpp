@@ -236,14 +236,15 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
 void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
 
 // Whether each of the Buttons view's rows, as last drawn, was a gamepad of family `f`'s and has
-// its name whole left of its button, and its button whole across the region the rows scroll in,
-// inside its padding.
+// its name whole left of its button, two item spacings short of it, and its button whole across
+// the region the rows scroll in, inside its padding. The gap may be short by float rounding, a
+// hundredth of a point at most.
 bool rows_whole(PadFamily f) {
     const std::vector<OverlayBindingsRow>& rows = overlay_bindings_test_rows();
     bool whole = rows.size() == kPadControls;
     for (const OverlayBindingsRow& r : rows)
-        whole = whole && r.family == f && r.region[0] <= r.name[0] && r.name[1] < r.button[0] &&
-                r.button[1] <= r.region[1];
+        whole = whole && r.family == f && r.region[0] <= r.name[0] &&
+                r.name[1] + 2.0f * r.spacing <= r.button[0] + 0.01f && r.button[1] <= r.region[1];
     return whole;
 }
 
@@ -304,8 +305,11 @@ void buttons_review(SDL_Window* window, const std::string& out, const std::strin
     const bool end = dump("overlay_buttons_end.png", "at Done") && on_panel() && focused("Done");
     // The view on that pad and on one of each family whose buttons are named their own way, each
     // row's name whole left of its button, and its button whole across the region. A Joy-Con
-    // alone with a trigger axis is held upright, and a Steam Deck has misc1 (pad_glyph.h).
+    // alone with a trigger axis is held upright, and a Steam Deck has misc1 (pad_glyph.h). The
+    // GameCube pad has its control stick's x turned round, so that row's button says "Control
+    // stick (reversed)", the widest a stick's says, and is wider than the y's "Control stick".
     bool whole = rows_whole(PadFamily::other);
+    bool reversed = false;
     const struct {
         const char* name;
         Uint16 vendor, product;
@@ -323,15 +327,29 @@ void buttons_review(SDL_Window* window, const std::string& out, const std::strin
         v.product = f.product;
         attach(v);
         frame();
+        PadBinding b;
+        const bool cube = f.family == PadFamily::gamecube;
+        if (cube && gamepads_binding(v.id, b)) {
+            b.source[(int)PadControl::StickX].invert = !b.source[(int)PadControl::StickX].invert;
+            whole = whole && gamepads_bind(v.id, b) != Bound::refused;
+        }
         whole = whole && overlay_bindings_open(v.id);
         draw();
         draw();
         whole = whole && rows_whole(f.family);
+        if (cube) {
+            const std::vector<OverlayBindingsRow>& rows = overlay_bindings_test_rows();
+            const auto wide = [&](PadControl c) { return rows[(int)c].button[1] - rows[(int)c].button[0]; };
+            reversed = rows.size() == kPadControls && wide(PadControl::StickX) > wide(PadControl::StickY);
+            gamepads_reset_binding(v.id);
+        }
         detach(v);
         frame();
     }
+    whole = whole && reversed;
     check(whole, (at + ": each of the Buttons view's rows has its name whole left of its button, and its button "
-                       "whole across the view, on a generic, Xbox, PlayStation, GameCube, Joy-Con and Steam Deck pad")
+                       "whole across the view, on a generic, Xbox, PlayStation, GameCube, Joy-Con and Steam Deck pad, "
+                       "the GameCube one with a reversed stick")
                      .c_str());
     overlay_close();
     overlay_test_end();
