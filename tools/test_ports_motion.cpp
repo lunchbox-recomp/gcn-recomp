@@ -270,6 +270,29 @@ void views_kept(SDL_Window* window, const std::string& dir) {
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns += 1000 * kMs;
     host_frame(guest);
+
+    // The same from Restart?, the bottom row's first button.
+    open();
+    bottom_row(guest);
+    tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    host_frame(guest);
+    const bool restart_asked = waiting(OverlayAsk::restart);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+    host_frame(guest);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, false);
+    host_frame(guest);
+    const bool restart_closed = !overlay_open();
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
+    open();
+    tap(guest, SDL_SCANCODE_SPACE, SDLK_SPACE);
+    check(restart_asked && restart_closed && overlay_open() && overlay_asking() == OverlayAsk::none && !g_restart,
+          "Restart game picked by an Escape as the menu closed isn't focused when it opens again");
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
     unplug({&pad});
     gamepads_shutdown();
 
