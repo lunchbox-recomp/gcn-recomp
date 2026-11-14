@@ -127,9 +127,10 @@ struct OverlayTheme {
     float toast_out_ms = 180.0f;      // and fading out at the end of its time
     float toast_rise = 16.0f;
 
-    // Controller buttons' colours, each 0xRRGGBBAA, by the face the game takes each as: A, B, X
-    // and Y (gamepads_faces in gamepads.h). A Nintendo controller's faces are drawn in the text's
-    // colour.
+    // Controller buttons' glyphs' colours (overlay/glyph.h), each 0xRRGGBBAA, by the label printed
+    // on each face: A or Cross takes `a`, B or Circle `b`, X or Square `x` and Y or Triangle `y`,
+    // and a face with no label takes its place's, south to north. Other families' faces, a
+    // Nintendo controller's among them, are the item's colour with the text on it.
     struct Faces {
         uint32_t a, b, x, y;
     };

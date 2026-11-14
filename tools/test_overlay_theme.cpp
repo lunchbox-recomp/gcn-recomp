@@ -166,7 +166,7 @@ void glyph_contrasts(const OverlayTheme& t) {
         {PadFamily::xbox, 3, t.xbox.x, "X"}, {PadFamily::xbox, 4, t.xbox.y, "Y"},
         {PadFamily::ps5, 5, t.playstation.a, "Cross"}, {PadFamily::ps5, 6, t.playstation.b, "Circle"},
         {PadFamily::ps5, 7, t.playstation.x, "Square"}, {PadFamily::ps5, 8, t.playstation.y, "Triangle"},
-        {PadFamily::nintendo, 1, t.item, "A"}, {PadFamily::other, 1, t.item, "A"},
+        {PadFamily::nintendo, 1, t.item, "A"}, {PadFamily::other, 1, t.item, "A"}, {PadFamily::steam, 1, t.item, "A"},
         {PadFamily::gamecube, 1, t.gamecube.a, "A"}, {PadFamily::gamecube, 2, t.gamecube.b, "B"},
         {PadFamily::gamecube, 3, t.gamecube.x, "X"}, {PadFamily::gamecube, 4, t.gamecube.y, "Y"},
     };
@@ -177,15 +177,32 @@ void glyph_contrasts(const OverlayTheme& t) {
         check(g.label == c.label && g.fill == c.fill && g.shape == OverlayGlyphShape::circle, what);
         snprintf(what, sizeof(what), "%s glyph ink has 4.5:1 contrast", c.label);
         check(contrast(g.ink, g.fill) >= 4.5, what);
-        if (c.family == PadFamily::nintendo || c.family == PadFamily::other)
-            check(g.ink == t.text, "Nintendo and unknown faces use the theme's text on its item colour");
+        // One on the item's colour, as a Nintendo, Steam or unknown pad's, has the text and the
+        // item's edge, and one in a colour no edge.
+        snprintf(what, sizeof(what), "%s face's edge, PadFamily %d", c.label, (int)c.family);
+        check(c.fill == t.item ? g.ink == t.text && g.edge == t.border : g.edge == 0, what);
+        // PlayStation's labels are its shapes, SDL's labels 5 to 8, drawn in place of the word.
+        snprintf(what, sizeof(what), "%s face's mark, PadFamily %d", c.label, (int)c.family);
+        check(g.mark == (c.face >= 5 ? (OverlayGlyphMark)(c.face - 4) : OverlayGlyphMark::none), what);
     }
     const OverlayGlyph z = overlay_pad_glyph(t, PadFamily::gamecube, {false, kPadRightShoulder}, 0);
-    check(z.label == "Z" && z.fill == t.gamecube_z && z.shape == OverlayGlyphShape::pill && contrast(z.ink, z.fill) >= 4.5,
+    check(z.label == "Z" && z.fill == t.gamecube_z && z.shape == OverlayGlyphShape::pill && contrast(z.ink, z.fill) >= 4.5 &&
+              z.edge == 0,
           "GameCube Z uses the violet shoulder pill with readable ink");
+    const OverlayGlyph lb = overlay_pad_glyph(t, PadFamily::xbox, {false, kPadLeftShoulder}, 0);
+    check(lb.label == "LB" && lb.shape == OverlayGlyphShape::pill && lb.fill == t.item && lb.ink == t.text &&
+              lb.edge == t.border,
+          "an Xbox shoulder's pill is the item's colour with the text on it and the item's edge round it");
+    // The edge is all that sets such a pill off the panel in the footer, or off a button at rest
+    // in the Buttons view.
+    const double panel = worst(t, t.border, 0), item = worst(t, t.border, t.item);
+    char said[160];
+    snprintf(said, sizeof(said), "a glyph's edge is %.2f:1 on the panel and %.2f:1 on an item, at least 3:1", panel, item);
+    check(panel >= 3.0 && item >= 3.0, said);
     const OverlayGlyph key = overlay_key_glyph(t, "Esc");
-    check(key.label == "Esc" && key.shape == OverlayGlyphShape::keycap && contrast(key.ink, key.fill) >= 4.5,
-          "Escape has a readable keycap");
+    check(key.label == "Esc" && key.shape == OverlayGlyphShape::keycap && contrast(key.ink, key.fill) >= 4.5 &&
+              key.edge == key.ink,
+          "Escape has a readable keycap, edged in its ink");
 }
 
 // What isn't text but has to be seen, at least 3:1 by WCAG 2.1's 1.4.11, read from the style
