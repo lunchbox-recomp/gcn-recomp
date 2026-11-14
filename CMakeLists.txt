@@ -850,6 +850,16 @@ function(gcn_add_game)
       # theme's times that break one stop the checks.
       target_compile_definitions(test_overlay_motion PRIVATE GCN_OVERLAY
         _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE _GLIBCXX_ASSERTIONS)
+      # The fonts' checks (tools/test_overlay_fonts.cpp): faces found by name in font files it
+      # writes, each kind of text's chain down to Dear ImGui's own font, and the atlas the menu
+      # and the notices share, in a work dir.
+      add_executable(test_overlay_fonts EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_overlay_fonts.cpp
+        ${RT}/overlay/fonts.cpp)
+      _gcn_set_standards(test_overlay_fonts)
+      target_include_directories(test_overlay_fonts PRIVATE ${RT})
+      target_link_libraries(test_overlay_fonts PRIVATE gcn_imgui)
+      target_compile_options(test_overlay_fonts PRIVATE ${GCN_RUNTIME_WARNINGS})
+      target_compile_definitions(test_overlay_fonts PRIVATE GCN_OVERLAY)
     endif()
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page
@@ -1146,6 +1156,7 @@ function(gcn_add_game)
     endif()
     if(TARGET test_overlay_theme AND TARGET test_overlay_motion)
       list(APPEND _unit_plain test_overlay_theme test_overlay_motion)
+      list(APPEND _unit_in_dir test_overlay_fonts)
     endif()
     set(_unit_dirs ${_unit_work}/test_engine_sha)
     foreach(_t ${_unit_plain})
