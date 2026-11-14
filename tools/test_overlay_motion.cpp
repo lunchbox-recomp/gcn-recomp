@@ -6,11 +6,13 @@
 // its end, a tween of no length is at its end at once, and one turned mid-way starts from the
 // value showing. runtime/overlay/appear.h opens the menu over the theme's times, the contents
 // behind the panel and the backdrop last, and is whole when the panel and the contents are,
-// within 200 ms, or at once with a negative open time. It closes over the theme's close time
-// and can open again from wherever it was. With motion off each change is whole at once. Its
-// transform of a frame's draw data scales every list but the backdrop's about the centre, clip
-// rects too, and fades the panel's vertices and the contents' each by their own alpha. The
-// standard library checks its preconditions as these run (CMakeLists.txt).
+// within 200 ms, or at once with an open time that's negative, infinite or not a number. It
+// closes over the theme's close time, at once with one of those, and can open again from
+// wherever it was. With motion off each change is whole at once. Its transform of a frame's draw
+// data scales every list but the backdrop's about the centre, clip rects too, and fades the
+// panel's vertices and the contents' each by their own alpha. The standard library checks its
+// preconditions as these run (CMakeLists.txt), and stdout is unbuffered so that the checks
+// before a broken one still show.
 //
 // usage: test_overlay_motion
 // Exits 0 only if every check passes.
@@ -135,6 +137,19 @@ void opens_and_closes() {
     appear_open(backwards, t3);
     check(appear_shown(t3) && near(appear_panel_alpha(t3), 1.0f) && near(appear_contents_alpha(t3), 1.0f),
           "a game's theme with a negative open time opens whole at once, its contents' delay held to none");
+    bool at_once = true;
+    for (const float ms : {NAN, INFINITY}) {
+        OverlayTheme odd = th;
+        odd.open_ms = ms;
+        odd.close_ms = ms;
+        const uint64_t at = t3 + 1000 * kMs;
+        appear_close(odd, at - 500 * kMs);
+        const bool gone = !appear_moving(at - 500 * kMs) && near(appear_panel_alpha(at - 500 * kMs), 0.0f);
+        appear_open(odd, at);
+        at_once = at_once && gone && appear_shown(at) && near(appear_panel_alpha(at), 1.0f) &&
+                near(appear_contents_alpha(at), 1.0f) && near(appear_scale(at), 1.0f) && !appear_closing(at);
+    }
+    check(at_once, "a game's theme with a time that isn't a number or is infinite opens and closes at once");
 
     appear_motion(false);
     const uint64_t t2 = 20000 * kMs;
@@ -211,6 +226,8 @@ void transform() {
 }  // namespace
 
 int main() {
+    // Unbuffered, so the checks run before a broken precondition stops them are still shown.
+    setvbuf(stdout, nullptr, _IONBF, 0);
     easings();
     tweens();
     opens_and_closes();

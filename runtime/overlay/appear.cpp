@@ -12,8 +12,9 @@ bool g_motion = true;
 // theme's. And the panel's scale.
 Tween g_panel, g_contents, g_backdrop, g_scale;
 
-// A change's length, none with motion off.
-float span(float ms) { return g_motion ? std::max(ms, 0.0f) : 0.0f; }
+// A change's length, none with motion off. A game's theme may give a time that's negative,
+// infinite or not a number, which takes none.
+float span(float ms) { return g_motion && std::isfinite(ms) ? std::max(ms, 0.0f) : 0.0f; }
 
 // Opened last, not closed: the panel is on its way to whole, or there.
 bool opened() { return g_panel.to > 0.0f; }
@@ -24,8 +25,7 @@ void appear_motion(bool on) { g_motion = on; }
 
 void appear_open(const OverlayTheme& t, uint64_t now) {
     const bool gone = g_panel.at(now) <= 0.0f;
-    // A game's theme may give a negative time, which opens at once, as none does.
-    const float open = std::max(t.open_ms, 0.0f);
+    const float open = span(t.open_ms);
     const float delay = std::clamp(t.contents_delay_ms, 0.0f, open);
     g_panel = tween_to(g_panel, now, 1.0f, span(open), Ease::out_back, 0.0f, t.open_overshoot);
     g_scale = tween_to(g_scale, now, 1.0f, span(open), Ease::out_back, 0.0f, t.open_overshoot);
