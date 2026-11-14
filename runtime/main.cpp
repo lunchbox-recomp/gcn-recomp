@@ -461,6 +461,26 @@ static void quit_at_presented(uint32_t presented) {
     SDL_PushEvent(&e);
 }
 
+// Use the renderer's count so hidden frames and frame dumps agree.
+static uint32_t g_progress_every;
+
+static void progress_load() {
+    g_progress_every = 0;
+    const char* e = getenv_nonempty("GCN_PROGRESS");
+    if (!e) return;
+    char* end = nullptr;
+    const unsigned long long n = strtoull(e, &end, 10);
+    if (*e >= '0' && *e <= '9' && !*end && n > 0 && n <= UINT32_MAX) {
+        g_progress_every = (uint32_t)n;
+    } else {
+        fprintf(stderr, "[progress] GCN_PROGRESS isn't a positive frame interval\n");
+    }
+}
+
+static void progress_presented(uint32_t count) {
+    if (count % g_progress_every == 0) fprintf(stderr, "[progress] frame %u\n", count);
+}
+
 // Sets g_fast_disc to settings.txt's `disc`, which --disc=fast or --disc=console beats for
 // the run, the last one winning as with the other flags. A bad --disc says what it takes,
 // and the result is false.
@@ -880,6 +900,7 @@ int main(int argc, char** argv) {
     uint32_t frames = 0;
     uint32_t presented_total = 0;
     quit_at_load();
+    progress_load();
     auto t0 = std::chrono::steady_clock::now();
     // Once the loop is asked to stop, the guest runs on while the game may be saving, which it
     // can't while the overlay holds it.
@@ -955,6 +976,7 @@ int main(int argc, char** argv) {
                 run_end.scripted();
             }
             quit_at_presented(gx::present_count());
+            if (g_progress_every) progress_presented(gx::present_count());
             auto now = std::chrono::steady_clock::now();
             double secs = std::chrono::duration<double>(now - t0).count();
             if (secs >= 2.0) {
