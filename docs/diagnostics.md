@@ -847,11 +847,12 @@ context and the banner, often hundreds of milliseconds in. A launcher that reads
 sees the last run's pair. The run's first line replaces whatever the file held, which only
 guards a launcher that forgets.
 
-A path that can't be written gets one line on stderr for each word, and the run goes on. The
-word is tried again quietly at each frame shown for the 250 ms after, then at a frame a
-second or more after each try. So a write that fails once (on Windows, while the launcher has
-the file open) goes in a frame or so later, and a path that never works costs a try a
-second. A line that goes in late still gives the time of its word's first frame, so `frame`
+A path that can't be written gets one line on stderr for each word it tries, and the run goes
+on. `frame` waits until `window` is in, so a path that never works gets one line, for
+`window`. The word is tried again quietly at each frame shown for the 250 ms after, then at a
+frame a second or more after each try. So a write that fails once (on Windows, while the
+launcher has the file open) goes in a frame or so later, and a path that never works costs a
+try a second. A line that goes in late still gives the time of its word's first frame, so `frame`
 is the first frame the game presents. `--headless` and `--vr` write nothing.
 
 `ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
