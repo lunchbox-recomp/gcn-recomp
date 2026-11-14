@@ -3,6 +3,7 @@
 #include "overlay/fonts.h"
 #include "overlay/motion.h"
 #include "overlay/theme.h"
+#include "ui_sound.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -103,6 +104,7 @@ void tabs_show(int page) {
 
 void tabs_pick(int page, bool moved) {
     if (page == g_page) return;
+    ui_sound_play(page > g_page ? UiSound::page_on : UiSound::page_back);
     g_page = page;
     g_focus_first = true;
     g_moved = moved;
@@ -119,7 +121,11 @@ void tabs_header(const std::string& title, const std::vector<std::string>& pages
     g_page = std::clamp(g_page, 0, last);
     // While an item is held or dragged a shoulder is its own: a slider's L1 and R1 step it finer
     // and coarser. There's no wrap at either end.
-    if (live && !ImGui::IsAnyItemActive()) tabs_pick(std::clamp(shouldered(), 0, last), true);
+    if (live && !ImGui::IsAnyItemActive()) {
+        const int to = shouldered();
+        if (to != std::clamp(to, 0, last)) ui_sound_play(UiSound::refused);
+        tabs_pick(std::clamp(to, 0, last), true);
+    }
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 at = ImGui::GetCursorScreenPos();
     const float width = ImGui::GetContentRegionAvail().x;

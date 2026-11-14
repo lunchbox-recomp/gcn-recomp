@@ -7,6 +7,7 @@
 #include "overlay/state.h"
 #include "overlay/tabs.h"
 #include "runtime.h"  // host_ns
+#include "ui_sound.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cstdint>
@@ -15,6 +16,7 @@
 #include <vector>
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
+#include "imgui_internal.h"  // where the focus moved to, and what was pressed
 
 // overlay.cpp's: the current context's style fitted to the window.
 void overlay_style_fit(SDL_Window* window);
@@ -176,8 +178,15 @@ void menu_frame() {
     overlay_style_fit(overlay_window());
     ImGui_ImplSDL3_NewFrame();
     if (overlay_open()) overlay_read_pads();
+    // The focus Dear ImGui puts on a page's first item, as the menu opens or a page turns, is no
+    // move of the player's, so it doesn't tick.
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    const bool placed = g.NavInitRequest || g.NavInitResult.ID != 0;
     ImGui::NewFrame();
+    const bool moved = g.NavJustMovedToId != 0 && !placed;
     draw_menu(now);
+    if (overlay_open() && g.ActiveIdIsJustActivated && g.ActiveId != 0) ui_sound_play(UiSound::confirm);
+    else if (overlay_open() && moved) ui_sound_play(UiSound::move);
     backdrop(now);
     ImGui::Render();
     tabs_apply(ImGui::GetDrawData(), now);
