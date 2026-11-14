@@ -56,8 +56,9 @@ inline UiSoundTheme ui_sound_theme_default() { return UiSoundTheme{}; }
 // The theme as the voices are made from it: the level no louder than kUiSoundMaxDbfs, each note
 // 0 or from kUiSoundLowestHz to 20 kHz, each edge from kUiSoundEdgeMs to kUiSoundLongestEdgeMs,
 // a decay none or at least kUiSoundEdgeMs, a voice at least as long as its two edges and no
-// longer than kUiSoundLongestMs, and the pan from 0 to 1. No value, however large or small or
-// not a number, makes a voice that never ends.
+// longer than kUiSoundLongestMs, and the pan from 0 to 1. An infinity is taken as the largest
+// float of its sign. No value, however large or small or not a number, makes a voice that never
+// ends.
 UiSoundTheme ui_sound_fit(const UiSoundTheme& theme);
 // Voice `id` of a fitted theme, interleaved stereo.
 std::vector<int16_t> ui_sound_render(const UiSoundTheme& theme, UiSound id);
