@@ -37,7 +37,7 @@ void ready_mark_at(const char* word, long long ms);
 void ready_relaunching();
 
 // `word ms` and a newline after what `path` holds, through `path`.tmp. False, with the reason on
-// stderr if `say`, when it can't be written.
+// stderr if `say`, when it can't be written, or when a file is there that can't be read.
 bool ready_file_append(const char* path, const char* word, long long ms, bool say = true);
 // The same with nothing before it: `path` holds the one line after.
 bool ready_file_start(const char* path, const char* word, long long ms, bool say = true);

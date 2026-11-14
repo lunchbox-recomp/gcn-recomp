@@ -847,19 +847,20 @@ context and the banner, often hundreds of milliseconds in. A launcher that reads
 sees the last run's pair. The run's first line replaces whatever the file held, which only
 guards a launcher that forgets.
 
-A path that can't be written gets one line on stderr for each word it tries, and the run goes
-on. `frame` waits until `window` is in, so a path that never works gets one line, for
-`window`. The word is tried again quietly at each frame shown for the 250 ms after, then at a
-frame a second or more after each try. So a write that fails once (on Windows, while the
-launcher has the file open) goes in a frame or so later, and a path that never works costs a
-try a second. A line that goes in late still gives the time of its word's first frame, so `frame`
-is the first frame the game presents. `--headless` and `--vr` write nothing.
+A path that can't be written, or holds a file that can't be read, gets one line on stderr for
+each word it tries, and the run goes on. `frame` waits until `window` is in, so a path that
+never works gets one line, for `window`. The word is tried again quietly at each frame shown
+for the 250 ms after, then at a frame a second or more after each try. So a write that fails
+once (on Windows, while the launcher has the file open) goes in a frame or so later, and a
+path that never works costs a try a second. A line that goes in late still gives the time of
+its word's first frame, so `frame` is the first frame the game presents. `--headless` and
+`--vr` write nothing.
 
 `ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
 order, that a reader polling the file never sees part of one, that no line waits for a sync,
 that a line whose write failed says so once, goes in at the next try within 250 ms or else a
-second after the last, and keeps its word's first time, that a run's first line replaces an
-earlier run's, and that the times count from before `main`. It prints a line's cost on the
+second after the last, and keeps its word's first time, that a file there that can't be read
+is left as it was, that a run's first line replaces an earlier run's, and that the times count from before `main`. It prints a line's cost on the
 machine's disk (`[ready] a line takes a median of <ms> ms`).
 
 The boot splash (docs/graphics.md, "The boot splash") is the window's first frame unless

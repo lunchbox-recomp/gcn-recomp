@@ -2,9 +2,11 @@
 #include "ready_file.h"
 #include "env.h"
 #include "platform.h"
+#include <cerrno>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <map>
 #include <string>
 
@@ -35,11 +37,12 @@ bool write_line(const char* path, std::string text, const char* word, long long 
 
 bool ready_file_append(const char* path, const char* word, long long ms, bool say) {
     std::string text;
-    if (FILE* f = fopen(path, "rb")) {
-        char buf[4096];
-        size_t n;
-        while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
-        fclose(f);
+    int err = 0;
+    // A file that's there but can't be read isn't taken for an empty one, whose replacement
+    // would lose its lines (on Windows, while the launcher has it open without read sharing).
+    if (!plat_read_file(path, text, err) && err != ENOENT) {
+        if (say) fprintf(stderr, "%s: can't read it (%s), so the ready line isn't saved\n", path, strerror(err));
+        return false;
     }
     return write_line(path, std::move(text), word, ms, say);
 }
