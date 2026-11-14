@@ -8,6 +8,7 @@ namespace {
 
 constexpr int kQueue = 16;   // ids waiting for the next pull
 constexpr int kVoices = 8;   // voices playing at once
+constexpr int kChunk = 512;  // samples the mix sums at a time
 
 // What the main thread made and the audio thread reads once an id is queued.
 UiSoundTheme g_theme;
@@ -65,14 +66,22 @@ void ui_sound_mix(int16_t* out, int frames) {
             if (g_count < kVoices) g_playing[g_count++] = {&g_voices[g_queue[tail % kQueue]], 0};
         g_tail.store(tail, std::memory_order_release);
     }
-    for (int v = 0; v < g_count;) {
-        Playing& p = g_playing[v];
-        const size_t n = std::min((size_t)frames * 2, p.samples->size() - p.at);
-        const int16_t* s = p.samples->data() + p.at;
-        for (size_t i = 0; i < n; i++) out[i] = (int16_t)std::clamp(out[i] + s[i], -32768, 32767);
-        p.at += n;
-        if (p.at == p.samples->size()) g_playing[v] = g_playing[--g_count];
-        else v++;
+    // A chunk at a time, what's there and every voice summed in 32 bits, then held to 16 once.
+    const size_t total = (size_t)frames * 2;
+    int32_t sum[kChunk];
+    for (size_t from = 0; from < total && g_count > 0; from += kChunk) {
+        const size_t len = std::min((size_t)kChunk, total - from);
+        for (size_t i = 0; i < len; i++) sum[i] = out[from + i];
+        for (int v = 0; v < g_count;) {
+            Playing& p = g_playing[v];
+            const size_t n = std::min(len, p.samples->size() - p.at);
+            const int16_t* s = p.samples->data() + p.at;
+            for (size_t i = 0; i < n; i++) sum[i] += s[i];
+            p.at += n;
+            if (p.at == p.samples->size()) g_playing[v] = g_playing[--g_count];
+            else v++;
+        }
+        for (size_t i = 0; i < len; i++) out[from + i] = (int16_t)std::clamp(sum[i], -32768, 32767);
     }
     g_count_seen.store(g_count, std::memory_order_relaxed);
 }
