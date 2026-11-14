@@ -246,6 +246,8 @@ const std::string& overlay_bindings_said();
 // a trigger, in the rows' order. Sticks' rows are named in words and have none.
 struct OverlayGlyph;
 const std::vector<OverlayGlyph>& overlay_bindings_test_glyphs();
+// How tall the last of them was drawn.
+float overlay_bindings_test_glyph_height();
 #endif
 #else
 inline void overlay_pads_notice(const std::string&, const std::string&) {}

@@ -30,6 +30,7 @@ bool g_focus_first;                 // the view's first item takes it at its nex
 bool g_back;                        // Change buttons takes it at the page's next draw, after the view
 #ifdef GCN_OVERLAY_TEST
 std::vector<OverlayGlyph> g_glyphs;  // the rows' glyphs last drawn, for the tests
+float g_glyph_height;                // and how tall each was
 #endif
 
 const char* const kRows[kPadControls] = {
@@ -197,6 +198,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
             ImGui::PopFont();
 #ifdef GCN_OVERLAY_TEST
             g_glyphs.push_back(mark);
+            g_glyph_height = height;
 #endif
         } else if (ImGui::Button(glyph(g, family, (PadControl)c, source).c_str())) overlay_bindings_listen((PadControl)c);
         if (g_focus == c && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
@@ -240,6 +242,7 @@ const char* overlay_bindings_cancel() {
 const std::string& overlay_bindings_said() { return g_said; }
 #ifdef GCN_OVERLAY_TEST
 const std::vector<OverlayGlyph>& overlay_bindings_test_glyphs() { return g_glyphs; }
+float overlay_bindings_test_glyph_height() { return g_glyph_height; }
 #endif
 
 bool overlay_bindings_listen(PadControl c) {
