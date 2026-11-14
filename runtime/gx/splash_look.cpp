@@ -48,11 +48,16 @@ bool parse_rrggbb(const char* s, uint32_t* rgb) {
 
 bool take_splash_color(int argc, char** argv, uint32_t* rgb) {
     *rgb = kSplashColor;
-    for (int i = 1; i < argc; i++)
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--splash-color")) {
+            fprintf(stderr, "--splash-color: the colour goes after an =, as in --splash-color=RRGGBB\n");
+            return false;
+        }
         if (!strncmp(argv[i], "--splash-color=", 15) && !parse_rrggbb(argv[i] + 15, rgb)) {
             fprintf(stderr, "--splash-color: RRGGBB, six hex digits, not %s\n", argv[i] + 15);
             return false;
         }
+    }
     return true;
 }
 

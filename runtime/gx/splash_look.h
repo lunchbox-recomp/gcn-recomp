@@ -19,7 +19,7 @@ inline bool splash_bar_shown(double ms_up) { return ms_up >= kSplashBarAfterMs; 
 
 // --splash-color=RRGGBB among `argv`, the background, which main's own loop passes over: the
 // last one given, or kSplashColor without one. False, having said why, for a colour that isn't
-// six hex digits.
+// six hex digits, or a bare --splash-color, whose next argument would be taken for the disc.
 bool take_splash_color(int argc, char** argv, uint32_t* rgb);
 
 // Whether a run shows the splash: `on` is the build's (gcn_add_game's SPLASH), which

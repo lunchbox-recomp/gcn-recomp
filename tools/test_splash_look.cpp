@@ -50,13 +50,15 @@ int main() {
     // --splash-color among the flags: the default without one, the last one given, and a bad one
     // refused.
     char prog[] = "game", other[] = "--fast", c1[] = "--splash-color=102030", c2[] = "--splash-color=405060",
-         bad[] = "--splash-color=red";
+         bad[] = "--splash-color=red", bare[] = "--splash-color", value[] = "102030";
     char* none_argv[] = {prog, other};
     char* two_argv[] = {prog, c1, other, c2};
     char* bad_argv[] = {prog, bad};
+    char* bare_argv[] = {prog, bare, value};
     check(take_splash_color(2, none_argv, &rgb) && rgb == kSplashColor, "no --splash-color is the neutral default");
     check(take_splash_color(4, two_argv, &rgb) && rgb == 0x405060, "the last --splash-color given is the colour");
     check(!take_splash_color(2, bad_argv, &rgb), "a --splash-color that isn't RRGGBB stops the run");
+    check(!take_splash_color(3, bare_argv, &rgb), "and so does a bare one, its colour in the next argument");
 
     // On by the build, off with GCN_SPLASH=0, on with 1 over a build that has it off, never hidden.
     unsetenv("GCN_SPLASH");

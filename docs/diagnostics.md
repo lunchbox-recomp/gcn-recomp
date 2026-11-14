@@ -855,7 +855,9 @@ The boot splash (docs/graphics.md, "The boot splash") is the window's first fram
 `GCN_SPLASH=1` shows it in a build without it. It prints `[splash] the disc's banner, read in
 <ms> ms` (or `[splash] the disc has no banner to show`), then `[splash] <n> frames in <ms> ms`
 once the cache is built. A `--splash-color` that isn't six hex digits stops the run before the
-window opens, and a `GCN_SPLASH` that isn't 0 or 1 says so and leaves the build's choice.
+window opens, as does a bare `--splash-color` with the colour in the next argument (which
+would be taken for the disc), and a `GCN_SPLASH` that isn't 0 or 1 says so and leaves the
+build's choice.
 
 `ninja test_banner` builds `tools/test_banner.cpp`, which decodes banners and walks file
 tables the test makes up. It covers every pixel mode and alpha, the tile order and both
