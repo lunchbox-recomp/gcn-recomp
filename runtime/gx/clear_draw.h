@@ -1,7 +1,8 @@
 // Drawing with scissored glClears alone, for a screen shown before any shader program can be
 // assumed: the headset's loading screen (openxr/xr_frontend.cpp) and the desktop's boot splash
 // (splash.cpp). Each call clears its rects of the bound framebuffer with GL_SCISSOR_TEST on,
-// which the caller enables first and turns off after.
+// which the caller enables first and turns off after, or with it off, which clears the whole
+// target whatever the rect (the headset's first clear_rect).
 #pragma once
 #include <cstdint>
 
