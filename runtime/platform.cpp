@@ -678,11 +678,11 @@ bool plat_sync_file(FILE* f) {
 
 // plat_save_file, and plat_replace_whole_file with `sync` false.
 static bool write_through_tmp(const std::string& path, const void* data, size_t size, const char* unsaved,
-                              bool sync) {
+                              bool sync, bool say) {
     const std::string tmp = path + ".tmp";
     FILE* f = fopen(tmp.c_str(), "wb");
     if (!f) {
-        fprintf(stderr, "%s: can't write it (%s), so %s isn't saved\n", tmp.c_str(), strerror(errno), unsaved);
+        if (say) fprintf(stderr, "%s: can't write it (%s), so %s isn't saved\n", tmp.c_str(), strerror(errno), unsaved);
         return false;
     }
     const bool wrote = fwrite(data, 1, size, f) == size && (!sync || plat_sync_file(f));
@@ -697,7 +697,7 @@ static bool write_through_tmp(const std::string& path, const void* data, size_t 
 #ifdef _WIN32
         if (wrote && closed) why = "Windows error " + std::to_string(win_error);
 #endif
-        fprintf(stderr, "%s: the save failed (%s), and the old file is as it was\n", path.c_str(), why.c_str());
+        if (say) fprintf(stderr, "%s: the save failed (%s), and the old file is as it was\n", path.c_str(), why.c_str());
         remove(tmp.c_str());
         return false;
     }
@@ -705,11 +705,12 @@ static bool write_through_tmp(const std::string& path, const void* data, size_t 
 }
 
 bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved) {
-    return write_through_tmp(path, data, size, unsaved, true);
+    return write_through_tmp(path, data, size, unsaved, true, true);
 }
 
-bool plat_replace_whole_file(const std::string& path, const void* data, size_t size, const char* unsaved) {
-    return write_through_tmp(path, data, size, unsaved, false);
+bool plat_replace_whole_file(const std::string& path, const void* data, size_t size, const char* unsaved,
+                             bool say) {
+    return write_through_tmp(path, data, size, unsaved, false, say);
 }
 
 bool plat_save_file_making_dirs(const std::string& path, const void* data, size_t size, const char* unsaved) {

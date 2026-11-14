@@ -844,13 +844,17 @@ file again at each change. A launcher removes the path before it starts the game
 last run's file stays there until this run's first line, after SDL, the window, the GL
 context and the banner, often hundreds of milliseconds in. A launcher that reads it sooner
 sees the last run's pair. The run's first line replaces whatever the file held, which only
-guards a launcher that forgets. A path that can't be written gets a line on stderr and the run goes on, and the line is tried again at the next frame shown, so a write that fails
-once (on Windows, while the launcher has the file open) still goes in. `--headless` and
-`--vr` write nothing.
+guards a launcher that forgets.
+
+A path that can't be written gets one line on stderr for each word, and the run goes on. The
+word is tried again at a frame shown a second or more later, quietly, so a write that fails
+once (on Windows, while the launcher has the file open) still goes in, and a path that never
+works costs a try a second. `--headless` and `--vr` write nothing.
 
 `ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
 order, that a reader polling the file never sees part of one, that no line waits for a sync,
-that a line whose write failed goes in at the next try, that a run's first line replaces an
+that a line whose write failed says so once and goes in at a try a second later, that a
+run's first line replaces an
 earlier run's, and that the times count from
 before `main`. It prints a line's cost on the machine's disk (`[ready] a line takes a median
 of <ms> ms`).

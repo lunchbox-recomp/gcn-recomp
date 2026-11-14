@@ -103,8 +103,10 @@ extern bool (*plat_sync_for_tests)(FILE* f);
 bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved);
 // plat_save_file without the sync, for a file only read while it's being written: a reader
 // still sees the old file or the new one whole, but a power cut can leave it empty. On macOS
-// the sync is most of a save's time, several milliseconds against a fraction of one.
-bool plat_replace_whole_file(const std::string& path, const void* data, size_t size, const char* unsaved);
+// the sync is most of a save's time, several milliseconds against a fraction of one. With `say`
+// false it says nothing on stderr when it fails, for a caller that has said so once already.
+bool plat_replace_whole_file(const std::string& path, const void* data, size_t size, const char* unsaved,
+                             bool say = true);
 // plat_save_file, after making the directory `path` is in.
 bool plat_save_file_making_dirs(const std::string& path, const void* data, size_t size, const char* unsaved);
 // The whole file at `path` into `text`. False, with `err` the errno, if it can't be read:

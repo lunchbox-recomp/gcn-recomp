@@ -20,8 +20,11 @@
 // Writes the word's line to GCN_READY_FILE the first time it's called with that word, after
 // the lines before it or, for the run's first, in place of what the file held, and
 // does nothing after or without the variable. A line that can't be written (on Windows, a
-// launcher holding the file open) is tried again at the word's next call. Main thread only.
+// launcher holding the file open) says so on stderr the first time, and is tried again at the
+// word's first call a second or more after, quietly. Main thread only.
 void ready_mark(const char* word);
+// ready_mark at `ms`, for the checks: ready_mark is this at plat_ms_since_start().
+void ready_mark_at(const char* word, long long ms);
 
 // Before a console reset runs the game again (plat_relaunch): takes GCN_READY_FILE out of the
 // environment once this run has written its frame line, so the run after writes no second
@@ -32,7 +35,7 @@ void ready_mark(const char* word);
 void ready_relaunching();
 
 // `word ms` and a newline after what `path` holds, through `path`.tmp. False, with the reason on
-// stderr, when it can't be written.
-bool ready_file_append(const char* path, const char* word, long long ms);
+// stderr if `say`, when it can't be written.
+bool ready_file_append(const char* path, const char* word, long long ms, bool say = true);
 // The same with nothing before it: `path` holds the one line after.
-bool ready_file_start(const char* path, const char* word, long long ms);
+bool ready_file_start(const char* path, const char* word, long long ms, bool say = true);
