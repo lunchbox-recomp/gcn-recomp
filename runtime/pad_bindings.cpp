@@ -392,11 +392,3 @@ bool controls_float(const std::string& word, float& v) {
     v = strtof(word.c_str(), &end);
     return !word.empty() && *end == 0;
 }
-
-bool controls_int(const std::string& word, int& v) {
-    if (word.empty() || word.size() > 9) return false;
-    for (char c : word)
-        if (!isdigit((unsigned char)c)) return false;
-    v = atoi(word.c_str());
-    return true;
-}

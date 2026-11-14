@@ -223,6 +223,13 @@ bool parse_ffb(const std::vector<std::string>& w, std::string& err) {
     return false;
 }
 
+bool parse_int(const std::string& s, int& v) {
+    if (s.empty() || s.size() > 9) return false;
+    for (char c : s)
+        if (!isdigit((unsigned char)c)) return false;
+    v = atoi(s.c_str());
+    return true;
+}
 
 bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err) {
     if (w.size() < 3 || w[1] != "=") { err = "expected <pad control> = <source>"; return false; }
@@ -255,7 +262,7 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
                 num.pop_back();
             }
         } else { err = "expected button, hat, axis or gamepad after the device, not \"" + what + "\""; return false; }
-        if (!controls_int(num, b.index)) { err = "\"" + w[i + 2] + "\" is not a " + what + " number"; return false; }
+        if (!parse_int(num, b.index)) { err = "\"" + w[i + 2] + "\" is not a " + what + " number"; return false; }
         i += 3;
         if (b.kind == Kind::Hat) {
             if (i >= w.size()) { err = "hat: which direction (up, down, left, right)?"; return false; }
@@ -272,7 +279,7 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
         if (o == "invert") { b.invert = true; continue; }
         if (o == "port") {
             int n = 0;
-            if (i >= w.size() || !controls_int(w[i], n) || n < 1 || n > 4) { err = "port is 1 to 4"; return false; }
+            if (i >= w.size() || !parse_int(w[i], n) || n < 1 || n > 4) { err = "port is 1 to 4"; return false; }
             b.port = n - 1;
             b.pinned = true;
             i++;

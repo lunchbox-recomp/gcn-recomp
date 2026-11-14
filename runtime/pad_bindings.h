@@ -184,6 +184,5 @@ bool bindings_save(const std::string& path, const SavedBindings& saved);
 bool controls_words(const char* s, std::vector<std::string>& out, std::string& err);
 // A `gamepad` source's word, `west`, `leftx+` or `lefttrigger`, as `s`. False if it isn't one.
 bool pad_source_parse(const std::string& word, PadSource& s);
-// A number on a controls.txt line: any float strtof reads whole, or up to 9 digits.
+// A number on a controls.txt line: any float strtof reads whole.
 bool controls_float(const std::string& word, float& v);
-bool controls_int(const std::string& word, int& v);
