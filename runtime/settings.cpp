@@ -145,6 +145,9 @@ Settings settings_load(const std::string& path) {
         } else if (key == "menu_motion") {
             if (value == "on" || value == "off") s.menu_motion = value == "on";
             else takes = "on or off";
+        } else if (key == "menu_sounds") {
+            if (value == "on" || value == "off") s.menu_sounds = value == "on";
+            else takes = "on or off";
         } else if (key == "ram_patches") {
             s.ram_patches = settings_file_path(path, value);
         }
@@ -180,7 +183,8 @@ bool settings_save(const std::string& path, const Settings& s) {
     const std::pair<const char*, std::string> owned[] = {{"aspect", s.aspect},
                                                          {"fullscreen", s.fullscreen ? "1" : "0"},
                                                          {"scale", std::to_string(s.scale)},
-                                                         {"disc", s.fast_disc ? "fast" : "console"}};
+                                                         {"disc", s.fast_disc ? "fast" : "console"},
+                                                         {"menu_sounds", s.menu_sounds ? "on" : "off"}};
     constexpr int kOwned = (int)(sizeof(owned) / sizeof(owned[0]));
     bool written[kOwned] = {};
     std::string text = bom ? kByteOrderMark : "";
