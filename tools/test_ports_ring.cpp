@@ -205,6 +205,45 @@ void ring_opens(SDL_Window* window, const std::string& dir) {
     gamepads_shutdown();
 }
 
+// Whether `a` and `b` are under half the panel apart, as the ring would ease between them.
+bool near(const ImRect& a, const ImRect& b) {
+    const ImVec2 panel = ImGui::GetCurrentContext()->NavWindow->RootWindow->Size;
+    const ImVec2 p = a.GetCenter(), q = b.GetCenter();
+    return std::fabs(p.x - q.x) <= panel.x / 2.0f && std::fabs(p.y - q.y) <= panel.y / 2.0f;
+}
+
+// Opened on Text, so short a panel that Quit game and the question's Cancel are under half of it
+// apart: the ring isn't drawn at the frame the question takes the page's place, where Quit game
+// isn't laid out, and it's on Cancel at once at the next, not easing there from Quit game's place.
+// The same going back.
+void ring_asks(SDL_Window* window, const std::string& dir) {
+    Guest guest;
+    ring_menu(window, dir, guest, true, false, "Text");
+    stroke(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    ring_settle(guest);
+    const Ring quit = ring_now();
+    push_key(SDL_SCANCODE_RETURN, SDLK_RETURN, true);
+    frame_after(guest);
+    push_key(SDL_SCANCODE_RETURN, SDLK_RETURN, false);
+    frame_after(guest);
+    const Ring asked = ring_now();
+    frame_after(guest);
+    const Ring cancel = ring_now();
+    check(quit.shown && overlay_asking() == OverlayAsk::quit && !asked.shown && cancel.shown &&
+              same_rect(cancel.at, cancel.item) && !same_rect(cancel.item, quit.item) && near(quit.item, cancel.item),
+          "on a short page the ring isn't drawn as the question comes, then it's on Cancel at once");
+    push_key(SDL_SCANCODE_RETURN, SDLK_RETURN, true);
+    frame_after(guest);
+    push_key(SDL_SCANCODE_RETURN, SDLK_RETURN, false);
+    frame_after(guest);
+    const Ring left = ring_now();
+    frame_after(guest);
+    check(overlay_asking() == OverlayAsk::none && !left.shown && ring_on(ring_now(), quit.item),
+          "Cancel goes back with the ring not drawn at that frame, then on Quit game at once");
+    stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
+    ring_settle(guest);
+}
+
 void ring_moves(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
@@ -315,6 +354,7 @@ void ring_moves(const std::string& dir) {
     }
     check(still_ring(window, dir, false, false), "with menu_motion off the ring is on its item at the next frame");
     ring_opens(window, dir);
+    ring_asks(window, dir);
     check(still_ring(window, dir, true, true), "under --dump-output it doesn't move either");
     close_window(window);
 }
