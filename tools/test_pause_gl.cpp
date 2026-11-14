@@ -52,6 +52,7 @@ int g_window;                       // what the window holds
 GLuint g_next = 1, g_read, g_draw, g_bound_tex, g_program;
 GLuint g_kept_from;                 // the framebuffer the last blit into the kept copy read
 int g_blur_passes, g_blur_draws;     // draws with the blur program into a target, and to the window
+GLenum g_blend_eq, g_blur_draw_eq;  // the blend equation set, and the one the last blur draw to the window had
 std::set<GLuint> g_deleted;         // textures and framebuffers deleted (gen numbers both)
 float g_rect[4];
 GLint g_view[4];
@@ -94,6 +95,7 @@ void GLAD_API_PTR draw_arrays(GLenum, GLint, GLsizei) {
     if (g_program == gx::g_blit_prog) holds(g_draw) = g_tex[g_bound_tex];
     if (g_program == gx::g_blur_prog) {
         (g_draw ? g_blur_passes : g_blur_draws)++;
+        if (!g_draw) g_blur_draw_eq = g_blend_eq;
         holds(g_draw) = g_tex[g_bound_tex];
     }
 }
@@ -104,6 +106,7 @@ void GLAD_API_PTR nothing_u(GLuint) {}
 void GLAD_API_PTR nothing_ii(GLint, GLint) {}
 void GLAD_API_PTR nothing_ffff(GLfloat, GLfloat, GLfloat, GLfloat) {}
 void GLAD_API_PTR nothing_eeee(GLenum, GLenum, GLenum, GLenum) {}
+void GLAD_API_PTR blend_equation(GLenum e) { g_blend_eq = e; }
 void GLAD_API_PTR nothing_f(GLint, GLfloat) {}
 void GLAD_API_PTR nothing_if(GLint, GLfloat, GLfloat) {}
 void GLAD_API_PTR nothing_bbbb(GLboolean, GLboolean, GLboolean, GLboolean) {}
@@ -124,6 +127,7 @@ void install() {
     glad_glUseProgram = use_program;
     glad_glEnable = nothing_e;
     glad_glBlendFuncSeparate = nothing_eeee;
+    glad_glBlendEquation = blend_equation;
     glad_glUniform4fv = uniform4fv;
     glad_glViewport = viewport;
     glad_glDrawArrays = draw_arrays;
@@ -182,9 +186,11 @@ void blur_checks() {
               g_size[gx::g_blur_tex[0]] == std::make_pair(320, 240) && g_tex[gx::g_blur_tex[0]] == 22,
           "the hold's first frame fits the held one into a quarter of the window's size and blurs it in two "
           "passes, and at 0 draws none of it");
+    g_blend_eq = GL_FUNC_REVERSE_SUBTRACT;  // GX's subtract, left by the game's last batch
     for (const float alpha : {0.5f, 0.75f, 1.0f, 1.0f}) gx::render_overlay_blur(true, alpha);
     check(g_blur_passes == kMake && g_blur_draws == 4 && g_window == 22,
           "each later held frame draws that blur over the window, and makes it again for none of them");
+    check(g_blur_draw_eq == GL_FUNC_ADD, "it blends by adding, though the game's last batch left a subtract");
     gx::render_set_window_size(1920, 1080);
     gx::render_overlay_blur(true, 1.0f);
     gx::render_overlay_blur(true, 1.0f);

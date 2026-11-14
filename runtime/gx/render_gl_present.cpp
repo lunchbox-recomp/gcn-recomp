@@ -351,6 +351,8 @@ static void blur_draw(float alpha) {
     set_logic_op_off();
     glColorMask(1, 1, 1, 1);
     glEnable(GL_BLEND);
+    // The game's last batch may have left GX's subtract (apply_state), which would draw it black.
+    glBlendEquation(GL_FUNC_ADD);
     glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
     glUseProgram(g_blur_prog);
     glActiveTexture(GL_TEXTURE0);
