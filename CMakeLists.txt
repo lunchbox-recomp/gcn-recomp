@@ -846,7 +846,10 @@ function(gcn_add_game)
       target_include_directories(test_overlay_motion PRIVATE ${RT})
       target_link_libraries(test_overlay_motion PRIVATE gcn_imgui)
       target_compile_options(test_overlay_motion PRIVATE ${GCN_RUNTIME_WARNINGS})
-      target_compile_definitions(test_overlay_motion PRIVATE GCN_OVERLAY)
+      # The standard library checks its preconditions here, std::clamp's bounds among them, so a
+      # theme's times that break one stop the checks.
+      target_compile_definitions(test_overlay_motion PRIVATE GCN_OVERLAY
+        _LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE _GLIBCXX_ASSERTIONS)
     endif()
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page

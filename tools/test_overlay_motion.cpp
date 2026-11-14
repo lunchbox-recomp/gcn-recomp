@@ -6,10 +6,11 @@
 // its end, a tween of no length is at its end at once, and one turned mid-way starts from the
 // value showing. runtime/overlay/appear.h opens the menu over the theme's times, the contents
 // behind the panel and the backdrop last, and is whole when the panel and the contents are,
-// within 200 ms. It closes over the theme's close time and can open again from wherever it was.
-// With motion off each change is whole at once. Its transform of a frame's draw data scales
-// every list but the backdrop's about the centre, clip rects too, and fades the panel's
-// vertices and the contents' each by their own alpha.
+// within 200 ms, or at once with a negative open time. It closes over the theme's close time
+// and can open again from wherever it was. With motion off each change is whole at once. Its
+// transform of a frame's draw data scales every list but the backdrop's about the centre, clip
+// rects too, and fades the panel's vertices and the contents' each by their own alpha. The
+// standard library checks its preconditions as these run (CMakeLists.txt).
 //
 // usage: test_overlay_motion
 // Exits 0 only if every check passes.
@@ -120,6 +121,14 @@ void opens_and_closes() {
     appear_open(th, t1 + 60 * kMs);
     check(near(appear_panel_alpha(t1 + 60 * kMs), half) && !appear_closing(t1 + 60 * kMs),
           "opened again mid-way through a close, it starts from where it was");
+
+    OverlayTheme backwards = th;
+    backwards.open_ms = -50.0f;
+    const uint64_t t3 = 15000 * kMs;
+    appear_close(th, t3 - 1000 * kMs);
+    appear_open(backwards, t3);
+    check(appear_shown(t3) && near(appear_panel_alpha(t3), 1.0f) && near(appear_contents_alpha(t3), 1.0f),
+          "a game's theme with a negative open time opens whole at once, its contents' delay held to none");
 
     appear_motion(false);
     const uint64_t t2 = 20000 * kMs;

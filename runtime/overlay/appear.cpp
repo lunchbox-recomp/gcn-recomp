@@ -23,11 +23,13 @@ void appear_motion(bool on) { g_motion = on; }
 void appear_open(const OverlayTheme& t, uint64_t now) {
     const bool gone = g_panel.at(now) <= 0.0f;
     g_open = true;
-    const float delay = std::clamp(t.contents_delay_ms, 0.0f, t.open_ms);
-    g_panel = tween_to(g_panel, now, 1.0f, span(t.open_ms), Ease::out_back, 0.0f, t.open_overshoot);
-    g_scale = tween_to(g_scale, now, 1.0f, span(t.open_ms), Ease::out_back, 0.0f, t.open_overshoot);
+    // A game's theme may give a negative time, which opens at once, as none does.
+    const float open = std::max(t.open_ms, 0.0f);
+    const float delay = std::clamp(t.contents_delay_ms, 0.0f, open);
+    g_panel = tween_to(g_panel, now, 1.0f, span(open), Ease::out_back, 0.0f, t.open_overshoot);
+    g_scale = tween_to(g_scale, now, 1.0f, span(open), Ease::out_back, 0.0f, t.open_overshoot);
     if (gone) g_scale.from = t.open_scale;
-    g_contents = tween_to(g_contents, now, 1.0f, span(t.open_ms - delay), Ease::out_quad, span(delay));
+    g_contents = tween_to(g_contents, now, 1.0f, span(open - delay), Ease::out_quad, span(delay));
     g_backdrop = tween_to(g_backdrop, now, 1.0f, span(t.backdrop_ms), Ease::out_quad);
 }
 
