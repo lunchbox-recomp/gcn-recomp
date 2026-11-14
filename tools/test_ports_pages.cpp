@@ -235,11 +235,22 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
 // menu closed.
 void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
 
+// Whether each of the Buttons view's rows, as last drawn, has its name whole left of its button,
+// and its button whole across the region the rows scroll in.
+bool rows_whole() {
+    const std::vector<OverlayBindingsRow>& rows = overlay_bindings_test_rows();
+    bool whole = rows.size() == kPadControls;
+    for (const OverlayBindingsRow& r : rows)
+        whole = whole && r.region[0] <= r.name[0] && r.name[1] < r.button[0] && r.button[1] <= r.region[1];
+    return whole;
+}
+
 // The Buttons view at a size, over a gamepad plugged in for it, in place of the Controllers
 // page: dumped to buttons/overlay_buttons_top.png as it opens with its first gamepad focused, and
 // to buttons/overlay_buttons_end.png once the D-pad has taken the focus down to Done, its last
 // item. At each the footer's hints and the item with the focus are whole on the panel
-// (on_panel), and where the panel, the hints and the last row are is printed.
+// (on_panel), and where the panel, the hints and the last row are is printed. Then on it and on
+// a pad of each family, every row is whole across (rows_whole).
 void buttons_review(SDL_Window* window, const std::string& out, const std::string& at) {
     static std::string dump_dir;
     dump_dir = out + "/buttons";
@@ -289,6 +300,33 @@ void buttons_review(SDL_Window* window, const std::string& out, const std::strin
         draw();
     }
     const bool end = dump("overlay_buttons_end.png", "at Done") && on_panel() && focused("Done");
+    // The view on that pad and on one of each family whose buttons are named their own way, each
+    // row's name whole left of its button, and its button whole across the region.
+    bool whole = rows_whole();
+    Virtual xbox{"xbox pad buttons review"}, ps{"playstation pad buttons review"}, cube{"gc pad buttons review"},
+        joycon{"joy-con pad buttons review"}, deck{"steam deck pad buttons review"};
+    xbox.vendor = 0x045e;
+    xbox.product = 0x02ea;
+    ps.vendor = 0x054c;
+    ps.product = 0x0ce6;
+    cube.vendor = joycon.vendor = 0x057e;
+    cube.product = 0x0337;
+    joycon.product = 0x2006;
+    deck.vendor = 0x28de;
+    deck.product = 0x1205;
+    for (Virtual* v : {&xbox, &ps, &cube, &joycon, &deck}) {
+        attach(*v);
+        frame();
+        overlay_bindings_open(v->id);
+        draw();
+        draw();
+        whole = whole && rows_whole();
+        detach(*v);
+        frame();
+    }
+    check(whole, (at + ": each of the Buttons view's rows has its name whole left of its button, and its button "
+                       "whole across the view, on a generic, Xbox, PlayStation, GameCube, Joy-Con and Steam Deck pad")
+                     .c_str());
     overlay_close();
     overlay_test_end();
     detach(pad);

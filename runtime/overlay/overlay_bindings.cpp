@@ -32,6 +32,7 @@ bool g_back;                        // Change buttons takes it at the page's nex
 std::vector<OverlayGlyph> g_glyphs;  // the rows' glyphs last drawn, for the tests
 float g_glyph_height;                // and how tall each was
 ImVec2 g_last_min, g_last_max;       // the last row's button as it was last drawn
+std::vector<OverlayBindingsRow> g_rows;  // and each row across, as they were
 #endif
 
 const char* const kRows[kPadControls] = {
@@ -170,15 +171,24 @@ void setting(const char* label, int& raw, int most, PadBinding& b) {
 void rows(SDL_Gamepad* g, PadBinding& b) {
     ImGui::SeparatorText("Buttons");
     ImGui::TextUnformatted("Pick a control, then press the button or push the stick for it.");
-    const float column = ImGui::CalcTextSize(kRows[(int)PadControl::CStickX]).x + ImGui::GetStyle().ItemSpacing.x * 2;
+    // The buttons start past the widest of the rows' names, which are the same on every gamepad,
+    // from where the names start.
+    float widest = 0.0f;
+    for (const char* name : kRows) widest = std::max(widest, ImGui::CalcTextSize(name).x);
+    const float column = ImGui::GetCursorPosX() + widest + ImGui::GetStyle().ItemSpacing.x * 2;
     const PadFamily family = gamepads_family(g);
 #ifdef GCN_OVERLAY_TEST
     g_glyphs.clear();
+    g_rows.clear();
+    const ImRect region = ImGui::GetCurrentWindow()->InnerClipRect;
 #endif
     for (int c = 0; c < kPadControls; c++) {
         ImGui::PushID(c);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(kRows[c]);
+#ifdef GCN_OVERLAY_TEST
+        const ImRect name(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+#endif
         ImGui::SameLine(column);
         const PadSource& source = b.source[c];
         const bool button = !source.axis || source.index == kPadLeftTrigger || source.index == kPadRightTrigger;
@@ -205,6 +215,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
 #ifdef GCN_OVERLAY_TEST
         g_last_min = ImGui::GetItemRectMin();
         g_last_max = ImGui::GetItemRectMax();
+        g_rows.push_back({{name.Min.x, name.Max.x}, {g_last_min.x, g_last_max.x}, {region.Min.x, region.Max.x}});
 #endif
         if (g_focus == c && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
         ImGui::PopID();
@@ -252,6 +263,7 @@ void overlay_bindings_test_last_row(float rect[4]) {
     const float r[4] = {g_last_min.x, g_last_min.y, g_last_max.x, g_last_max.y};
     std::copy(r, r + 4, rect);
 }
+const std::vector<OverlayBindingsRow>& overlay_bindings_test_rows() { return g_rows; }
 #endif
 
 bool overlay_bindings_listen(PadControl c) {

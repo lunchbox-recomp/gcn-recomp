@@ -258,6 +258,12 @@ float overlay_bindings_test_glyph_height();
 // Where the view's last row, the C-stick's up and down, last drew its button, in the window's
 // pixels: its left, top, right and bottom.
 void overlay_bindings_test_last_row(float rect[4]);
+// Across the window's pixels, where each of the view's rows last drew its name and its button,
+// and the region they're drawn in: the left and right of each, in the rows' order.
+struct OverlayBindingsRow {
+    float name[2], button[2], region[2];
+};
+const std::vector<OverlayBindingsRow>& overlay_bindings_test_rows();
 #endif
 #else
 inline void overlay_pads_notice(const std::string&, const std::string&) {}
