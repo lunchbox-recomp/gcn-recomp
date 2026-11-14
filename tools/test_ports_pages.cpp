@@ -2,8 +2,9 @@
 // GCN_OVERLAY_PAGE opens it on each page in turn, and --dump-output writes each page once its
 // frame has settled, over GCN_OVERLAY_PLAIN's grey, since no game frame is kept here. Each
 // page's menu frame time, overlay_draw's on the CPU, is printed. The PNGs are for a person to
-// look at, never goldens. With no GL window, as on a machine with no display, the mode is
-// skipped (exit 77). Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+// look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
+// a view the menu closed from once the fade is over. With no GL window, as on a machine with no
+// display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include <cstdio>
 
@@ -164,6 +165,45 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
     return run;
 }
 
+// The press-A order, up as F1 closes the menu, ends once the fade is over at a frame of
+// overlay_draw, the game's, as it does at one of overlay_menu_frame (test_ports_motion.cpp).
+bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
+    g_window_id = SDL_GetWindowID(window);
+    overlay_test_reset_pages();
+    OverlayPicture picture;
+    picture.path = out + "/order-settings.txt";
+    gx::g_dump_output = false;  // dumping turns the menu's motion off, and with it the fade
+    gx::g_dump_output = false;  // which turns the menu's motion off, and with it the fade
+    overlay_init(window, "Test title", picture);
+    Guest guest;
+    const auto frame = [&] {
+        pump_events();
+        update_pads(0);
+        overlay_draw();
+        SDL_GL_SwapWindow(window);
+        guest_on(guest);
+    };
+    const auto f1 = [&] {
+        push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+        push_key(SDL_SCANCODE_F1, SDLK_F1, false);
+        frame();
+    };
+    f1();
+    g_host_ns += 1000000000;  // past the open's motion
+    frame();
+    overlay_controllers_order();
+    frame();
+    const bool asked = overlay_open() && overlay_controllers_asking() == 0;
+    f1();
+    const bool kept = !overlay_open() && overlay_controllers_asking() == 0;
+    g_host_ns += 1000000000;  // past the close's fade
+    frame();
+    const bool ended = overlay_controllers_asking() == -1;
+    overlay_test_end();
+    gx::g_dump_output = true;
+    return asked && kept && ended;
+}
+
 double percentile(std::vector<double> v, double p) {
     if (v.empty()) return 0.0;
     std::sort(v.begin(), v.end());
@@ -231,6 +271,8 @@ int run_pages(const std::string& dir) {
                       lines_with(bad, "[overlay] GCN_OVERLAY_PAGE=Display isn't a page from 0 to 2, so it opens where it was\n") == 1 &&
                       past.on_page && word.on_page,
                   "a GCN_OVERLAY_PAGE past the last page or not a number says so once and opens on the first page");
+            check(order_ends_at_draw(window, out + "/bare"),
+                  "at overlay_draw's frames, the press-A order up as the menu closes ends once the fade is over");
         }
         gl_window_close(window);
     }
