@@ -16,11 +16,12 @@ struct ToastLook {
 
 // The toast `ns` after it was queued. It rises from the theme's toast_rise below its place and
 // fades in over its toast_in_ms, out-cubic, is whole until the last toast_out_ms of kToastNs,
-// and fades out over those, in-quad, to nothing at kToastNs. With motion off it's whole and in
-// its place from its first frame to its last. A game's theme may give a time or a rise that's
-// negative, infinite or not a number: such a time takes none and such a rise none, and no time
-// is longer than kToastNs.
-ToastLook toast_look(const OverlayTheme& t, uint64_t ns, bool motion);
+// and fades out over those, in-quad, to nothing at kToastNs. One queued `over` another rises
+// from no further than the theme's item_spacing, the gap between them, so it never enters the
+// pill below. With motion off it's whole and in its place from its first frame to its last. A
+// game's theme may give a time or a rise that's negative, infinite or not a number: such a time
+// takes none and such a rise none, and no time is longer than kToastNs.
+ToastLook toast_look(const OverlayTheme& t, uint64_t ns, bool motion, bool over = false);
 
 // A toast's place in the stack, 0 the lowest, from where `was` has it at `now` to `slot`, over
 // the theme's toast_reflow_ms, out-cubic, as an older one under it goes; at once with motion off.

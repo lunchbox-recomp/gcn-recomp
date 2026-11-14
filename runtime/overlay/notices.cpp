@@ -26,6 +26,7 @@ struct Notice {
     size_t lead;     // the controller's name, the text's first `lead` bytes
     uint64_t since;  // host_ns as it was queued
     Tween slot;      // its place in the stack, 0 the lowest (toasts.h)
+    bool over;       // queued over another, so it rises no further than the gap (toasts.h)
 };
 std::vector<Notice> g_notices;
 ImGuiContext* g_context;  // their own, null with no window
@@ -69,7 +70,7 @@ void pills(uint64_t now) {
     const float edge = ImGui::GetStyle().FrameBorderSize;
     const float bottom = vp->Pos.y + vp->Size.y - t.margin * s;
     for (const Notice& n : g_notices) {
-        const ToastLook look = toast_look(t, now - n.since, g_motion);
+        const ToastLook look = toast_look(t, now - n.since, g_motion, n.over);
         const char* text = n.text.c_str();
         const char* split = text + n.lead;
         const float lead_w = ImGui::CalcTextSize(text, split).x;
@@ -106,9 +107,16 @@ void dump() {
 void overlay_pads_notice(const std::string& name, const std::string& what) {
     const std::string text = name + what;
     fprintf(stderr, "[pads] %s\n", text.c_str());
+    // Its place moves as the one under it does, a place above it, so the two never close up as
+    // the stack reflows.
+    const bool over = !g_notices.empty();
     Tween slot;
-    slot.from = slot.to = (float)g_notices.size();
-    g_notices.push_back({text, name.size(), host_ns(), slot});
+    if (over) {
+        slot = g_notices.back().slot;
+        slot.from += 1.0f;
+        slot.to += 1.0f;
+    }
+    g_notices.push_back({text, name.size(), host_ns(), slot, over});
 }
 
 void notices_motion(bool on) { g_motion = on; }

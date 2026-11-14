@@ -132,12 +132,54 @@ void toast_life(SDL_Window* window, const std::string& dir, bool motion, bool du
     check(overlay_notices().empty() && overlay_notice_frames() == none && overlay_menu_frames() == menu_frames, said);
 }
 
+// Three, as `what` describes: A, B 500 ms after it, and C queued at the frame A goes in, as B
+// starts down into A's place. Each 2 ms frame from A to the last going has no two pills
+// overlapping, and B, queued over A, rises from no further than the gap between them, so its
+// first frame sits on A's top.
+void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool dump_output, const char* what) {
+    Guest guest;
+    toasts_init(window, dir, motion, dump_output, guest);
+    const bool moves = motion && !dump_output;
+    int width = 0, height = 0;
+    SDL_GetWindowSize(window, &width, &height);
+    const float s = (float)height / 1080.0f;
+    const uint64_t a = g_host_ns;
+    overlay_pads_notice("Pad one", " connected as player 1");
+    bool apart = true;
+    float b_first = -1.0f, b_100 = -1.0f;
+    for (uint64_t ms = 0; ms <= 2600; ms += 2) {
+        g_host_ns = a + ms * kToastMsNs;
+        if (ms == 500) overlay_pads_notice("Pad two", " connected as player 2");
+        host_frame(guest);
+        if (ms == 2000) overlay_pads_notice("Pad three", " connected as player 3");
+        const std::vector<OverlayTestToast>& laid = overlay_test_toasts();
+        for (size_t i = 1; i < laid.size(); i++) apart = apart && laid[i].top + laid[i].height <= laid[i - 1].top + 0.01f;
+        if (ms == 500 && laid.size() == 2) b_first = laid[1].top;
+        if (ms == 600 && laid.size() == 2) b_100 = laid[1].top;
+    }
+    const float gap = overlay_theme_default().item_spacing * s;
+    const bool rose = moves ? near_px(b_first, rest_top(window, 1) + gap) && near_px(b_100, rest_top(window, 1) + gap * 0.125f)
+                            : near_px(b_first, rest_top(window, 1)) && near_px(b_100, rest_top(window, 1));
+    char said[256];
+    snprintf(said, sizeof(said), "%s: A, B 500 ms on and C as A goes: no two pills overlap at any 2 ms frame to 2600 ms", what);
+    check(apart, said);
+    snprintf(said, sizeof(said), "%s: B, queued over A, %s", what,
+             moves ? "rises from the 8 px gap below its place, its first frame on A's top, and 1 px below at 100 ms"
+                   : "is in its place from its first frame");
+    check(rose, said);
+    g_host_ns = a + 5000 * kToastMsNs;
+    host_frame(guest);
+}
+
 void toasts(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
     toast_life(window, dir, true, false, "with menu_motion on");
     toast_life(window, dir, false, false, "with menu_motion off");
     toast_life(window, dir, true, true, "under --dump-output");
+    toast_stack(window, dir, true, false, "with menu_motion on");
+    toast_stack(window, dir, false, false, "with menu_motion off");
+    toast_stack(window, dir, true, true, "under --dump-output");
     close_window(window);
 }
 
