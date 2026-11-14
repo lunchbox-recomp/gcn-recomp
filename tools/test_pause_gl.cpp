@@ -8,9 +8,9 @@
 // the window has its own number. A blit copies the number, a clear makes it 0, and a draw
 // with the blit program copies the bound texture's number to the target, with the rect and
 // viewport recorded, and so does one with the blur program, counted as a pass into a target or a
-// draw to the window. The XFB and the EFB hold the same number once a frame is assembled, so
-// a blit into the kept copy also records the framebuffer it read. The linker drops the rest
-// of the renderer, which nothing here reaches.
+// draw to the window with its u_alpha, u_step and the blend equation it had. The XFB and the EFB
+// hold the same number once a frame is assembled, so a blit into the kept copy also records the
+// framebuffer it read. The linker drops the rest of the renderer, which nothing here reaches.
 #define GCN_GL_ES
 #include "gx/render_gl.cpp"
 #include "gx/render_gl_batch.cpp"
@@ -25,9 +25,11 @@
 #include "gx/render_gl_view.cpp"
 #include <cstdio>
 #include <cstdarg>
+#include <cmath>
 #include <map>
 #include <set>
 #include <utility>
+#include <vector>
 
 bool write_png(const char*, const uint8_t*, int, int) { return true; }
 void fatal(const char* fmt, ...) {  // render_set_internal_scale's, for an incomplete EFB
@@ -52,7 +54,12 @@ int g_window;                       // what the window holds
 GLuint g_next = 1, g_read, g_draw, g_bound_tex, g_program;
 GLuint g_kept_from;                 // the framebuffer the last blit into the kept copy read
 int g_blur_passes, g_blur_draws;     // draws with the blur program into a target, and to the window
-GLenum g_blend_eq, g_blur_draw_eq;  // the blend equation set, and the one the last blur draw to the window had
+GLenum g_blend_eq, g_blur_draw_eq;  // the blend equation set, and the last blur draw to the window's
+// The blur program's u_alpha and u_step as set, each draw into a target's step, and the last draw
+// to the window's alpha and step.
+float g_alpha = -1, g_blur_draw_alpha = -1;
+std::pair<float, float> g_step, g_blur_draw_step;
+std::vector<std::pair<float, float>> g_pass_steps;
 std::set<GLuint> g_deleted;         // textures and framebuffers deleted (gen numbers both)
 float g_rect[4];
 GLint g_view[4];
@@ -95,7 +102,12 @@ void GLAD_API_PTR draw_arrays(GLenum, GLint, GLsizei) {
     if (g_program == gx::g_blit_prog) holds(g_draw) = g_tex[g_bound_tex];
     if (g_program == gx::g_blur_prog) {
         (g_draw ? g_blur_passes : g_blur_draws)++;
-        if (!g_draw) g_blur_draw_eq = g_blend_eq;
+        if (g_draw) g_pass_steps.push_back(g_step);
+        else {
+            g_blur_draw_eq = g_blend_eq;
+            g_blur_draw_alpha = g_alpha;
+            g_blur_draw_step = g_step;
+        }
         holds(g_draw) = g_tex[g_bound_tex];
     }
 }
@@ -107,8 +119,12 @@ void GLAD_API_PTR nothing_ii(GLint, GLint) {}
 void GLAD_API_PTR nothing_ffff(GLfloat, GLfloat, GLfloat, GLfloat) {}
 void GLAD_API_PTR nothing_eeee(GLenum, GLenum, GLenum, GLenum) {}
 void GLAD_API_PTR blend_equation(GLenum e) { g_blend_eq = e; }
-void GLAD_API_PTR nothing_f(GLint, GLfloat) {}
-void GLAD_API_PTR nothing_if(GLint, GLfloat, GLfloat) {}
+void GLAD_API_PTR uniform1f(GLint at, GLfloat v) {
+    if (at == gx::g_blur_u_alpha) g_alpha = v;
+}
+void GLAD_API_PTR uniform2f(GLint at, GLfloat x, GLfloat y) {
+    if (at == gx::g_blur_u_step) g_step = {x, y};
+}
 void GLAD_API_PTR nothing_bbbb(GLboolean, GLboolean, GLboolean, GLboolean) {}
 void GLAD_API_PTR nothing_b(GLboolean) {}
 GLenum GLAD_API_PTR complete(GLenum) { return GL_FRAMEBUFFER_COMPLETE; }
@@ -137,8 +153,8 @@ void install() {
     glad_glBindSampler = nothing_uu;
     glad_glBindVertexArray = nothing_u;
     glad_glUniform1i = nothing_ii;
-    glad_glUniform1f = nothing_f;
-    glad_glUniform2f = nothing_if;
+    glad_glUniform1f = uniform1f;
+    glad_glUniform2f = uniform2f;
     glad_glClearColor = nothing_ffff;
     glad_glColorMask = nothing_bbbb;
     glad_glDepthMask = nothing_b;
@@ -186,11 +202,21 @@ void blur_checks() {
               g_size[gx::g_blur_tex[0]] == std::make_pair(320, 240) && g_tex[gx::g_blur_tex[0]] == 22,
           "the hold's first frame fits the held one into a quarter of the window's size and blurs it in two "
           "passes, and at 0 draws none of it");
+    const auto at = [](std::pair<float, float> s, float x, float y) {
+        return std::fabs(s.first - x) < 1e-6f && std::fabs(s.second - y) < 1e-6f;
+    };
+    check(g_pass_steps.size() == 3 && g_pass_steps[0].first > 0.0f && g_pass_steps[0].second > 0.0f &&
+              at(g_pass_steps[1], 0.5f / 320, 0.5f / 240) && at(g_pass_steps[2], 1.5f / 320, 1.5f / 240),
+          "the fit spreads its taps, and the two Kawase passes step 0.5 and then 1.5 of the target's texels");
     g_blend_eq = GL_FUNC_REVERSE_SUBTRACT;  // GX's subtract, left by the game's last batch
     for (const float alpha : {0.5f, 0.75f, 1.0f, 1.0f}) gx::render_overlay_blur(true, alpha);
     check(g_blur_passes == kMake && g_blur_draws == 4 && g_window == 22,
           "each later held frame draws that blur over the window, and makes it again for none of them");
     check(g_blur_draw_eq == GL_FUNC_ADD, "it blends by adding, though the game's last batch left a subtract");
+    gx::g_applied.valid = true;
+    gx::render_overlay_blur(true, 0.4f);
+    check(g_blur_draw_alpha == 0.4f && at(g_blur_draw_step, 0.0f, 0.0f) && !gx::g_applied.valid,
+          "it's drawn at the crossfade's alpha, one tap a pixel, and the game's state is sent again after it");
     gx::render_set_window_size(1920, 1080);
     gx::render_overlay_blur(true, 1.0f);
     gx::render_overlay_blur(true, 1.0f);
@@ -242,6 +268,8 @@ int present_last_checks() {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gx::g_efb_color, 0);
     gx::g_blit_prog = 1000;
     gx::g_blur_prog = 1001;
+    gx::g_blur_u_alpha = 11;  // apart from the other uniforms, all at 0 here
+    gx::g_blur_u_step = 12;
     gx::render_set_window_size(1280, 960);
     const gx::EfbCopyCmd whole = display_copy(0x00400000, 480);
     const gx::EfbCopyCmd top = display_copy(0x00400000, 240), bottom = display_copy(0x00400000 + 240 * 1280, 240);
@@ -280,8 +308,12 @@ int present_last_checks() {
     check(gx::g_xfbs.size() == 1 && kept_from == gx::g_xfbs[0].fbo,
           "it was kept from the assembled XFB, not from the EFB that held only its last half");
 
+    gx::render_overlay_blur(true, 1.0f);  // the menu's blur, made from the kept frame
+    const GLuint blur_tex = gx::g_blur_tex[0];
     const GLuint kept_tex = gx::g_last_tex, kept_fbo = gx::g_last_fbo;
     gx::render_keep_last(false);
+    check(blur_tex && !gx::g_blur_ready && !gx::g_blur_tex[0] && g_deleted.count(blur_tex),
+          "once keeping stops, the blur made from the kept frame is freed too");
     g_window = -1;
     check(!gx::render_present_last() && g_window == -1, "once keeping stops, render_present_last draws nothing");
     check(kept_tex && kept_fbo && g_deleted.count(kept_tex) && g_deleted.count(kept_fbo),
