@@ -138,12 +138,12 @@ struct SavedBinding {
     std::string name;
     PadBinding binding;
     std::array<bool, kPadControls> given{};
-    bool stick_dz = false, cstick_dz = false, trigger_dz = false, click = false;  // which settings it gave
 };
 using SavedBindings = std::vector<SavedBinding>;
 
-// The binding saved for `id`, over `fallback` where the block leaves a control or a setting
-// out, or `fallback` itself if none is saved.
+// The binding saved for `id`, with `fallback`'s source for each control the block leaves out
+// and PadBinding's own value for each setting it leaves out, or `fallback` itself if none is
+// saved. A line gives a dead zone only to a stick or a trigger and a threshold only to L or R.
 PadBinding bindings_find(const SavedBindings& saved, const PortDevice& id, const PadBinding& fallback);
 // `id`'s block replaced by `b`, every control given, or put last if it had none.
 void bindings_put(SavedBindings& saved, const PortDevice& id, const std::string& name, const PadBinding& b);

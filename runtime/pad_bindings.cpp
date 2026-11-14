@@ -92,12 +92,15 @@ bool fits(PadControl c, const PadSource& s) {
     return !s.invert && (!s.axis || is_trigger(s.index) || s.half != 0);
 }
 
+// A word from the file as an error says it, cut to its first 32 bytes.
+std::string cut(const std::string& word) { return word.size() <= 32 ? word : word.substr(0, 32) + "..."; }
+
 // One control line into `b`, or false with `err` set.
 bool parse_control(const std::vector<std::string>& w, SavedBinding& b, std::string& err) {
     const auto name = std::find_if(std::begin(kControlNames), std::end(kControlNames),
                                    [&](const char* n) { return w[0] == n; });
     if (name == std::end(kControlNames)) {
-        err = "unknown pad control \"" + w[0] + "\"";
+        err = "unknown pad control \"" + cut(w[0]) + "\"";
         return false;
     }
     const PadControl c = (PadControl)(name - std::begin(kControlNames));
@@ -117,7 +120,7 @@ bool parse_control(const std::vector<std::string>& w, SavedBinding& b, std::stri
             }
             i++;
         } else {
-            err = "unknown option \"" + w[i] + "\"";
+            err = "unknown option \"" + cut(w[i]) + "\"";
             return false;
         }
     }
@@ -126,22 +129,19 @@ bool parse_control(const std::vector<std::string>& w, SavedBinding& b, std::stri
                                       : std::string(w[0]) + " takes a button, a trigger or one way of a stick axis";
         return false;
     }
+    // The setting each kind of control has: a stick's dead zone, or a trigger's and its click.
+    const bool main_stick = c == PadControl::StickX || c == PadControl::StickY;
+    int* dz = main_stick ? &b.binding.stick_deadzone
+              : pad_control_is_stick(c) ? &b.binding.cstick_deadzone
+              : trigger(c) ? &b.binding.trigger_deadzone : nullptr;
+    if ((deadzone >= 0 && !dz) || (threshold >= 0 && !trigger(c))) {
+        err = w[0] + (deadzone >= 0 && !dz ? " has no dead zone" : " has no threshold, which only L and R have");
+        return false;
+    }
     b.binding.source[(int)c] = s;
     b.given[(int)c] = true;
-    if (deadzone >= 0 && (c == PadControl::StickX || c == PadControl::StickY)) {
-        b.binding.stick_deadzone = deadzone;
-        b.stick_dz = true;
-    } else if (deadzone >= 0 && (c == PadControl::CStickX || c == PadControl::CStickY)) {
-        b.binding.cstick_deadzone = deadzone;
-        b.cstick_dz = true;
-    } else if (deadzone >= 0 && trigger(c)) {
-        b.binding.trigger_deadzone = deadzone;
-        b.trigger_dz = true;
-    }
-    if (threshold >= 0 && trigger(c)) {
-        b.binding.trigger_click = threshold;
-        b.click = true;
-    }
+    if (deadzone >= 0) *dz = deadzone;
+    if (threshold >= 0) b.binding.trigger_click = threshold;
     return true;
 }
 
@@ -236,9 +236,7 @@ void pad_binding_set(PadBinding& b, PadControl c, const PadSource& s) {
 // ---- Press-to-bind
 
 BindListen bind_listen(PadControl c, const PadReading& r, uint64_t now) {
-    BindListen l{c, now + kBindListenNs, r};
-    for (int& v : l.held.axis) v = abs(v) > kBindHalf ? v : 0;
-    return l;
+    return {c, now + kBindListenNs, r};
 }
 
 BindHeard bind_hear(BindListen& l, const PadReading& r, uint64_t now, PadSource& out) {
@@ -280,18 +278,14 @@ BindHeard bind_hear(BindListen& l, const PadReading& r, uint64_t now, PadSource&
 PadBinding bindings_find(const SavedBindings& saved, const PortDevice& id, const PadBinding& fallback) {
     const auto it = std::find_if(saved.begin(), saved.end(), [&](const SavedBinding& b) { return same_gamepad(b, id); });
     if (it == saved.end()) return fallback;
-    PadBinding b = fallback;
+    PadBinding b = it->binding;
     for (int c = 0; c < kPadControls; c++)
-        if (it->given[c]) b.source[c] = it->binding.source[c];
-    if (it->stick_dz) b.stick_deadzone = it->binding.stick_deadzone;
-    if (it->cstick_dz) b.cstick_deadzone = it->binding.cstick_deadzone;
-    if (it->trigger_dz) b.trigger_deadzone = it->binding.trigger_deadzone;
-    if (it->click) b.trigger_click = it->binding.trigger_click;
+        if (!it->given[c]) b.source[c] = fallback.source[c];
     return b;
 }
 
 void bindings_put(SavedBindings& saved, const PortDevice& id, const std::string& name, const PadBinding& b) {
-    SavedBinding s{{id.guid, id.serial, 0, 0}, name, b, {}, true, true, true, true};
+    SavedBinding s{{id.guid, id.serial, 0, 0}, name, b, {}};
     s.given.fill(true);
     const auto it = std::find_if(saved.begin(), saved.end(), [&](const SavedBinding& x) { return same_gamepad(x, id); });
     if (it != saved.end()) *it = s;

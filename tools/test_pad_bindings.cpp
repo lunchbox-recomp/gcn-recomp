@@ -35,11 +35,9 @@ void check(bool ok, const char* what) {
 
 std::string path_of(const char* name) { return g_dir + "/" + name; }
 
-void write_file(const std::string& path, const std::string& text) {
-    FILE* f = fopen(path.c_str(), "wb");
-    if (!f) { perror(path.c_str()); return; }
-    fwrite(text.data(), 1, text.size(), f);
-    fclose(f);
+// Whether a line of `said` starts with `prefix`.
+bool has_line(const std::string& said, const char* prefix) {
+    return said.rfind(prefix, 0) == 0 || said.find(std::string("\n") + prefix) != std::string::npos;
 }
 
 // The file's bytes, or "<missing>".
@@ -150,7 +148,13 @@ void default_is_old_map() {
                 PadReading r;
                 r.axis = {x, y, y, x, x < 0 ? 0 : x, y < 0 ? 0 : y};
                 PadState p, q;
-                q.stick_x = 3;  // what an earlier source left is taken over only while pushed
+                // What an earlier source left is taken over only while pushed, and a trigger
+                // keeps the most of the two.
+                q.stick_x = 3;
+                q.cstick_y = 250;
+                q.trig_l = 200;
+                q.trig_r = 40;
+                q.buttons = PAD_START;
                 p = q;
                 old_map(faces, r, p);
                 pad_binding_merge(b, r, q);
@@ -287,6 +291,10 @@ void listen() {
     bind_hear(l, rest, 20, got);
     check(held_trigger && bind_hear(l, pushing(kPadRightTrigger, 32767), 30, got) == BindHeard::bound,
           "a trigger in as it starts is passed over until it's back under half");
+    l = bind_listen(PadControl::Y, pushing(kPadRightTrigger, 32767), 0);
+    bind_hear(l, pushing(kPadRightTrigger, kBindHalf), 10, got);
+    check(bind_hear(l, pushing(kPadRightTrigger, 32767), 20, got) == BindHeard::bound,
+          "back to exactly half is let go, so pulled again it's bound");
 
     l = bind_listen(PadControl::StickX, rest, 0);
     const bool no_button = bind_hear(l, pressing(kPadSouth), 10, got) == BindHeard::waiting;
@@ -412,7 +420,7 @@ void file_forgives() {
         "# gamepad 000000000000000000000000000000zz -\n"
         "\n"
         "# gamepad 03000000c82d00000000000000000000 -\n"
-        "X = \"8BitDo\" gamepad north deadzone 0.5\n"
+        "L = \"8BitDo\" gamepad lefttrigger deadzone 0.5\n"
         "# gamepad 03000000c82d00000000000000000000 -\n"
         "Y = \"8BitDo\" gamepad south\n";
     SavedBindings saved;
@@ -433,6 +441,55 @@ void file_forgives() {
     later.source[(int)PadControl::Y] = button(kPadSouth);
     check(bindings_find(saved, bitdo, fallback) == later,
           "a later block for the same gamepad replaces the earlier one, settings and all");
+}
+
+// Lines that read as words but give a control what it can't take, each in a good block.
+void file_refuses() {
+    static const char* const kRefused[] = {
+        "A = \"pad\" gamepad west invert",            // a one-way control turned round
+        "stick_x = \"pad\" gamepad lefttrigger",      // a trigger on a stick axis
+        "A = \"pad\" gamepad west deadzone 0.2",      // a dead zone on a button
+        "A = \"pad\" gamepad west threshold 0.5",     // a click on a button
+        "stick_x = \"pad\" gamepad leftx threshold 0.5",
+        "L = \"pad\" gamepad lefttrigger deadzone -0.1",
+        "L = \"pad\" gamepad lefttrigger deadzone nan",
+        "R = \"pad\" gamepad righttrigger threshold 1",
+    };
+    const PadBinding fallback = pad_binding_default(kXbox);
+    bool each = true;
+    for (const char* line : kRefused) {
+        SavedBindings saved;
+        const std::string text = std::string("# gamepad 030000005e040000130b000000000000 -\n") + line + "\n";
+        const std::string said = stderr_of("parse-refused.txt", [&] { saved = bindings_parse(text, "pads.txt"); });
+        const bool refused = saved.size() == 1 && bindings_find(saved, xbox(), fallback) == fallback &&
+                             said.find("pads.txt:2: ") == 0 && std::count(said.begin(), said.end(), '\n') == 1;
+        if (!refused) printf("     not refused: %s\n", line);
+        each = each && refused;
+    }
+    check(each, "a control turned round, a trigger on a stick axis, a dead zone on a button, a threshold on anything "
+                "but L or R, and a negative or NaN fraction are each refused, said once");
+
+    // A good block, a header that isn't one, then a line that would have gone into the block.
+    const std::string text =
+        "# gamepad 030000005e040000130b000000000000 -\n"
+        "A = \"pad\" gamepad west\n"
+        "# gamepad 030000005e040000130b000000000000 - extra\n"
+        "B = \"pad\" gamepad north\n";
+    SavedBindings saved;
+    const std::string said = stderr_of("parse-header.txt", [&] { saved = bindings_parse(text, "pads.txt"); });
+    PadBinding want = fallback;
+    want.source[(int)PadControl::A] = button(kPadWest);
+    check(saved.size() == 1 && bindings_find(saved, xbox(), fallback) == want && has_line(said, "pads.txt:3: ") &&
+              has_line(said, "pads.txt:4: "),
+          "a header with a word too many is refused, and the lines after it go into no block");
+
+    const std::string word(300, 'q');
+    const std::string long_said = stderr_of("parse-long.txt", [&] {
+        bindings_parse("# gamepad 030000005e040000130b000000000000 -\n" + word + " = \"pad\" gamepad west\n"
+                       "A = \"pad\" gamepad west " + word + "\n", "pads.txt");
+    });
+    check(std::count(long_said.begin(), long_said.end(), '\n') == 2 && long_said.size() < 300,
+          "an unknown control or option of 300 letters is said cut short");
 }
 
 
@@ -504,6 +561,7 @@ int main(int argc, char** argv) {
     listen();
     file_text();
     file_forgives();
+    file_refuses();
     files();
     words();
     printf("test_pad_bindings: %d of %d checks passed\n", g_checks - g_failed, g_checks);
