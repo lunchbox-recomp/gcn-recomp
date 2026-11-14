@@ -3,7 +3,7 @@
 
 PadFamily pad_family(int sdl_type) {
     // SDL_GamepadType's values: 2 and 3 Xbox 360 and One, 4 to 6 PS3 to PS5, 7 to 10 the Switch
-    // Pro and Joy-Cons, 11 GameCube (gamepads.cpp checks them).
+    // Pro and Joy-Cons, 11 GameCube (pad_numbers.cpp checks them).
     if (sdl_type == 2 || sdl_type == 3) return PadFamily::xbox;
     if (sdl_type >= 4 && sdl_type <= 6) return PadFamily::playstation;
     if (sdl_type >= 7 && sdl_type <= 10) return PadFamily::nintendo;

@@ -30,7 +30,7 @@
 // an axis past half as it starts is passed over until it's let go.
 //
 // This file needs no SDL. gamepads.cpp reads the gamepad's state from SDL and calls it, and
-// checks that the numbers below are SDL's.
+// pad_numbers.cpp checks at compile time that the numbers below are SDL's.
 #pragma once
 #include "hw/pad.h"
 #include "port_memory.h"  // PortDevice

@@ -143,19 +143,6 @@ PortDevice device_of(SDL_Gamepad* g) {
     return d;
 }
 
-// pad_bindings.h numbers the buttons and axes as SDL does.
-static_assert((int)kPadButtons == SDL_GAMEPAD_BUTTON_COUNT && (int)kPadAxes == SDL_GAMEPAD_AXIS_COUNT);
-static_assert((int)kPadBack == SDL_GAMEPAD_BUTTON_BACK && (int)kPadGuide == SDL_GAMEPAD_BUTTON_GUIDE &&
-              (int)kPadStart == SDL_GAMEPAD_BUTTON_START && (int)kPadRightShoulder == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER &&
-              (int)kPadUp == SDL_GAMEPAD_BUTTON_DPAD_UP && (int)kPadRight == SDL_GAMEPAD_BUTTON_DPAD_RIGHT &&
-              (int)kPadNorth == SDL_GAMEPAD_BUTTON_NORTH && 15 == SDL_GAMEPAD_BUTTON_MISC1 && 25 == SDL_GAMEPAD_BUTTON_MISC6);
-static_assert((int)kPadLeftX == SDL_GAMEPAD_AXIS_LEFTX && (int)kPadRightY == SDL_GAMEPAD_AXIS_RIGHTY &&
-              (int)kPadLeftTrigger == SDL_GAMEPAD_AXIS_LEFT_TRIGGER && (int)kPadRightTrigger == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
-// pad_glyph.cpp's families go by SDL's types.
-static_assert(SDL_GAMEPAD_TYPE_XBOX360 == 2 && SDL_GAMEPAD_TYPE_PS3 == 4 && SDL_GAMEPAD_TYPE_PS5 == 6 &&
-              SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO == 7 && SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR == 10 &&
-              SDL_GAMEPAD_TYPE_GAMECUBE == 11);
-
 std::string g_bindings_path;  // where the bindings are kept, empty for nowhere
 SavedBindings g_bindings;     // what the file said, and what's been changed since
 bool g_bindings_loaded = false;

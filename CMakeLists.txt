@@ -584,7 +584,7 @@ function(gcn_add_game)
   # front end, including the batch queue in gx/xf.cpp -- is free of both GL and SDL.
   set(CORE_SOURCES ${RUNTIME_SOURCES})
   list(REMOVE_ITEM CORE_SOURCES
-    ${RT}/main.cpp ${RT}/input_map.cpp ${RT}/gamepads.cpp ${RT}/ffb.cpp ${RT}/audio.cpp ${RT}/audio_sdl.cpp
+    ${RT}/main.cpp ${RT}/input_map.cpp ${RT}/gamepads.cpp ${RT}/pad_numbers.cpp ${RT}/ffb.cpp ${RT}/audio.cpp ${RT}/audio_sdl.cpp
     ${RT}/png.cpp ${RT}/record.cpp ${RENDER_GL_SOURCES} ${RT}/gx/gl_load.cpp ${RT}/gx/shadergen.cpp)
   list(APPEND CORE_SOURCES ${RT}/audio_stub.cpp)
   # The benchmark compiles the game's SOURCES too (gcn_add_game), and a game's eye hook
@@ -812,7 +812,7 @@ function(gcn_add_game)
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
-      ${RT}/gamepads.cpp ${RT}/pad_bindings.cpp ${RT}/pad_glyph.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp
+      ${RT}/gamepads.cpp ${RT}/pad_numbers.cpp ${RT}/pad_bindings.cpp ${RT}/pad_glyph.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp
       ${RT}/input_defaults.cpp ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/bot_link.cpp ${RT}/platform.cpp
       ${RT}/hw/mmio.cpp ${RT}/vr_config.cpp ${RT}/settings.cpp ${RT}/reset.cpp ${RT}/ram_patches.cpp)
     _gcn_set_standards(test_ports)
