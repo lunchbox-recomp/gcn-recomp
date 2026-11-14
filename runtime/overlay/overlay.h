@@ -52,6 +52,17 @@
 // Escape ends it sooner. Each press moves its device at once (gamepads_assign), and the page
 // then has nothing to focus, so no press reaches a button.
 //
+// Change buttons, right of Set player order and off while there's no gamepad, puts up the
+// Buttons view (overlay_bindings.cpp) in place of the tabs, on the first gamepad listed. It
+// picks a gamepad, on a player or not, and lists the ones controls.txt binds as locked. Each
+// control's button, named as the gamepad labels it (pad_glyph.h), starts press-to-bind
+// (pad_bindings.h), which takes the next press on that gamepad within 5 s. Its prompt has
+// nothing to focus. Escape, or Back or Guide on any gamepad, cancels it, F1 closes the menu, and
+// every other key and gamepad event while it waits is its own. It ends saying what changed. The
+// view also sets the dead zones and the trigger click, saved as each slider is let go, and has
+// Test rumble (1 s), Reset to default and Done. B or Escape goes back to the Controllers page.
+// The menu's own A and B stay the faces labeled so, whatever the game's binding says.
+//
 // A notice over the bottom of the window says for 2 s of host time that a controller
 // connected, disconnected or moved, and logs the same as a `[pads]` line. It shows with the
 // menu closed too, never pauses the game and takes no input. Frame and output dumps never

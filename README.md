@@ -96,8 +96,9 @@ Guide (Home) instead, and on a Switch 2 GameCube controller ZL does it too. A ga
 neither, as SDL maps a GameCube controller on an adapter, does it with Z and both triggers
 clicked all the way in, held for a second with nothing else.
 
-On a gamepad A picks and B goes back, the buttons the game takes as A and B, so a Switch Pro's
-are the other way round from an Xbox pad's.
+On a gamepad A picks and B goes back, the buttons labeled A and B, so a Switch Pro's are the
+other way round from an Xbox pad's. The game takes the same two as A and B unless the Buttons
+view (below) changes them, and the menu keeps them either way.
 
 The menu's Display page sets the aspect and the internal scale and turns fullscreen on or off.
 Each change applies at once and is saved to `settings.txt`, which the window reads at start.
@@ -112,6 +113,17 @@ is saved to `saves/ports.txt`, except the keyboard's player, which is player 1 a
 next launch. Swap takes the keyboard along. Remove saves the player as empty, and the removed
 gamepad takes a free player again at the next launch. A player that a `controls.txt`
 `port <n>` line sets can't be changed there.
+
+Change buttons, beside Set player order, opens the Buttons view for a gamepad. Pick the
+controller and the control, then press the button or push the stick for it within 5 seconds.
+A button held as it starts doesn't count until it's let go, and Back, Guide or Escape cancels.
+Giving A the button X had gives X the button A had, and the same for every button control, so
+none is left without one. The view names each button as the controller labels it, and sets the
+stick and trigger dead zones and where a trigger clicks. Test rumble runs the motor for 1
+second, and Reset to default puts the gamepad back to its default buttons. Each change applies
+at once and is saved to `saves/pads.txt`, a block a gamepad, by its GUID and serial. A block's
+lines are `controls.txt` lines, so a block can be copied there. A gamepad `controls.txt` names
+is shown locked.
 
 A notice at the bottom of the window says for 2 seconds that a controller connected,
 disconnected or changed player, with the menu open or closed. It doesn't pause the game.
@@ -254,13 +266,18 @@ A replay reads at its log's speed (`80e1d38`).
   by its GUID and serial, with its USB IDs. A saved port is only a preference, and the file
   changes only when a gamepad lands on a port it didn't name for that gamepad, or when the
   Controllers page changes a port. That port's line then names what's on it, or `none`.
+- `runtime/pad_bindings.*`: how a gamepad drives the pad, with no SDL. It holds the map with
+  nothing saved and press-to-bind. It reads and writes `saves/pads.txt`, a block a gamepad in
+  `controls.txt`'s syntax.
+  `runtime/pad_glyph.*` names a button as the controller labels it, `LB`, `L1` or `ZL`.
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
   `fullscreen`, `scale` and `disc`, while the desktop frontend also reads `disc_overlay` and
   `ram_patches`. A flag beats the file for that run and isn't written back, and a save
   rewrites only the owned keys' lines and adds any that are missing.
 - `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. `notices.cpp` draws the
-  notices about controllers and `overlay_controllers.cpp` is the Controllers page.
+  notices about controllers, `overlay_controllers.cpp` is the Controllers page and
+  `overlay_bindings.cpp` its Buttons view.
   `overlay_add_page`, called before the overlay starts, adds a game's page after Display and
   Controllers. A page can call
   `frontend_restart` (`frontend.h`) as Restart does.

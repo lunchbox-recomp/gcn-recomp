@@ -229,6 +229,13 @@ that takes `<new dir>` makes that directory and writes its files there.
 gamepad gets from what `ports.txt` remembers. It covers serials, which SDL's virtual
 joysticks can't carry. It also loads and saves the file.
 
+`ninja test_pad_bindings` builds `tools/test_pad_bindings.cpp`, which checks a gamepad's
+binding with no SDL. With nothing saved it reads as the fixed map did, over a grid of sticks,
+triggers and buttons. It also covers rebound controls as the game reads them, press-to-bind
+on readings made up there with the clock moved by hand, and `pads.txt` by its bytes, saves that
+are made to fail included. `ninja test_pad_glyph` builds `tools/test_pad_glyph.cpp`, a table of
+the name a player sees for each button and axis on each family of gamepad.
+
 `ninja test_settings` builds `tools/test_settings.cpp`, which loads and saves `settings.txt`
 files, including saves that are made to fail.
 

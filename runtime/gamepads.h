@@ -34,7 +34,7 @@
 // 8BitDo does in its X-input mode as an Xbox 360 pad, gets that pad's. A gamepad whose faces
 // carry no letters (PlayStation's symbols) has them where an Xbox pad does. Which is which
 // is worked out as the gamepad lands on its port. Z is the right shoulder, and L and R are
-// the triggers.
+// the triggers. That's the map, which saves/pads.txt can change for a gamepad (below).
 //
 // What each gamepad did goes to stderr as `gamepads: ` lines. After `"<name>" on port N`,
 // what SDL knows of it: `port N is <type>, <wired|wireless|unknown>, <vendor>:<product>,
