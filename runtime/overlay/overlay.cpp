@@ -154,9 +154,11 @@ void set_open(bool on) {
         // As it fades out the menu is laid out with no input fed to it (overlay_event, menu_frame),
         // and with none held, so nothing moves its focus, which Dear ImGui keeps for the next
         // open. A button picked for the focus to go to (actions, asking, controllers_page, the
-        // Buttons view's rows) isn't taken there either. Its NoInputs window flag would lose that focus. A key queued ahead of this close
-        // in the same pump is dropped too, or the fade's first frame, or with no fade the next
-        // open's, would press it. Nothing is queued while it's closed (overlay_event).
+        // Buttons view's rows) isn't taken there either. Its NoInputs window flag would lose that
+        // focus. A key queued ahead of this close in the same pump is dropped too, or the fade's
+        // first frame, or with no fade the next open's, would press it. While it's closed no
+        // event is fed to it (overlay_event): the SDL backend's NewFrame queues only the mouse's
+        // position, where it can read it from the OS, and each fade frame uses up its own.
         ImGui::GetIO().ClearEventsQueue();
         ImGui::GetIO().ClearInputKeys();
         ImGui::GetIO().ClearInputMouse();
