@@ -831,7 +831,8 @@ function(gcn_add_game)
   # (test_banner).
   include(CheckCXXSourceCompiles)
   include(CMakePushCheckState)
-  cmake_push_check_state()  # a game project's own CMAKE_REQUIRED_FLAGS come back after
+  # A game project's own CMAKE_REQUIRED_FLAGS come back after (tools/test_game_check_state.cmake).
+  cmake_push_check_state()
   set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
   check_cxx_source_compiles("int main() { return 0; }" GCN_HAVE_SANITIZERS)
   cmake_pop_check_state()
@@ -1332,6 +1333,16 @@ function(gcn_add_game)
                -P ${GCN_RECOMP_DIR}/tools/test_game_build_type.cmake)
       set_tests_properties(test_game_build_type PROPERTIES FIXTURES_REQUIRED unit_dirs)
       list(APPEND _unit_dirs ${_unit_work}/test_game_build_type)
+      # A game project's CMAKE_REQUIRED_FLAGS through gcn_add_game()
+      # (tools/test_game_check_state.cmake): its checks after the sanitizer probe compile with
+      # them. Needs the generator and the compilers.
+      add_test(NAME test_game_check_state COMMAND ${CMAKE_COMMAND} -DDIR=${GCN_RECOMP_DIR}
+               "-DGENERATOR=${CMAKE_GENERATOR}" -DMAKE=${CMAKE_MAKE_PROGRAM}
+               -DCC=${CMAKE_C_COMPILER} -DCXX=${CMAKE_CXX_COMPILER} "-DSYSROOT=${CMAKE_OSX_SYSROOT}"
+               -DWORK=${_unit_work}/test_game_check_state
+               -P ${GCN_RECOMP_DIR}/tools/test_game_check_state.cmake)
+      set_tests_properties(test_game_check_state PROPERTIES FIXTURES_REQUIRED unit_dirs)
+      list(APPEND _unit_dirs ${_unit_work}/test_game_check_state)
     endif()
     # runtime_check's engine commit (tools/test_runtime_engine_sha.cmake): it builds after
     # gcn_engine_sha, and its include path reaches the gcn_engine_sha.h that writes. Needs the
