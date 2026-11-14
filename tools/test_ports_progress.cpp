@@ -1,4 +1,5 @@
-// Supply the renderer's presented count without a disc or GL window.
+// Supply the renderer's presented count without a disc or GL window. The main loop's
+// argument to progress_presented is untested here.
 #include "test_ports_support.h"
 
 void progress_frames(const std::string& dir) {
@@ -7,7 +8,7 @@ void progress_frames(const std::string& dir) {
     auto frames = [](uint32_t first, uint32_t last) {
         for (uint32_t frame = first; frame <= last; frame++) {
             g_presented = frame;
-            if (g_progress_every) progress_presented(gx::present_count());
+            progress_presented(gx::present_count());
         }
     };
 
@@ -29,18 +30,21 @@ void progress_frames(const std::string& dir) {
     capture(out, [&] {
         progress_load();
         g_presented = UINT32_MAX - 1;
-        if (g_progress_every) progress_presented(gx::present_count());
+        progress_presented(gx::present_count());
         g_presented = UINT32_MAX;
-        if (g_progress_every) progress_presented(gx::present_count());
+        progress_presented(gx::present_count());
     });
     check(read_file(out) == "[progress] frame 4294967295\n",
           "the largest frame interval is accepted without changing the count");
 
-    for (const char* bad : {"0", "-3", "+3", "3x", " 3", "4294967296", "3\n4"}) {
+    for (const char* bad : {"0", "00", "03", "-3", "+3", "3x", " 3", "4294967296",
+                            "18446744073709551616", "3\n4"}) {
         setenv("GCN_PROGRESS", bad, 1);
         capture(out, [&] { progress_load(); frames(1, 8); });
-        check(read_file(out) == "[progress] GCN_PROGRESS isn't a positive frame interval\n",
-              "a bad GCN_PROGRESS is refused once and prints no frames");
+        const std::string message = std::string("[progress] GCN_PROGRESS=") + bad +
+            " isn't a positive frame interval, so it prints nothing\n";
+        const std::string label = std::string("GCN_PROGRESS=") + bad + " is refused once and prints no frames";
+        check(read_file(out) == message, label.c_str());
     }
 
     setenv("GCN_PROGRESS", "", 1);
