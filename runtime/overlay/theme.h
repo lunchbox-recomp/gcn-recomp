@@ -146,3 +146,12 @@ void overlay_set_theme(const OverlayTheme& theme);
 #else
 inline void overlay_set_theme(const OverlayTheme&) {}
 #endif
+
+// The overlay's own, theme.cpp's: the theme, and the current Dear ImGui context's style built
+// from it at a scale, the scale for a window's height in Dear ImGui's units, and the style built
+// again where that has changed.
+const OverlayTheme& theme_now();
+void theme_set(const OverlayTheme& theme);
+void theme_style(const OverlayTheme& theme, float scale);
+float theme_scale(int height);
+void theme_fit(int height);

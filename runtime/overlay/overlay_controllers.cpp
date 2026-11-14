@@ -8,7 +8,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
 
-void overlay_latch_pads();  // overlay.cpp's
+void overlay_latch_pads();  // overlay_input.cpp's
 
 namespace {
 

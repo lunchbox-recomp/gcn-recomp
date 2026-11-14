@@ -13,7 +13,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
 
-void overlay_latch_pads();  // overlay.cpp's
+void overlay_latch_pads();  // overlay_input.cpp's
 
 namespace {
 
@@ -200,7 +200,7 @@ void bindings_stop() {
     g_focus = -1;
 }
 
-// overlay.cpp's, once a host frame while the menu is open: press-to-bind reads its gamepad.
+// overlay_input.cpp's, once a host frame while the menu is open: press-to-bind reads its gamepad.
 void bindings_poll() {
     if (!g_listen) return;
     SDL_Gamepad* g = SDL_GetGamepadFromID(g_device);

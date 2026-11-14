@@ -21,10 +21,6 @@
 #include <vector>
 #include "imgui.h"
 
-void theme_style(const OverlayTheme& theme, float scale);
-float theme_scale(int height);
-void theme_fit(int height);
-
 namespace {
 
 int g_failed;
