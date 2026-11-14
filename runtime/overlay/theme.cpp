@@ -17,7 +17,7 @@ ImVec4 rgba(uint32_t c, float alpha = 1.0f) {
 void colours(const OverlayTheme& t, ImVec4* c) {
     const ImVec4 none(0.0f, 0.0f, 0.0f, 0.0f);
     c[ImGuiCol_Text] = rgba(t.text);
-    c[ImGuiCol_TextDisabled] = rgba(t.disabled);
+    c[ImGuiCol_TextDisabled] = rgba(t.dim);  // a note, as TextDisabled draws one
     c[ImGuiCol_WindowBg] = c[ImGuiCol_PopupBg] = rgba(t.panel);
     c[ImGuiCol_TitleBg] = c[ImGuiCol_TitleBgActive] = c[ImGuiCol_TitleBgCollapsed] = c[ImGuiCol_MenuBarBg] = rgba(t.panel);
     c[ImGuiCol_ChildBg] = c[ImGuiCol_BorderShadow] = c[ImGuiCol_ScrollbarBg] = none;

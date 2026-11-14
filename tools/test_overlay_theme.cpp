@@ -2,8 +2,8 @@
 // game, on a Dear ImGui context of its own.
 //
 // The default theme (runtime/overlay/theme.h) must be readable from a couch over any game:
-// text and dimmed text at least 4.5:1 against every fill they sit on, and the focus ring and its
-// pulse at least 3:1 against the panel, by WCAG 2's contrast ratio. The panel is translucent, so
+// every text colour of the style built from it at least 4.5:1 against every fill text sits on,
+// and the focus ring and its pulse at least 3:1 against the panel, by WCAG 2's contrast ratio. The panel is translucent, so
 // it's taken over the backdrop over black and over white, whichever is worse. At 1080 lines the
 // body text is at least 22 px and nothing to press is under 48 px. The style built from it
 // (runtime/overlay/theme.cpp) carries its colours, has its sizes at 1080 lines, and is built
@@ -12,8 +12,11 @@
 // usage: test_overlay_theme
 // Exits 0 only if every check passes.
 #include "overlay/theme.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <vector>
 #include "imgui.h"
 
 void theme_style(const OverlayTheme& theme, float scale);
@@ -75,28 +78,54 @@ bool same(const ImVec4& c, uint32_t rgba) {
            near(c.w, channel(rgba, 0));
 }
 
+// A style colour as 0xRRGGBBAA.
+uint32_t packed(const ImVec4& c) {
+    const auto byte = [](float v) { return (uint32_t)std::lround(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
+    return byte(c.x) << 24 | byte(c.y) << 16 | byte(c.z) << 8 | byte(c.w);
+}
+
+// Every colour slot Dear ImGui names as text: Text, TextDisabled and TextLink, not the
+// background TextSelectedBg.
+std::vector<ImGuiCol> text_slots() {
+    std::vector<ImGuiCol> slots;
+    for (ImGuiCol c = 0; c < ImGuiCol_COUNT; c++) {
+        const char* name = ImGui::GetStyleColorName(c);
+        if (!strncmp(name, "Text", 4) && !strstr(name, "Bg")) slots.push_back(c);
+    }
+    return slots;
+}
+
+// Each text slot of the style built from `t`, over each fill of the style that text sits on:
+// the panel, and an item at rest, focused and pressed. The selected tab's fill is under its
+// label alone, which is plain text.
 void contrasts(const OverlayTheme& t) {
-    // The selected tab's label is text, never dimmed.
-    const struct {
-        const char* name;
-        uint32_t fill;
-        bool dimmed;
-    } kFills[] = {{"the panel", 0, true}, {"an item", t.item, true}, {"a focused item", t.focused, true},
-                  {"a pressed item", t.pressed, true}, {"the selected tab", t.accent_dark, false}};
-    const struct {
-        const char* name;
-        uint32_t colour;
-        bool dimmed;
-    } kTexts[] = {{"text", t.text, false}, {"dimmed text", t.dim, true}};
-    for (const auto& text : kTexts) {
-        for (const auto& fill : kFills) {
-            if (text.dimmed && !fill.dimmed) continue;
-            const double r = worst(t, text.colour, fill.fill);
+    ImGui::CreateContext();
+    theme_style(t, 1.0f);
+    const ImVec4* c = ImGui::GetStyle().Colors;
+    const ImGuiCol kFills[] = {ImGuiCol_WindowBg, ImGuiCol_PopupBg, ImGuiCol_FrameBg, ImGuiCol_FrameBgHovered,
+                               ImGuiCol_FrameBgActive, ImGuiCol_Button, ImGuiCol_ButtonHovered, ImGuiCol_ButtonActive,
+                               ImGuiCol_Header, ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive, ImGuiCol_Tab,
+                               ImGuiCol_TabHovered, ImGuiCol_TabDimmed};
+    const std::vector<ImGuiCol> texts = text_slots();
+    check(texts.size() == 3, "the style has three text slots: Text, TextDisabled and TextLink");
+    for (ImGuiCol text : texts) {
+        for (ImGuiCol fill : kFills) {
+            // The panel's own colour is under it as the fill, so it's taken as no fill on it.
+            const uint32_t on = fill == ImGuiCol_WindowBg ? 0 : packed(c[fill]);
+            const double r = worst(t, packed(c[text]), on);
             char what[160];
-            snprintf(what, sizeof(what), "%s on %s is %.2f:1, at least 4.5:1", text.name, fill.name, r);
+            snprintf(what, sizeof(what), "%s on %s is %.2f:1, at least 4.5:1", ImGui::GetStyleColorName(text),
+                     ImGui::GetStyleColorName(fill), r);
             check(r >= 4.5, what);
         }
     }
+    for (ImGuiCol tab : {ImGuiCol_TabSelected, ImGuiCol_TabDimmedSelected}) {
+        const double r = worst(t, packed(c[ImGuiCol_Text]), packed(c[tab]));
+        char what[160];
+        snprintf(what, sizeof(what), "Text on %s is %.2f:1, at least 4.5:1", ImGui::GetStyleColorName(tab), r);
+        check(r >= 4.5, what);
+    }
+    ImGui::DestroyContext();
     for (const auto& ring : {std::pair<const char*, uint32_t>{"the focus ring", t.accent}, {"its pulse", t.accent_light}}) {
         const double r = worst(t, ring.second, 0);
         char what[160];
@@ -128,7 +157,7 @@ void style(const OverlayTheme& t) {
               same(s.Colors[ImGuiCol_Button], t.item) && same(s.Colors[ImGuiCol_ButtonHovered], t.focused) &&
               same(s.Colors[ImGuiCol_ButtonActive], t.pressed) && same(s.Colors[ImGuiCol_TabSelected], t.accent_dark) &&
               same(s.Colors[ImGuiCol_CheckMark], t.accent) && same(s.Colors[ImGuiCol_NavCursor], t.accent) &&
-              same(s.Colors[ImGuiCol_TextDisabled], t.disabled) && same(s.Colors[ImGuiCol_Border], t.border) &&
+              same(s.Colors[ImGuiCol_TextDisabled], t.dim) && same(s.Colors[ImGuiCol_Border], t.border) &&
               same(s.Colors[ImGuiCol_Separator], t.divider),
           "the style's colours are the theme's");
     // At 2160 lines, twice over, every size is twice its 1080 one, not four times.
