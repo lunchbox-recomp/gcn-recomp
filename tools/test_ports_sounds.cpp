@@ -1,11 +1,11 @@
 // ---- The menu's sounds (ui_sound.h) as the menu raises them, over a window from SDL's dummy
 // video driver with menu_sounds on: a swell as it opens and as it closes, a tick as the focus
 // moves, but none as an open or a page turn puts it on the first item, a confirm as a button is
-// pressed, a swish to the side a page turns to, a buzz past the last page, and a back as Escape
-// leaves Restart?, the press-A order, press-to-bind and the Buttons view, as a gamepad's B ends
-// the order and as its own Back ends press-to-bind. With them off, nothing is queued. No audio
-// thread runs here, so each check takes what the menu queued off the queue itself
-// (ui_sound_take). Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+// pressed, a swish to the side a page turns to, a buzz past the first page and the last, and a
+// back as Escape leaves Restart?, the press-A order, press-to-bind and the Buttons view, as a
+// gamepad's B ends the order and as its own Back ends press-to-bind. With them off, nothing is
+// queued. No audio thread runs here, so each check takes what the menu queued off the queue
+// itself (ui_sound_take). Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "ui_sound.h"
 
@@ -62,6 +62,13 @@ void menu_sounds(const std::string& dir) {
     check(queued({UiSound::confirm}), "Space presses the focused button with a confirm, and once a press");
     tap(guest, SDL_SCANCODE_Q, SDLK_Q);
     check(overlay_page() == 1 && queued({UiSound::page_back}), "Q turns a page back with a swish to the left");
+    tap(guest, SDL_SCANCODE_Q, SDLK_Q);
+    const bool first = overlay_page() == 0 && queued({UiSound::page_back});
+    tap(guest, SDL_SCANCODE_Q, SDLK_Q);
+    check(first && overlay_page() == 0 && queued({UiSound::refused}),
+          "Q turns back to the first page with a swish, and Q on the first page buzzes and turns nothing");
+    tap(guest, SDL_SCANCODE_E, SDLK_E);
+    ui_sound_take();
 
     bottom_row(guest);
     ui_sound_take();
