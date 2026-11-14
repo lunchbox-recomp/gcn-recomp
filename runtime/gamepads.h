@@ -58,6 +58,7 @@
 #pragma once
 #include "hw/pad.h"
 #include "pad_bindings.h"
+#include "pad_glyph.h"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -99,6 +100,9 @@ void gamepads_shutdown();
 // open gamepad `g`, by its labels as above, the ones gamepads_merge reads. The overlay's menu
 // takes a gamepad's faces from here too, on a port or not (overlay.h).
 std::array<int, 4> gamepads_faces(SDL_Gamepad* g);
+// The family of the open gamepad `g` (pad_glyph.h), from its type and what its mapping has,
+// which names its buttons and colours their glyphs in the overlay's menu.
+PadFamily gamepads_family(SDL_Gamepad* g);
 
 // ---- Each device and its port, and moves between ports
 //
