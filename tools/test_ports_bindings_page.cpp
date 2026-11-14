@@ -179,8 +179,21 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     tap(guest, pad, SDL_GAMEPAD_BUTTON_NORTH);
     check(has(overlay_bindings_said(), "Start is now ") && has(overlay_bindings_said(), "until the game quits"),
           "a change pads.txt couldn't take says it lasts until the game quits");
+    // Trigger click, above Reset to default, taken with A, one step right, and let go with A.
     for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    PadBinding clicked;
+    check(gamepads_binding(pad.id, clicked) && clicked.trigger_click == 30473 &&
+              overlay_bindings_said() == "Trigger click is now 93%. pads.txt couldn't be written, so this lasts until "
+                                         "the game quits.",
+          "a slider moved a step and let go says what it's now, and that pads.txt couldn't take it");
+    for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
     check(overlay_bindings_said() == "virtual pad buttons view has its default buttons, dead zones and trigger click "
                                      "again. pads.txt couldn't be written, so this lasts until the game quits.",
