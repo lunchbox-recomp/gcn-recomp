@@ -131,8 +131,9 @@ std::vector<Table> tables(const Face& f) {
 }
 
 // The faces as one file: a collection (TTC) if `collection`, else the one face as a font.
-// Each face's table directory, then its tables; every offset is from the file's start.
-std::vector<uint8_t> font_file(const std::vector<Face>& faces, bool collection) {
+// Each face's table directory, then its tables, or in a collection with `tables_first` its
+// tables and then its directory; every offset is from the file's start.
+std::vector<uint8_t> font_file(const std::vector<Face>& faces, bool collection, bool tables_first = false) {
     std::vector<uint8_t> b;
     if (collection) {
         b.insert(b.end(), {'t', 't', 'c', 'f'});
@@ -141,8 +142,18 @@ std::vector<uint8_t> font_file(const std::vector<Face>& faces, bool collection) 
         for (size_t i = 0; i < faces.size(); i++) put32(b, 0);
     }
     for (size_t i = 0; i < faces.size(); i++) {
-        if (collection) set32(b, 12 + 4 * i, (uint32_t)b.size());
         const std::vector<Table> t = tables(faces[i]);
+        std::vector<uint32_t> at(t.size());
+        const auto put_tables = [&] {
+            for (size_t k = 0; k < t.size(); k++) {
+                while (b.size() % 4) b.push_back(0);
+                at[k] = (uint32_t)b.size();
+                b.insert(b.end(), t[k].data.begin(), t[k].data.end());
+            }
+        };
+        if (tables_first) put_tables();
+        while (b.size() % 4) b.push_back(0);
+        if (collection) set32(b, 12 + 4 * i, (uint32_t)b.size());
         const size_t dir = b.size();
         put32(b, 0x00010000);
         put16(b, (uint32_t)t.size());
@@ -151,11 +162,10 @@ std::vector<uint8_t> font_file(const std::vector<Face>& faces, bool collection) 
             b.insert(b.end(), t[k].tag, t[k].tag + 4);
             put32(b, 0), put32(b, 0), put32(b, 0);
         }
+        if (!tables_first) put_tables();
         for (size_t k = 0; k < t.size(); k++) {
-            while (b.size() % 4) b.push_back(0);
-            set32(b, dir + 12 + 16 * k + 8, (uint32_t)b.size());
+            set32(b, dir + 12 + 16 * k + 8, at[k]);
             set32(b, dir + 12 + 16 * k + 12, (uint32_t)t[k].data.size());
-            b.insert(b.end(), t[k].data.begin(), t[k].data.end());
         }
     }
     return b;
@@ -246,6 +256,10 @@ void lookup() {
     bool cut = true;
     for (size_t n = 0; n < ttc.size(); n++) cut = cut && find(ttc, "Test Sans Heavy", n) == -1;
     check(cut, "no cut-off copy of the collection finds its last face, at any length");
+    // Here the face's directory comes last, so a cut through it leaves every table it lists.
+    const std::vector<uint8_t> last = font_file({{"Test Sans Medium"}}, true, true);
+    check(find(last, "Test Sans Medium") == 0 && find(last, "Test Sans Medium", last.size() - 1) == -1,
+          "a face whose table directory is cut off isn't found, though the tables it lists are whole");
     const std::vector<uint8_t> junk = {'h', 'e', 'l', 'l', 'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<uint8_t> many = ttc;
     set32(many, 8, 0x7FFFFFFF);  // more faces than the file has room to list
