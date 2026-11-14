@@ -238,8 +238,9 @@ macro(_gcn_fetch_imgui)
       DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
     FetchContent_MakeAvailable(imgui)
     set(_imgui ${imgui_SOURCE_DIR})
-    add_library(gcn_imgui STATIC ${_imgui}/imgui.cpp ${_imgui}/imgui_draw.cpp ${_imgui}/imgui_tables.cpp
+    set(_imgui_sources ${_imgui}/imgui.cpp ${_imgui}/imgui_draw.cpp ${_imgui}/imgui_tables.cpp
       ${_imgui}/imgui_widgets.cpp ${_imgui}/backends/imgui_impl_sdl3.cpp ${_imgui}/backends/imgui_impl_opengl3.cpp)
+    add_library(gcn_imgui STATIC ${_imgui_sources})
     _gcn_set_standards(gcn_imgui)
     target_include_directories(gcn_imgui PUBLIC ${_imgui} ${_imgui}/backends)
     # SDL's headers only: what links this links SDL itself, and a second copy on the link
@@ -250,9 +251,7 @@ macro(_gcn_fetch_imgui)
     # assert, which the build type's NDEBUG turns off. -UNDEBUG is public, so each check's own
     # sources, and Dear ImGui's headers in them, have their asserts on too. A game links
     # gcn_imgui alone.
-    add_library(gcn_imgui_asserts STATIC EXCLUDE_FROM_ALL ${_imgui}/imgui.cpp ${_imgui}/imgui_draw.cpp
-      ${_imgui}/imgui_tables.cpp ${_imgui}/imgui_widgets.cpp ${_imgui}/backends/imgui_impl_sdl3.cpp
-      ${_imgui}/backends/imgui_impl_opengl3.cpp)
+    add_library(gcn_imgui_asserts STATIC EXCLUDE_FROM_ALL ${_imgui_sources})
     _gcn_set_standards(gcn_imgui_asserts)
     target_include_directories(gcn_imgui_asserts PUBLIC ${_imgui} ${_imgui}/backends)
     target_include_directories(gcn_imgui_asserts PRIVATE
