@@ -811,7 +811,8 @@ with `menu_motion off` and under `--dump-output` each shows at rest and goes at 
 
 With `menu_sounds on` in `settings.txt`, or Menu sounds checked on the Display page, the menu
 ticks as the focus moves and sounds as it confirms, goes back, turns a page, opens, closes and
-refuses a page turn past either end (`runtime/overlay/overlay.h`). They're made in `runtime/ui_sound.cpp` and mixed after `GCN_WAV`'s capture and
+refuses a page turn past either end (`runtime/overlay/overlay.h`). They're made in
+`runtime/ui_sound_synth.cpp` and mixed in `runtime/ui_sound.cpp` after `GCN_WAV`'s capture and
 before the movie tap, so a `GCN_WAV` recording never holds one and a `--record` movie does. Off
 by default.
 

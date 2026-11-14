@@ -2,7 +2,7 @@
 //
 // runtime/audio.cpp is compiled into this file, as tools/test_audio_ring.cpp compiles it, with
 // the AI's volume and stream (no DVD music plays) and the disc read stubbed; runtime/ui_sound.cpp
-// is linked as it is.
+// and ui_sound_synth.cpp are linked as they are.
 //
 // Each voice of the default theme is made and must peak at -14 dBFS, no louder than -12, start
 // and end on a zero sample, rise over its first 2 ms and fall over its last 2 ms no faster than
