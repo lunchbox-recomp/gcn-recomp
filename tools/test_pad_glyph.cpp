@@ -35,20 +35,49 @@ struct Row {
 const Row kRows[] = {
     {PadFamily::xbox, button(kPadSouth), kLabelA, "A"},
     {PadFamily::nintendo, button(kPadSouth), kLabelB, "B"},
-    {PadFamily::playstation, button(kPadSouth), kCross, "Cross"},
-    {PadFamily::playstation, button(kPadNorth), kTriangle, "Triangle"},
+    {PadFamily::ps5, button(kPadSouth), kCross, "Cross"},
+    {PadFamily::ps5, button(kPadNorth), kTriangle, "Triangle"},
     {PadFamily::other, button(kPadWest), 0, "West button"},
     {PadFamily::other, button(kPadEast), 99, "East button"},
     {PadFamily::xbox, button(kPadBack), 0, "View"},
-    {PadFamily::playstation, button(kPadStart), 0, "Options"},
+    {PadFamily::xbox360, button(kPadBack), 0, "Back"},
+    {PadFamily::xbox360, button(kPadStart), 0, "Start"},
+    {PadFamily::xbox360, button(kPadRightShoulder), 0, "RB"},
+    {PadFamily::xbox, button(15), 0, "Share"},
+    {PadFamily::ps3, button(kPadBack), 0, "Select"},
+    {PadFamily::ps3, button(kPadStart), 0, "Start"},
+    {PadFamily::ps4, button(kPadBack), 0, "Share"},
+    {PadFamily::ps5, button(kPadBack), 0, "Create"},
+    {PadFamily::ps5, button(15), 0, "Mute"},
+    {PadFamily::ps4, button(15), 0, "Misc 1"},
+    {PadFamily::ps3, axis(kPadLeftTrigger), 0, "L2"},
+    {PadFamily::joycon_left, button(kPadLeftShoulder), 0, "SL"},
+    {PadFamily::joycon_right, button(kPadRightShoulder), 0, "SR"},
+    {PadFamily::joycon_left, button(17), 0, "L"},
+    {PadFamily::joycon_left, button(19), 0, "ZL"},
+    {PadFamily::joycon_right, button(16), 0, "R"},
+    {PadFamily::joycon_right, button(18), 0, "ZR"},
+    {PadFamily::joycon_left, button(kPadStart), 0, "-"},
+    {PadFamily::joycon_left, button(kPadGuide), 0, "Capture"},
+    {PadFamily::joycon_right, button(kPadStart), 0, "+"},
+    {PadFamily::joycon_right, axis(kPadLeftX, 1), 0, "Stick right"},
+    {PadFamily::gamecube, button(15), 0, "Capture"},
+    {PadFamily::gamecube, button(21), 0, "C"},
+    {PadFamily::gamecube, button(22), 0, "L click"},
+    {PadFamily::gamecube, button(23), 0, "R click"},
+    {PadFamily::steam, button(kPadGuide), 0, "Steam"},
+    {PadFamily::steam, button(15), 0, "Quick access"},
+    {PadFamily::steam, button(17), 0, "L4"},
+    {PadFamily::steam, button(18), 0, "R5"},
+    {PadFamily::ps5, button(kPadStart), 0, "Options"},
     {PadFamily::nintendo, button(kPadStart), 0, "+"},
     {PadFamily::nintendo, button(kPadGuide), 0, "Home"},
     {PadFamily::other, button(kPadGuide), 0, "Guide"},
     {PadFamily::xbox, button(kPadRightShoulder), 0, "RB"},
-    {PadFamily::playstation, button(kPadLeftShoulder), 0, "L1"},
+    {PadFamily::ps5, button(kPadLeftShoulder), 0, "L1"},
     {PadFamily::nintendo, button(kPadLeftShoulder), 0, "L"},
     {PadFamily::gamecube, button(kPadRightShoulder), 0, "Z"},
-    {PadFamily::playstation, button(kPadLeftStick), 0, "L3"},
+    {PadFamily::ps5, button(kPadLeftStick), 0, "L3"},
     {PadFamily::xbox, button(kPadRightStick), 0, "RS"},
     {PadFamily::other, button(kPadUp), 0, "D-pad up"},
     {PadFamily::other, button(kPadRight), 0, "D-pad right"},
@@ -57,7 +86,7 @@ const Row kRows[] = {
     {PadFamily::other, button(21), 0, "Misc 2"},
     {PadFamily::other, button(25), 0, "Misc 6"},
     {PadFamily::xbox, axis(kPadLeftTrigger), 0, "LT"},
-    {PadFamily::playstation, axis(kPadRightTrigger), 0, "R2"},
+    {PadFamily::ps5, axis(kPadRightTrigger), 0, "R2"},
     {PadFamily::nintendo, axis(kPadRightTrigger), 0, "ZR"},
     {PadFamily::gamecube, axis(kPadLeftTrigger), 0, "L"},
     {PadFamily::other, axis(kPadLeftTrigger), 0, "Left trigger"},
@@ -79,13 +108,14 @@ int main() {
         check(got == r.name, pad_source_name(r.source) + " is \"" + r.name + "\" (got \"" + got + "\")");
     }
     // SDL_GamepadType's values, 0 unknown to 12 Steam.
-    const PadFamily kFamilies[] = {PadFamily::other, PadFamily::other, PadFamily::xbox, PadFamily::xbox,
-                                   PadFamily::playstation, PadFamily::playstation, PadFamily::playstation,
-                                   PadFamily::nintendo, PadFamily::nintendo, PadFamily::nintendo, PadFamily::nintendo,
-                                   PadFamily::gamecube, PadFamily::other};
+    const PadFamily kFamilies[] = {PadFamily::other,       PadFamily::other,        PadFamily::xbox360,
+                                   PadFamily::xbox,        PadFamily::ps3,          PadFamily::ps4,
+                                   PadFamily::ps5,         PadFamily::nintendo,     PadFamily::joycon_left,
+                                   PadFamily::joycon_right, PadFamily::nintendo,    PadFamily::gamecube,
+                                   PadFamily::steam,       PadFamily::other};
     bool families = true;
     for (int t = 0; t < (int)std::size(kFamilies); t++) families = families && pad_family(t) == kFamilies[t];
-    check(families, "each of SDL's gamepad types has its family: Xbox, PlayStation, Nintendo, GameCube or other");
+    check(families, "each of SDL's gamepad types has its family, a Joy-Con pair Nintendo's, and an unknown type other");
     printf("test_pad_glyph: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
 }

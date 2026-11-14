@@ -8,7 +8,7 @@
 #include "pad_bindings.h"
 #include <string>
 
-enum class PadFamily { other, xbox, playstation, nintendo, gamecube };
+enum class PadFamily { other, xbox360, xbox, ps3, ps4, ps5, nintendo, joycon_left, joycon_right, gamecube, steam };
 
 // The family of a gamepad of SDL's type `sdl_type` (an SDL_GamepadType value).
 PadFamily pad_family(int sdl_type);
