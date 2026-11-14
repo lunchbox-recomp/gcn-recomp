@@ -870,6 +870,17 @@ function(gcn_add_game)
       target_link_libraries(test_overlay_fonts PRIVATE gcn_imgui)
       target_compile_options(test_overlay_fonts PRIVATE ${GCN_RUNTIME_WARNINGS})
       target_compile_definitions(test_overlay_fonts PRIVATE GCN_OVERLAY)
+      # The address and undefined behaviour sanitizers, where the compiler has them, so a read
+      # past the end of one of the checks' cut-off font files stops them.
+      include(CheckCXXSourceCompiles)
+      set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
+      check_cxx_source_compiles("int main() { return 0; }" GCN_HAVE_SANITIZERS)
+      unset(CMAKE_REQUIRED_FLAGS)
+      if(GCN_HAVE_SANITIZERS)
+        target_compile_options(test_overlay_fonts PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all
+          -fno-omit-frame-pointer)
+        target_link_options(test_overlay_fonts PRIVATE -fsanitize=address,undefined)
+      endif()
     endif()
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page

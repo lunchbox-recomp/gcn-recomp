@@ -180,8 +180,24 @@ void write_file(const std::string& path, const std::vector<uint8_t>& b) {
     }
 }
 
+uint32_t get32(const std::vector<uint8_t>& b, size_t at) {
+    return (uint32_t)b[at] << 24 | (uint32_t)b[at + 1] << 16 | (uint32_t)b[at + 2] << 8 | b[at + 3];
+}
+
+// Where the table `t` of a single font (not a collection) is listed in its directory: the
+// entry's tag, then its checksum, offset and length.
+size_t entry(const std::vector<uint8_t>& b, const char* t) {
+    const size_t count = (size_t)b[4] << 8 | b[5];
+    for (size_t k = 0; k < count; k++)
+        if (std::equal(t, t + 4, b.begin() + (ptrdiff_t)(12 + 16 * k))) return 12 + 16 * k;
+    return SIZE_MAX;
+}
+
+// The face named `name` in the first `size` bytes of `b`, copied to a buffer of just that size,
+// so that a read past its end is one the address sanitizer sees.
 int find(const std::vector<uint8_t>& b, const char* name, size_t size = SIZE_MAX) {
-    return fonts_find_face(b.data(), std::min(size, b.size()), name);
+    const std::vector<uint8_t> cut(b.begin(), b.begin() + (ptrdiff_t)std::min(size, b.size()));
+    return fonts_find_face(cut.data(), cut.size(), name);
 }
 
 // ---- What's said on stderr while `fn` runs, a line at a time.
@@ -261,6 +277,25 @@ void lookup() {
     const std::vector<uint8_t> last = font_file({{"Test Sans Medium"}}, true, true);
     check(find(last, "Test Sans Medium") == 0 && find(last, "Test Sans Medium", last.size() - 1) == -1,
           "a face whose table directory is cut off isn't found, though the tables it lists are whole");
+    // A full name whose string runs past the name table, the file's last: into bytes the file
+    // has and the table doesn't, the rest of the name, or past the file's end.
+    const std::string heavy_name = "Test Sans Heavy";
+    const std::vector<uint8_t> heavy = font_file({{heavy_name}}, false);
+    const size_t name = entry(heavy, "name"), name_at = get32(heavy, name + 8);
+    std::vector<uint8_t> short_table = heavy, long_string = heavy;
+    set32(short_table, name + 12, get32(heavy, name + 12) - 4);
+    set16(long_string, name_at + 6 + 8, 2 * (uint32_t)heavy_name.size() + 2);  // its one record's length
+    check(find(heavy, heavy_name.c_str()) == 0 && find(short_table, heavy_name.c_str()) == -1 &&
+              find(long_string, heavy_name.c_str()) == -1,
+          "a full name whose string runs past the name table isn't read, into the file's next bytes or past its end");
+    // A cmap listing one subtable more than it has room for, and one whose only subtable starts
+    // at the table's end.
+    const size_t cmap = entry(heavy, "cmap"), cmap_at = get32(heavy, cmap + 8), cmap_size = get32(heavy, cmap + 12);
+    std::vector<uint8_t> count_past = heavy, at_end = heavy;
+    set16(count_past, cmap_at + 2, (uint32_t)(cmap_size - 4) / 8 + 1);
+    set32(at_end, cmap_at + 4 + 4, (uint32_t)cmap_size);
+    check(find(count_past, heavy_name.c_str()) == -1 && find(at_end, heavy_name.c_str()) == -1,
+          "a cmap listing more subtables than it has room for, or a subtable starting at its end, isn't taken");
     const std::vector<uint8_t> junk = {'h', 'e', 'l', 'l', 'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     std::vector<uint8_t> many = ttc;
     set32(many, 8, 0x7FFFFFFF);  // more faces than the file has room to list
