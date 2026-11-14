@@ -143,6 +143,10 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     check(ps_rows.size() == 12 && ps_rows[0].label == "Cross" && ps_rows[0].mark == OverlayGlyphMark::cross &&
               ps_rows[0].fill == theme.playstation.a && pill(ps_rows[(int)PadControl::L], "L2"),
           "the Buttons view draws a PlayStation pad's A as a Cross disc with its cross, and L as L2");
+    // The body's size at this window's scale, rounded to a pixel as Dear ImGui rounds a font's.
+    const float body = std::round(theme.body_size * ImGui::GetStyle().FontScaleMain) * 1.3f;
+    check(std::abs(overlay_bindings_test_glyph_height() - body) < 0.01f,
+          "the Buttons view's glyphs are drawn at the body's size, as its rows' names are, not the footer's");
     unplug({&ps});
     overlay_bindings_listen(PadControl::B);
     tap(guest, SDL_SCANCODE_K, SDLK_K);
