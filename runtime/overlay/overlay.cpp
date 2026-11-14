@@ -140,7 +140,7 @@ void set_open(bool on) {
     else appear_close(theme_now(), now);
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
     // A view up as it closes is drawn as it was while the menu fades, with no input reaching it,
-    // and ends once it's gone (end_left_view), or at once with no fade. Opened again before then,
+    // and ends once it's gone (menu_lays_out), or at once with no fade. Opened again before then,
     // the menu is back on its tabs.
     if (on) {
         if (g_view_left) end_view();
@@ -471,9 +471,11 @@ void menu_frame() {
 // The menu is open or still fading out over a window.
 bool menu_showing() { return g_open || (g_window && appear_closing(host_ns())); }
 
-// Before a frame: a view the menu closed from ends once its fade is over (set_open).
-void end_left_view() {
+// Whether a frame lays out the menu. Both frames ask it, so a view the menu closed from ends
+// once its fade is over (set_open) on either.
+bool menu_lays_out() {
     if (g_view_left && !menu_showing()) end_view();
+    return menu_showing();
 }
 
 }  // namespace
@@ -645,19 +647,18 @@ void overlay_gate(int port, PadState& p) {
 
 void overlay_menu_frame() {
     if (!g_window) return;
-    end_left_view();
-    if (menu_showing()) menu_frame();
+    if (menu_lays_out()) menu_frame();
     notices_frame();
 }
 
 void overlay_draw() {
     if (!g_window || !g_gl) return;
-    end_left_view();
+    // Opening ends a view left from the last close itself (set_open).
     if (at_frame_due()) {
         g_at_frame = -1;
         set_open(true);
     }
-    if (menu_showing()) {
+    if (menu_lays_out()) {
         ImGui_ImplOpenGL3_NewFrame();
         menu_frame();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
