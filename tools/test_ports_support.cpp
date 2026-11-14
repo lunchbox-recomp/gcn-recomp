@@ -317,7 +317,7 @@ void close_window(SDL_Window* window) {
     SDL_QuitSubSystem(SDL_INIT_VIDEO);
 }
 
-bool key(Guest& g, SDL_Scancode scancode, SDL_Keycode keycode, bool down, bool repeat) {
+void push_key(SDL_Scancode scancode, SDL_Keycode keycode, bool down, bool repeat) {
     SDL_Event e{};
     e.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
     e.key.windowID = g_window_id;
@@ -326,6 +326,10 @@ bool key(Guest& g, SDL_Scancode scancode, SDL_Keycode keycode, bool down, bool r
     e.key.down = down;
     e.key.repeat = repeat;
     SDL_PushEvent(&e);
+}
+
+bool key(Guest& g, SDL_Scancode scancode, SDL_Keycode keycode, bool down, bool repeat) {
+    push_key(scancode, keycode, down, repeat);
     return host_frame(g);
 }
 

@@ -161,8 +161,10 @@ void add_extra_page();
 // A window from SDL's dummy video driver, which the menu takes keys from, checked. Null if none.
 SDL_Window* open_window();
 void close_window(SDL_Window* window);
-// A key pressed, or let go, over the window, or a held one's repeat, then a host frame. False
-// if pump_events was.
+// A key pressed, or let go, over the window, or a held one's repeat, queued for the next host
+// frame.
+void push_key(SDL_Scancode scancode, SDL_Keycode keycode, bool down, bool repeat = false);
+// push_key, then a host frame. False if pump_events was.
 bool key(Guest& g, SDL_Scancode scancode, SDL_Keycode keycode, bool down, bool repeat = false);
 // A key pressed and let go over the window, a host frame each. False if pump_events was.
 bool tap(Guest& g, SDL_Scancode scancode, SDL_Keycode keycode);

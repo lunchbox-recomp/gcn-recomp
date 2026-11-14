@@ -145,6 +145,26 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     host_frame(guest);
     check(a_in_game, "with the menu closed, the game reads the gamepad's west as A");
 
+    // Escape and F1 in one frame: the cancel picks the row the focus goes back to, and the menu
+    // closes before a draw takes it there. The view opened again has no row picked for it.
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    overlay_bindings_open(pad.id);
+    overlay_bindings_listen(PadControl::B);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+    host_frame(guest);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, false);
+    host_frame(guest);
+    const bool closed = !overlay_open();
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    overlay_bindings_open(pad.id);
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(closed && overlay_bindings_shown() && !overlay_bindings_listening(),
+          "a row press-to-bind ended on as the menu closed isn't picked when the view opens again");
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+
     // A save that fails says the change lasts until the game quits. The file set anew reads as
     // the map, so north is a change for Start.
     write_file(dir + "/not-a-folder", "a file\n");
