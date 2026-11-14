@@ -202,6 +202,24 @@ void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const c
     host_frame(guest);
 }
 
+// A toast whose text ends in "1", a glyph with much less ink than its advance: the pill's left
+// and right edges are within 1 px of the same distance from the ink its text drew.
+void toast_padding(SDL_Window* window, const std::string& dir) {
+    Guest guest;
+    toasts_init(window, dir, false, false, guest);
+    overlay_pads_notice("Pad one", " connected as player 1");
+    host_frame(guest);
+    const std::vector<OverlayTestToast> laid = overlay_test_toasts();
+    const float left = laid.size() == 1 ? laid[0].ink_left - laid[0].left : -1.0f;
+    const float right = laid.size() == 1 ? laid[0].right - laid[0].ink_right : -100.0f;
+    char said[256];
+    snprintf(said, sizeof(said), "a toast ending in \"1\" has its padding even: %.1f px left of its ink, %.1f px right",
+             left, right);
+    check(left > 0.0f && std::fabs(left - right) <= 1.0f, said);
+    g_host_ns += 5000 * kToastMsNs;
+    host_frame(guest);
+}
+
 void toasts(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
@@ -213,6 +231,7 @@ void toasts(const std::string& dir) {
     toast_stack(window, dir, true, true, "under --dump-output");
     toast_wait(window, dir, true, "with menu_motion on");
     toast_wait(window, dir, false, "with menu_motion off");
+    toast_padding(window, dir);
     close_window(window);
 }
 
