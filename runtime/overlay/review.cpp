@@ -2,6 +2,7 @@
 // under --dump-output its frame watched until it settles, then drawn again into a target of the
 // window's size, over the held frame or, with GCN_OVERLAY_PLAIN, over plain grey, and read back
 // to a PNG in the dump directory.
+#include "overlay/review.h"
 #include "overlay/overlay.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
