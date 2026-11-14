@@ -249,6 +249,27 @@ void views_kept(SDL_Window* window, const std::string& dir) {
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns += 1000 * kMs;
     host_frame(guest);
+
+    // Escape and F1 in one pump from Quit?: the Escape picks Quit game for the focus to go back
+    // to, and the menu closes before a draw takes it there, so the fade doesn't either.
+    open();
+    const bool asked_again = ask_quit();
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+    host_frame(guest);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, false);
+    host_frame(guest);
+    const bool closed = !overlay_open();
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
+    open();
+    tap(guest, SDL_SCANCODE_SPACE, SDLK_SPACE);
+    check(asked_again && closed && overlay_open() && overlay_asking() == OverlayAsk::none,
+          "Quit game picked by an Escape as the menu closed isn't focused when it opens again");
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
     unplug({&pad});
     gamepads_shutdown();
 

@@ -141,7 +141,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
         ImGui::TextUnformatted(kRows[c]);
         ImGui::SameLine(column);
         if (ImGui::Button(glyph(g, (PadControl)c, b.source[c]).c_str())) overlay_bindings_listen((PadControl)c);
-        if (g_focus == c) ImGui::FocusItem();
+        if (g_focus == c && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
         ImGui::PopID();
     }
     g_focus = -1;
