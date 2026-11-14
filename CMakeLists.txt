@@ -569,9 +569,9 @@ function(gcn_add_game)
   # Alternative entry points and the stubs: none of these may land in a target that
   # already has main.cpp, audio.cpp or the renderer.
   list(REMOVE_ITEM RUNTIME_SOURCES ${RT}/bench_main.cpp ${RT}/audio_stub.cpp ${RT}/gx/render_stub.cpp)
-  # The overlay goes in the desktop executable and test_ports alone, with GCN_OVERLAY on, so
-  # nothing else links Dear ImGui. runtime_check leaves it out too, as an engine built from
-  # runtime_check's objects carries no Dear ImGui to link it with.
+  # The overlay goes in the desktop executable, test_ports and runtime_check alone, with
+  # GCN_OVERLAY on, so the benchmark and the rest never link Dear ImGui. An engine linked from
+  # runtime_check's objects takes gcn_imgui's objects with them.
   file(GLOB OVERLAY_SOURCES ${RT}/overlay/*.cpp)
   list(REMOVE_ITEM RUNTIME_SOURCES ${OVERLAY_SOURCES})
 
@@ -796,6 +796,13 @@ function(gcn_add_game)
     target_link_libraries(runtime_check PRIVATE ${GCN_SDL_TARGET})
     target_compile_options(runtime_check PRIVATE ${GCN_RUNTIME_WARNINGS})
     target_compile_definitions(runtime_check PRIVATE ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} ${GCN_GL_DEFS})
+    # The menu, as the desktop executable has it. An object library links nothing, so an
+    # engine made of these objects needs gcn_imgui's too: `ninja runtime_check gcn_imgui`.
+    if(_gcn_overlay)
+      target_sources(runtime_check PRIVATE ${OVERLAY_SOURCES})
+      target_link_libraries(runtime_check PRIVATE gcn_imgui)
+      target_compile_definitions(runtime_check PRIVATE GCN_OVERLAY)
+    endif()
   endif()
 
   # The gamepad port checks (tools/test_ports.sh runs them): the frontend's input loop and
@@ -1165,6 +1172,13 @@ function(gcn_add_game)
                -P ${GCN_RECOMP_DIR}/tools/test_runtime_engine_sha.cmake)
       set_tests_properties(test_runtime_engine_sha PROPERTIES FIXTURES_REQUIRED unit_dirs)
       list(APPEND _unit_dirs ${_unit_work}/test_runtime_engine_sha)
+      # runtime_check's overlay (tools/test_runtime_overlay.cmake): it compiles the menu as the
+      # desktop executable does, or with the overlay off not at all.
+      add_test(NAME test_runtime_overlay COMMAND ${CMAKE_COMMAND} -DOVERLAY=${_gcn_overlay}
+               "-DSOURCES=$<JOIN:$<TARGET_PROPERTY:runtime_check,SOURCES>,|>"
+               "-DDEFINITIONS=$<JOIN:$<TARGET_PROPERTY:runtime_check,COMPILE_DEFINITIONS>,|>"
+               "-DLIBRARIES=$<JOIN:$<TARGET_PROPERTY:runtime_check,LINK_LIBRARIES>,|>"
+               -DDIR=${GCN_RECOMP_DIR} -P ${GCN_RECOMP_DIR}/tools/test_runtime_overlay.cmake)
     endif()
     # game_ldflags.txt's and game_libs.txt's checks (tools/test_game_link.cmake): a program
     # that calls SDL and GL links with them, after the SDL library this build made, and runs.

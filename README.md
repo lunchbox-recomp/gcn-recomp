@@ -124,8 +124,9 @@ Quit ends the run as Escape does with the menu closed, saving the memory card on
 Either way, a save the game is part way through gets up to 3 seconds to finish first. Restart
 ends the run the same way, then starts the game again as the game's own reset does.
 
-An engine linked from `runtime_check`'s objects has no menu, since `runtime_check` leaves
-the overlay out.
+`runtime_check` compiles the menu too, so an engine linked from its objects has one when it
+takes `gcn_imgui`'s objects with them. `ninja runtime_check` doesn't build those, so build
+`gcn_imgui` by name beside it.
 
 ## Controllers
 
