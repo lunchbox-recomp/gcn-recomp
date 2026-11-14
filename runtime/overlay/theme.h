@@ -14,6 +14,35 @@
 #include <string>
 #include <vector>
 
+// A face in a font file: the file, read at run time where the player has it and never shipped,
+// and the face's full name in the font's own name table, which finds it in a collection (TTC)
+// whatever its order there.
+struct OverlayFace {
+    std::string path;
+    std::string name;
+};
+
+// Each kind of text's faces in order of preference, the first that loads taking it (fonts.h).
+struct OverlayFonts {
+    std::vector<OverlayFace> title, tabs, items, body, footer;
+};
+
+// The fork's chains: on macOS the Mac's own Avenir Next and then Helvetica Neue, and elsewhere
+// none, so Dear ImGui's own font, until a platform lists its own files.
+inline OverlayFonts overlay_fonts_default() {
+#ifdef __APPLE__
+    const std::string avenir = "/System/Library/Fonts/Avenir Next.ttc";
+    const std::string neue = "/System/Library/Fonts/HelveticaNeue.ttc";
+    return {{{avenir, "Avenir Next Heavy"}, {neue, "Helvetica Neue Bold"}},
+            {{avenir, "Avenir Next Demi Bold"}, {neue, "Helvetica Neue Medium"}},
+            {{avenir, "Avenir Next Medium"}, {neue, "Helvetica Neue Medium"}},
+            {{avenir, "Avenir Next Medium"}, {neue, "Helvetica Neue"}},
+            {{avenir, "Avenir Next Demi Bold"}, {neue, "Helvetica Neue Medium"}}};
+#else
+    return {};
+#endif
+}
+
 struct OverlayTheme {
     // Colours, each 0xRRGGBBAA. Text and dimmed text stay at least 4.5:1 against every fill they
     // sit on, and the focus ring and an item's edge 3:1 against the panel, over any game
@@ -45,9 +74,9 @@ struct OverlayTheme {
     uint32_t warning = 0xFACC15FF;
     uint32_t danger = 0xF87171FF;
 
-    // Font files in order of preference, the first that loads taking the text. Empty for Dear
-    // ImGui's own embedded font, the only one used so far.
-    std::vector<std::string> fonts;
+    // The faces each kind of text tries, at the text sizes below. A kind none of whose faces
+    // loads, or that lists none, takes Dear ImGui's own embedded font.
+    OverlayFonts fonts = overlay_fonts_default();
 
     // The panel, centred in the window.
     // Its width, height and margin aren't read yet: today the panel is as wide and tall as its

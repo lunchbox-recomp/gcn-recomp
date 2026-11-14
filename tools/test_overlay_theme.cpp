@@ -6,7 +6,8 @@
 // and the focus ring and its pulse, an item's edge, a check mark and a slider's grab at least
 // 3:1 against what's around them, by WCAG 2's contrast ratio. The panel is translucent, so it's
 // taken over the backdrop over black and over white, whichever is worse. At 1080 lines the body
-// text is at least 22 px and nothing to press is under 48 px. The style built from it
+// text is at least 22 px and nothing to press is under 48 px. Each kind of text has its size
+// and, on macOS, its chain of the Mac's own fonts. The style built from it
 // (runtime/overlay/theme.cpp) carries its colours, has its sizes at 1080 lines, and is built
 // afresh at another height rather than scaled again, so a height and back gives the same sizes.
 //
@@ -182,7 +183,35 @@ void couch(const OverlayTheme& t) {
     check(t.body_size >= 22.0f, "body text is at least 22 px at 1080 lines");
     check(t.item_min_height >= 48.0f && t.item_height >= t.item_min_height,
           "nothing to press is under 48 px at 1080 lines, items included");
-    check(t.fonts.empty(), "the default theme names no font, so Dear ImGui's own is used");
+}
+
+// Each kind of text has the design's size at 1080 lines. On macOS its chain is the Mac's own Avenir
+// Next and then Helvetica Neue, read from /System/Library/Fonts where they're installed; elsewhere
+// it's empty, for Dear ImGui's own font, until a platform lists its own.
+void fonts(const OverlayTheme& t) {
+    check(t.title_size == 36.0f && t.tab_size == 26.0f && t.item_text_size == 24.0f && t.body_size == 22.0f &&
+              t.footer_size == 18.0f,
+          "the title, tabs, items, body and footer are 36, 26, 24, 22 and 18 px at 1080 lines");
+    const struct {
+        const char* role;
+        const std::vector<OverlayFace>& chain;
+        const char* avenir;
+    } roles[] = {{"title", t.fonts.title, "Avenir Next Heavy"},   {"tabs", t.fonts.tabs, "Avenir Next Demi Bold"},
+                 {"items", t.fonts.items, "Avenir Next Medium"}, {"body", t.fonts.body, "Avenir Next Medium"},
+                 {"footer", t.fonts.footer, "Avenir Next Demi Bold"}};
+    for (const auto& r : roles) {
+        char what[160];
+#ifdef __APPLE__
+        const bool ok = r.chain.size() == 2 && r.chain[0].path == "/System/Library/Fonts/Avenir Next.ttc" &&
+                        r.chain[0].name == r.avenir && r.chain[1].path == "/System/Library/Fonts/HelveticaNeue.ttc" &&
+                        r.chain[1].name.starts_with("Helvetica Neue");
+        snprintf(what, sizeof(what), "on macOS the text of the %s takes %s, then a Helvetica Neue face", r.role, r.avenir);
+#else
+        const bool ok = r.chain.empty();
+        snprintf(what, sizeof(what), "off macOS the text of the %s lists no font, for Dear ImGui's own", r.role);
+#endif
+        check(ok, what);
+    }
 }
 
 void style(const OverlayTheme& t) {
@@ -246,6 +275,7 @@ int main() {
     contrasts(t);
     edges(t);
     couch(t);
+    fonts(t);
     style(t);
     printf("test_overlay_theme: %s\n", g_failed ? "FAILED" : "passed");
     return g_failed ? 1 : 0;
