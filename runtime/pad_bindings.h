@@ -11,7 +11,17 @@
 // The block's first line names the gamepad by its SDL GUID and its serial number (`-` for
 // none, percent-encoded as ports.txt has it), and starts with `#`, so that controls.txt reads
 // it as a comment. Each line after it is a controls.txt line (input_map.h), so a block can be
-// copied into controls.txt as it is:
+// copied into controls.txt as it is, where it binds the same buttons and axes but reads them
+// as controls.txt does, not quite as here:
+//   - Here a stick is taken over while either of its axes is past the dead zone, both axes
+//     then, at 100 from the centre for full travel and with nothing taken off for the dead
+//     zone, as the map always has been. There each axis has its own dead zone, the travel
+//     past it is spread over the whole range, and that over the game's stick range. Raw 4001
+//     on the main stick is 140 here and 128 there.
+//   - A trigger clicks here once its raw travel passes the threshold. There the travel past
+//     the dead zone is spread first, so the default click comes at about 30085, not 30000.
+//   - There several lines may share a control; here each control has one source.
+// A block reads:
 //
 //   # gamepad 030000005e040000130b000000000000 -
 //   A        = "Xbox Wireless Controller" gamepad west
@@ -170,3 +180,6 @@ bool bindings_save(const std::string& path, const SavedBindings& saved);
 bool controls_words(const char* s, std::vector<std::string>& out, std::string& err);
 // A `gamepad` source's word, `west`, `leftx+` or `lefttrigger`, as `s`. False if it isn't one.
 bool pad_source_parse(const std::string& word, PadSource& s);
+// A number on a controls.txt line: any float strtof reads whole, or up to 9 digits.
+bool controls_float(const std::string& word, float& v);
+bool controls_int(const std::string& word, int& v);

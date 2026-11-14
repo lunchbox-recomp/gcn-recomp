@@ -62,9 +62,8 @@ std::string fraction(int raw) {
 }
 
 bool parse_fraction(const std::string& word, int& raw) {
-    char* end;
-    const float f = strtof(word.c_str(), &end);
-    if (word.empty() || *end || !(f >= 0.0f && f < 1.0f)) return false;
+    float f;
+    if (!controls_float(word, f) || !(f >= 0.0f && f < 1.0f)) return false;
     raw = (int)std::lround(f * 32767.0);
     return true;
 }
@@ -383,5 +382,19 @@ bool controls_words(const char* s, std::vector<std::string>& out, std::string& e
         out.emplace_back(s, e);
         s = e;
     }
+    return true;
+}
+
+bool controls_float(const std::string& word, float& v) {
+    char* end;
+    v = strtof(word.c_str(), &end);
+    return !word.empty() && *end == 0;
+}
+
+bool controls_int(const std::string& word, int& v) {
+    if (word.empty() || word.size() > 9) return false;
+    for (char c : word)
+        if (!isdigit((unsigned char)c)) return false;
+    v = atoi(word.c_str());
     return true;
 }

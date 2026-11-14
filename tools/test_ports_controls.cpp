@@ -79,6 +79,21 @@ void gamepad_sources(const std::string& dir) {
           "its left trigger is L and L's click, its left stick up is dpad_up, and its right stick turned round is stick_x");
     unplug({&v});
     gamepads_shutdown();
+
+    // A plain joystick SDL has no gamepad mapping for: its gamepad lines read nothing, said once.
+    const std::string said = dir + "/gamepad-unmapped.txt";
+    Virtual stick{"virtual stick by name", false};
+    capture(said, [&] {
+        load_controls(dir + "/gamepad-unmapped-controls.txt",
+                      "A = \"virtual stick by name\" gamepad south\nB = \"virtual stick by name\" gamepad east\n");
+        attach(stick);
+        frame();
+        frame();
+    });
+    check(lines_with(said, "has no gamepad mapping") == 1 &&
+              has(read_file(said), "gamepad-unmapped-controls.txt:1: \"virtual stick by name\" has no gamepad mapping"),
+          "a gamepad line for a joystick with no gamepad mapping says so once, at its first line");
+    unplug({&stick});
     no_controls(dir);
 }
 

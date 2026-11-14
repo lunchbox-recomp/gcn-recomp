@@ -129,12 +129,21 @@ void attach_wheel() {
 
 // The gamepads the file's `gamepad` sources read, held open while it binds them, once SDL's
 // gamepads are up (not under --list-controls or --test-ffb).
+// A joystick SDL has no gamepad mapping for reads nothing on those lines, said once a device.
 std::vector<SDL_Gamepad*> g_gamepads;
+std::vector<SDL_JoystickID> g_unmapped_said;
 void hold_gamepads() {
     std::vector<SDL_Gamepad*> held;
-    for (const auto& b : g_bindings)
-        if (b.kind == Kind::Gamepad && b.joy && SDL_WasInit(SDL_INIT_GAMEPAD))
-            if (SDL_Gamepad* g = SDL_OpenGamepad(SDL_GetJoystickID(b.joy))) held.push_back(g);
+    for (const auto& b : g_bindings) {
+        if (b.kind != Kind::Gamepad || !b.joy || !SDL_WasInit(SDL_INIT_GAMEPAD)) continue;
+        const SDL_JoystickID id = SDL_GetJoystickID(b.joy);
+        if (SDL_Gamepad* g = SDL_IsGamepad(id) ? SDL_OpenGamepad(id) : nullptr) held.push_back(g);
+        else if (std::find(g_unmapped_said.begin(), g_unmapped_said.end(), id) == g_unmapped_said.end()) {
+            fprintf(stderr, "%s:%d: \"%s\" has no gamepad mapping, so its gamepad sources read nothing\n", g_path.c_str(),
+                    b.line, b.device.c_str());
+            g_unmapped_said.push_back(id);
+        }
+    }
     for (SDL_Gamepad* g : g_gamepads) SDL_CloseGamepad(g);
     g_gamepads = std::move(held);
 }
@@ -159,8 +168,6 @@ void resolve() {
     attach_wheel();
 }
 
-bool parse_float(const std::string& s, float& v);
-
 // Where along each stick axis the game's own handling of the pad puts its response, in
 // the pad's units from the centre (127 the most): the smallest offset it does anything
 // with, and the one where it is at full. A bound value is spread between the two, so the
@@ -177,7 +184,7 @@ bool parse_range(const std::vector<std::string>& w, std::string& err) {
         for (int e = 0; e < 2; e++)
             if (w[0] == kRangeKeys[a][e]) {
                 float v;
-                if (w.size() != 3 || w[1] != "=" || !parse_float(w[2], v) || v < 0.0f || v > 127.0f) {
+                if (w.size() != 3 || w[1] != "=" || !controls_float(w[2], v) || v < 0.0f || v > 127.0f) {
                     err = w[0] + " = <0 to 127>";
                     return false;
                 }
@@ -208,7 +215,7 @@ bool parse_ffb(const std::vector<std::string>& w, std::string& err) {
     for (const auto& k : kKeys)
         if (w[0] == k.name) {
             float v;
-            if (!parse_float(w[2], v) || v < 0.0f) { err = w[0] + " needs a number, 0 or more"; return false; }
+            if (!controls_float(w[2], v) || v < 0.0f) { err = w[0] + " needs a number, 0 or more"; return false; }
             g_ffb.*k.f = v;
             return true;
         }
@@ -216,19 +223,6 @@ bool parse_ffb(const std::vector<std::string>& w, std::string& err) {
     return false;
 }
 
-bool parse_float(const std::string& s, float& v) {
-    char* end;
-    v = strtof(s.c_str(), &end);
-    return !s.empty() && *end == 0;
-}
-
-bool parse_int(const std::string& s, int& v) {
-    if (s.empty() || s.size() > 9) return false;
-    for (char c : s)
-        if (!isdigit((unsigned char)c)) return false;
-    v = atoi(s.c_str());
-    return true;
-}
 
 bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err) {
     if (w.size() < 3 || w[1] != "=") { err = "expected <pad control> = <source>"; return false; }
@@ -261,7 +255,7 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
                 num.pop_back();
             }
         } else { err = "expected button, hat, axis or gamepad after the device, not \"" + what + "\""; return false; }
-        if (!parse_int(num, b.index)) { err = "\"" + w[i + 2] + "\" is not a " + what + " number"; return false; }
+        if (!controls_int(num, b.index)) { err = "\"" + w[i + 2] + "\" is not a " + what + " number"; return false; }
         i += 3;
         if (b.kind == Kind::Hat) {
             if (i >= w.size()) { err = "hat: which direction (up, down, left, right)?"; return false; }
@@ -278,7 +272,7 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
         if (o == "invert") { b.invert = true; continue; }
         if (o == "port") {
             int n = 0;
-            if (i >= w.size() || !parse_int(w[i], n) || n < 1 || n > 4) { err = "port is 1 to 4"; return false; }
+            if (i >= w.size() || !controls_int(w[i], n) || n < 1 || n > 4) { err = "port is 1 to 4"; return false; }
             b.port = n - 1;
             b.pinned = true;
             i++;
@@ -286,7 +280,7 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
         }
         float* dst = o == "deadzone" ? &b.deadzone : o == "gain" ? &b.gain : o == "threshold" ? &b.threshold : nullptr;
         if (!dst) { err = "unknown option \"" + o + "\""; return false; }
-        if (i >= w.size() || !parse_float(w[i], *dst)) { err = o + " needs a number"; return false; }
+        if (i >= w.size() || !controls_float(w[i], *dst)) { err = o + " needs a number"; return false; }
         i++;
     }
     // A whole axis onto a stick axis has a sliver of a dead zone unless the line gives one:
@@ -361,6 +355,7 @@ void print_targets() {
 bool input_map_load(const char* path) {
     g_path = path;
     g_bindings.clear();
+    g_unmapped_said.clear();
     g_ffb = FfbSettings();
     g_ffb_device.clear();
     for (int a = 0; a < 4; a++)

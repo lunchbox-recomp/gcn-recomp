@@ -117,13 +117,14 @@ gamepad takes a free player again at the next launch. A player that a `controls.
 Change buttons, beside Set player order, opens the Buttons view for a gamepad. Pick the
 controller and the control, then press the button or push the stick for it within 5 seconds.
 A button held as it starts doesn't count until it's let go, and Back, Guide or Escape cancels.
-Giving A the button X had gives X the button A had, and the same for every button control, so
-none is left without one. The view names each button as the controller labels it, and sets the
-stick and trigger dead zones and where a trigger clicks. Test rumble runs the motor for 1
-second, and Reset to default puts the gamepad back to its default buttons. Each change applies
-at once and is saved to `saves/pads.txt`, a block a gamepad, by its GUID and serial. A block's
-lines are `controls.txt` lines, so a block can be copied there. A gamepad `controls.txt` names
-is shown locked.
+Giving A the button X had gives X the button A had, and the same for L, R and the sticks, so
+no control is left without one and no button drives two. The view names each button as the
+controller labels it, and sets the stick and trigger dead zones and where a trigger clicks.
+Test rumble runs the motor for 1 second, and Reset to default puts the gamepad back to its
+default buttons. Each change applies at once and is saved to `saves/pads.txt`, a block a
+gamepad, by its GUID and serial. A block's lines are `controls.txt` lines, so a block can be
+copied there, though `controls.txt` scales a stick past its dead zone where `pads.txt` doesn't
+(`runtime/pad_bindings.h`). A gamepad `controls.txt` names is shown locked.
 
 A notice at the bottom of the window says for 2 seconds that a controller connected,
 disconnected or changed player, with the menu open or closed. It doesn't pause the game.
