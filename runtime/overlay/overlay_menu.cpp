@@ -114,7 +114,7 @@ void panel_place() {
 // leaves the focus on its row, not on the region as a whole. The region is the panel's width,
 // with its padding across and its items' width, so the view is laid out across as it would be on
 // the panel, its scroll bar where the panel's would be, and widens nothing the panel could
-// scroll across to.
+// scroll across to. The footer's rule then ends where the rows' rules do, short of that bar.
 void view(float last) {
     ImGuiWindow* w = ImGui::GetCurrentWindow();
     const ImVec2 at = ImGui::GetCursorScreenPos();
@@ -134,8 +134,10 @@ void view(float last) {
     const ImGuiWindow* region = ImGui::GetCurrentWindow();
     g_region = region->ID;
     g_view = (region->DC.CursorMaxPos.y - region->DC.CursorStartPos.y) / s;
+    const float right = region->WorkRect.Max.x;
     ImGui::EndChild();
     w->DC.CursorMaxPos.x = std::min(w->DC.CursorMaxPos.x, w->WorkRect.Max.x);
+    w->WorkRect.Max.x = right;
 }
 
 void draw_menu(uint64_t now) {

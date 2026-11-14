@@ -185,6 +185,9 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     const std::string view_hints = footer_test_hints();
     host_frame(guest);
     check(focused(first_pad()), "the view opens with its first gamepad focused");
+    const ImGuiWindow* region = ImGui::GetCurrentContext()->NavWindow;
+    check(region && region->ScrollbarY && footer_test_rule_right() == region->WorkRect.Max.x,
+          "the footer's rule under the Buttons view ends where the rows' rules do, short of their scroll bar");
     view_scrolls(guest, pad);
     view_resized(guest, pad);
 

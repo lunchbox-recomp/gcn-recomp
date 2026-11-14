@@ -28,4 +28,6 @@ const std::string& footer_test_hints();
 const std::vector<OverlayGlyph>& footer_test_glyphs();
 // The row those hints were drawn in, in the window's pixels: its left, top, right and bottom.
 void footer_test_hints_rect(float rect[4]);
+// Where the rule over those hints ended on the right, in the window's pixels.
+float footer_test_rule_right();
 #endif

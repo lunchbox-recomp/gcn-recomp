@@ -60,6 +60,7 @@ constexpr Hint kListeningNoButton[] = {{"Esc", "Cancel"}, {"Wait", "Cancel"}};
 std::string g_hints;  // the hints last drawn, each key and what it does, for the tests
 std::vector<OverlayGlyph> g_glyphs;
 ImVec2 g_hints_min, g_hints_max;  // and where they were
+float g_rule_right;               // and where the rule over them ended
 #endif
 
 // The hints from `at`, centred in a row `height` tall, and how wide they are: glyphs of the
@@ -141,6 +142,9 @@ void footer(bool on_page) {
     const float s = ImGui::GetStyle().FontScaleMain;
     const float height = t.item_min_height * s;
     ImGui::Separator();
+#ifdef GCN_OVERLAY_TEST
+    g_rule_right = ImGui::GetItemRectMax().x;
+#endif
     ImGui::PushFont(fonts_role(FontRole::footer), t.footer_size);
     const ImVec2 at = ImGui::GetCursorScreenPos();
     const float room = ImGui::GetContentRegionAvail().x;
@@ -254,4 +258,5 @@ void footer_test_hints_rect(float rect[4]) {
     const float r[4] = {g_hints_min.x, g_hints_min.y, g_hints_max.x, g_hints_max.y};
     std::copy(r, r + 4, rect);
 }
+float footer_test_rule_right() { return g_rule_right; }
 #endif
