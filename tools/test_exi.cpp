@@ -35,6 +35,7 @@
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
 // every check passes.
 #include "hw/exi.cpp"
+#include "test_sync_spy.h"  // seen_sync, refused_sync and read_file
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -73,18 +74,6 @@ std::string path_of(const char* name) { return g_dir + "/" + name; }
 bool exists(const std::string& path) {
     struct stat st;
     return stat(path.c_str(), &st) == 0;
-}
-
-// The file's bytes, or "<missing>".
-std::string read_file(const std::string& path) {
-    FILE* f = fopen(path.c_str(), "rb");
-    if (!f) return "<missing>";
-    std::string text;
-    char buf[512];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
-    fclose(f);
-    return text;
 }
 
 std::string bytes(const uint8_t* s) { return std::string((const char*)s, SRAM_SIZE); }
@@ -421,24 +410,6 @@ void card_short_write() {
     check(kept, "a card write cut short leaves the file as it was and no temporary file");
     wait_for_save(card, made);
     check(file_has_pages(p, 0, 1), "and is tried again a quiet period on");
-}
-
-// What the card's file and its temporary file held when the card's write called the sync,
-// which plat_sync_for_tests stands in for. `g_synced` is the card's file.
-std::atomic<int> g_syncs;
-std::string g_synced, g_temp_at_sync, g_file_at_sync;
-
-bool seen_sync(FILE*) {
-    g_syncs++;
-    g_temp_at_sync = read_file(g_synced + ".tmp");
-    g_file_at_sync = read_file(g_synced);
-    return true;
-}
-
-bool refused_sync(FILE*) {
-    g_syncs++;
-    errno = EIO;
-    return false;
 }
 
 // The card's write puts its temporary file on the disk before the rename, as plat_save_file

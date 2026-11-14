@@ -18,6 +18,7 @@
 // every check passes.
 #include "hw/sram.h"
 #include "platform.h"
+#include "test_sync_spy.h"  // seen_sync, refused_sync and read_file
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -47,18 +48,6 @@ void write_file(const std::string& path, const void* data, size_t size) {
     if (!f) { perror(path.c_str()); return; }
     fwrite(data, 1, size, f);
     fclose(f);
-}
-
-// The file's bytes, or "<missing>".
-std::string read_file(const std::string& path) {
-    FILE* f = fopen(path.c_str(), "rb");
-    if (!f) return "<missing>";
-    std::string text;
-    char buf[512];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
-    fclose(f);
-    return text;
 }
 
 std::string bytes(const uint8_t* s) { return std::string((const char*)s, SRAM_SIZE); }
@@ -259,24 +248,6 @@ void failed_save_cut_short() {
     check(!saved, "a save fails when only 32 bytes of its file can be written");
     check(read_file(p) == bytes(before), "and leaves the old file whole");
     check(!exists(p + ".tmp"), "and removes the part it wrote");
-}
-
-// What the save had written when it called the sync, which plat_sync_for_tests stands in for.
-int g_syncs;
-std::string g_temp_at_sync, g_file_at_sync;
-std::string g_synced;  // the file the save writes, which the hook reads beside its temp file
-
-bool seen_sync(FILE*) {
-    g_syncs++;
-    g_temp_at_sync = read_file(g_synced + ".tmp");
-    g_file_at_sync = read_file(g_synced);
-    return true;
-}
-
-bool refused_sync(FILE*) {
-    g_syncs++;
-    errno = EIO;
-    return false;
 }
 
 // A save puts its temp file on the disk before the replace, so a power cut after the replace
