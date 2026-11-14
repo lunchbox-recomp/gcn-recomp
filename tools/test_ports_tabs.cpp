@@ -287,6 +287,11 @@ void tabs_chord(const std::string& dir) {
     const bool z_outer = overlay_page() == 1;
     over(cube, SDL_GAMEPAD_BUTTON_MISC4, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
     check(z_outer && overlay_page() == 1, "Z and a click pressed over each other turn no page, either inside the other");
+    // Once both are let go, Z pressed alone turns a page again, and so does L back.
+    const Pressed z_again = press_up(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+    const Pressed l_again = press_up(cube, SDL_GAMEPAD_BUTTON_MISC3);
+    check(z_again.down == 1 && z_again.up == 2 && l_again.up == 1,
+          "after Z and R pressed over each other and let go, Z pressed alone turns a page again");
 
     // Z down as the menu closes and let go while it's closed turns nothing as it opens again.
     set_button(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true);
@@ -322,6 +327,60 @@ void tabs_chord(const std::string& dir) {
 
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     unplug({&cube, &bare, &pad});
+    gamepads_shutdown();
+    close_window(window);
+}
+
+// On a gamepad with only the GameCube's buttons, a slider made active by A keeps Z, SDL's R1,
+// which steps it faster while held, and Z let go once A has stopped the editing turns no page.
+void chord_slider(const std::string& dir) {
+    SDL_Window* window = open_window();
+    if (!window) return;
+    overlay_test_reset_pages();
+    overlay_add_page("Knobs", knobs_page, nullptr);
+    overlay_add_page("Extra", draw_added_page, &g_page_draws);
+    OverlayPicture picture;
+    picture.path = dir + "/chord-slider-settings.txt";
+    picture.apply = record_apply;
+    picture.now.menu_motion = false;
+    overlay_init(window, "Test title", picture);
+    gamepads_init();
+    Virtual cube{"cube slider tabs"};
+    cube.button_mask = kCubeButtons | kClicks;
+    Virtual pad{"virtual pad slider tabs"};
+    attach(cube);
+    attach(pad);
+    Guest guest;
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+    const int knobs = page_at("Knobs");
+    const bool on_knobs = overlay_page() == knobs;
+    // Knobs' first item, its button, has the focus: down is its slider, which A makes active.
+    tap(guest, cube, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, cube, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool active = ImGui::IsAnyItemActive();
+    g_knob_level = 0.5f;
+    tap(guest, cube, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    const float step = g_knob_level - 0.5f;
+    set_button(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true);
+    host_frame(guest);
+    const float before = g_knob_level;
+    tap(guest, cube, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+    const float fast = g_knob_level - before;
+    check(on_knobs && active && step > 0.0f && fast > 5.0f * step && overlay_page() == knobs,
+          "on a gamepad with only the GameCube's buttons, Z held while a slider is active steps it faster and turns no page");
+    tap(guest, cube, SDL_GAMEPAD_BUTTON_SOUTH);
+    const bool stopped = !ImGui::IsAnyItemActive();
+    set_button(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, false);
+    host_frame(guest);
+    const bool kept = overlay_page() == knobs;
+    tap(guest, cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+    check(stopped && kept && overlay_page() == knobs + 1,
+          "Z held from a slider's editing and let go after A stops it turns no page, and its next press does");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    unplug({&cube, &pad});
     gamepads_shutdown();
     close_window(window);
 }

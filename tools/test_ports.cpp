@@ -257,6 +257,7 @@ int run_ports(const std::string& dir) {
     overlay_panel_edge(dir);
     tabs_turn(dir);
     tabs_chord(dir);
+    chord_slider(dir);
     page_motion(dir);
     page_vertices(dir);
     pill_click(dir);
