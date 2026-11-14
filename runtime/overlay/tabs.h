@@ -40,11 +40,15 @@ void tabs_focus(bool open);
 void tabs_contents_begin();
 void tabs_contents_end();
 void tabs_no_contents();
+// Whether the item with the focus was among the page's contents at the last frame, so a change
+// moves it in with them, not one in the footer or a question.
+bool tabs_contents_focused();
 // After ImGui::Render and before the panel's own motion (appear_apply): the page's contents in
 // `d` moved across and faded as a change brings them in at `now`.
 void tabs_apply(ImDrawData* d, uint64_t now);
 // How far across, in the window's pixels, and how faded the page's contents are at `now` as a
-// change brings them in: 0 and 1 once it's done. The focus ring comes in with them (ring.h).
+// change brings them in: 0 and 1 once it's done. The focus ring comes in with them while its item
+// is one of them (ring.h).
 void tabs_contents_moved(uint64_t now, float& dx, float& alpha);
 // Whether a change is still moving the pill or the page's contents.
 bool tabs_moving(uint64_t now);

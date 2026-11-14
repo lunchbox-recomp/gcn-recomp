@@ -99,7 +99,8 @@ void ring_draw(uint64_t now) {
     g_snap = false;
     g_moving = g_at.Min.x != g_item.Min.x || g_at.Min.y != g_item.Min.y || g_at.Max.x != g_item.Max.x ||
                g_at.Max.y != g_item.Max.y;
+    // Around an item in the footer or a question it stays still and whole as the page comes in.
     float dx = 0.0f, alpha = 1.0f;
-    tabs_contents_moved(now, dx, alpha);
+    if (tabs_contents_focused()) tabs_contents_moved(now, dx, alpha);
     draw(g_at, w->InnerClipRect, dx, alpha);
 }

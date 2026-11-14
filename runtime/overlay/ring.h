@@ -9,8 +9,9 @@
 // in at the same speed however often frames come, and it's there once it's within half a pixel.
 // It's there at once, with no motion, for a move over half the panel's width or height, as the
 // menu opens, on a page change or a question or a view in place of the page, when it first
-// shows, and always with motion off. While a page change slides the page's contents in, the ring
-// slides and fades in with them (tabs.h).
+// shows, and always with motion off. While a page change slides the page's contents in, a ring
+// around one of them slides and fades in with them (tabs.h), and one around a footer button or a
+// question's stays where it is, whole.
 #pragma once
 #include <cstdint>
 

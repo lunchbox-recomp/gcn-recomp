@@ -3,7 +3,8 @@
 // accent and focus_gap outside it. A move a row down eases it, 1 - exp(-dt / focus_ms) of the way
 // a frame later, and once it's there nothing moves and the paused wait is 16 ms again. A move
 // over half the panel, a page change from the footer and the menu opening put it there at once,
-// as menu_motion off and --dump-output do for every move. Closed after all that, 600 frames lay
+// as menu_motion off and --dump-output do for every move. Around the footer's first item, or a
+// question's, it doesn't slide in with a page. Closed after all that, 600 frames lay
 // out no menu frame. Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/ring.h"
@@ -37,6 +38,14 @@ void corner_page(void*) {
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - w);
     ImGui::Button(label);
     g_corner = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+}
+
+// The Text page, a line with nothing to press, so its first item is the footer's. Its rect as it
+// was last laid out.
+ImRect g_text;
+void text_page(void*) {
+    ImGui::TextUnformatted("Nothing here takes the focus.");
+    g_text = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 }
 
 // The ring at the menu's last frame.
@@ -78,7 +87,7 @@ void stroke(Guest& g, SDL_Scancode sc, SDL_Keycode kc, int down_ms = kFrameMs, i
 // Long enough for anything moving to have settled.
 void ring_settle(Guest& g) { frame_after(g, 1000); }
 
-// The menu set up with Right, Right too and Rows after its own pages, `motion` on or off, under
+// The menu set up with Right, Right too, Rows and Text after its own pages, `motion` on or off, under
 // --dump-output or not, then opened over the held game, on the page titled `open_on` if one is
 // given, as the first open of a session.
 void ring_menu(SDL_Window* window, const std::string& dir, Guest& guest, bool motion = true, bool dump_output = false,
@@ -87,6 +96,7 @@ void ring_menu(SDL_Window* window, const std::string& dir, Guest& guest, bool mo
     overlay_add_page("Right", corner_page, nullptr);
     overlay_add_page("Right too", corner_page, nullptr);
     overlay_add_page("Rows", rows_page, nullptr);
+    overlay_add_page("Text", text_page, nullptr);
     OverlayPicture picture;
     picture.path = dir + "/ring-settings.txt";
     picture.apply = record_apply;
@@ -129,6 +139,25 @@ ImRect drawn_in(uint32_t rgb) {
     const ImU32 want = theme_colour(rgb << 8 | 0xFF) & ~IM_COL32_A_MASK;
     for (const ImDrawVert& v : dl->VtxBuffer)
         if ((v.col & ~IM_COL32_A_MASK) == want) r.Add(v.pos);
+    return r;
+}
+
+// The most alpha of those vertices, 0 with none.
+int drawn_alpha(uint32_t rgb) {
+    int most = 0;
+    const ImU32 want = theme_colour(rgb << 8 | 0xFF) & ~IM_COL32_A_MASK;
+    for (const ImDrawVert& v : ImGui::GetForegroundDrawList()->VtxBuffer)
+        if ((v.col & ~IM_COL32_A_MASK) == want) most = std::max(most, (int)(v.col >> IM_COL32_A_SHIFT & 0xFF));
+    return most;
+}
+
+// The rect the ring's drawn over around `item`, focus_gap outside it and focus_width wide at the
+// window's scale.
+ImRect around(const ImRect& item) {
+    const OverlayTheme theme = overlay_theme_default();
+    const float s = ImGui::GetStyle().FontScaleMain;
+    ImRect r = item;
+    r.Expand(std::round(theme.focus_gap * s) + std::max(1.0f, std::round(theme.focus_width * s)));
     return r;
 }
 
@@ -251,6 +280,31 @@ void ring_moves(const std::string& dir) {
         check(stood.shown && same_rect(stood.item, g_rows[0]) && same_rect(stood.at, g_rows[1]) && overlay_open() &&
                   ring_on(ring_now(), g_rows[0]),
               "the menu opening puts the ring on its item at once");
+
+        // Turned to Text, whose first item is the footer's Restart game, the ring is there, still
+        // and whole while the page's text slides and fades in.
+        ring_settle(guest);
+        turn_to(guest, "Text");
+        const Ring restart = ring_now();
+        tabs_contents_moved(g_host_ns, dx, alpha);
+        check(overlay_page() == page_at("Text") && restart.shown && restart.item.Min.y > g_text.Max.y &&
+                  dx > 1.0f && alpha < 1.0f && same_rect(drawn_in(theme.accent >> 8), around(restart.item), 1.0f) &&
+                  drawn_alpha(theme.accent >> 8) == 0xFF,
+              "on a page whose first item is in the footer, the ring stays still and whole as the page slides in");
+
+        // Quit game asked with no host time passing, so the page is still sliding: the ring on
+        // Cancel stays still and whole too.
+        stroke(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT, 0, 0);
+        stroke(guest, SDL_SCANCODE_RETURN, SDLK_RETURN, 0, 0);
+        frame_after(guest, 0);
+        const Ring cancel = ring_now();
+        tabs_contents_moved(g_host_ns, dx, alpha);
+        check(overlay_asking() == OverlayAsk::quit && cancel.shown && same_rect(cancel.at, cancel.item) && dx > 1.0f &&
+                  same_rect(drawn_in(theme.accent >> 8), around(cancel.item), 1.0f) &&
+                  drawn_alpha(theme.accent >> 8) == 0xFF,
+              "a question asked as a page slides in has the ring on Cancel still and whole");
+        stroke(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+        ring_settle(guest);
 
         stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
         ring_settle(guest);

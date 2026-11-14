@@ -27,6 +27,7 @@ Tween g_slide, g_fade;
 ImDrawList* g_list;
 int g_begin, g_end;
 float g_scale = 1.0f;
+bool g_focused;  // the item with the focus was laid out among them at the last frame
 #ifdef GCN_OVERLAY_TEST
 std::vector<ImRect> g_pills;  // each page's pill as the header last laid it out
 #endif
@@ -190,9 +191,20 @@ void tabs_contents_begin() {
     g_scale = ImGui::GetStyle().FontScaleMain;
 }
 
-void tabs_contents_end() { g_end = g_list ? g_list->VtxBuffer.Size : 0; }
+// Dear ImGui marks the item with the focus alive as it's laid out (NavIdIsAlive), and clears that
+// as each frame begins. The header before the contents has nothing that takes the focus, so alive
+// at their end, it's one of them.
+void tabs_contents_end() {
+    g_end = g_list ? g_list->VtxBuffer.Size : 0;
+    g_focused = g_list && ImGui::GetCurrentContext()->NavIdIsAlive;
+}
 
-void tabs_no_contents() { g_list = nullptr; }
+void tabs_no_contents() {
+    g_list = nullptr;
+    g_focused = false;
+}
+
+bool tabs_contents_focused() { return g_focused; }
 
 void tabs_contents_moved(uint64_t now, float& dx, float& alpha) {
     dx = g_slide.at(now) * g_scale;
