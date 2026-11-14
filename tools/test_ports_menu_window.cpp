@@ -9,6 +9,7 @@
 // checks (tools/test_ports_controllers.cpp) then run over the same window. Read in by
 // tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
+#include "overlay/footer.h"
 
 namespace {
 
@@ -66,6 +67,43 @@ void overlay_buttons(const std::string& dir) {
     attach(nintendo);
     Guest guest;
     host_frame(guest);
+    g_host_ns += 10000000000ull;
+    host_frame(guest);
+    const int closed_frames = ImGui::GetFrameCount();
+    host_frame(guest);
+    check(ImGui::GetFrameCount() == closed_frames,
+          "a closed menu with no notice costs zero Dear ImGui menu frames");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    const struct { const char* name; Uint16 vendor, product; const char* a; const char* b;
+                   const char* left; const char* right; uint32_t a_fill, b_fill; } glyphs[] = {
+        {"footer xbox", 0x045e, 0x02ea, "A", "B", "LB", "RB", theme.xbox.a, theme.xbox.b},
+        {"footer playstation", 0x054c, 0x0ce6, "Cross", "Circle", "L1", "R1", theme.playstation.a, theme.playstation.b},
+        {"footer nintendo", 0x057e, 0x2009, "A", "B", "L", "R", theme.item, theme.item},
+        {"footer gamecube", 0x057e, 0x0337, "A", "B", "L", "R", theme.gamecube.a, theme.gamecube.b},
+    };
+    for (const auto& c : glyphs) {
+        Virtual v{c.name};
+        v.vendor = c.vendor;
+        v.product = c.product;
+        attach(v);
+        host_frame(guest);
+        tap(guest, v, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        const auto& marks = footer_test_glyphs();
+        check(marks.size() == 4 && marks[0].label == c.a && marks[0].fill == c.a_fill &&
+              marks[1].label == c.b && marks[1].fill == c.b_fill &&
+              marks[2].label == c.left && marks[2].fill == theme.item &&
+              marks[3].label == c.right && marks[3].fill == theme.item,
+              (std::string(c.name) + " labels and colours the footer's Select, Close and Page glyphs").c_str());
+        detach(v);
+        host_frame(guest);
+    }
+    tap(guest, SDL_SCANCODE_Q, SDLK_Q);
+    const auto& key_marks = footer_test_glyphs();
+    check(key_marks.size() == 4 && key_marks[0].label == "Enter" && key_marks[1].label == "Esc" &&
+          key_marks[2].label == "Q" && key_marks[3].label == "E" &&
+          key_marks[0].shape == OverlayGlyphShape::keycap,
+          "the keyboard last used draws Enter, Escape, Q and E keycaps in the footer");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
 
     // A face or a key held as the menu opens stays out of it until it's let go, though the
     // focus is where the menu left it, here on Restart game (below).

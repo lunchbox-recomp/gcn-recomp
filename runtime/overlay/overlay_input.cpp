@@ -42,6 +42,7 @@ struct HeldPad {
     uint32_t chord_down, spoiled, turns;
 };
 std::vector<HeldPad> g_pads;
+SDL_JoystickID g_last_pad;
 
 // The triggers, as the menu takes them: buttons past SDL's own, each down while it's clicked in
 // (clicked).
@@ -267,6 +268,10 @@ void overlay_read_pads() {
 
 bool overlay_event(const SDL_Event& e) {
     if (!overlay_ready()) return false;
+    if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) g_last_pad = 0;
+    else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) g_last_pad = e.gbutton.which;
+    else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION &&
+             std::abs(e.gaxis.value) > 16000) g_last_pad = e.gaxis.which;
     if (overlay_open() && (controllers_event(e) || bindings_event(e))) return true;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
     const bool pressed = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
@@ -285,6 +290,8 @@ bool overlay_event(const SDL_Event& e) {
         ImGui_ImplSDL3_ProcessEvent(&e);
     return overlay_open() && is_input(e);
 }
+
+SDL_Gamepad* overlay_last_pad() { return g_last_pad ? SDL_GetGamepadFromID(g_last_pad) : nullptr; }
 
 void overlay_poll() {
     if (!overlay_ready()) return;
