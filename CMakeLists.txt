@@ -828,6 +828,17 @@ function(gcn_add_game)
       target_compile_options(test_ports PRIVATE -ffunction-sections)
       target_link_options(test_ports PRIVATE -Wl,--gc-sections)
     endif()
+    # The overlay theme's checks (tools/test_overlay_theme.cpp): the default theme's contrast and
+    # sizes, and the style built from it, on a Dear ImGui context with no window.
+    if(_gcn_overlay)
+      add_executable(test_overlay_theme EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_overlay_theme.cpp
+        ${RT}/overlay/theme.cpp)
+      _gcn_set_standards(test_overlay_theme)
+      target_include_directories(test_overlay_theme PRIVATE ${RT})
+      target_link_libraries(test_overlay_theme PRIVATE gcn_imgui)
+      target_compile_options(test_overlay_theme PRIVATE ${GCN_RUNTIME_WARNINGS})
+      target_compile_definitions(test_overlay_theme PRIVATE GCN_OVERLAY)
+    endif()
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page
     # saves through settings.cpp, which is linked above. --pages draws the menu over a GL window
@@ -1120,6 +1131,9 @@ function(gcn_add_game)
         test_ram_patches test_bot_link test_code_table test_code_watch test_aid)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
+    endif()
+    if(TARGET test_overlay_theme)
+      list(APPEND _unit_plain test_overlay_theme)
     endif()
     set(_unit_dirs ${_unit_work}/test_engine_sha)
     foreach(_t ${_unit_plain})

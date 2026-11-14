@@ -77,6 +77,7 @@
 // plain grey instead of the held frame with GCN_OVERLAY_PLAIN set.
 #pragma once
 #include "hw/pad.h"
+#include "overlay/theme.h"
 #include "pad_bindings.h"
 #include "settings.h"
 #include <string>

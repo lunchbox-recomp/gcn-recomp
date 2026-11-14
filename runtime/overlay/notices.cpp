@@ -10,6 +10,7 @@
 #include "imgui_impl_sdl3.h"
 
 void overlay_imgui_context(SDL_Window* window, bool gl);  // overlay.cpp's
+void overlay_style_fit(SDL_Window* window);              // overlay.cpp's
 
 namespace {
 
@@ -20,6 +21,7 @@ struct Notice {
 };
 std::vector<Notice> g_notices;
 ImGuiContext* g_context;  // their own, null with no window
+SDL_Window* g_window;     // the one they show over
 bool g_gl;                // drawn, not only laid out
 long g_frames;            // frames they've been laid out in
 
@@ -52,6 +54,7 @@ void notices_init(SDL_Window* window, bool gl) {
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
     ImGui_ImplSDL3_SetMouseCaptureMode(ImGui_ImplSDL3_MouseCaptureMode_Disabled);
     g_context = ImGui::GetCurrentContext();
+    g_window = window;
     g_gl = gl;
 }
 
@@ -62,6 +65,7 @@ void notices_frame() {
     if (!g_context || g_notices.empty()) return;
     ImGuiContext* menu = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(g_context);
+    overlay_style_fit(g_window);
     if (g_gl) ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();

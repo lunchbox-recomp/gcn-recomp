@@ -46,8 +46,18 @@ void overlay_latch_pads();
 // backend where `gl` says the window has a GL context and none otherwise, so it's laid out and
 // never drawn. It writes no file, opens no link, offers no item picker and reads no gamepad
 // itself. The menu and the notices each have one, so a frame of notices with the menu closed
-// leaves the menu's focus as it was.
+// leaves the menu's focus as it was. Its style is the theme's at the window's height.
 void overlay_imgui_context(SDL_Window* window, bool gl);
+// Below, for the notices too: the current context's style built again from the theme if the
+// window's height has changed since it was last built, before a frame.
+void overlay_style_fit(SDL_Window* window);
+// theme.cpp's: the theme, and the current context's style built from it at a scale, the scale
+// for a window's height in Dear ImGui's units, and the style built again where that has changed.
+const OverlayTheme& theme_now();
+void theme_set(const OverlayTheme& theme);
+void theme_style(const OverlayTheme& theme, float scale);
+float theme_scale(int height);
+void theme_fit(int height);
 
 namespace {
 
@@ -396,6 +406,7 @@ void draw_menu() {
 
 // The menu's frame: its input taken and its windows laid out, ready to draw.
 void menu_frame() {
+    overlay_style_fit(g_window);
     ImGui_ImplSDL3_NewFrame();
     read_pads();
     ImGui::NewFrame();
@@ -421,9 +432,24 @@ void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
     g_pages.push_back({title, draw, user});
 }
 
+void overlay_set_theme(const OverlayTheme& theme) {
+    if (g_ready) { fprintf(stderr, "[overlay] the theme is fixed after init, so this one is refused\n"); return; }
+    theme_set(theme);
+}
+
 #ifdef GCN_OVERLAY_TEST
-void overlay_test_reset_pages() { g_pages.clear(); g_ready = false; }
+void overlay_test_reset_pages() {
+    g_pages.clear();
+    theme_set(overlay_theme_default());
+    g_ready = false;
+}
 #endif
+
+void overlay_style_fit(SDL_Window* window) {
+    int w = 0, h = 0;
+    SDL_GetWindowSize(window, &w, &h);
+    theme_fit(h);
+}
 
 void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& picture) {
     g_ready = true;
@@ -448,13 +474,9 @@ void overlay_imgui_context(SDL_Window* window, bool gl) {
     io.IniFilename = nullptr;  // nothing written to the game's directory
     io.ConfigDebugHighlightIdConflictsShowItemPicker = false;
     io.LogFilename = nullptr;
-    ImGui::StyleColorsDark();
-    // Twice Dear ImGui's own size, to be read from a couch, times the display's content scale.
-    const float content = SDL_GetDisplayContentScale(SDL_GetDisplayForWindow(window));
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.FontScaleMain = 2.0f;
-    style.FontScaleDpi = content > 0.0f ? content : 1.0f;
-    style.ScaleAllSizes(style.FontScaleMain * style.FontScaleDpi);
+    int w = 0, h = 0;
+    SDL_GetWindowSize(window, &w, &h);
+    theme_style(theme_now(), theme_scale(h));
     if (gl) {
         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
         ImGui_ImplOpenGL3_Init();

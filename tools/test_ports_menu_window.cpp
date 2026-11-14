@@ -32,7 +32,22 @@ void overlay_buttons(const std::string& dir) {
               lines_with(page_errors, "[overlay] page title Display is already in use\n") == 1 &&
               lines_with(page_errors, "[overlay] page title Controllers is already in use\n") == 1,
           "empty and duplicate page titles each print one refusal");
+    OverlayTheme theme = overlay_theme_default();
+    theme.panel = 0x102030F0;
+    overlay_set_theme(theme);
     overlay_init(window, "Test title", picture);
+    const ImVec4 panel = ImGui::GetStyle().Colors[ImGuiCol_WindowBg];
+    check(std::abs(panel.x - 0x10 / 255.0f) < 1e-3f && std::abs(panel.y - 0x20 / 255.0f) < 1e-3f &&
+              std::abs(panel.z - 0x30 / 255.0f) < 1e-3f && std::abs(panel.w - 0xF0 / 255.0f) < 1e-3f,
+          "a theme set before init colours the menu's panel");
+    capture(page_errors, [] {
+        OverlayTheme late = overlay_theme_default();
+        late.panel = 0xFF0000FF;
+        overlay_set_theme(late);
+    });
+    check(lines_with(page_errors, "[overlay] the theme is fixed after init, so this one is refused\n") == 1 &&
+              ImGui::GetStyle().Colors[ImGuiCol_WindowBg].x == panel.x,
+          "a theme set after init prints one refusal and changes nothing");
     check(ImGui::GetPlatformIO().Platform_OpenInShellFn == nullptr,
           "the menu leaves Dear ImGui's link opener disabled after init");
     check(!ImGui::GetIO().ConfigDebugHighlightIdConflictsShowItemPicker,
@@ -272,6 +287,18 @@ void overlay_buttons(const std::string& dir) {
     detach(bound);
     host_frame(guest);
     no_controls(dir);
+
+    // The menu's sizes follow the window's height, built at 960 lines and again at 1440.
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const bool at_960 = std::abs(style.FontScaleMain - 960.0f / 1080.0f) < 1e-4f && style.WindowPadding.x == 28.0f;
+    SDL_SetWindowSize(window, 1920, 1440);
+    host_frame(guest);
+    const bool at_1440 = std::abs(style.FontScaleMain - 1440.0f / 1080.0f) < 1e-4f && style.WindowPadding.x == 42.0f;
+    SDL_SetWindowSize(window, 1280, 960);
+    host_frame(guest);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    check(at_960 && at_1440, "the menu's style is built for the window's height, and again when that changes");
 
     unplug({&pad, &nintendo});
     gamepads_shutdown();
