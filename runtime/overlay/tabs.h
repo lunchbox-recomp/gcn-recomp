@@ -43,6 +43,9 @@ void tabs_no_contents();
 // After ImGui::Render and before the panel's own motion (appear_apply): the page's contents in
 // `d` moved across and faded as a change brings them in at `now`.
 void tabs_apply(ImDrawData* d, uint64_t now);
+// How far across, in the window's pixels, and how faded the page's contents are at `now` as a
+// change brings them in: 0 and 1 once it's done. The focus ring comes in with them (ring.h).
+void tabs_contents_moved(uint64_t now, float& dx, float& alpha);
 // Whether a change is still moving the pill or the page's contents.
 bool tabs_moving(uint64_t now);
 #ifdef GCN_OVERLAY_TEST

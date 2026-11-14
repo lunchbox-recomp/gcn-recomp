@@ -194,9 +194,15 @@ void tabs_contents_end() { g_end = g_list ? g_list->VtxBuffer.Size : 0; }
 
 void tabs_no_contents() { g_list = nullptr; }
 
+void tabs_contents_moved(uint64_t now, float& dx, float& alpha) {
+    dx = g_slide.at(now) * g_scale;
+    alpha = std::clamp(g_fade.at(now), 0.0f, 1.0f);
+}
+
 void tabs_apply(ImDrawData* d, uint64_t now) {
     if (!g_list || !d->CmdLists.contains(g_list)) return;
-    const float dx = g_slide.at(now) * g_scale, alpha = std::clamp(g_fade.at(now), 0.0f, 1.0f);
+    float dx = 0.0f, alpha = 1.0f;
+    tabs_contents_moved(now, dx, alpha);
     if (dx == 0.0f && alpha >= 1.0f) return;
     for (int i = g_begin; i < std::min(g_end, g_list->VtxBuffer.Size); i++) {
         ImDrawVert& v = g_list->VtxBuffer[i];

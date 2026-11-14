@@ -119,8 +119,8 @@ struct OverlayTheme {
     float close_scale = 0.98f;
     float page_ms = 160.0f;           // a page change (tabs.h), its contents sliding page_slide pixels
     float page_slide = 32.0f;
-    // The rest aren't read yet: the focus ring (F5) and the toasts (F7).
-    float focus_ms = 45.0f;           // how quickly the focus ring catches up with a move
+    float focus_ms = 45.0f;           // the focus ring's time constant as it follows a move (ring.h)
+    // The rest aren't read yet: the focus ring's pulse and press, and the toasts (F7).
     float pulse_ms = 1200.0f;         // one breath of the focus ring
     float press_scale = 0.98f;        // an item held down, springing back over press_ms
     float press_ms = 120.0f;

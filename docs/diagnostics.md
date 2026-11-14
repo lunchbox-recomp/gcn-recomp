@@ -796,12 +796,13 @@ output dumps never include it or the notices about controllers, so a run that op
 the same frame dumps as one that didn't.
 
 With `menu_motion on` in `settings.txt`, the default, the menu fades in and grows over a dimmed
-game as it opens, and fades out and shrinks as it closes, on the host clock. The pause is still
+game as it opens, and fades out and shrinks as it closes, on the host clock. Its focus ring
+eases after a move of the focus and settles within half a pixel. The pause is still
 asked for at once as it opens, and the guest goes on at once as it closes. Each open prints
 `[overlay] shown after N ms` once the panel is whole, N counted from the open on the host clock.
 While it moves the paused frontend waits 8 ms for a batch, not 16, so it's drawn more often.
-`menu_motion off` and `--dump-output` show and close it at once, so a dump never catches it
-moving.
+`menu_motion off` and `--dump-output` show and close it at once, and put the ring on its item at
+once, so a dump never catches it moving.
 
 `test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`, its one runner) dumps
 each page that way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in

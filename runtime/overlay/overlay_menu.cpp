@@ -121,7 +121,7 @@ void draw_menu(uint64_t now) {
     }
     section_gap();
     footer(g_on_page);
-    ring_draw();
+    ring_draw(now);
     ImGui::End();
 }
 
@@ -161,6 +161,7 @@ void menu_opened(int page, uint64_t now) {
     // laid out before, which may be another page's, at another window height, so it reads none.
     g_tallest = 0.0f;
     g_on_page = false;
+    ring_snap();  // and the focus ring on its item
 }
 
 // The menu's frame: its input taken while it's open and its windows laid out, ready to draw,
