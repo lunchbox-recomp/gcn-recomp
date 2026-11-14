@@ -112,6 +112,23 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     check(home_hints == "Guide Cancel, Esc Cancel", "listening to a gamepad with Guide and no Back, the footer hints Guide");
     unplug({&home});
 
+    // A key pressed as it listens, the footer still draws the listening gamepad's own Back, by
+    // its family's name, never a keycap.
+    Virtual xbox{"xbox pad buttons view"};
+    xbox.vendor = 0x045e;
+    xbox.product = 0x02ea;
+    attach(xbox);
+    host_frame(guest);
+    overlay_bindings_open(xbox.id);
+    overlay_bindings_listen(PadControl::B);
+    tap(guest, SDL_SCANCODE_K, SDLK_K);
+    const std::vector<OverlayGlyph> keyed = footer_test_glyphs();
+    tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+    check(keyed.size() == 2 && keyed[0].label == "View" && keyed[0].shape == OverlayGlyphShape::pill &&
+              keyed[1].label == "Esc" && keyed[1].shape == OverlayGlyphShape::keycap && !overlay_bindings_listening(),
+          "listening after a key, the footer draws the Xbox pad's own View, not a Back keycap, and Escape's");
+    unplug({&xbox});
+
     // A GameCube pad on Nintendo's adapter has no Back or Guide, and each of its buttons is the
     // binding's, so the footer hints no button of it: Escape, or the wait running out.
     Virtual adapter{"adapter pad buttons"};

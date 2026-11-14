@@ -16,6 +16,7 @@
 #include "imgui_internal.h"  // ImGui::FocusItem
 
 SDL_Gamepad* overlay_last_pad();  // overlay_input.cpp's
+SDL_Gamepad* bindings_pad();      // overlay_bindings.cpp's
 
 namespace {
 
@@ -60,9 +61,10 @@ std::string g_hints;  // the hints last drawn, each key and what it does, for th
 std::vector<OverlayGlyph> g_glyphs;
 #endif
 
-// The hints from `at`, centred in a row `height` tall, and how wide they are.
+// The hints from `at`, centred in a row `height` tall, and how wide they are: glyphs of the
+// gamepad `pad`, or keycaps with none, and Escape as a keycap whatever `pad` is.
 template <size_t N>
-float hints(const Hint (&list)[N], ImVec2 at, float height) {
+float hints(const Hint (&list)[N], ImVec2 at, float height, SDL_Gamepad* pad) {
     const OverlayTheme& t = theme_now();
     const float gap = t.item_spacing * ImGui::GetStyle().FontScaleMain;
     ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -72,7 +74,6 @@ float hints(const Hint (&list)[N], ImVec2 at, float height) {
     g_hints.clear();
     g_glyphs.clear();
 #endif
-    SDL_Gamepad* pad = overlay_last_pad();
     const PadFamily family = pad ? gamepads_family(pad) : PadFamily::other;
     for (const Hint& h : list) {
         if (x > at.x) x += 3.0f * gap;
@@ -81,7 +82,7 @@ float hints(const Hint (&list)[N], ImVec2 at, float height) {
         const bool cancel_pad = !strcmp(h.key, "Back") || !strcmp(h.key, "Guide");
         const bool keyboard = !pad || escape || wait;
         const char* key = h.key;
-        if (!pad && !wait) {
+        if (!pad) {
             if (!strcmp(key, "A")) key = "Enter";
             else if (!strcmp(key, "B")) key = "Esc";
             else if (!strcmp(key, "L R")) key = "Q E";
@@ -144,10 +145,12 @@ void footer(bool on_page) {
     const float room = ImGui::GetContentRegionAvail().x;
     const char* cancel = overlay_bindings_cancel();
     const Hint listening[] = {{cancel, "Cancel"}, {"Esc", "Cancel"}};
-    const float wide = cancel                         ? hints(listening, at, height)
-                       : overlay_bindings_listening() ? hints(kListeningNoButton, at, height)
-                       : on_page                      ? hints(kOnPage, at, height)
-                                                      : hints(kInView, at, height);
+    // The listening gamepad's own Back or Guide, whatever was used last.
+    SDL_Gamepad* pad = cancel ? bindings_pad() : overlay_last_pad();
+    const float wide = cancel                         ? hints(listening, at, height, pad)
+                       : overlay_bindings_listening() ? hints(kListeningNoButton, at, height, pad)
+                       : on_page                      ? hints(kOnPage, at, height, pad)
+                                                      : hints(kInView, at, height, pad);
     if (!on_page) {
         ImGui::Dummy(ImVec2(wide, height));
         ImGui::PopFont();
