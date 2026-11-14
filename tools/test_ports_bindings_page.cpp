@@ -24,9 +24,19 @@ std::string first_pad() {
     return "";
 }
 
+// The room under the footer's hints, as the menu's last frame laid them out, inside the padding of
+// `panel`, the menu's.
+float under_hints(const ImGuiWindow* panel) {
+    float f[4];
+    footer_test_hints_rect(f);
+    return panel->Pos.y + panel->Size.y - ImGui::GetStyle().WindowPadding.y - f[3];
+}
+
 // Whether the footer's hints and the item with the focus are whole on the menu's panel, as its
 // last frame laid them out, the item inside the region it's in too, which the Buttons view
-// scrolls. False with no item laid out with the focus.
+// scrolls. The hints are inside the panel's padding, but for the part of a pixel Dear ImGui drops
+// from the height it sizes the panel to, and the panel has nothing to scroll, either way. False
+// with no item laid out with the focus.
 bool on_panel() {
     const ImGuiContext& g = *ImGui::GetCurrentContext();
     const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
@@ -34,7 +44,8 @@ bool on_panel() {
     float f[4];
     footer_test_hints_rect(f);
     const ImRect item = ImGui::WindowRectRelToAbs(g.NavWindow, g.NavWindow->NavRectRel[g.NavLayer]);
-    return panel->InnerClipRect.Contains(ImRect(f[0], f[1], f[2], f[3])) && panel->InnerClipRect.Contains(item) &&
+    return panel->InnerClipRect.Contains(ImRect(f[0], f[1], f[2], f[3])) && under_hints(panel) > -1.0f &&
+           panel->ScrollMax.x == 0.0f && panel->ScrollMax.y == 0.0f && panel->InnerClipRect.Contains(item) &&
            g.NavWindow->InnerClipRect.Contains(item);
 }
 
@@ -120,11 +131,10 @@ Laid laid() {
     const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
     Laid l;
     if (!panel) return l;
-    float hints[4], x = 0.0f;
-    footer_test_hints_rect(hints);
+    float x = 0.0f;
     tabs_test_pill(0, x, l.header);
     l.scroll = panel->ScrollMax.y;
-    l.under = panel->Pos.y + panel->Size.y - ImGui::GetStyle().WindowPadding.y - hints[3];
+    l.under = under_hints(panel);
     l.in_view = on_panel();
     return l;
 }
