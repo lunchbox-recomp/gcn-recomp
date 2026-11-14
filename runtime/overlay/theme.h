@@ -7,8 +7,7 @@
 // builds its style again from the theme whenever that changes.
 //
 // Some fields are read by nothing yet. Each says so, and which later piece of the look reads
-// it: F2 the fonts, F4 the header, tabs and footer, F5 the focus ring, F6 controller buttons'
-// glyphs, F7 the notices as toasts and D1 a game's own theme.
+// it: F7 the notices as toasts and D1 a game's own theme.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -125,7 +124,7 @@ struct OverlayTheme {
 
     // Controller buttons' colours, each 0xRRGGBBAA, by the face the game takes each as: A, B, X
     // and Y (gamepads_faces in gamepads.h). A Nintendo controller's faces are drawn in the text's
-    // colour. Not read yet: the glyphs (F6) draw with them.
+    // colour.
     struct Faces {
         uint32_t a, b, x, y;
     };

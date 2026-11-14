@@ -868,7 +868,7 @@ function(gcn_add_game)
     # sizes, and the style built from it, on a Dear ImGui context with no window.
     if(_gcn_overlay)
       add_executable(test_overlay_theme EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_overlay_theme.cpp
-        ${RT}/overlay/theme.cpp)
+        ${RT}/overlay/theme.cpp ${RT}/overlay/glyph.cpp ${RT}/pad_glyph.cpp)
       _gcn_set_standards(test_overlay_theme)
       target_include_directories(test_overlay_theme PRIVATE ${RT})
       target_link_libraries(test_overlay_theme PRIVATE gcn_imgui_asserts)

@@ -15,6 +15,7 @@
 // usage: test_overlay_theme
 // Exits 0 only if every check passes.
 #include "overlay/theme.h"
+#include "overlay/glyph.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -137,6 +138,34 @@ void contrasts(const OverlayTheme& t) {
         snprintf(what, sizeof(what), "%s on the panel is %.2f:1, at least 3:1", ring.first, r);
         check(r >= 3.0, what);
     }
+}
+
+void glyph_contrasts(const OverlayTheme& t) {
+    const struct { PadFamily family; int face; uint32_t fill; const char* label; } cases[] = {
+        {PadFamily::xbox, 1, t.xbox.a, "A"}, {PadFamily::xbox, 2, t.xbox.b, "B"},
+        {PadFamily::xbox, 3, t.xbox.x, "X"}, {PadFamily::xbox, 4, t.xbox.y, "Y"},
+        {PadFamily::ps5, 5, t.playstation.a, "Cross"}, {PadFamily::ps5, 6, t.playstation.b, "Circle"},
+        {PadFamily::ps5, 7, t.playstation.x, "Square"}, {PadFamily::ps5, 8, t.playstation.y, "Triangle"},
+        {PadFamily::nintendo, 1, t.item, "A"}, {PadFamily::other, 1, t.item, "A"},
+        {PadFamily::gamecube, 1, t.gamecube.a, "A"}, {PadFamily::gamecube, 2, t.gamecube.b, "B"},
+        {PadFamily::gamecube, 3, t.gamecube.x, "X"}, {PadFamily::gamecube, 4, t.gamecube.y, "Y"},
+    };
+    for (const auto& c : cases) {
+        const OverlayGlyph g = overlay_pad_glyph(t, c.family, {false, kPadSouth}, c.face);
+        char what[160];
+        snprintf(what, sizeof(what), "%s face label and colour", c.label);
+        check(g.label == c.label && g.fill == c.fill && g.shape == OverlayGlyphShape::circle, what);
+        snprintf(what, sizeof(what), "%s glyph ink has 4.5:1 contrast", c.label);
+        check(contrast(g.ink, g.fill) >= 4.5, what);
+        if (c.family == PadFamily::nintendo || c.family == PadFamily::other)
+            check(g.ink == t.text, "Nintendo and unknown faces use the theme's text on its item colour");
+    }
+    const OverlayGlyph z = overlay_pad_glyph(t, PadFamily::gamecube, {false, kPadRightShoulder}, 0);
+    check(z.label == "Z" && z.fill == t.gamecube_z && z.shape == OverlayGlyphShape::pill && contrast(z.ink, z.fill) >= 4.5,
+          "GameCube Z uses the violet shoulder pill with readable ink");
+    const OverlayGlyph key = overlay_key_glyph(t, "Esc");
+    check(key.label == "Esc" && key.shape == OverlayGlyphShape::keycap && contrast(key.ink, key.fill) >= 4.5,
+          "Escape has a readable keycap");
 }
 
 // What isn't text but has to be seen, at least 3:1 by WCAG 2.1's 1.4.11, read from the style
@@ -279,6 +308,7 @@ void style(const OverlayTheme& t) {
 int main() {
     const OverlayTheme t = overlay_theme_default();
     contrasts(t);
+    glyph_contrasts(t);
     edges(t);
     couch(t);
     fonts(t);
