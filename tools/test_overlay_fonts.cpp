@@ -372,14 +372,16 @@ void chains(const std::string& dir) {
     const long live = g_live;
     said(dir + "/again-stderr.txt", [&] { fonts_build(OverlayFonts{}); });
     check(live > 0 && g_live == live, "an atlas no context is on is freed when the next is built");
-    // One a context is on is kept, whole, for that context to go on reading; under the
-    // sanitizers a read of a freed one stops the check. Once the context is gone, nothing
-    // else frees it, so the check does.
+    // One a context is on is kept, whole, for that context to go on reading: Dear ImGui holds
+    // more allocations after, the new atlas's on top, and under the sanitizers a read of a
+    // freed one stops the check. Once the context is gone, nothing else frees it, so the
+    // check does.
     ImFontAtlas* const old = fonts_atlas();
     ImGuiContext* c = ImGui::CreateContext(old);
+    const long on = g_live;
     said(dir + "/kept-stderr.txt", [&] { fonts_build(OverlayFonts{}); });
     ImGui::SetCurrentContext(c);
-    check(fonts_atlas() != old && ImGui::GetIO().Fonts == old && ImGui::GetIO().Fonts->Fonts.Size == 1,
+    check(g_live > on && fonts_atlas() != old && ImGui::GetIO().Fonts == old && ImGui::GetIO().Fonts->Fonts.Size == 1,
           "an atlas a context is still on is kept when the next is built");
     ImGui::DestroyContext(c);
     IM_DELETE(old);
