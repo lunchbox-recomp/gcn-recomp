@@ -91,7 +91,8 @@
 // every other key and gamepad event while it waits is its own. It ends saying what changed. The
 // view also sets the dead zones and the trigger click, saved as each slider is let go, and has
 // Test rumble (1 s), Reset to default and Done. B or Escape goes back to the Controllers page.
-// The menu's own A and B stay the faces labeled so, whatever the game's binding says.
+// The view opens with its first gamepad focused, and the page comes back with Change buttons
+// focused, after the menu closed from the view too. The menu's own A and B stay the faces labeled so, whatever the game's binding says.
 //
 // A notice over the bottom of the window says for 2 s of host time that a controller
 // connected, disconnected or moved, and logs the same as a `[pads]` line. It shows with the

@@ -22,6 +22,8 @@ uint32_t g_device;                  // the gamepad it shows
 std::optional<BindListen> g_listen;  // press-to-bind, while it waits
 std::string g_said;                 // what the last change did
 int g_focus = -1;                   // the row that takes the focus at the next draw, -1 for none
+bool g_focus_first;                 // the view's first item takes it at its next draw, as it opens
+bool g_back;                        // Change buttons takes it at the page's next draw, after the view
 
 const char* const kRows[kPadControls] = {
     "A", "B", "X", "Y", "Z", "Start", "D-pad up", "D-pad down", "D-pad left", "D-pad right", "L", "R",
@@ -55,6 +57,12 @@ void end_listen(const std::string& said) {
 }
 
 std::string refused() { return name_of(g_device) + " can't be set up here any more."; }
+
+// The view goes back to the Controllers page, its focus on Change buttons, which put it up.
+void back() {
+    g_shown = false;
+    g_back = true;
+}
 
 // What a change that went in adds to what's said: the other players whose gamepads pads.txt
 // can't tell from this one, which took it too, and whether it lasts past this session.
@@ -122,6 +130,8 @@ void choose(const PadList& list) {
             g_device = d.id;
             g_said.clear();
         }
+        if (g_focus_first && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
+        g_focus_first = false;
     }
     int n = 0;
     SDL_JoystickID* ids = SDL_GetGamepads(&n);
@@ -176,6 +186,7 @@ bool overlay_bindings_open(uint32_t device) {
     PadBinding b;
     if (!gamepads_binding(device, b)) return false;
     g_shown = true;
+    g_focus_first = true;
     g_device = device;
     g_said.clear();
     return true;
@@ -201,10 +212,21 @@ bool overlay_bindings_listen(PadControl c) {
 }
 
 // overlay.cpp's, as the menu closes: the view and any press-to-bind end, with nothing changed.
+// Opened again, the menu shows the page with Change buttons focused.
 void bindings_stop() {
     g_listen.reset();
+    g_back = g_back || g_shown;
     g_shown = false;
     g_focus = -1;
+    g_focus_first = false;
+}
+
+// overlay_controllers.cpp's, at the Controllers page's draw just after Change buttons: whether the
+// view went back to the page since the last, which then takes the focus there.
+bool bindings_back() {
+    const bool was = g_back;
+    g_back = false;
+    return was;
 }
 
 // overlay_input.cpp's, once a host frame while the menu is open: press-to-bind reads its gamepad.
@@ -243,7 +265,7 @@ bool bindings_event(const SDL_Event& e) {
     }
     SDL_Gamepad* p = button ? SDL_GetGamepadFromID(e.gbutton.which) : nullptr;
     if (escape || (p && e.gbutton.button == gamepads_faces(p)[1])) {
-        g_shown = false;
+        back();
         return true;
     }
     return false;
@@ -288,5 +310,5 @@ void bindings_page() {
     }
     if (!g_said.empty()) ImGui::TextUnformatted(g_said.c_str());
     ImGui::Separator();
-    if (ImGui::Button("Done")) g_shown = false;
+    if (ImGui::Button("Done")) back();
 }

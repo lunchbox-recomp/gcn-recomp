@@ -9,6 +9,7 @@
 #include "imgui_internal.h"  // ImGui::FocusItem
 
 void overlay_latch_pads();  // overlay_input.cpp's
+bool bindings_back();       // overlay_bindings.cpp's
 
 namespace {
 
@@ -160,6 +161,7 @@ void controllers_page() {
     ImGui::SameLine();
     ImGui::BeginDisabled(pad == list.devices.end());
     if (ImGui::Button("Change buttons")) overlay_bindings_open(pad->id);
+    if (overlay_open() && bindings_back()) ImGui::FocusItem();  // back from the view it put up
     ImGui::EndDisabled();
     players(list, true);
 }

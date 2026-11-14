@@ -7,6 +7,21 @@
 
 namespace {
 
+// Whether the item with the focus is the one labelled `label` in the menu's window.
+bool focused(const std::string& label) {
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    return g.NavWindow && g.NavId == g.NavWindow->GetID(label.c_str());
+}
+
+// The label of the view's first item, the first gamepad listed.
+std::string first_pad() {
+    for (const PadDevice& d : gamepads_list().devices)
+        if (d.id != kKeyboard)
+            return (d.port >= 0 ? "Player " + std::to_string(d.port + 1) + ": " + d.name : d.name + " (no player)") +
+                   "##" + std::to_string(d.id);
+    return "";
+}
+
 void bindings_page_checks(Guest& guest, const std::string& dir) {
     const std::string file = dir + "/saves/pads.txt";
     gamepads_bindings_file(file.c_str());
@@ -23,6 +38,8 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     check(overlay_bindings_shown() && overlay_open() && !overlay_bindings_listening(),
           "Change buttons, right of Set player order, puts up the Buttons view");
     const std::string view_hints = footer_test_hints();
+    host_frame(guest);
+    check(focused(first_pad()), "the view opens with its first gamepad focused");
 
     // Down past the two gamepads at the view's top is A's row. The A that starts press-to-bind
     // starts it as the A goes down, so it's still down as it starts, and passed over.
@@ -224,6 +241,11 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
 
     tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
     check(!overlay_bindings_shown() && overlay_open(), "B in the view goes back to the Controllers page");
+    host_frame(guest);
+    const bool on_change = focused("Change buttons");
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(on_change && overlay_bindings_shown(),
+          "back from the view Change buttons has the focus, and A puts the view up again at once");
     overlay_bindings_open(pad.id);
     overlay_bindings_listen(PadControl::Z);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
@@ -238,9 +260,13 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     host_frame(guest);
     check(a_in_game, "with the menu closed, the game reads the gamepad's west as A");
 
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    host_frame(guest);
+    check(overlay_open() && focused("Change buttons"),
+          "closed from the view and opened again, the Controllers page has Change buttons focused");
+
     // Escape and F1 in one frame: the cancel picks the row the focus goes back to, and the menu
     // closes before a draw takes it there. The view opened again has no row picked for it.
-    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     overlay_bindings_open(pad.id);
     overlay_bindings_listen(PadControl::B);
     push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
