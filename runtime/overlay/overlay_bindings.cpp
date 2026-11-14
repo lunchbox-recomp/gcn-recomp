@@ -51,31 +51,53 @@ void end_listen(const std::string& said) {
     overlay_latch_pads();
 }
 
+std::string refused() { return name_of(g_device) + " can't be set up here any more."; }
+
+// What a change that went in adds to what's said: the other players whose gamepads pads.txt
+// can't tell from this one, which took it too, and whether it lasts past this session.
+std::string kept(Bound r) {
+    std::string said;
+    int own = -1;
+    for (const PadDevice& d : gamepads_list().devices)
+        if (d.id == g_device) own = d.port;
+    std::vector<int> others = gamepads_sharing(g_device);
+    others.erase(std::remove(others.begin(), others.end(), own), others.end());
+    for (size_t i = 0; i < others.size(); i++)
+        said += (i == 0 ? (others.size() > 1 ? " Players " : " Player ") : i + 1 == others.size() ? " and " : ", ") +
+                std::to_string(others[i] + 1);
+    if (!others.empty()) said += others.size() > 1 ? "'s controllers have it too." : "'s controller has it too.";
+    if (r == Bound::unsaved) said += " pads.txt couldn't be written, so this lasts until the game quits.";
+    return said;
+}
+
 void hear(SDL_Gamepad* g) {
     PadSource got;
     const PadControl c = g_listen->control;
     PadBinding b;
     if (!gamepads_binding(g_device, b)) {
-        end_listen(name_of(g_device) + " can't be set up here any more.");
+        end_listen(refused());
         return;
     }
     const std::string row = kRows[(int)c];
+    const std::string still = row + " is still " + glyph(g, c, b.source[(int)c]) + ".";
     switch (bind_hear(*g_listen, gamepads_read(g), host_ns(), got)) {
     case BindHeard::waiting: return;
-    case BindHeard::cancelled: end_listen(row + " is still " + glyph(g, c, b.source[(int)c]) + "."); return;
+    case BindHeard::cancelled: end_listen(still); return;
     case BindHeard::timed_out:
-        end_listen("Nothing was pressed in 5 seconds, so " + row + " is still " + glyph(g, c, b.source[(int)c]) + ".");
+        end_listen("Nothing was pressed in " + std::to_string(kBindListenNs / 1000000000) + " seconds, so " + still);
         return;
     case BindHeard::bound: break;
     }
     const PadBinding was = b;
     pad_binding_set(b, c, got);
-    gamepads_bind(g_device, b);
+    const Bound r = gamepads_bind(g_device, b);
+    if (r == Bound::refused) return end_listen(refused());
+    if (r == Bound::unchanged) return end_listen(still);
     std::string said = row + " is now " + glyph(g, c, got) + ".";
     for (int d = 0; d < kPadControls; d++)
         if (d != (int)c && b.source[d] != was.source[d])
             said += std::string(" ") + kRows[d] + " is now " + glyph(g, (PadControl)d, b.source[d]) + ".";
-    end_listen(said);
+    end_listen(said + kept(r));
 }
 
 // The gamepads the view can show, on a player or not, and the ones controls.txt binds, which it
@@ -103,7 +125,10 @@ void setting(const char* label, int& raw, float most, PadBinding& b) {
     float pct = raw * 100.0f / 32767.0f;
     if (ImGui::SliderFloat(label, &pct, 0.0f, most, "%.0f%%", ImGuiSliderFlags_AlwaysClamp))
         raw = (int)std::lround(pct * 32767.0f / 100.0f);
-    if (ImGui::IsItemDeactivatedAfterEdit()) gamepads_bind(g_device, b);
+    if (!ImGui::IsItemDeactivatedAfterEdit()) return;
+    const Bound r = gamepads_bind(g_device, b);
+    if (r == Bound::refused) g_said = refused();
+    else if (r != Bound::unchanged) g_said = std::string(label) + " is now " + std::to_string(std::lround(pct)) + "%." + kept(r);
 }
 
 void rows(SDL_Gamepad* g, PadBinding& b) {
@@ -115,10 +140,7 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(kRows[c]);
         ImGui::SameLine(column);
-        if (ImGui::Button(glyph(g, (PadControl)c, b.source[c]).c_str())) {
-            g_listen = bind_listen((PadControl)c, gamepads_read(g), host_ns());
-            g_said.clear();
-        }
+        if (ImGui::Button(glyph(g, (PadControl)c, b.source[c]).c_str())) overlay_bindings_listen((PadControl)c);
         if (g_focus == c) ImGui::FocusItem();
         ImGui::PopID();
     }
@@ -159,6 +181,7 @@ bool overlay_bindings_listen(PadControl c) {
 void bindings_stop() {
     g_listen.reset();
     g_shown = false;
+    g_focus = -1;
 }
 
 // overlay.cpp's, once a host frame while the menu is open: press-to-bind reads its gamepad.
@@ -214,7 +237,7 @@ void bindings_page() {
         const int left = (int)((g_listen->until - std::min(now, g_listen->until) + 999999999) / 1000000000);
         ImGui::Text(pad_control_is_stick(c) ? "Push a stick on %s for %s." : "Press a button on %s for %s.",
                     name_of(g_device).c_str(), kRows[(int)c]);
-        ImGui::Text("Back or Escape cancels. %d s left.", left);
+        ImGui::Text("Back or Guide on any controller, or Escape, cancels. %d s left.", left);
         return;
     }
     choose(gamepads_list());
@@ -223,17 +246,21 @@ void bindings_page() {
     } else {
         rows(g, b);
         if (ImGui::Button("Test rumble")) {
-            if (!SDL_GetBooleanProperty(SDL_GetGamepadProperties(g), SDL_PROP_GAMEPAD_CAP_RUMBLE_BOOLEAN, false))
+            // Sent is all that's known: a pad SDL drives through HIDAPI may still not shake (gamepads.h).
+            if (!gamepads_may_rumble(g))
                 g_said = name_of(g_device) + " has no rumble.";
             else if (!SDL_RumbleGamepad(g, 0x6000, 0xA000, 1000))
                 g_said = std::string("Rumble failed: ") + SDL_GetError();
             else
-                g_said = name_of(g_device) + " rumbles for 1 second.";
+                g_said = "Rumble sent to " + name_of(g_device) + " for 1 second.";
         }
         ImGui::SameLine();
         if (ImGui::Button("Reset to default")) {
-            gamepads_reset_binding(g_device);
-            g_said = name_of(g_device) + " has its default buttons again.";
+            const Bound r = gamepads_reset_binding(g_device);
+            const std::string defaults = "default buttons, dead zones and trigger click";
+            if (r == Bound::refused) g_said = refused();
+            else if (r == Bound::unchanged) g_said = name_of(g_device) + " already has its " + defaults + ".";
+            else g_said = name_of(g_device) + " has its " + defaults + " again." + kept(r);
         }
     }
     if (!g_said.empty()) ImGui::TextUnformatted(g_said.c_str());

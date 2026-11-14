@@ -124,7 +124,9 @@ Test rumble runs the motor for 1 second, and Reset to default puts the gamepad b
 default buttons. Each change applies at once and is saved to `saves/pads.txt`, a block a
 gamepad, by its GUID and serial. A block's lines are `controls.txt` lines, so a block can be
 copied there, though `controls.txt` scales a stick past its dead zone where `pads.txt` doesn't
-(`runtime/pad_bindings.h`). A gamepad `controls.txt` names is shown locked.
+(`runtime/pad_bindings.h`). Two gamepads with the same GUID and serial share a block, and the
+view says which other player's has the change too. A change `pads.txt` can't take is said in
+the view and lasts until the game quits. A gamepad `controls.txt` names is shown locked.
 
 A notice at the bottom of the window says for 2 seconds that a controller connected,
 disconnected or changed player, with the menu open or closed. It doesn't pause the game.

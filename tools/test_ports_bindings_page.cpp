@@ -22,14 +22,15 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     check(overlay_bindings_shown() && overlay_open() && !overlay_bindings_listening(),
           "Change buttons, right of Set player order, puts up the Buttons view");
 
-    // The A that starts press-to-bind is still down as it starts, so it's passed over.
+    // A D-pad press down from where the view opens is A's row. The A that starts press-to-bind
+    // starts it as the A goes down, so it's still down as it starts, and passed over.
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
-    SDL_UpdateJoysticks();  // SDL takes the press in, as a host frame before this would have
-    overlay_bindings_listen(PadControl::A);
     host_frame(guest);
+    const bool on_press = overlay_bindings_listening();
     set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
     host_frame(guest);
-    const bool passed_over = overlay_bindings_listening();
+    const bool passed_over = on_press && overlay_bindings_listening();
     tap(guest, other, SDL_GAMEPAD_BUTTON_NORTH);
     const bool other_pad = overlay_bindings_listening();
     tap(guest, pad, SDL_GAMEPAD_BUTTON_WEST);
@@ -61,6 +62,75 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
               file_id(file) == kept && has(overlay_bindings_said(), "B is still "),
           "Back on its gamepad or another, or Escape, cancels it with the menu still open and nothing saved");
 
+    // Guide cancels as Back does, on its gamepad or another, and on one with Guide and no Back,
+    // whose Guide would otherwise open and close the menu, it cancels and does nothing more.
+    overlay_bindings_listen(PadControl::B);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_GUIDE);
+    const bool guide = !overlay_bindings_listening() && overlay_open();
+    overlay_bindings_listen(PadControl::B);
+    tap(guest, other, SDL_GAMEPAD_BUTTON_GUIDE);
+    const bool other_guide = !overlay_bindings_listening() && overlay_open();
+    Virtual home{"home key pad buttons"};
+    home.button_mask = 1u << SDL_GAMEPAD_BUTTON_SOUTH | 1u << SDL_GAMEPAD_BUTTON_EAST | 1u << SDL_GAMEPAD_BUTTON_WEST |
+                       1u << SDL_GAMEPAD_BUTTON_NORTH | 1u << SDL_GAMEPAD_BUTTON_START | 1u << SDL_GAMEPAD_BUTTON_GUIDE;
+    attach(home);
+    host_frame(guest);
+    overlay_bindings_open(home.id);
+    overlay_bindings_listen(PadControl::B);
+    tap(guest, home, SDL_GAMEPAD_BUTTON_GUIDE);
+    check(guide && other_guide && !overlay_bindings_listening() && overlay_open() && overlay_bindings_shown() &&
+              file_id(file) == kept && has(overlay_bindings_said(), "B is still ") &&
+              !has(overlay_bindings_said(), "seconds"),
+          "Guide on its gamepad or another cancels it too, and on a gamepad with no Back it doesn't close the menu");
+    unplug({&home});
+
+    // Press-to-bind's prompt, the gamepad gone as it waits, and a press that changes nothing.
+    Virtual gone{"virtual pad buttons gone"};
+    plug({&gone});
+    host_frame(guest);
+    overlay_bindings_open(gone.id);
+    overlay_bindings_listen(PadControl::Y);
+    host_frame(guest);
+    detach(gone);
+    host_frame(guest);
+    check(!overlay_bindings_listening() && overlay_bindings_said() == "virtual pad buttons gone was disconnected, so nothing changed.",
+          "a gamepad pulled out as it waits ends it, saying the gamepad's name");
+    overlay_bindings_open(pad.id);
+    overlay_bindings_listen(PadControl::A);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_WEST);
+    check(file_id(file) == kept && has(overlay_bindings_said(), "A is still "),
+          "the button A has already, pressed for A, changes nothing and saves nothing");
+
+    // Two gamepads pads.txt can't tell apart both take a change, and the view says so.
+    Virtual twin{"virtual pad buttons view"};
+    plug({&twin});
+    host_frame(guest);
+    overlay_bindings_listen(PadControl::Start);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_NORTH);
+    check(has(overlay_bindings_said(), "Player 3's controller has it too"),
+          "a change one gamepad shares with another it can't be told from says which player has it too");
+    unplug({&twin});
+
+    // Test rumble asks a GameCube pad whose flag says it has none, as the game's rumble does.
+    Virtual cube{"gc rumble pad buttons"};
+    cube.vendor = 0x057e;
+    cube.product = 0x0337;
+    attach(cube);
+    SDL_Joystick* held = SDL_OpenJoystick(cube.id);
+    SDL_SetBooleanProperty(SDL_GetJoystickProperties(held), SDL_PROP_JOYSTICK_CAP_RUMBLE_BOOLEAN, false);
+    host_frame(guest);
+    overlay_bindings_open(cube.id);
+    host_frame(guest);
+    for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(cube.rumbles == 1 && overlay_bindings_said() == "Rumble sent to gc rumble pad buttons for 1 second.",
+          "Test rumble, above Done, rumbles a GameCube pad SDL says has none, and says it was sent");
+    SDL_CloseJoystick(held);
+    unplug({&cube});
+    overlay_bindings_open(pad.id);
+
     tap(guest, pad, SDL_GAMEPAD_BUTTON_EAST);
     check(!overlay_bindings_shown() && overlay_open(), "B in the view goes back to the Controllers page");
     overlay_bindings_open(pad.id);
@@ -74,6 +144,19 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     set_button(pad, SDL_GAMEPAD_BUTTON_WEST, false);
     host_frame(guest);
     check(a_in_game, "with the menu closed, the game reads the gamepad's west as A");
+
+    // A save that fails says the change lasts until the game quits. The file set anew reads as
+    // the map, so north is a change for Start.
+    write_file(dir + "/not-a-folder", "a file\n");
+    gamepads_bindings_file((dir + "/not-a-folder/pads.txt").c_str());
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    overlay_bindings_open(pad.id);
+    overlay_bindings_listen(PadControl::Start);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_NORTH);
+    check(has(overlay_bindings_said(), "Start is now ") && has(overlay_bindings_said(), "until the game quits"),
+          "a change pads.txt couldn't take says it lasts until the game quits");
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    std::remove((dir + "/not-a-folder").c_str());
 
     load_controls(dir + "/view-controls.txt", "A = \"virtual pad buttons other\" button 0\n");
     check(!overlay_bindings_open(other.id), "a gamepad controls.txt binds can't be put up in the view");
