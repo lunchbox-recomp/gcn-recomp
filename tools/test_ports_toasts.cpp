@@ -4,8 +4,10 @@
 // 1820 ms; with it off, and under --dump-output, it's whole in its place from its first frame.
 // Either way it goes at exactly 2 s, and as it goes the one above moves down into its place, over
 // 160 ms with motion and at once without. Each host frame with one showing lays out one frame of
-// notices and none of the menu, and once the last has gone none is laid out. Read in by
-// tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+// notices and none of the menu, and once the last has gone none is laid out. Three queued as the
+// stack reflows never overlap, the paused wait with the menu open is 8 ms only while one moves,
+// and a pill's padding is even either side of its text's ink. Read in by tools/test_ports.cpp
+// after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 
 namespace {

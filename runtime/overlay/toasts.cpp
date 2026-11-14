@@ -19,7 +19,7 @@ ToastLook toast_look(const OverlayTheme& t, uint64_t ns, bool motion, bool over)
     const float in = span(t.toast_in_ms, motion), out = span(t.toast_out_ms, motion);
     const float come = in > 0.0f ? ease(Ease::out_cubic, ms / in) : 1.0f;
     const float go = out > 0.0f ? 1.0f - ease(Ease::in_quad, (ms - (kToastMs - out)) / out) : 1.0f;
-    float rise = std::isfinite(t.toast_rise) ? t.toast_rise : 0.0f;
+    float rise = std::isfinite(t.toast_rise) && t.toast_rise > 0.0f ? t.toast_rise : 0.0f;
     if (over && t.item_spacing < rise) rise = t.item_spacing;
     return {std::min(come, go), (1.0f - come) * rise};
 }
