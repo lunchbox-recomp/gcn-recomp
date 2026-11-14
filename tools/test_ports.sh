@@ -5,9 +5,10 @@
 # an unknown speed replayed, an interrupt handled beside the main loop, the frontend under
 # --no-gamepads, the game resetting the console, the game shutting it down, the same exit with
 # the gamepads' lock held, a restart and a quit asked for from the frontend with the game
-# resetting the console as each ends, and a restart asked for in a replay, then the menu's
-# pages dumped over a GL window, which counts as passed where there's none (exit 77). The port
-# checks include the ports remembered in saves/ports.txt under the work dir. SDL's virtual
+# resetting the console as each ends, and a restart asked for in a replay. The menu's page
+# dumps (--pages) aren't run here: `ninja unit` runs them once, as test_overlay_pages, which
+# ctest shows as skipped where there's no GL window and a build without the overlay lacks.
+# The port checks include the ports remembered in saves/ports.txt under the work dir. SDL's virtual
 # joysticks stand in for the controllers. On macOS and Linux test_ports turns off SDL's
 # drivers that find real ones (kRealDriversOff in tools/test_ports.cpp) and clears
 # SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD, which SDL reads ahead of the allow list,
@@ -31,7 +32,7 @@ if [ -e "$work" ]; then
 fi
 mkdir -p "$work/files" "$work/log" "$work/v4" "$work/console" "$work/interrupt" \
   "$work/no-gamepads" "$work/reset" "$work/shutdown" "$work/exit-held" "$work/restart" "$work/quit" \
-  "$work/restart-replay" "$work/pages" || exit 2
+  "$work/restart-replay" || exit 2
 status=0
 export SDL_AUDIO_DRIVER=dummy
 export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
@@ -49,7 +50,4 @@ export SDL_GAMECONTROLLER_ALLOW_STEAM_VIRTUAL_GAMEPAD=1
 "$test_ports" --restart "$work/restart" || status=1
 "$test_ports" --quit "$work/quit" || status=1
 "$test_ports" --restart-replay "$work/restart-replay" || status=1
-"$test_ports" --pages "$work/pages"
-pages=$?
-[ $pages -eq 0 ] || [ $pages -eq 77 ] || status=1
 exit $status
