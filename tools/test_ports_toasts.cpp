@@ -171,6 +171,29 @@ void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool d
     check(rose, said);
     g_host_ns = a + 5000 * kToastMsNs;
     host_frame(guest);
+
+    const uint64_t late = g_host_ns;
+    overlay_pads_notice("Pad one", " connected as player 1");
+    g_host_ns = late + 1900 * kToastMsNs;
+    overlay_pads_notice("Pad two", " connected as player 2");
+    g_host_ns = late + 2000 * kToastMsNs;
+    host_frame(guest);
+    const std::vector<OverlayTestToast> after_a = overlay_test_toasts();
+    const bool kept_over = after_a.size() == 1 &&
+                           near_px(after_a[0].top, rest_top(window, moves ? 1 : 0) + (moves ? gap * 0.125f : 0.0f));
+    snprintf(said, sizeof(said), "%s: B keeps its queue-time rise as A expires", what);
+    check(kept_over, said);
+
+    g_host_ns = late + 4000 * kToastMsNs;
+    overlay_pads_notice("Pad three", " connected as player 3");
+    host_frame(guest);
+    const std::vector<OverlayTestToast> after_gap = overlay_test_toasts();
+    const bool fresh = after_gap.size() == 1 &&
+                       near_px(after_gap[0].top, rest_top(window, 0) + (moves ? 16.0f * s : 0.0f));
+    snprintf(said, sizeof(said), "%s: a notice queued after expiry and before a frame starts in the lowest slot", what);
+    check(fresh, said);
+    g_host_ns = late + 7000 * kToastMsNs;
+    host_frame(guest);
 }
 
 // With the menu open over the held game and `motion` as `what` says, the paused wait at each

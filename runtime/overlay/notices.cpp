@@ -145,7 +145,9 @@ void dump() {
 }  // namespace
 
 void overlay_pads_notice(const std::string& name, const std::string& what) {
-    const std::string text = name + what;
+    const uint64_t now = host_ns();
+    expire(now);
+    const std::string text = name.empty() && !what.empty() && what.front() == ' ' ? what.substr(1) : name + what;
     fprintf(stderr, "[pads] %s\n", text.c_str());
     // Its place moves as the one under it does, a place above it, so the two never close up as
     // the stack reflows.
@@ -156,7 +158,7 @@ void overlay_pads_notice(const std::string& name, const std::string& what) {
         slot.from += 1.0f;
         slot.to += 1.0f;
     }
-    g_notices.push_back({text, name.size(), host_ns(), slot, over});
+    g_notices.push_back({text, name.size(), now, slot, over});
 }
 
 void notices_motion(bool on) { g_motion = on; }
