@@ -4,9 +4,10 @@
 // a frame later, and once it's there nothing moves and the paused wait is 16 ms again. A move
 // over half the panel, a page change from the footer and the menu opening put it there at once,
 // as menu_motion off, --dump-output and a focus_ms that takes no time do for every move. It
-// slides and fades in with a page, but not around the footer's first item or a question's, and a
-// click hides it. Closed after all that, 600 frames lay out no menu frame. Read in by
-// tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+// slides and fades in with a page, but not around the footer's first item, a question's or the
+// Buttons view's, and a click hides it. Closed after all that, 600 frames lay out no menu frame.
+// Read in by tools/test_ports.cpp after the frontend and test_ports_bindings_page.cpp, with
+// GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/ring.h"
 #include "overlay/tabs.h"  // how far the page's contents are across as they come in
@@ -256,6 +257,37 @@ void ring_asks(SDL_Window* window, const std::string& dir) {
     ring_settle(guest);
 }
 
+// Turned to Controllers, with the Buttons view put up while no host time passes, so the page is
+// still sliding in: the ring on the view's first gamepad is still and whole, as the view isn't
+// the page's contents.
+void ring_view(SDL_Window* window, const std::string& dir) {
+    gamepads_init();
+    Virtual pad{"virtual pad ring view"};
+    attach(pad);
+    {
+        Guest guest;
+        ring_menu(window, dir, guest);
+        turn_to(guest, "Controllers");
+        stroke(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT, 0, 0);
+        stroke(guest, SDL_SCANCODE_RETURN, SDLK_RETURN, 0, 0);
+        frame_after(guest, 0);
+        frame_after(guest, 0);
+        const Ring first = ring_now();
+        float dx = 0.0f, alpha = 1.0f;
+        tabs_contents_moved(g_host_ns, dx, alpha);
+        const uint32_t accent = overlay_theme_default().accent >> 8;
+        check(overlay_bindings_shown() && focused(first_pad()) && first.shown && same_rect(first.at, first.item) &&
+                  dx > 1.0f && same_rect(drawn_in(accent), around(first.item), 1.0f) && drawn_alpha(accent) == 0xFF,
+              "the Buttons view put up as the Controllers page slides in has the ring on its first gamepad still "
+              "and whole");
+        stroke(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+        stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
+        ring_settle(guest);
+    }
+    unplug({&pad});
+    gamepads_shutdown();
+}
+
 void ring_moves(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
@@ -369,6 +401,7 @@ void ring_moves(const std::string& dir) {
     check(still_ring(window, dir, false, false), "with menu_motion off the ring is on its item at the next frame");
     ring_opens(window, dir);
     ring_asks(window, dir);
+    ring_view(window, dir);
     check(still_ring(window, dir, true, true), "under --dump-output it doesn't move either");
     check(still_ring(window, dir, true, false, INFINITY) && still_ring(window, dir, true, false, NAN) &&
               still_ring(window, dir, true, false, -1.0f),
