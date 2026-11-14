@@ -254,6 +254,26 @@ void discs() {
     check(!settings_load(q).fast_disc, "and a load gives back disc console");
 }
 
+void menu_motion() {
+    check(Settings{}.menu_motion, "the menu moves by default");
+    const std::string p = path_of("motion.txt");
+    write_file(p, "menu_motion off\n");
+    check(!settings_load(p).menu_motion, "menu_motion off is read from the file");
+    // On comes after off here, so a bad value read as off would show.
+    write_file(p, "menu_motion off\nmenu_motion on\nmenu_motion Off\nmenu_motion 0\n");
+    Settings s;
+    const std::string said = stderr_during([&] { s = settings_load(p); });
+    check(s.menu_motion && said.find(p + ":3: menu_motion takes on or off, not \"Off\", so the line is skipped\n") !=
+                               std::string::npos &&
+              said.find(p + ":4: menu_motion takes on or off, not \"0\", so the line is skipped\n") != std::string::npos,
+          "a bad menu_motion leaves the one before it and is named on stderr by its line");
+    const std::string q = path_of("motion_save.txt");
+    write_file(q, "menu_motion off\n");
+    Settings w;
+    check(settings_save(q, w) && read_file(q) == "menu_motion off\naspect 4:3\nfullscreen 0\nscale 2\ndisc fast\n",
+          "a save leaves the menu_motion line as it was and adds none");
+}
+
 void bad_values() {
     const std::string p = path_of("bad.txt");
     write_file(p,
@@ -470,6 +490,7 @@ int main(int argc, char** argv) {
     aspects();
     aspects_match_the_flag();
     discs();
+    menu_motion();
     bad_values();
     save_keeps_lines();
     save_refuses_bad_values();

@@ -138,6 +138,9 @@ Settings settings_load(const std::string& path) {
             if (!settings_parse_disc(value, s.fast_disc)) takes = "fast or console";
         } else if (key == "disc_overlay") {
             s.disc_overlay = settings_file_path(path, value);
+        } else if (key == "menu_motion") {
+            if (value == "on" || value == "off") s.menu_motion = value == "on";
+            else takes = "on or off";
         } else if (key == "ram_patches") {
             s.ram_patches = settings_file_path(path, value);
         }

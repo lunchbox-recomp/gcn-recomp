@@ -2,6 +2,7 @@
 // Display page is overlay_display.cpp, the Controllers page overlay_controllers.cpp and the
 // notices notices.cpp.
 #include "overlay/overlay.h"
+#include "overlay/appear.h"
 #include "frontend.h"
 #include "gamepads.h"
 #include "input_log.h"
@@ -92,6 +93,11 @@ long g_at_left;             // draws over the held frame left before GCN_OVERLAY
 int g_page = -1;            // GCN_OVERLAY_PAGE's, 0 for Display, -1 for none
 int g_select = -1;          // the page the next draw selects, as the menu opens on g_page
 bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the held frame
+uint64_t g_opened_ns;       // host_ns as it last opened
+bool g_said_shown;          // its `shown after` line, since it opened
+long g_menu_frames;         // frames that have laid out the menu
+ImDrawList* g_panel_list;   // the menu window's draw list at its last frame
+int g_panel_vtx;            // and how many of its vertices were the panel's own, before its contents
 
 // A gamepad held for the menu (hold_pads), and its buttons held as the menu opened, kept from
 // the menu until each is let go, a bit for each SDL_GamepadButton.
@@ -114,12 +120,23 @@ void set_open(bool on) {
     g_open = on;
     g_ask = g_asked = OverlayAsk::none;
     pause_request(on);
+    const uint64_t now = host_ns();
+    if (on) appear_open(theme_now(), now);
+    else appear_close(theme_now(), now);
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
     if (!on) {
         controllers_stop();
         bindings_stop();
     }
-    if (!on || !g_window) return;
+    if (!g_window) return;
+    if (!on) {
+        // As it fades out the menu is laid out with no input fed to it (overlay_event, menu_frame),
+        // and with none held, so nothing moves its focus, which Dear ImGui keeps for the next
+        // open. Its NoInputs window flag would lose that focus.
+        ImGui::GetIO().ClearInputKeys();
+        ImGui::GetIO().ClearInputMouse();
+        return;
+    }
     // Keys and buttons let go while it was closed never reached the menu. One held as it opens
     // stays out of it until it's let go, though Dear ImGui keeps the focus from the last time,
     // so that it presses nothing: a key's repeats never reach the menu (overlay_event), and a
@@ -129,6 +146,8 @@ void set_open(bool on) {
     g_focus = true;
     g_dumped = false;
     g_select = g_page;
+    g_opened_ns = now;
+    g_said_shown = false;
     review_watch_reset();
 }
 
@@ -352,6 +371,8 @@ void draw_menu() {
     ImGui::Begin(g_title.c_str(), nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+    g_panel_list = ImGui::GetWindowDrawList();
+    g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
     if (g_ask != OverlayAsk::none) {
         asking();
     } else if (overlay_controllers_asking() >= 0) {
@@ -382,15 +403,43 @@ void draw_menu() {
     ImGui::End();
 }
 
-// The menu's frame: its input taken and its windows laid out, ready to draw.
+// The game dimmed behind the menu, in the background draw list, which the panel's motion leaves
+// alone (appear_apply).
+void backdrop(uint64_t now) {
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    const uint32_t c = theme_now().backdrop;
+    const int alpha = (int)((float)(c & 0xFF) * appear_backdrop(now) + 0.5f);
+    ImGui::GetBackgroundDrawList()->AddRectFilled(vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y),
+                                                  IM_COL32(c >> 24, c >> 16 & 0xFF, c >> 8 & 0xFF, alpha));
+}
+
+// Once the menu has opened, its panel drawn whole for the first time.
+void say_shown(uint64_t now) {
+    if (g_said_shown || !g_open || !appear_shown(now) || !ImGui::GetDrawData()->CmdLists.contains(g_panel_list)) return;
+    g_said_shown = true;
+    fprintf(stderr, "[overlay] shown after %llu ms\n", (unsigned long long)((now - g_opened_ns) / 1000000));
+}
+
+// The menu's frame: its input taken while it's open and its windows laid out, ready to draw,
+// moved as it opens or closes.
 void menu_frame() {
+    const uint64_t now = host_ns();
     overlay_style_fit(g_window);
     ImGui_ImplSDL3_NewFrame();
-    read_pads();
+    if (g_open) read_pads();
     ImGui::NewFrame();
     draw_menu();
+    backdrop(now);
     ImGui::Render();
+    const ImVec2 c = ImGui::GetMainViewport()->GetCenter();
+    appear_apply(ImGui::GetDrawData(), ImGui::GetBackgroundDrawList(), g_panel_list, g_panel_vtx, c.x, c.y,
+                 appear_scale(now), appear_panel_alpha(now), appear_contents_alpha(now));
+    g_menu_frames++;
+    say_shown(now);
 }
+
+// The menu is open or still fading out over a window.
+bool menu_showing() { return g_open || (g_window && appear_closing(host_ns())); }
 
 }  // namespace
 
@@ -434,6 +483,7 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_window = window;
     g_title = title;
     display_init(picture);
+    appear_motion(picture.now.menu_motion && !gx::g_dump_output);
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) review_parse_at(e, g_at_frame, g_at_left);
     const char* page = getenv_nonempty("GCN_OVERLAY_PAGE");
     g_page = page ? review_parse_page(page, 1 + (int)g_pages.size()) : -1;
@@ -472,7 +522,11 @@ void overlay_imgui_context(SDL_Window* window, bool gl) {
 
 bool overlay_open() { return g_open; }
 
-bool overlay_menu_due() { return g_open || at_frame_due(); }
+bool overlay_menu_due() { return menu_showing() || at_frame_due(); }
+
+bool overlay_animating() { return g_window && appear_moving(host_ns()); }
+
+long overlay_menu_frames() { return g_menu_frames; }
 
 void overlay_close() { set_open(false); }
 
@@ -541,7 +595,7 @@ void overlay_gate(int port, PadState& p) {
 
 void overlay_menu_frame() {
     if (!g_window) return;
-    if (g_open) menu_frame();
+    if (menu_showing()) menu_frame();
     notices_frame();
 }
 
@@ -551,7 +605,7 @@ void overlay_draw() {
         g_at_frame = -1;
         set_open(true);
     }
-    if (g_open) {
+    if (menu_showing()) {
         ImGui_ImplOpenGL3_NewFrame();
         menu_frame();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

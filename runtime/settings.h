@@ -10,7 +10,7 @@
 //   scale 3
 //   disc console
 //
-// The runtime reads six keys and saves the four picture and disc speed keys:
+// The runtime reads seven keys and saves the four picture and disc speed keys:
 //   aspect       the output's shape, "W:H" with two whole numbers from 1 to 9999, or
 //                "window" for the window's own shape (settings_parse_aspect). Default 4:3
 //   fullscreen   1 for fullscreen, 0 for a window. Default 0
@@ -21,11 +21,14 @@
 //                console's drive does, seeks and all. Default fast
 //   disc_overlay a manifest path relative to this file's folder, or empty for none
 //   ram_patches  a patch path relative to this file's folder, or empty for none
+//   menu_motion  "on" for the overlay's menu to fade and grow as it opens and closes, "off"
+//                for it to show and go at once (overlay/overlay.h). Default on
 // A bad value for one of them is reported on stderr and leaves the key as it was. Every
 // other key is left alone: a load skips it and a save keeps its line.
 //
-// The desktop frontend reads the file at start and applies six keys, and a flag beats it for
-// that run without being written back (--disc=fast or --disc=console for `disc`). The
+// The desktop frontend reads the file at start and applies seven keys, and a flag beats it for
+// that run without being written back (--disc=fast or --disc=console for `disc`, and
+// --dump-output, which turns `menu_motion` off). The
 // overlay's Display page saves the key it changes (overlay/overlay.h).
 //
 // A replay reads the disc at the speed its log was recorded at, whatever the file or --disc
@@ -40,6 +43,7 @@ struct Settings {
     bool fast_disc = true;  // disc fast, or disc console when false
     std::string disc_overlay;  // resolved relative to settings.txt
     std::string ram_patches;   // resolved relative to settings.txt
+    bool menu_motion = true;   // menu_motion on, or off when false
 };
 
 // A flag wins over a variable, then a loaded key. Null means absent; an empty value

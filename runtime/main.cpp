@@ -320,6 +320,11 @@ static void open_controllers(const char* controls) {
     gamepads_init();
 }
 
+// How long the loop waits for the guest's next batch, in ms. While the guest is held none comes,
+// and the held frame is drawn again each 16 ms, about 60 Hz, or each 8 ms while the overlay's
+// menu is moving, so its motion is smooth.
+static int batch_wait_ms() { return !paused() ? 4 : overlay_animating() ? 8 : 16; }
+
 // What has been drawn to the window, with the overlay over it, goes to it, and to the movie if
 // one is being made. Frame and output dumps were written before the overlay was drawn.
 static void show_frame(SDL_Window* win) {
@@ -868,10 +873,10 @@ int main(int argc, char** argv) {
         SDL_GetWindowSizeInPixels(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
         if (g_aspect_window && dh > 0) gx::render_set_output_aspect((float)dw / (float)dh);
-        // While the guest is held (pause.h) no batch comes, so each 16 ms wait that ends with
-        // nothing draws the newest frame again, and each one drawn is a host frame to the
+        // While the guest is held (pause.h) no batch comes, so each wait that ends with nothing
+        // draws the newest frame again (batch_wait_ms), and each one drawn is a host frame to the
         // pause. Before any frame there's nothing to draw, and no host frame.
-        auto b = gx::take_batch(paused() ? 16 : 4);
+        auto b = gx::take_batch(batch_wait_ms());
         if (!b) {
             if (paused() && (g_eye_mode ? eye_to_window(dw, dh) : gx::render_present_last())) {
                 show_frame(win);

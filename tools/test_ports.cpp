@@ -146,6 +146,7 @@ void render_set_output_fbo(unsigned) {}
 #include "test_ports_controllers.cpp"     // the Controllers page and its notices
 #include "test_ports_bindings_page.cpp"   // the Buttons view and its press-to-bind
 #include "test_ports_menu_window.cpp"     // the menu over a window, then the Controllers checks
+#include "test_ports_motion.cpp"          // the menu fading and growing in and out on the host clock
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
@@ -245,6 +246,7 @@ int run_ports(const std::string& dir) {
 #ifdef GCN_OVERLAY
     overlay(dir);
     overlay_buttons(dir);
+    overlay_motion(dir);
 #endif
     return finish("ports");
 }

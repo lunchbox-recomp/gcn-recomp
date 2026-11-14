@@ -35,6 +35,14 @@
 // the menu. So does a button held on a gamepad plugged in while it's open, and a gamepad coming
 // or going leaves what the others hold as it was.
 //
+// It moves on the host clock (appear.h, motion.h) with menu_motion on in settings.txt, the
+// default. As it opens, the pause is asked for at once while a backdrop dims the game and the
+// panel fades in and grows, and an `[overlay] shown after N ms` line says when the panel is
+// whole. As it closes, the guest goes on at once while the menu fades out and shrinks over the
+// game with no input of its own, then nothing more is laid out until it opens again. Its times
+// and sizes are the theme's (theme.h). With menu_motion off, and under --dump-output, each is
+// whole at once.
+//
 // The Display page sets the aspect (4:3, 16:9, 16:10, 21:9 or the window's own shape),
 // fullscreen and the internal scale. A change applies at once, and settings.txt (settings.h)
 // gets the key that changed, so a flag that set another key for this run isn't written back.
@@ -125,9 +133,11 @@ bool overlay_event(const SDL_Event& e);
 // been held its second, which no event marks.
 void overlay_poll();
 bool overlay_open();
-// Whether overlay_draw lays out the menu this time: it's open, or GCN_OVERLAY_AT's frame has been
-// presented, so that overlay_draw opens it first.
+// Whether overlay_draw lays out the menu this time: it's open or still fading out, or
+// GCN_OVERLAY_AT's frame has been presented, so that overlay_draw opens it first.
 bool overlay_menu_due();
+// Whether the menu is still opening or closing, so the frontend draws a held frame again sooner.
+bool overlay_animating();
 // Closes it if it's open, and the guest goes on.
 void overlay_close();
 // What the menu is asking, none when it isn't. For the tests (tools/test_ports.cpp).
@@ -149,6 +159,8 @@ void overlay_pads_notice(const std::string& text);
 // The notices still showing, oldest first, and how many frames have shown them. For the tests.
 std::vector<std::string> overlay_notices();
 long overlay_notice_frames();
+// How many frames have laid out the menu. For the tests.
+long overlay_menu_frames();
 // What the Controllers page's Set player order does. For the tests.
 void overlay_controllers_order();
 // The port the press-A order asks for next (0 is port 1), or -1 when it isn't asking.
@@ -171,6 +183,7 @@ inline bool overlay_event(const SDL_Event&) { return false; }
 inline void overlay_poll() {}
 inline bool overlay_open() { return false; }
 inline bool overlay_menu_due() { return false; }
+inline bool overlay_animating() { return false; }
 inline void overlay_close() {}
 inline void overlay_gate(int, PadState&) {}
 inline void overlay_draw() {}

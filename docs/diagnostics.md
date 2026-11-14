@@ -795,9 +795,17 @@ grey (128, 128, 128) instead of the held frame, so the PNG holds nothing of the 
 output dumps never include it or the notices about controllers, so a run that opened it writes
 the same frame dumps as one that didn't.
 
+With `menu_motion on` in `settings.txt`, the default, the menu fades in and grows over a dimmed
+game as it opens, and fades out and shrinks as it closes, on the host clock. The pause is still
+asked for at once as it opens, and the guest goes on at once as it closes. Each open prints
+`[overlay] shown after N ms` once the panel is whole, N counted from the open on the host clock.
+While it moves the paused frontend waits 8 ms for a batch, not 16, so it's drawn more often.
+`menu_motion off` and `--dump-output` show and close it at once, so a dump never catches it
+moving.
+
 `test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`) dumps each page that
 way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in
-`<build>/unit/test_overlay_pages` for a person to look at. It prints each page's menu frame time
+`<build>/unit/test_overlay_pages` for a person to look at, the menu's backdrop dimming the grey. It prints each page's menu frame time
 on the CPU too. Where SDL can make no GL window it's skipped.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,

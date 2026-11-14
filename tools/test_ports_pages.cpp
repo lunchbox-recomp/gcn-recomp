@@ -12,7 +12,20 @@ namespace {
 constexpr int kSkipped = 77;  // ctest's SKIP_RETURN_CODE for this mode
 constexpr int kHeldFrames = 40;  // GCN_OVERLAY_AT's host frames for each page
 const char* const kTitles[] = {"Display", "Controllers", "Sample"};
-constexpr uint8_t kPlainGrey = 128;  // GCN_OVERLAY_PLAIN's background, each channel
+constexpr int kPlainGrey = 128;  // GCN_OVERLAY_PLAIN's background, each channel
+
+// A channel of the theme's backdrop, `shift` bits up in its 0xRRGGBBAA, laid over the plain grey.
+int over_grey(uint32_t backdrop, int shift) {
+    const int a = (int)(backdrop & 0xFF), c = (int)(backdrop >> shift & 0xFF);
+    return (kPlainGrey * (255 - a) + c * a + 127) / 255;
+}
+
+// Whether the menu's window, not just the backdrop behind it, is in the frame drawn.
+bool menu_drawn() {
+    const ImDrawData* d = ImGui::GetDrawData();
+    const ImGuiWindow* w = ImGui::FindWindowByName("Test title");
+    return d && w && d->CmdLists.contains(w->DrawList);
+}
 
 // A page as a game might add one, with the kinds of widget the menu's own pages use and a
 // slider, so the dumps show each kind.
@@ -85,12 +98,12 @@ Png png_at(const std::string& path) {
 }
 
 struct PageRun {
-    int first_drawn = -1;    // the first frame whose menu had anything to draw
+    int first_drawn = -1;    // the first frame that drew the menu's window
     int dumped_at = -1;      // the frame whose draw wrote the dump
     bool on_page = false;    // the page asked for was selected as the menu first drew
     bool let_go = false;     // Display, picked after the dump, was still selected near the end
-    double first_ms = 0;     // overlay_draw on the CPU as it first drew, making its GL objects
-    std::vector<double> ms;  // the same for each frame after that but the dump's
+    double first_ms = -1;    // overlay_draw on the CPU as it first drew, making its GL objects
+    std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
 };
 
 // The menu opened by GCN_OVERLAY_AT=0:<held> with GCN_OVERLAY_PAGE=`page`, over the plain
@@ -123,15 +136,17 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         overlay_draw();
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         SDL_GL_SwapWindow(window);
-        const bool drew = was_open && ImGui::GetDrawData() && ImGui::GetDrawData()->TotalVtxCount > 0;
+        const bool any = was_open && ImGui::GetDrawData() && ImGui::GetDrawData()->TotalVtxCount > 0;
+        const bool drew = any && menu_drawn();
+        const bool dumping = run.dumped_at < 0 && exists_path(png);
+        if (any && run.first_ms < 0) run.first_ms = ms;
+        else if (any && !dumping) run.ms.push_back(ms);
         if (drew && run.first_drawn < 0) {
             run.first_drawn = f;
-            run.first_ms = ms;
             const TabAt tab = find_tab(kTitles[expect]);
             run.on_page = tab.bar && tab.bar->SelectedTabId == tab.bar->Tabs[tab.index].ID;
         }
-        if (run.dumped_at < 0 && exists_path(png)) run.dumped_at = f;
-        else if (drew && f > run.first_drawn) run.ms.push_back(ms);
+        if (dumping) run.dumped_at = f;
         // A frame after the dump Display is picked, as a click would pick it, and the page the menu
         // opened on doesn't take it back.
         const TabAt display = find_tab(kTitles[0]);
@@ -176,9 +191,11 @@ int run_pages(const std::string& dir) {
             const std::string at = std::to_string(pw) + "x" + std::to_string(ph) + " " + kTitles[page];
             const std::string opens = "GCN_OVERLAY_PAGE=" + std::to_string(page) + " opens the menu on " + at;
             check(run.on_page && run.let_go, (opens + ", and another can be picked").c_str());
-            check(png.w == pw && png.h == ph && png.first[0] == kPlainGrey && png.first[1] == kPlainGrey &&
-                      png.first[2] == kPlainGrey,
-                  (at + " is dumped at the window's size over GCN_OVERLAY_PLAIN's grey").c_str());
+            const uint32_t dim = overlay_theme_default().backdrop;
+            bool grey = true;
+            for (int i = 0; i < 3; i++) grey = grey && std::abs(png.first[i] - over_grey(dim, 24 - 8 * i)) <= 1;
+            check(png.w == pw && png.h == ph && grey,
+                  (at + " is dumped at the window's size, its backdrop over GCN_OVERLAY_PLAIN's grey").c_str());
             check(run.first_drawn >= 0 && run.dumped_at > run.first_drawn + 1 && lines_with(said, "settled") == 0,
                   (at + " is dumped once its frame has settled, not at its first drawn frame").c_str());
             printf("[pages] %s: menu frame first %.3f ms, then p50 %.3f ms, p99 %.3f ms, max %.3f ms over %zu frames\n",

@@ -273,7 +273,8 @@ A replay reads at its log's speed (`80e1d38`).
 - `runtime/settings.*`: `settings.txt` in the working directory, one `key value` a line with
   `#` comments, which the desktop frontend reads at start. The runtime owns `aspect`,
   `fullscreen`, `scale` and `disc`, while the desktop frontend also reads `disc_overlay` and
-  `ram_patches`. A flag beats the file for that run and isn't written back, and a save
+  `ram_patches`, and the menu reads `menu_motion`, which nothing writes. A flag beats the file
+  for that run and isn't written back, and a save
   rewrites only the owned keys' lines and adds any that are missing.
 - `runtime/overlay/`: the menu over the game, drawn with Dear ImGui. `notices.cpp` draws the
   notices about controllers, `overlay_controllers.cpp` is the Controllers page and
