@@ -1,7 +1,7 @@
 // The overlay's motion checks: the `test_overlay_motion` target. Runs with no window, GL, disc
 // or game, on a Dear ImGui context of its own, with the host clock given by hand.
 //
-// runtime/overlay/motion.h's five easings start at 0 and end at 1, and all but out_back stay
+// runtime/overlay/motion.h's four easings start at 0 and end at 1, and all but out_back stay
 // within that on the way. A tween waits out its delay, follows its easing on host time and holds
 // its end, a tween of no length is at its end at once, and one turned mid-way starts from the
 // value showing. runtime/overlay/appear.h opens the menu over the theme's times, the contents
@@ -34,7 +34,7 @@ bool near(float a, float b, float within = 1e-4f) { return std::fabs(a - b) <= w
 
 constexpr uint64_t kMs = 1000000;  // host_ns in a millisecond
 
-const Ease kAll[] = {Ease::out_quad, Ease::out_cubic, Ease::in_quad, Ease::out_circ, Ease::out_back};
+const Ease kAll[] = {Ease::out_quad, Ease::out_cubic, Ease::in_quad, Ease::out_back};
 
 void easings() {
     bool ends = true;
@@ -42,9 +42,9 @@ void easings() {
                                near(ease(e, -0.5f), 0.0f) && near(ease(e, 1.5f), 1.0f);
     check(ends, "every easing is 0 at the start and 1 at the end, before and after them too");
     check(near(ease(Ease::out_quad, 0.5f), 0.75f) && near(ease(Ease::out_cubic, 0.5f), 0.875f) &&
-              near(ease(Ease::in_quad, 0.5f), 0.25f) && near(ease(Ease::out_circ, 0.5f), std::sqrt(0.75f)) &&
+              near(ease(Ease::in_quad, 0.5f), 0.25f) &&
               near(ease(Ease::out_back, 0.5f), 1.025f),
-          "half way, out-quad is 0.75, out-cubic 0.875, in-quad 0.25, out-circ 0.866 and out-back at 1.2 is 1.025");
+          "half way, out-quad is 0.75, out-cubic 0.875, in-quad 0.25 and out-back at 1.2 is 1.025");
     bool within = true, rising = true;
     for (Ease e : kAll) {
         if (e == Ease::out_back) continue;
@@ -56,7 +56,7 @@ void easings() {
             last = v;
         }
     }
-    check(within && rising, "out-quad, out-cubic, in-quad and out-circ rise from 0 to 1 and never leave it");
+    check(within && rising, "out-quad, out-cubic and in-quad rise from 0 to 1 and never leave it");
     float peak = 0.0f;
     for (int i = 0; i <= 100; i++) peak = std::max(peak, ease(Ease::out_back, i / 100.0f));
     check(peak > 1.0f && peak < 1.1f && ease(Ease::out_back, 0.5f, 2.0f) > ease(Ease::out_back, 0.5f, 1.2f),

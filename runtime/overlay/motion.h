@@ -1,9 +1,10 @@
-// The overlay's motion (overlay.h): five easings, and tweens timed by the host clock (host_ns),
+// The overlay's motion (overlay.h): four easings, and tweens timed by the host clock (host_ns),
 // never by frames, so a slow frame moves nothing slower and a fast one nothing faster.
 #pragma once
 #include <cstdint>
 
-enum class Ease { out_quad, out_cubic, in_quad, out_circ, out_back };
+// out_cubic is for a page change's slide (F4) and the toasts (F7), which nothing draws yet.
+enum class Ease { out_quad, out_cubic, in_quad, out_back };
 
 // `e` at `t` from 0 to 1, clamped to that, from 0 to 1. out_back passes 1 before it settles there,
 // by more the larger `overshoot` is; the others never leave 0 to 1.

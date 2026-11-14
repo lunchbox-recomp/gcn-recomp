@@ -1,7 +1,6 @@
 // The overlay's easings and tweens (motion.h).
 #include "overlay/motion.h"
 #include <algorithm>
-#include <cmath>
 
 float ease(Ease e, float t, float overshoot) {
     t = std::clamp(t, 0.0f, 1.0f);
@@ -10,7 +9,6 @@ float ease(Ease e, float t, float overshoot) {
     case Ease::out_quad: return 1.0f - u * u;
     case Ease::out_cubic: return 1.0f - u * u * u;
     case Ease::in_quad: return t * t;
-    case Ease::out_circ: return std::sqrt(1.0f - u * u);
     case Ease::out_back: return 1.0f - (overshoot + 1.0f) * u * u * u + overshoot * u * u;
     }
     return t;
