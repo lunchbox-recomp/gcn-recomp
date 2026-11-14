@@ -182,6 +182,11 @@ void footer(bool on_page) {
     ImGui::PopFont();
 }
 
+float footer_height() {
+    const ImGuiStyle& style = ImGui::GetStyle();
+    return std::max(style.SeparatorSize, 1.0f) + style.ItemSpacing.y + theme_now().item_min_height * style.FontScaleMain;
+}
+
 void footer_card() {
     const OverlayTheme& t = theme_now();
     const float s = ImGui::GetStyle().FontScaleMain;

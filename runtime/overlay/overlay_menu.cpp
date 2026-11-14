@@ -57,9 +57,10 @@ bool g_on_page;             // its last frame showed a page, not a question or a
 // pixels at the theme's scale then (panel_place). A view or a question is left out, so backing
 // out of one puts the page back in a panel its pages' size.
 float g_tallest, g_tallest_scale;
-float g_most;   // the panel's greatest height at this frame, in pixels (panel_place)
-float g_below;  // the height laid out under the page or the view at the last frame: the gap and the footer
-float g_view = -1.0f;  // the Buttons view's height at the frame laid out last, -1 with no view then
+float g_most;  // the panel's greatest height at this frame, in pixels (panel_place)
+// The Buttons view's height at the frame laid out last, at 1080 lines as the theme's sizes are, so
+// it holds across a change of the window's height; -1 with no view then.
+float g_view = -1.0f;
 ImGuiID g_region;      // the window of the region the view scrolls in, once one has been laid out (view)
 
 // The page showing, drawn by its own callback.
@@ -71,11 +72,11 @@ void page() {
 }
 
 // The room between the header, the page and the footer, past an item's own spacing.
-void section_gap() {
+float gap() {
     const OverlayTheme& t = theme_now();
-    const float s = ImGui::GetStyle().FontScaleMain;
-    ImGui::Dummy(ImVec2(0.0f, std::max(0.0f, (t.section_spacing - 2.0f * t.item_spacing) * s)));
+    return std::max(0.0f, (t.section_spacing - 2.0f * t.item_spacing) * ImGui::GetStyle().FontScaleMain);
 }
+void section_gap() { ImGui::Dummy(ImVec2(0.0f, gap())); }
 
 // The panel's place and size: centred in the window, the theme's share of its width, at most its
 // widest and inside its margin, and as tall as what's on it up to the theme's share of its
@@ -103,9 +104,11 @@ void panel_place() {
 
 // The Buttons view in place of a page, in a region of its own that scrolls: as tall as the view
 // was at the last frame, or at its first the most it can be, up to the room the panel at its
-// tallest leaves under the header once the footer has its own (g_below), so the footer stays on
-// the panel's bottom, past the region. That first frame sizes the panel at the next as a page's
-// does; a region Dear ImGui sized to its contents would show nothing at its first. Dear ImGui
+// tallest leaves under the header once the gap and the footer have theirs, so the footer stays on
+// the panel's bottom, past the region. Those are taken at this frame's scale, so a change of the
+// window's height lays the region out again at once. That first frame sizes the panel at the
+// next as a page's does; a region Dear ImGui sized to its contents would show nothing at its
+// first. Dear ImGui
 // scrolls the region to keep the item with the focus in it, however the focus got there, as it
 // scrolls the panel itself for a page taller than the panel. The region is the panel's width,
 // with its padding across and its items' width, so the view is laid out across as it would be on
@@ -115,8 +118,10 @@ void view(float last) {
     ImGuiWindow* w = ImGui::GetCurrentWindow();
     const ImVec2 at = ImGui::GetCursorScreenPos();
     const ImVec2 pad = ImGui::GetStyle().WindowPadding;
-    const float room = std::floor(g_most - 2.0f * pad.y - (at.y - w->DC.CursorStartPos.y) - g_below);
-    const float tall = last < 0.0f ? room : std::min(room, std::ceil(last));
+    const float below = 2.0f * ImGui::GetStyle().ItemSpacing.y + gap() + footer_height();
+    const float room = std::floor(g_most - 2.0f * pad.y - (at.y - w->DC.CursorStartPos.y) - below);
+    const float s = ImGui::GetStyle().FontScaleMain;
+    const float tall = last < 0.0f ? room : std::min(room, std::ceil(last * s - 1e-3f));  // less a float's error
     ImGui::SetCursorScreenPos(ImVec2(w->Pos.x, at.y));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad.x, 0.0f));
     ImGui::BeginChild("view", ImVec2(w->Size.x, std::max(tall, 1.0f)),
@@ -127,7 +132,7 @@ void view(float last) {
     ImGui::PopItemWidth();
     const ImGuiWindow* region = ImGui::GetCurrentWindow();
     g_region = region->ID;
-    g_view =region->DC.CursorMaxPos.y - region->DC.CursorStartPos.y;
+    g_view = (region->DC.CursorMaxPos.y - region->DC.CursorStartPos.y) / s;
     ImGui::EndChild();
     w->DC.CursorMaxPos.x = std::min(w->DC.CursorMaxPos.x, w->WorkRect.Max.x);
 }
@@ -179,10 +184,8 @@ void draw_menu(uint64_t now) {
         page();
         tabs_contents_end();
     }
-    const float above = ImGui::GetCurrentWindow()->DC.CursorMaxPos.y;
     section_gap();
     footer(g_on_page);
-    g_below = ImGui::GetCurrentWindow()->DC.CursorMaxPos.y - above;
     ring_draw(now);
     ImGui::End();
 }

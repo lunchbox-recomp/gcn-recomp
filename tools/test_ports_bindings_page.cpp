@@ -4,6 +4,7 @@
 // frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/footer.h"  // the hints the footer drew
+#include "overlay/state.h"   // the menu's window, to change its height
 #include "overlay/tabs.h"    // where the header laid out its first pill
 
 namespace {
@@ -108,6 +109,54 @@ void view_scrolls(Guest& guest, const Virtual& pad) {
     for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
 }
 
+// The Buttons view as the menu's last frame laid it out: how far the panel scrolls, the room
+// under the footer's hints inside the panel's padding, the header's height on the window, and
+// whether the item with the focus is whole in view (on_panel).
+struct Laid {
+    float scroll = 0.0f, under = 0.0f, header = 0.0f;
+    bool in_view = false;
+};
+Laid laid() {
+    const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
+    Laid l;
+    if (!panel) return l;
+    float hints[4], x = 0.0f;
+    footer_test_hints_rect(hints);
+    tabs_test_pill(0, x, l.header);
+    l.scroll = panel->ScrollMax.y;
+    l.under = panel->Pos.y + panel->Size.y - ImGui::GetStyle().WindowPadding.y - hints[3];
+    l.in_view = on_panel();
+    return l;
+}
+
+// The window grown to 1440 lines with the focus on Done at the view's foot, then shrunk back to
+// 960. The frame laid out as the height changes has the panel at the size the frame before gave
+// it, as any page has. From the next on the panel doesn't scroll, the footer's hints are on it
+// inside its padding, but for the part of a pixel Dear ImGui drops from the height it sizes the
+// panel to, and the header stays where it is.
+void view_resized(Guest& guest, const Virtual& pad) {
+    for (int i = 0; i < 40 && !focused("Done"); i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    const bool done = focused("Done");
+    int w = 0, h = 0;
+    SDL_GetWindowSize(overlay_window(), &w, &h);
+    bool settled = true;
+    for (const int height : {1440, h}) {
+        SDL_SetWindowSize(overlay_window(), w, height);
+        host_frame(guest);
+        float header = -1.0f;
+        for (int f = 1; f < 4; f++) {
+            host_frame(guest);
+            const Laid l = laid();
+            if (f == 1) header = l.header;
+            settled = settled && l.scroll == 0.0f && l.under > -1.0f && l.header == header && focused("Done");
+        }
+    }
+    check(done && settled,
+          "the window's height changed with the Buttons view up, from the next frame the footer's hints are on "
+          "the panel, which doesn't scroll, under a still header");
+    for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+}
+
 void bindings_page_checks(Guest& guest, const std::string& dir) {
     const std::string file = dir + "/saves/pads.txt";
     gamepads_bindings_file(file.c_str());
@@ -127,6 +176,7 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     host_frame(guest);
     check(focused(first_pad()), "the view opens with its first gamepad focused");
     view_scrolls(guest, pad);
+    view_resized(guest, pad);
 
     // Down past the two gamepads at the view's top is A's row. The A that starts press-to-bind
     // starts it as the A goes down, so it's still down as it starts, and passed over.

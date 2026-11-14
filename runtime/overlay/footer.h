@@ -11,6 +11,10 @@
 // Below the page, or a view in its place: the hints, and on a page (`on_page`) Restart game and
 // Quit game. While the Buttons view listens for a press to bind, the hints are only its way out.
 void footer(bool on_page);
+// How far down footer(false) lays out from where it starts, at this frame's scale: its rule, an
+// item's spacing and the hints' row. Dear ImGui rounds each line's place down, so it lays out no
+// more than that.
+float footer_height();
 // While the menu asks (overlay_asking), in place of the page: the question's card.
 void footer_card();
 // Back from the question to the button that asked, as B or Escape goes back.
