@@ -579,7 +579,7 @@ function(gcn_add_game)
   set(RENDER_GL_SOURCES ${RT}/gx/render_gl.cpp ${RT}/gx/render_gl_batch.cpp ${RT}/gx/render_gl_copy.cpp
     ${RT}/gx/render_gl_eye.cpp ${RT}/gx/render_gl_filter.cpp ${RT}/gx/render_gl_passes.cpp
     ${RT}/gx/render_gl_present.cpp ${RT}/gx/render_gl_programs.cpp ${RT}/gx/render_gl_state.cpp
-    ${RT}/gx/render_gl_textures.cpp ${RT}/gx/render_gl_view.cpp)
+    ${RT}/gx/render_gl_textures.cpp ${RT}/gx/render_gl_view.cpp ${RT}/gx/clear_draw.cpp)
   # Everything below the renderer and the SDL frontend -- the CPU, OS, hardware and GX
   # front end, including the batch queue in gx/xf.cpp -- is free of both GL and SDL.
   set(CORE_SOURCES ${RUNTIME_SOURCES})
@@ -915,6 +915,14 @@ function(gcn_add_game)
     _gcn_set_standards(test_blend)
     target_include_directories(test_blend PRIVATE ${RT})
     target_compile_options(test_blend PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The clear-drawn font's checks (tools/test_clear_draw.cpp): gx/clear_draw.cpp as its GL ES
+    # build, on a fake glScissor and glClear. Needs no window or GL.
+    add_executable(test_clear_draw EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_clear_draw.cpp
+      ${RT}/gx/glad_es/src/gles2.c)
+    _gcn_set_standards(test_clear_draw)
+    target_include_directories(test_clear_draw PRIVATE ${RT} ${RT}/gx/glad_es/include)
+    target_compile_options(test_clear_draw PRIVATE ${GCN_RUNTIME_WARNINGS})
   endif()
 
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_VISIONOS AND NOT ANDROID AND NOT WIN32)
@@ -1147,7 +1155,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clock test_pause
+    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_code_table test_code_watch test_aid)

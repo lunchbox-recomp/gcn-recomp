@@ -11,6 +11,7 @@
 #include "vr_game.h"
 
 #include "gx/render.h"
+#include "gx/clear_draw.h"
 #include "gx/render_gl.h"
 #include "gx/gl_msrtt.h"
 #include "hw/pad.h"
@@ -1200,60 +1201,7 @@ void panel_size(int* w, int* h) {
 // at a time (render_shader_cache_step), with the platform's events and the runtime's frames
 // kept up between slices and a progress bar on the theater panel, drawn with clears alone
 // since no shader can be assumed yet -- the line above it too, a scissored clear for each
-// run of lit pixels in a 5x7 font.
-struct Glyph {
-    char c;
-    uint8_t rows[7];  // top first; bit 4 is the leftmost column
-};
-static const Glyph kGlyphs[] = {
-    {'C', {0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110}},
-    {'L', {0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111}},
-    {'a', {0b00000, 0b00000, 0b01110, 0b00001, 0b01111, 0b10001, 0b01111}},
-    {'d', {0b00001, 0b00001, 0b01101, 0b10011, 0b10001, 0b10001, 0b01111}},
-    {'e', {0b00000, 0b00000, 0b01110, 0b10001, 0b11111, 0b10000, 0b01110}},
-    {'f', {0b00110, 0b01001, 0b01000, 0b11100, 0b01000, 0b01000, 0b01000}},
-    {'g', {0b00000, 0b01111, 0b10001, 0b10001, 0b01111, 0b00001, 0b01110}},
-    {'h', {0b10000, 0b10000, 0b10110, 0b11001, 0b10001, 0b10001, 0b10001}},
-    {'i', {0b00100, 0b00000, 0b01100, 0b00100, 0b00100, 0b00100, 0b01110}},
-    {'l', {0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110}},
-    {'m', {0b00000, 0b00000, 0b11010, 0b10101, 0b10101, 0b10001, 0b10001}},
-    {'n', {0b00000, 0b00000, 0b10110, 0b11001, 0b10001, 0b10001, 0b10001}},
-    {'o', {0b00000, 0b00000, 0b01110, 0b10001, 0b10001, 0b10001, 0b01110}},
-    {'p', {0b00000, 0b00000, 0b11110, 0b10001, 0b11110, 0b10000, 0b10000}},
-    {'r', {0b00000, 0b00000, 0b10110, 0b11001, 0b10000, 0b10000, 0b10000}},
-    {'s', {0b00000, 0b00000, 0b01110, 0b10000, 0b01110, 0b00001, 0b11110}},
-    {'t', {0b01000, 0b01000, 0b11100, 0b01000, 0b01000, 0b01001, 0b00110}},
-    {'u', {0b00000, 0b00000, 0b10001, 0b10001, 0b10001, 0b10011, 0b01101}},
-    {'y', {0b00000, 0b00000, 0b10001, 0b10001, 0b01111, 0b00001, 0b01110}},
-    {'.', {0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b01100, 0b01100}},
-    {'(', {0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010}},
-    {')', {0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000}},
-};
-
-// `s` centred on x = cx with its bottom at y = bottom (GL's, up), in pixels `px` square,
-// in the current clear colour. A character without a glyph is a space.
-static void clear_text(const char* s, int cx, int bottom, int px) {
-    const int n = (int)strlen(s);
-    const int x0 = cx - n * 6 * px / 2;
-    for (int i = 0; i < n; i++) {
-        const Glyph* g = nullptr;
-        for (const Glyph& gl : kGlyphs)
-            if (gl.c == s[i]) g = &gl;
-        if (!g) continue;
-        for (int r = 0; r < 7; r++) {
-            const int y = bottom + (6 - r) * px;
-            for (int c = 0; c < 5;) {
-                if (!((g->rows[r] >> (4 - c)) & 1)) { c++; continue; }
-                int e = c;
-                while (e < 5 && ((g->rows[r] >> (4 - e)) & 1)) e++;
-                glScissor(x0 + (i * 6 + c) * px, y, (e - c) * px, px);
-                glClear(GL_COLOR_BUFFER_BIT);
-                c = e;
-            }
-        }
-    }
-}
-
+// run of lit pixels in a 5x7 font (gx/clear_draw.h).
 bool build_shaders() {
     const auto t0 = std::chrono::steady_clock::now();
     // Decided once: from render_init on, the cache knows whether it holds binaries to take.
@@ -1304,7 +1252,7 @@ bool build_shaders() {
                 }
                 const int px = std::max(1, std::min(h / 100, bw / (6 * (int)strlen(message))));
                 glClearColor(0.8f, 0.82f, 0.85f, 1.0f);
-                clear_text(message, w / 2, by + bh + 3 + 2 * px * 3, px);
+                gx::clear_text(message, w / 2, by + bh + 3 + 2 * px * 3, px);
                 glDisable(GL_SCISSOR_TEST);
                 if (g_xr.plat.mirror) g_xr.plat.mirror(g_xr.fbos[idx], w, h);
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);

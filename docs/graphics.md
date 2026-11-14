@@ -176,8 +176,8 @@ The headset's progress panel says which kind of start it is: "Compiling shaders.
 time startup only)" when the cache holds no binaries this driver will take
 (`render_shader_cache_compiling`: no file, another driver, or binaries of sources that
 have since changed, judged by the first record), "Loading shaders..." otherwise. The text
-is a 5x7 font drawn with scissored clears like the bar, with glyphs only for the characters
-those two lines use.
+is a 5x7 font drawn with scissored clears like the bar (`gx/clear_draw.cpp`), with glyphs
+only for the characters those two lines use.
 
 So many resident programs also slowed every texture the driver allocated. Texture uploads
 on ES now go through immutable storage (`glTexStorage2D`) and one pixel unpack buffer per
