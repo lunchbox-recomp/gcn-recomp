@@ -3,7 +3,7 @@
 // runtime/ready_file.cpp writes GCN_READY_FILE's lines through a temporary file that then
 // replaces it, so a launcher watching it sees each version whole. These check the lines and
 // their order, that each word goes in once, that one that can't be written says so once and
-// isn't tried again for a second, that a reader polling the file meanwhile never
+// is tried again a second later and no sooner, that a reader polling the file meanwhile never
 // sees a line cut short, that no line waits for a sync, that a run starts the file afresh,
 // what a console reset leaves for the run after, and that the times count from the process's
 // start. It prints what a line costs.
@@ -130,17 +130,16 @@ int main(int argc, char** argv) {
     printf("[ready] a line takes a median of %.3f ms, at most %.3f, over %zu\n", ms[25], ms[49], std::size(ms));
 
     // GCN_READY_FILE: each word once, with the time since the process started. Its directory
-    // comes only after the first marks, so those fail, and a second after the first the word is
-    // tried again; then it holds an earlier run's lines, which the run's first line replaces.
+    // comes only after the first marks, so those fail; then it holds an earlier run's lines,
+    // and a second after the last failed try the word is tried again, and its line replaces them.
     const std::string later = dir + "/later", e = later + "/e.txt";
     setenv("GCN_READY_FILE", e.c_str(), 1);
     const double before = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_main).count();
     // Marks at times well before now, so the ones at now are past every wait.
     const long long ago = (long long)plat_ms_since_start() - 10000;
     const int said = lines_said(dir + "/said.txt", [&] {
+        ready_mark_at("window", ago - 1000);
         ready_mark_at("window", ago);
-        ready_mark_at("window", ago + 999);
-        ready_mark_at("window", ago + 1000);
     });
     check(!exists(e) && said == 1, "a mark whose line can't be written writes nothing, and says so once however often it's tried");
     plat_make_dirs(later);
@@ -148,11 +147,13 @@ int main(int argc, char** argv) {
         fputs("window 1\nframe 2\n", f);
         fclose(f);
     }
-    ready_mark_at("window", ago + 1999);
+    ready_mark_at("window", ago + 999);
     check(slurp(e) == "window 1\nframe 2\n", "a word whose write failed isn't tried again for a second");
-    ready_mark_at("frame", ago + 1999);
+    ready_mark_at("frame", ago + 999);
     check(slurp(e) == "window 1\nframe 2\n", "and frame waits until window is in, so the lines stay in order");
-    ready_mark("window");
+    ready_mark_at("window", ago + 1000);
+    check(slurp(e) == "window " + std::to_string(ago + 1000) + "\n",
+          "a second after its last try it's tried again, and its line replaces the earlier run's");
     ready_mark("window");
     ready_relaunching();
     check(getenv("GCN_READY_FILE"), "a console reset before the frame line leaves the variable for the run after");
@@ -163,11 +164,10 @@ int main(int argc, char** argv) {
     const bool parsed = sscanf(got.c_str(), "window %lld\nframe %lld\n", &w, &fr) == 2;
     int lines = 0;
     for (char c : got) lines += c == '\n';
-    check(parsed && lines == 2,
-          "GCN_READY_FILE gets window once its write works, over the earlier run's lines, then frame, each once");
+    check(parsed && lines == 2 && w == ago + 1000, "GCN_READY_FILE gets window once, then frame, each once");
     check(parsed && w <= fr, "the frame's time is no earlier than the window's");
     // The process started before main did, and this run is well under a minute.
-    check(parsed && (double)w + 1.0 >= before && fr < 60000, "the times count from the process's start");
+    check(parsed && (double)fr + 1.0 >= before && fr < 60000, "the times count from the process's start");
     check(plat_ms_since_start() >= before, "plat_ms_since_start counts from before main");
 
     // A console reset after both lines: the run after writes no second pair.
