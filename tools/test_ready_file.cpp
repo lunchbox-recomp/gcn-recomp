@@ -146,8 +146,8 @@ int main(int argc, char** argv) {
     // tried for 250 ms and then once a second; by then it holds an earlier run's lines, which
     // window's line replaces. frame's first mark, at the clock, waits for window, and its first
     // try comes two seconds after it: a directory where the file's .tmp goes keeps that try out,
-    // as it would for any user, root too, and the next mark, inside the 250 ms after the failure,
-    // writes it.
+    // as it would for any user, root too, and for a mark 249 ms later. A failed try inside the
+    // 250 ms after the failure leaves the next mark free to try, and that one writes it.
     const std::string later = dir + "/later", e = later + "/e.txt";
     setenv("GCN_READY_FILE", e.c_str(), 1);
     const double before = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_main).count();
@@ -176,10 +176,13 @@ int main(int argc, char** argv) {
     ready_relaunching();
     check(getenv("GCN_READY_FILE"), "a console reset before the frame line leaves the variable for the run after");
     mkdir((e + ".tmp").c_str(), 0755);
-    const int frame_said = lines_said(dir + "/frame-said.txt", [&] { ready_mark_at("frame", frame_to + 2000); });
+    const int frame_said = lines_said(dir + "/frame-said.txt", [&] {
+        ready_mark_at("frame", frame_to + 2000);
+        ready_mark_at("frame", frame_to + 2249);
+    });
     rmdir((e + ".tmp").c_str());
     const bool held = slurp(e) == "window " + std::to_string(ago) + "\n";
-    ready_mark_at("frame", frame_to + 2249);
+    ready_mark_at("frame", frame_to + 2260);
     check(held && frame_said == 1 && slurp(e).find("\nframe ") != std::string::npos,
           "a word whose write failed is tried again at each mark for 250 ms from that failure, not from its first mark");
     ready_mark("window");
