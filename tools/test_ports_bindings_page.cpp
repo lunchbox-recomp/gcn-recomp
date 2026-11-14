@@ -120,17 +120,19 @@ void view_scrolls(Guest& guest, const Virtual& pad) {
     for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
 }
 
-// The window grown to 1440 lines with the focus on Done at the view's foot, then shrunk back to
-// 960. The frame laid out as the height changes has the panel at the size the frame before gave
-// it, as any page has. From the next on the footer's hints and Done are on the panel (on_panel),
-// which doesn't scroll, and the header stays where it is.
+// The window grown to 1440 lines with the focus on Done at the view's foot, shrunk to 480, grown
+// to 2160, then back to 960. From 480 to 2160 the view at 480 is shorter than the region can be
+// at 2160, so the region takes the view's last height at the new scale. The frame laid out as the
+// height changes has the panel at the size the frame before gave it, as any page has. From the
+// next on the footer's hints and Done are on the panel (on_panel), which doesn't scroll, and the
+// header stays where it is.
 void view_resized(Guest& guest, const Virtual& pad) {
     for (int i = 0; i < 40 && !focused("Done"); i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     const bool done = focused("Done");
     int w = 0, h = 0;
     SDL_GetWindowSize(overlay_window(), &w, &h);
     bool settled = true;
-    for (const int height : {1440, h}) {
+    for (const int height : {1440, 480, 2160, h}) {
         SDL_SetWindowSize(overlay_window(), w, height);
         host_frame(guest);
         float x = 0.0f, header = 0.0f;
