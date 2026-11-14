@@ -211,12 +211,15 @@ void glyph_contrasts(const OverlayTheme& t) {
     check(lb.label == "LB" && lb.shape == OverlayGlyphShape::pill && lb.fill == t.item && lb.ink == t.text &&
               lb.edge == t.border,
           "an Xbox shoulder's pill is the item's colour with the text on it and the item's edge round it");
-    // The edge is all that sets such a pill off the panel in the footer, or off a button at rest
-    // in the Buttons view.
-    const double panel = worst(t, t.border, 0), item = worst(t, t.border, t.item);
-    char said[160];
-    snprintf(said, sizeof(said), "a glyph's edge is %.2f:1 on the panel and %.2f:1 on an item, at least 3:1", panel, item);
-    check(panel >= 3.0 && item >= 3.0, said);
+    // The edge is all that sets such a pill off the panel in the footer, or off its button in the
+    // Buttons view, at rest, focused or pressed.
+    for (const auto& fill : {std::pair<const char*, uint32_t>{"the panel", 0}, {"an item at rest", t.item},
+                             {"one focused", t.focused}, {"one pressed", t.pressed}}) {
+        const double r = worst(t, t.border, fill.second);
+        char said[160];
+        snprintf(said, sizeof(said), "a glyph's edge on %s is %.2f:1, at least 3:1", fill.first, r);
+        check(r >= 3.0, said);
+    }
     const OverlayGlyph key = overlay_key_glyph(t, "Esc");
     check(key.label == "Esc" && key.shape == OverlayGlyphShape::keycap && contrast(key.ink, key.fill) >= 4.5 &&
               key.edge == key.ink,
