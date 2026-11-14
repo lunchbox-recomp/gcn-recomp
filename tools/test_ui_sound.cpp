@@ -6,11 +6,14 @@
 //
 // Each voice of the default theme is made and must peak at -14 dBFS, no louder than -12, start
 // and end on a zero sample, rise over its first 2 ms and fall over its last 2 ms no faster than
-// a raised cosine over 2 ms does, and have no click: no step from one sample to the next over 3
-// times the largest step within 2 ms either side of it, and over 1% of its peak. A page's swish is
-// louder on the side the page turns to, and every other voice is the same in both channels.
+// a raised cosine over 2 ms does, its envelope changing no faster than that anywhere, and have no
+// click: no step from one sample to the next over 3 times the largest step within 2 ms either side
+// of it, and over 1% of its peak, and no level, its samples through a 20 ms triangle, over 15% of
+// its peak. A jump of 40% of its peak into each voice, over any of 1 to 24 samples, is a click.
+// A page's swish is louder on the side the page turns to, and every other voice is the same in
+// both channels.
 // A theme's level, notes and length change the voice, a level over -12 dBFS is held to it, and an
-// attack or release under 2 ms is held to that. No value of a theme hangs or crashes the making:
+// attack, release or decay under 2 ms is held to that. No value of a theme hangs or crashes the making:
 // every note 0, below 0, under 20 Hz or not a number makes every voice silent and its length, a
 // single such note is left out, and an attack or release of 1e9 ms, or the largest float, is held
 // to 1 s, each voice keeping its shape and lasting no more than 2 s.
@@ -82,24 +85,59 @@ int level(float dbfs) { return (int)std::floor(32768.0 * std::pow(10.0, dbfs / 2
 
 // A raised cosine rising over 2 ms, at frame `n` of it.
 double edge_ramp(int n) { return n >= kEdge ? 1.0 : (1.0 - std::cos(std::numbers::pi * n / kEdge)) / 2.0; }
+// Its steepest step from one frame to the next, at its middle.
+const double kSteepest = edge_ramp(kEdge / 2) - edge_ramp(kEdge / 2 - 1);
 
-// Whether channel `c` of stereo `s` has a click: a step from one sample to the next over 3 times
-// the largest step within 2 ms either side of it, the steps beside it left out, and over 1% of
-// `peak`, under which no step is heard as one.
-bool clicks(const std::vector<int16_t>& s, int c, int peak) {
+// The largest step in channel `c` of stereo `s` from one sample to the next over 3 times the
+// largest within 2 ms either side of it, the steps beside it left out, as a share of `peak`: a
+// click over a sample or two.
+double sharpest_step(const std::vector<int16_t>& s, int c, int peak) {
     const int frames = (int)s.size() / 2;
     std::vector<int> step(frames, 0);
     for (int n = 1; n < frames; n++) step[n] = std::abs(s[2 * n + c] - s[2 * (n - 1) + c]);
+    double worst = 0.0;
     for (int n = 1; n < frames; n++) {
         int around = 0;
         for (int m = std::max(1, n - kEdge); m <= std::min(frames - 1, n + kEdge); m++)
             if (std::abs(m - n) > 1) around = std::max(around, step[m]);
-        if (step[n] > 3 * around && step[n] > peak / 100) {
-            printf("     a step of %d at frame %d, where the steps around it are %d at most\n", step[n], n, around);
-            return true;
-        }
+        if (step[n] > 3 * around) worst = std::max(worst, (double)step[n] / peak);
     }
-    return false;
+    return worst;
+}
+
+// The largest level of channel `c` of stereo `s`, silent either side, as a share of `peak`: its
+// samples through a 10 ms moving average twice, a 20 ms triangle. A voice's sines and noise, none
+// under 150 Hz, are all but gone from it, while a jump to another level, over 1 sample or 24,
+// isn't.
+double largest_level(const std::vector<int16_t>& s, int c, int peak) {
+    constexpr int kBox = 480;
+    const int frames = (int)s.size() / 2, padded = frames + 2 * kBox;
+    std::vector<double> x(padded, 0.0);
+    for (int n = 0; n < frames; n++) x[kBox + n] = s[2 * n + c];
+    for (int pass = 0; pass < 2; pass++) {
+        std::vector<double> sum(padded + 1, 0.0);
+        for (int n = 0; n < padded; n++) sum[n + 1] = sum[n] + x[n];
+        for (int n = 0; n < padded; n++)
+            x[n] = (sum[std::min(padded, n + kBox / 2)] - sum[std::max(0, n - kBox / 2)]) / kBox;
+    }
+    double most = 0.0;
+    for (double v : x) most = std::max(most, std::fabs(v));
+    return most / peak;
+}
+
+// The worst of each measure over every voice checked, printed against the jumps' (jumps()).
+double g_worst_step, g_worst_level;
+
+// Whether channel `c` of stereo `s` has a click: a step over 1% of `peak` and 3 times those
+// around it, or a level over 15% of `peak`.
+constexpr double kClickStep = 0.01, kClickLevel = 0.15;
+bool clicks(const std::vector<int16_t>& s, int c, int peak) {
+    const double step = sharpest_step(s, c, peak), level = largest_level(s, c, peak);
+    g_worst_step = std::max(g_worst_step, step);
+    g_worst_level = std::max(g_worst_level, level);
+    if (step > kClickStep) printf("     a step of %.1f%% of its peak, over 3 times those around it\n", 100 * step);
+    if (level > kClickLevel) printf("     a level of %.1f%% of its peak\n", 100 * level);
+    return step > kClickStep || level > kClickLevel;
 }
 
 // One voice's shape: its length, its peak at `dbfs`, its edges and no click.
@@ -112,12 +150,14 @@ void shape(const UiSoundTheme& theme, UiSound id, float dbfs, const std::string&
           what + ": peaks at " + std::to_string((int)dbfs) + " dBFS (" + std::to_string(peak) + "), no louder than -12");
     check(frames > 1 && s[0] == 0 && s[1] == 0 && s[s.size() - 2] == 0 && s[s.size() - 1] == 0,
           what + ": starts and ends on a zero sample in both channels");
-    bool under = true;
+    bool under = true, gentle = true;
     for (int n = 0; n < frames; n++) {
         const double e = ui_sound_envelope(v, n, frames);
         under = under && e <= edge_ramp(n) + 1e-6 && e <= edge_ramp(frames - 1 - n) + 1e-6 && e >= 0.0 && e <= 1.0;
+        if (n > 0) gentle = gentle && std::fabs(e - ui_sound_envelope(v, n - 1, frames)) <= kSteepest + 1e-6;
     }
     check(under, what + ": its envelope rises over its first 2 ms and falls over its last no faster than a 2 ms raised cosine");
+    check(gentle, what + ": and from one sample to the next all through, its envelope changes no faster than that");
     check(peak_of(s, 0, kEdge) <= peak / 2 && peak_of(s, s.size() - kEdge) <= peak / 2,
           what + ": stays under half its peak over its first and last millisecond");
     check(!clicks(s, 0, peak) && !clicks(s, 1, peak), what + ": has no click");
@@ -144,6 +184,44 @@ void voices() {
         for (size_t i = 0; i < s.size(); i += 2) middle = middle && s[i] == s[i + 1];
     }
     check(middle, "every other voice is the same in both channels");
+}
+
+// That the click check catches a click: into each voice of the default theme, at its loudest
+// frame and at its middle, a jump of 40% of its peak spread evenly over 1 to 24 samples and held
+// to its end. Then the click scores, the voices' worst against the jumps' weakest.
+void jumps() {
+    const UiSoundTheme t = ui_sound_theme_default();
+    double weakest = 1e9;
+    for (int width = 1; width <= 24; width++) {
+        bool caught = true;
+        for (int i = 0; i < kUiSounds; i++) {
+            const std::vector<int16_t> made = ui_sound_render(t, (UiSound)i);
+            const int peak = peak_of(made), frames = (int)made.size() / 2;
+            int loudest = 0;
+            for (int n = 0; n < frames; n++)
+                if (std::max(std::abs(made[2 * n]), std::abs(made[2 * n + 1])) == peak) loudest = n;
+            for (int at : {loudest, frames / 2}) {
+                std::vector<int16_t> s = made;
+                for (int n = at; n < frames; n++) {
+                    const int add = (int)std::lround(0.4 * peak * std::min(1.0, (n - at + 1.0) / width));
+                    s[2 * n] = (int16_t)(s[2 * n] + add);
+                    s[2 * n + 1] = (int16_t)(s[2 * n + 1] + add);
+                }
+                double step = 0.0, level = 0.0;
+                for (int c = 0; c < 2; c++) {
+                    step = std::max(step, sharpest_step(s, c, peak));
+                    level = std::max(level, largest_level(s, c, peak));
+                }
+                weakest = std::min(weakest, level);
+                caught = caught && (step > kClickStep || level > kClickLevel);
+            }
+        }
+        check(caught, "a jump of 40% over " + std::to_string(width) + (width == 1 ? " sample" : " samples") +
+                          ", in every voice, is a click");
+    }
+    printf("[sound] a voice made steps %.1f%% of its peak at most and reaches a level of %.1f%%; a jump, %.1f%% at "
+           "least. A click is a step over %.0f%% or a level over %.0f%%\n",
+           100 * g_worst_step, 100 * g_worst_level, 100 * weakest, 100 * kClickStep, 100 * kClickLevel);
 }
 
 // Themes no one should write, each made without hanging or crashing.
@@ -207,6 +285,10 @@ void themes() {
     for (UiVoice& v : sharp.voices) v.attack_ms = v.release_ms = 0.0f;
     for (int i = 0; i < kUiSounds; i++)
         shape(sharp, (UiSound)i, -14.0f, std::string("a theme's ") + kNames[i] + " with no attack or release");
+    UiSoundTheme sudden = ui_sound_theme_default();
+    for (UiVoice& v : sudden.voices) v.decay_ms = 1e-6f;
+    for (int i = 0; i < kUiSounds; i++)
+        shape(sudden, (UiSound)i, -14.0f, std::string("a theme's ") + kNames[i] + " with a decay of 1e-6 ms");
     UiSoundTheme notes = ui_sound_theme_default();
     notes.voices[(int)UiSound::confirm].notes[0] = 440.0f;
     notes.voices[(int)UiSound::confirm].ms = 40.0f;
@@ -403,6 +485,7 @@ int main(int argc, char** argv) {
     made.peak_dbfs = -16.0f;
     voices();
     themes();
+    jumps();
     queue(made);
     through_audio_render(dir, made);
     costs();

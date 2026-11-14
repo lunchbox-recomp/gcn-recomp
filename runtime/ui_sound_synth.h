@@ -4,8 +4,10 @@
 //
 // Each voice has an envelope that rises from silence over its attack, a raised cosine, decays
 // after it where it has a decay, and falls to silence over its release, a raised cosine, each at
-// least kUiSoundEdgeMs. So every voice starts and ends on a zero sample and no edge clicks. Each
-// is scaled so its louder channel peaks at the theme's level, which is never over kUiSoundMaxDbfs.
+// least kUiSoundEdgeMs, as is a decay. So every voice starts and ends on a zero sample, and its
+// envelope changes from one sample to the next no faster than a raised cosine over kUiSoundEdgeMs
+// does, so no edge clicks. Each is scaled so its louder channel peaks at the theme's level, which
+// is never over kUiSoundMaxDbfs.
 #pragma once
 #include <cstdint>
 #include <vector>
@@ -53,8 +55,9 @@ inline UiSoundTheme ui_sound_theme_default() { return UiSoundTheme{}; }
 
 // The theme as the voices are made from it: the level no louder than kUiSoundMaxDbfs, each note
 // 0 or from kUiSoundLowestHz to 20 kHz, each edge from kUiSoundEdgeMs to kUiSoundLongestEdgeMs,
-// a voice at least as long as its two edges and no longer than kUiSoundLongestMs, and the pan
-// from 0 to 1. No value, however large or small or not a number, makes a voice that never ends.
+// a decay none or at least kUiSoundEdgeMs, a voice at least as long as its two edges and no
+// longer than kUiSoundLongestMs, and the pan from 0 to 1. No value, however large or small or
+// not a number, makes a voice that never ends.
 UiSoundTheme ui_sound_fit(const UiSoundTheme& theme);
 // Voice `id` of a fitted theme, interleaved stereo.
 std::vector<int16_t> ui_sound_render(const UiSoundTheme& theme, UiSound id);

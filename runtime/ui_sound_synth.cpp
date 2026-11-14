@@ -95,7 +95,7 @@ UiSoundTheme ui_sound_fit(const UiSoundTheme& theme) {
         };
         v.attack_ms = edge(v.attack_ms);
         v.release_ms = edge(v.release_ms);
-        v.decay_ms = std::isfinite(v.decay_ms) ? std::max(v.decay_ms, 0.0f) : 0.0f;
+        v.decay_ms = std::isfinite(v.decay_ms) && v.decay_ms > 0.0f ? std::max(v.decay_ms, kUiSoundEdgeMs) : 0.0f;
         const float edges = v.attack_ms + v.release_ms;  // never over kUiSoundLongestMs
         v.ms = std::isfinite(v.ms) ? std::clamp(v.ms, edges, kUiSoundLongestMs) : edges;
     }
