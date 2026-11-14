@@ -13,7 +13,8 @@
 #pragma once
 
 // Appends the word's line to GCN_READY_FILE the first time it's called with that word, and
-// does nothing after or without the variable. Main thread only.
+// does nothing after or without the variable. A line that can't be written (on Windows, a
+// launcher holding the file open) is tried again at the word's next call. Main thread only.
 void ready_mark(const char* word);
 
 // `word ms` and a newline after what `path` holds, through `path`.tmp. False, with the reason on

@@ -109,10 +109,14 @@ int main(int argc, char** argv) {
     std::sort(std::begin(ms), std::end(ms));
     printf("[ready] a line takes a median of %.3f ms, at most %.3f, over %zu\n", ms[25], ms[49], std::size(ms));
 
-    // GCN_READY_FILE: each word once, with the time since the process started.
-    const std::string e = dir + "/e.txt";
+    // GCN_READY_FILE: each word once, with the time since the process started. Its directory
+    // comes only after the first mark, so that one fails and the next tries again.
+    const std::string later = dir + "/later", e = later + "/e.txt";
     setenv("GCN_READY_FILE", e.c_str(), 1);
     const double before = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_main).count();
+    ready_mark("window");
+    check(!exists(e), "a mark whose line can't be written writes nothing");
+    plat_make_dirs(later);
     ready_mark("window");
     ready_mark("window");
     ready_mark("frame");
@@ -122,7 +126,7 @@ int main(int argc, char** argv) {
     const bool parsed = sscanf(got.c_str(), "window %lld\nframe %lld\n", &w, &fr) == 2;
     int lines = 0;
     for (char c : got) lines += c == '\n';
-    check(parsed && lines == 2, "GCN_READY_FILE gets window, then frame, each once");
+    check(parsed && lines == 2, "GCN_READY_FILE gets window once its write works, then frame, each once");
     check(parsed && w <= fr, "the frame's time is no earlier than the window's");
     // The process started before main did, and this run is well under a minute.
     check(parsed && (double)w + 1.0 >= before && fr < 60000, "the times count from the process's start");

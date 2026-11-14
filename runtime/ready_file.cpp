@@ -21,8 +21,8 @@ bool ready_file_append(const char* path, const char* word, long long ms) {
 }
 
 void ready_mark(const char* word) {
-    static std::set<std::string> s_done;
+    static std::set<std::string> s_done;  // the words whose lines are in
     const char* path = getenv_nonempty("GCN_READY_FILE");
-    if (!path || !s_done.insert(word).second) return;
-    ready_file_append(path, word, (long long)plat_ms_since_start());
+    if (!path || s_done.count(word)) return;
+    if (ready_file_append(path, word, (long long)plat_ms_since_start())) s_done.insert(word);
 }

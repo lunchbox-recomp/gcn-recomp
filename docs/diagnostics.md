@@ -834,12 +834,15 @@ time: a line costs the main thread no sync, and a power cut can leave the file e
 watcher of the file itself sees it renamed over, so it watches the directory or opens the
 file again at each change. What the file held is kept, so a launcher removes it before a
 launch to see only that run's lines. A path that can't be written gets a line on stderr and
-the run goes on. `--headless` and `--vr` write nothing.
+the run goes on, and the line is tried again at the next frame shown, so a write that fails
+once (on Windows, while the launcher has the file open) still goes in. `--headless` and
+`--vr` write nothing.
 
 `ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
 order, that a reader polling the file never sees part of one, that no line waits for a sync,
-and that the times count from before `main`. It prints a line's cost on the machine's disk
-(`[ready] a line takes a median of <ms> ms`).
+that a line whose write failed goes in at the next try, and that the times count from
+before `main`. It prints a line's cost on the machine's disk (`[ready] a line takes a median
+of <ms> ms`).
 
 The boot splash (docs/graphics.md, "The boot splash") is the window's first frame unless
 `gcn_add_game(... SPLASH OFF)` or `GCN_SPLASH=0` leaves it out, or the run is `--hidden`.
