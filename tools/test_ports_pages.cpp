@@ -297,7 +297,7 @@ int run_pages(const std::string& dir) {
             const long notices = overlay_notice_frames();
             PageRun shared;
             capture(dir + "/notice-stderr.txt", [&] {
-                overlay_pads_notice("A notice over the menu: \xC3\xA0 \xC3\xA9 \xC3\xBC");
+                overlay_pads_notice("A notice", " over the menu: \xC3\xA0 \xC3\xA9 \xC3\xBC");
                 shared = open_on(window, "0", 0, true, notice);
             });
             check(overlay_notice_frames() > notices && exists_path(notice + "/overlay_page0.png") && shared.atlas_made &&

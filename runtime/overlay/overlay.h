@@ -94,9 +94,12 @@
 // The menu's own A and B stay the faces labeled so, whatever the game's binding says.
 //
 // A notice over the bottom of the window says for 2 s of host time that a controller
-// connected, disconnected or moved, and logs the same as a `[pads]` line. It shows with the
-// menu closed too, never pauses the game and takes no input. Frame and output dumps never
-// include it.
+// connected, disconnected or moved, and logs the same as a `[pads]` line. Each is a pill in
+// the theme's panel colour and body text, the controller's name in the text's colour and what
+// happened in the dimmed one, centred across the window the theme's margin above its bottom
+// edge, the oldest lowest and each newer one above it. It shows with the menu closed too, never
+// pauses the game and takes no input, and with none showing nothing is laid out for them.
+// Frame and output dumps never include it.
 //
 // GCN_OVERLAY_AT=<frame>:<host frames> opens it once <frame> frames have been presented and
 // closes it after it's been drawn over the held frame <host frames> times, for a run nobody is
@@ -191,8 +194,9 @@ void overlay_menu_frame();
 // What the Display page does with `next`, the picture with its change made: the frontend applies
 // it, and each key where it differs from the picture now is saved.
 void overlay_display_change(const Settings& next);
-// A notice about a controller (notices.cpp), and its `[pads]` line.
-void overlay_pads_notice(const std::string& text);
+// A notice about a controller (notices.cpp), `name` then `what` happened to it, and its
+// `[pads]` line.
+void overlay_pads_notice(const std::string& name, const std::string& what);
 // The notices still showing, oldest first, and how many frames have shown them. For the tests.
 std::vector<std::string> overlay_notices();
 long overlay_notice_frames();
@@ -217,7 +221,7 @@ const char* overlay_bindings_cancel();
 // What the view says the last change did. For the tests.
 const std::string& overlay_bindings_said();
 #else
-inline void overlay_pads_notice(const std::string&) {}
+inline void overlay_pads_notice(const std::string&, const std::string&) {}
 inline void overlay_add_page(const char*, void (*)(void*), void*) {}
 inline void overlay_init(SDL_Window*, const char*, const OverlayPicture&) {}
 inline bool overlay_event(const SDL_Event&) { return false; }
