@@ -1,9 +1,12 @@
 // The notices over the game about controllers (overlay.h).
 #include "overlay/overlay.h"
 #include "overlay/fonts.h"
+#include "overlay/review.h"
 #include "overlay/theme.h"
 #include "overlay/toasts.h"
-#include "runtime.h"  // host_ns
+#include "env.h"
+#include "gx/render_gl.h"  // the dump's flags
+#include "runtime.h"       // host_ns
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cmath>
@@ -30,6 +33,12 @@ SDL_Window* g_window;     // the one they show over
 bool g_gl;                // drawn, not only laid out
 long g_frames;            // frames they've been laid out in
 bool g_motion = true;
+int g_review;             // GCN_OVERLAY_TOASTS's count, 0 for none or once they're dumped
+bool g_plain;             // GCN_OVERLAY_PLAIN: dumped over plain grey, not the held frame
+ReviewWatch g_watch;      // their frame settling for the dump
+#ifdef GCN_OVERLAY_TEST
+std::vector<OverlayTestToast> g_laid;  // each pill as the last frame laid it out
+#endif
 
 // Each one gone at exactly kToastNs, motion or not, and the ones above it moving down into its
 // place.
@@ -72,7 +81,24 @@ void pills(uint64_t now) {
         const float y = lo.y + (h - ImGui::GetFontSize()) / 2.0f;
         dl->AddText(ImVec2(lo.x + pad, y), faded(t.text, look.alpha), text, split);
         dl->AddText(ImVec2(lo.x + pad + lead_w, y), faded(t.dim, look.alpha), split);
+#ifdef GCN_OVERLAY_TEST
+        g_laid.push_back({lo.y, h, look.alpha});
+#endif
     }
+}
+
+// Under --dump-output with GCN_OVERLAY_TOASTS=<n>, the first frame with n or more showing that
+// looks as the two before it did is written once as overlay_toasts.png. A frame with fewer starts
+// the watch again.
+void dump() {
+    if (!g_review || !g_gl || !gx::g_dump_output || !gx::g_dump_dir) return;
+    if (g_notices.size() < (size_t)g_review) {
+        g_watch = {};
+        return;
+    }
+    if (!review_settled(g_watch, ImGui::GetDrawData())) return;
+    g_review = 0;
+    review_write(g_window, ImGui::GetDrawData(), "overlay_toasts.png", g_plain);
 }
 
 }  // namespace
@@ -106,6 +132,10 @@ void notices_init(SDL_Window* window, bool gl) {
     g_context = ImGui::GetCurrentContext();
     g_window = window;
     g_gl = gl;
+    const char* review = getenv_nonempty("GCN_OVERLAY_TOASTS");
+    g_review = review ? review_parse_toasts(review) : 0;
+    g_plain = getenv_nonempty("GCN_OVERLAY_PLAIN") != nullptr;
+    g_watch = {};
 }
 
 // overlay.cpp's, after the menu, if one is showing: the pills over the whole window, in a window
@@ -114,6 +144,9 @@ void notices_init(SDL_Window* window, bool gl) {
 void notices_frame() {
     const uint64_t now = host_ns();
     expire(now);
+#ifdef GCN_OVERLAY_TEST
+    g_laid.clear();
+#endif
     if (!g_context || g_notices.empty()) return;
     ImGuiContext* menu = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(g_context);
@@ -137,6 +170,7 @@ void notices_frame() {
     ImGui::Render();
     if (g_gl) ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     g_frames++;
+    dump();
     ImGui::SetCurrentContext(menu);
 }
 
@@ -154,4 +188,6 @@ void notices_test_end() {
 }
 
 ImGuiContext* overlay_test_notices_context() { return g_context; }
+
+const std::vector<OverlayTestToast>& overlay_test_toasts() { return g_laid; }
 #endif
