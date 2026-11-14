@@ -146,7 +146,7 @@ int main() {
           "a Joy-Con alone with a trigger is held upright, a Steam pad with no misc1 is the first Steam Controller, "
           "and the other types don't change with either");
     check(!strcmp(pad_type_name(3), "Xbox One") && !strcmp(pad_type_name(8), "Joy-Con (L)") &&
-              !strcmp(pad_type_name(11), "GameCube") && !strcmp(pad_type_name(12), "gamepad") &&
+              !strcmp(pad_type_name(11), "GameCube") && !strcmp(pad_type_name(12), "Steam") &&
               !strcmp(pad_type_name(-1), "gamepad") && !strcmp(pad_type_name(13), "gamepad"),
           "each of SDL's types has the name the Controllers page gives it, and one with none is a gamepad");
     printf("test_pad_glyph: %d of %d checks passed\n", g_checks - g_failed, g_checks);
