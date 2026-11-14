@@ -218,6 +218,12 @@ bool overlay_bindings_listening();
 const char* overlay_bindings_cancel();
 // What the view says the last change did. For the tests.
 const std::string& overlay_bindings_said();
+#ifdef GCN_OVERLAY_TEST
+// The glyphs the view's rows last drew (overlay/glyph.h), one for each row bound to a button or
+// a trigger, in the rows' order. Sticks' rows are named in words and have none.
+struct OverlayGlyph;
+const std::vector<OverlayGlyph>& overlay_bindings_test_glyphs();
+#endif
 #else
 inline void overlay_pads_notice(const std::string&) {}
 inline void overlay_add_page(const char*, void (*)(void*), void*) {}
