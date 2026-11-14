@@ -262,6 +262,10 @@ A replay reads at its log's speed (`80e1d38`).
   registers; `gx/` the graphics pipeline; `interp/` the interpreter, which runs code the
   recompiler didn't see or the game changed; `ram_patches.*` the RAM patch list, applied at
   the end of boot; `main.cpp` the SDL frontend and `bench_main.cpp` the benchmark.
+  `plat_save_file` (`platform.h`) writes the SRAM, `settings.txt` and the `saves/` files to a
+  temp file, syncs it and renames it over the old one. `hw/memcard.cpp` writes the card the
+  same way with a write of its own, since its saver tries a failed write again each quiet
+  period and logs only the first failure, and syncs through the same `plat_sync_file`.
   `gamepads.*` gives each gamepad a port (Controllers above); `input_map.*` binds any
   joystick or key to a port from a `controls.txt`
   (wheels, pedals, button boxes), and its `--list-controls` prints what to write for each;

@@ -9,12 +9,15 @@
 // fails must leave the old file whole, so three failures are made to happen: a directory
 // where the save writes its temp file, a file size limit (RLIMIT_FSIZE) that stops that
 // write partway as a full disk would, and a directory where the file is to go, so the
-// temp file is written whole and only the final replace fails.
+// temp file is written whole and only the final replace fails. The save must also put the
+// temp file on the disk before the replace, which plat_sync_for_tests shows by standing in
+// for the system's sync: once seeing what's in both files, and once failing.
 //
 // usage: test_sram <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if
 // every check passes.
 #include "hw/sram.h"
+#include "platform.h"
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -258,6 +261,60 @@ void failed_save_cut_short() {
     check(!exists(p + ".tmp"), "and removes the part it wrote");
 }
 
+// What the save had written when it called the sync, which plat_sync_for_tests stands in for.
+int g_syncs;
+std::string g_temp_at_sync, g_file_at_sync;
+std::string g_synced;  // the file the save writes, which the hook reads beside its temp file
+
+bool seen_sync(FILE*) {
+    g_syncs++;
+    g_temp_at_sync = read_file(g_synced + ".tmp");
+    g_file_at_sync = read_file(g_synced);
+    return true;
+}
+
+bool refused_sync(FILE*) {
+    g_syncs++;
+    errno = EIO;
+    return false;
+}
+
+// A save puts its temp file on the disk before the replace, so a power cut after the replace
+// can't leave an empty file where the old one was.
+void save_syncs_before_replace() {
+    uint8_t before[SRAM_SIZE], s[SRAM_SIZE];
+    mono(before);
+    sram_defaults(s);
+    g_synced = path_of("synced.raw");
+    write_file(g_synced, before, SRAM_SIZE);
+    g_syncs = 0;
+    plat_sync_for_tests = seen_sync;
+    const bool saved = sram_save(g_synced, s);
+    plat_sync_for_tests = nullptr;
+    check(saved && g_syncs == 1, "a save syncs its file once");
+    check(g_temp_at_sync == bytes(s), "after the whole new file is written to the temp file");
+    check(g_file_at_sync == bytes(before), "and before it replaces the old file");
+    check(read_file(g_synced) == bytes(s), "which it then does");
+}
+
+void failed_sync() {
+    uint8_t before[SRAM_SIZE], s[SRAM_SIZE];
+    mono(before);
+    sram_defaults(s);
+    const std::string p = path_of("unsynced.raw");
+    write_file(p, before, SRAM_SIZE);
+    g_syncs = 0;
+    plat_sync_for_tests = refused_sync;
+    bool saved = true;
+    const std::string said = stderr_during([&] { saved = sram_save(p, s); });
+    plat_sync_for_tests = nullptr;
+    check(!saved && g_syncs == 1, "a save fails when its sync does");
+    check(read_file(p) == bytes(before), "and leaves the old file whole");
+    check(!exists(p + ".tmp"), "and removes its temp file");
+    check(said == p + ": the save failed (" + strerror(EIO) + "), and the old file is as it was\n",
+          "and says why");
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -278,6 +335,8 @@ int main(int argc, char** argv) {
     failed_save_no_temp();
     failed_save_replace();
     failed_save_cut_short();
+    save_syncs_before_replace();
+    failed_sync();
     printf("test_sram: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
 }

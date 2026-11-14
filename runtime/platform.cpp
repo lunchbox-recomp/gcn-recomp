@@ -624,6 +624,20 @@ void plat_make_dirs(const std::string& path) {
     std::filesystem::create_directories(path, ec);
 }
 
+bool (*plat_sync_for_tests)(FILE* f);
+
+bool plat_sync_file(FILE* f) {
+    if (fflush(f) != 0) return false;
+    if (plat_sync_for_tests) return plat_sync_for_tests(f);
+#if defined(_WIN32)
+    return _commit(_fileno(f)) == 0;
+#elif defined(__APPLE__)
+    return fcntl(fileno(f), F_FULLFSYNC) == 0 || fsync(fileno(f)) == 0;
+#else
+    return fsync(fileno(f)) == 0;
+#endif
+}
+
 bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved) {
     const std::string tmp = path + ".tmp";
     FILE* f = fopen(tmp.c_str(), "wb");
@@ -631,7 +645,7 @@ bool plat_save_file(const std::string& path, const void* data, size_t size, cons
         fprintf(stderr, "%s: can't write it (%s), so %s isn't saved\n", tmp.c_str(), strerror(errno), unsaved);
         return false;
     }
-    const bool wrote = fwrite(data, 1, size, f) == size;
+    const bool wrote = fwrite(data, 1, size, f) == size && plat_sync_file(f);
     const bool closed = fclose(f) == 0;
     if (!wrote || !closed || !plat_replace_file(tmp.c_str(), path.c_str())) {
 #ifdef _WIN32

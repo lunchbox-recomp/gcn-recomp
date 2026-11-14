@@ -2,6 +2,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -83,9 +84,18 @@ bool plat_readable(const char* path);
 void plat_make_dirs(const std::string& path);
 // Replace `to` with `from`, overwriting an existing file.
 bool plat_replace_file(const char* from, const char* to);
-// Writes `size` bytes to `path` through `path`.tmp, which then replaces it, so a save that fails
-// leaves the old file whole and no temporary file. It says on stderr what failed, and a temporary
-// file it can't make ends the line "so <unsaved> isn't saved".
+// Flushes `f` and puts what was written to it on the disk: F_FULLFSYNC on macOS, which the
+// drive's own cache can't hold back as it can fsync, or fsync where the file system doesn't
+// take it, _commit on Windows and fsync elsewhere. False if either step fails, with errno set.
+bool plat_sync_file(FILE* f);
+// When set, plat_sync_file calls this after its flush in place of the system's sync, and
+// returns what it does. For tests.
+extern bool (*plat_sync_for_tests)(FILE* f);
+// Writes `size` bytes to `path` through `path`.tmp, which is put on the disk (plat_sync_file)
+// and then replaces it. A save that fails leaves the old file whole and no temporary file, and
+// a power cut during or after one leaves the old file or the new one whole, never an empty one.
+// It says on stderr what failed, and a temporary file it can't make ends the line "so
+// <unsaved> isn't saved".
 bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved);
 // plat_save_file, after making the directory `path` is in.
 bool plat_save_file_making_dirs(const std::string& path, const void* data, size_t size, const char* unsaved);

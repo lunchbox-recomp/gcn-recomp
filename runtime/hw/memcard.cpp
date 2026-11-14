@@ -4,11 +4,6 @@
 #include "memcard.h"
 #include <cstdio>
 #include <ctime>
-#ifdef _WIN32
-#include <io.h>
-#else
-#include <unistd.h>
-#endif
 
 enum : uint8_t {
     CMD_ID = 0x00, CMD_READ_ARRAY = 0x52, CMD_SET_INT = 0x81, CMD_READ_STATUS = 0x83, CMD_READ_ID = 0x85,
@@ -126,20 +121,12 @@ void MemCard::format() {
 
 void (*MemCard::before_write_for_tests)();
 
-// Puts what was written to `f` on the disk, so the rename never makes a card of a file that
-// isn't there yet.
-static bool sync_file(FILE* f) {
-    if (fflush(f) != 0) return false;
-#ifdef _WIN32
-    return _commit(_fileno(f)) == 0;
-#else
-    return fsync(fileno(f)) == 0;
-#endif
-}
-
-// Writes `image` to a temporary file and renames that over the card's file. A write that
-// fails anywhere leaves the card's file as it was and no temporary file behind. Only one
-// thread at a time calls this: the saver, or whoever made the card or shut it down.
+// Writes `image` to a temporary file, puts it on the disk so the rename never makes a card of
+// a file that isn't there yet, and renames it over the card's file. A write that fails
+// anywhere leaves the card's file as it was and no temporary file behind. Only one thread at a
+// time calls this: the saver, or whoever made the card or shut it down. It isn't
+// plat_save_file, which says each failure on stderr, because the saver tries a failed write
+// again every quiet period: this logs the first failure alone, to LOG_EXI, and counts saves.
 bool MemCard::write_file(const std::vector<uint8_t>& image) {
     if (before_write_for_tests) before_write_for_tests();
     static std::atomic<bool> warned{false};
@@ -155,7 +142,7 @@ bool MemCard::write_file(const std::vector<uint8_t>& image) {
         return false;
     }
     // A full disk cuts the write short, and renaming that over the card would lose the card.
-    const bool wrote = fwrite(image.data(), 1, image.size(), f) == image.size() && sync_file(f);
+    const bool wrote = fwrite(image.data(), 1, image.size(), f) == image.size() && plat_sync_file(f);
     const bool closed = fclose(f) == 0;
     // Windows' rename() fails if the destination exists, so go through the
     // platform layer, which replaces it.

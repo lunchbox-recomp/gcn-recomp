@@ -14,9 +14,9 @@
 //
 // The card checks drive a MemCard with a shorter quiet period the same way, a page program
 // at a time. A save is hundreds of those, and the card's file is written once a save: a quiet
-// period after the last write, and at shutdown if it still lacks one. A write that fails,
-// at the open or cut short by a file size limit, leaves the file as it was and is tried
-// again. A gate MemCard calls before each write holds one so a page or a shutdown can land
+// period after the last write, and at shutdown if it still lacks one. A write syncs its
+// temporary file before the rename. A write that fails, at the open, cut short by a file
+// size limit or at the sync, leaves the file as it was and is tried again. A gate MemCard calls before each write holds one so a page or a shutdown can land
 // during it. A card has a write unsaved for a quiet period after the game's last write, even
 // when its file can't be written, which exi_card_unsaved passes on. Running exi_init again
 // makes a new card from the same file, and the new card has to hold a page the old one hadn't
@@ -423,6 +423,52 @@ void card_short_write() {
     check(file_has_pages(p, 0, 1), "and is tried again a quiet period on");
 }
 
+// What the card's file and its temporary file held when the card's write called the sync,
+// which plat_sync_for_tests stands in for. `g_synced` is the card's file.
+std::atomic<int> g_syncs;
+std::string g_synced, g_temp_at_sync, g_file_at_sync;
+
+bool seen_sync(FILE*) {
+    g_syncs++;
+    g_temp_at_sync = read_file(g_synced + ".tmp");
+    g_file_at_sync = read_file(g_synced);
+    return true;
+}
+
+bool refused_sync(FILE*) {
+    g_syncs++;
+    errno = EIO;
+    return false;
+}
+
+// The card's write puts its temporary file on the disk before the rename, as plat_save_file
+// does, and one whose sync fails leaves the card's file as it was. Shutdown writes on this
+// thread, so the saver isn't the one to call the hook.
+void card_syncs_before_rename() {
+    g_synced = path_of("synced.raw");
+    MemCard card(g_synced, 4, kQuiet);
+    const std::string before = read_file(g_synced);
+    program_page(card, 0);
+    g_syncs = 0;
+    plat_sync_for_tests = seen_sync;
+    card.shutdown();
+    plat_sync_for_tests = nullptr;
+    check(g_syncs == 1 && file_has_pages(g_synced, 0, 1), "a card's write syncs its file once");
+    check(g_temp_at_sync == read_file(g_synced) && g_file_at_sync == before,
+          "with the new card whole in the temporary file and the old one still in place");
+
+    const std::string p = path_of("unsynced.raw");
+    MemCard unsynced(p, 4, kQuiet);
+    const std::string kept = read_file(p);
+    program_page(unsynced, 0);
+    g_syncs = 0;
+    plat_sync_for_tests = refused_sync;
+    unsynced.shutdown();
+    plat_sync_for_tests = nullptr;
+    check(g_syncs == 1 && read_file(p) == kept && !exists(p + ".tmp"),
+          "a card's write whose sync fails leaves the card's file as it was and no temporary file");
+}
+
 // ---- holding a write of the card's file ----
 // A gate the next write of a card's file stops at once it's armed, until it's opened or 10 s
 // pass, so a check can act while the write is under way. MemCard calls gate() before each
@@ -732,6 +778,7 @@ int main(int argc, char** argv) {
     card_shutdown_saves();
     card_failed_save_is_tried_again();
     card_short_write();
+    card_syncs_before_rename();
     MemCard::before_write_for_tests = gate;
     card_page_during_save();
     card_shutdown_during_save();
