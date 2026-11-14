@@ -270,8 +270,8 @@ static bool pump_events() {
     while (SDL_PollEvent(&e)) {
         {
             // Each event with the gamepads' lock, since the overlay moves gamepads as it takes a
-            // press. SDL_PollEvent and overlay_poll go without it, so a loop SDL runs in there
-            // (a live resize, a menu tracked) keeps no interrupt waiting for it.
+            // press. SDL_PollEvent goes without it, so a loop SDL runs in there (a live resize, a
+            // menu tracked) keeps no interrupt waiting for it.
             std::lock_guard<std::recursive_mutex> lk(g_pads_mutex);
             if (overlay_event(e)) continue;
             // Under --no-gamepads SDL announces no device, unless something else in the process
@@ -292,7 +292,12 @@ static bool pump_events() {
                 SDL_SetWindowFullscreen(w, !(SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN));
         }
     }
-    overlay_poll();
+    {
+        // The overlay reads the gamepads here, and press-to-bind binds one (overlay_bindings.cpp),
+        // so it holds the lock too. Nothing in it runs a loop of SDL's.
+        std::lock_guard<std::recursive_mutex> lk(g_pads_mutex);
+        overlay_poll();
+    }
     return running && !g_restart;
 }
 
