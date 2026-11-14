@@ -260,8 +260,11 @@ void lookup() {
     Face mac{"Test Sans Mac"};
     mac.windows = false;
     mac.mac = true;
-    check(find(font_file({{"Test Sans Bold"}, mac}, true), "Test Sans Mac") == 1,
-          "a full name only in a Mac Roman record is found too");
+    Face mac_bold = mac;
+    mac_bold.name = "Test Sans Mac Bold";
+    check(find(font_file({{"Test Sans Bold"}, mac}, true), "Test Sans Mac") == 1 &&
+              find(font_file({{"Test Sans Bold"}, mac_bold}, true), "Test Sans Mac") == -1,
+          "a full name only in a Mac Roman record is found too, and a longer one there isn't taken for it");
     Face family{"Test Sans Light"};
     family.family = "Test Sans Heavy";
     check(find(font_file({family}, true), "Test Sans Heavy") == -1 && find(font_file({family}, true), "Test Sans Light") == 0,
