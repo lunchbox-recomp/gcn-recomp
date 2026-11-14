@@ -20,5 +20,6 @@ void footer_end_ask();
 #ifdef GCN_OVERLAY_TEST
 // The hints the footer last drew, each its key and what it does, joined by ", ".
 const std::string& footer_test_hints();
+// The glyphs those hints drew, in order: a Q E or L R hint draws two, and the wait none.
 const std::vector<OverlayGlyph>& footer_test_glyphs();
 #endif
