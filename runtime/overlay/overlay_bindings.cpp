@@ -183,6 +183,13 @@ bool overlay_bindings_open(uint32_t device) {
 
 bool overlay_bindings_shown() { return g_shown; }
 bool overlay_bindings_listening() { return g_listen.has_value(); }
+
+const char* overlay_bindings_cancel() {
+    SDL_Gamepad* g = g_listen ? SDL_GetGamepadFromID(g_device) : nullptr;
+    if (!g) return nullptr;
+    if (SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_BACK)) return "Back";
+    return SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_GUIDE) ? "Guide" : nullptr;
+}
 const std::string& overlay_bindings_said() { return g_said; }
 
 bool overlay_bindings_listen(PadControl c) {

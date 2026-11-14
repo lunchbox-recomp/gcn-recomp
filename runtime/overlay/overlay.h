@@ -210,6 +210,10 @@ bool overlay_bindings_shown();
 // is gone. For the tests.
 bool overlay_bindings_listen(PadControl c);
 bool overlay_bindings_listening();
+// The button on the gamepad press-to-bind listens to that cancels it: "Back", or "Guide" on one
+// with no Back, or null while it isn't listening and on one with neither, as a GameCube pad on
+// Nintendo's adapter, each of whose buttons is the binding's.
+const char* overlay_bindings_cancel();
 // What the view says the last change did. For the tests.
 const std::string& overlay_bindings_said();
 #else

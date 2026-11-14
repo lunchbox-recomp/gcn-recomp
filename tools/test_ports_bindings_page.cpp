@@ -85,12 +85,30 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     host_frame(guest);
     overlay_bindings_open(home.id);
     overlay_bindings_listen(PadControl::B);
+    host_frame(guest);
+    const std::string home_hints = footer_test_hints();
     tap(guest, home, SDL_GAMEPAD_BUTTON_GUIDE);
     check(guide && other_guide && !overlay_bindings_listening() && overlay_open() && overlay_bindings_shown() &&
               file_id(file) == kept && has(overlay_bindings_said(), "B is still ") &&
               !has(overlay_bindings_said(), "seconds"),
           "Guide on its gamepad or another cancels it too, and on a gamepad with no Back it doesn't close the menu");
+    check(home_hints == "Guide Cancel, Esc Cancel", "listening to a gamepad with Guide and no Back, the footer hints Guide");
     unplug({&home});
+
+    // A GameCube pad on Nintendo's adapter has no Back or Guide, and each of its buttons is the
+    // binding's, so the footer hints no button of it: Escape, or the wait running out.
+    Virtual adapter{"adapter pad buttons"};
+    adapter.button_mask = kCubeButtons | kClicks;
+    attach(adapter);
+    host_frame(guest);
+    overlay_bindings_open(adapter.id);
+    overlay_bindings_listen(PadControl::B);
+    host_frame(guest);
+    const std::string adapter_hints = footer_test_hints();
+    tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+    check(adapter_hints == "Esc Cancel, Wait Cancel" && !overlay_bindings_listening() && file_id(file) == kept,
+          "listening to a GameCube pad on the adapter, the footer hints Escape and the wait, and Escape cancels");
+    unplug({&adapter});
 
     // Press-to-bind's prompt, the gamepad gone as it waits, and a press that changes nothing.
     Virtual gone{"virtual pad buttons gone"};

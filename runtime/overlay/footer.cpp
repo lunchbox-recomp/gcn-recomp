@@ -45,9 +45,11 @@ struct Hint {
 constexpr Hint kOnPage[] = {{"A", "Select"}, {"B", "Close"}, {"L R", "Page"}};
 constexpr Hint kInView[] = {{"A", "Select"}, {"B", "Back"}};
 // While the Buttons view listens for a press to bind, every button on its gamepad is the
-// binding's, A and B and the shoulders too, so only its way out: Back on any gamepad, Guide too
-// (overlay_bindings.cpp), or Escape.
-constexpr Hint kListening[] = {{"Back", "Cancel"}, {"Esc", "Cancel"}};
+// binding's, A and B and the shoulders too, so only its way out: the gamepad's Back, or its
+// Guide with no Back (overlay_bindings_cancel), or Escape. A gamepad with neither, as a
+// GameCube pad on Nintendo's adapter, has no button that cancels: Escape does, or the wait
+// running out.
+constexpr Hint kListeningNoButton[] = {{"Esc", "Cancel"}, {"Wait", "Cancel"}};
 
 #ifdef GCN_OVERLAY_TEST
 std::string g_hints;  // the hints last drawn, each key and what it does, for the tests
@@ -85,9 +87,12 @@ void footer(bool on_page) {
     ImGui::PushFont(fonts_role(FontRole::footer), t.footer_size);
     const ImVec2 at = ImGui::GetCursorScreenPos();
     const float room = ImGui::GetContentRegionAvail().x;
-    const float wide = overlay_bindings_listening() ? hints(kListening, at, height)
-                       : on_page                    ? hints(kOnPage, at, height)
-                                                    : hints(kInView, at, height);
+    const char* cancel = overlay_bindings_cancel();
+    const Hint listening[] = {{cancel, "Cancel"}, {"Esc", "Cancel"}};
+    const float wide = cancel                         ? hints(listening, at, height)
+                       : overlay_bindings_listening() ? hints(kListeningNoButton, at, height)
+                       : on_page                      ? hints(kOnPage, at, height)
+                                                      : hints(kInView, at, height);
     if (!on_page) {
         ImGui::Dummy(ImVec2(wide, height));
         ImGui::PopFont();
