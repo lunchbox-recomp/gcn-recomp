@@ -131,15 +131,20 @@ void choose(const PadList& list) {
     SDL_free(ids);
 }
 
-// A dead zone or the trigger click, as a percentage of the travel, saved once it's let go.
-void setting(const char* label, int& raw, float most, PadBinding& b) {
-    float pct = raw * 100.0f / 32767.0f;
-    if (ImGui::SliderFloat(label, &pct, 0.0f, most, "%.0f%%", ImGuiSliderFlags_AlwaysClamp))
-        raw = (int)std::lround(pct * 32767.0f / 100.0f);
-    if (!ImGui::IsItemDeactivatedAfterEdit()) return;
+// A dead zone or the trigger click, as a whole percentage of the travel, saved once it's let go.
+// Its value is beside the slider with its name, not in it, where the grab, in the accent, would
+// be under it at 1.57:1 (theme.h).
+void setting(const char* label, int& raw, int most, PadBinding& b) {
+    int pct = (int)std::lround(raw * 100.0 / 32767.0);
+    if (ImGui::SliderInt((std::string("##") + label).c_str(), &pct, 0, most, "", ImGuiSliderFlags_AlwaysClamp))
+        raw = (int)std::lround(pct * 32767.0 / 100.0);
+    const bool let_go = ImGui::IsItemDeactivatedAfterEdit();
+    ImGui::SameLine();
+    ImGui::Text("%s %d%%", label, pct);
+    if (!let_go) return;
     const Bound r = gamepads_bind(g_device, b);
     if (r == Bound::refused) g_said = refused();
-    else if (r != Bound::unchanged) g_said = std::string(label) + " is now " + std::to_string(std::lround(pct)) + "%." + kept(r);
+    else if (r != Bound::unchanged) g_said = std::string(label) + " is now " + std::to_string(pct) + "%." + kept(r);
 }
 
 void rows(SDL_Gamepad* g, PadBinding& b) {
@@ -159,10 +164,10 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
     ImGui::SeparatorText("Sticks and triggers");
     static PadBinding s_edit;  // the settings while one is being dragged
     if (!ImGui::IsAnyItemActive()) s_edit = b;
-    setting("Control stick dead zone", s_edit.stick_deadzone, 50.0f, s_edit);
-    setting("C-stick dead zone", s_edit.cstick_deadzone, 50.0f, s_edit);
-    setting("Trigger dead zone", s_edit.trigger_deadzone, 50.0f, s_edit);
-    setting("Trigger click", s_edit.trigger_click, 99.0f, s_edit);
+    setting("Control stick dead zone", s_edit.stick_deadzone, 50, s_edit);
+    setting("C-stick dead zone", s_edit.cstick_deadzone, 50, s_edit);
+    setting("Trigger dead zone", s_edit.trigger_deadzone, 50, s_edit);
+    setting("Trigger click", s_edit.trigger_click, 99, s_edit);
 }
 
 }  // namespace

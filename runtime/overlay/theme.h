@@ -18,6 +18,8 @@ struct OverlayTheme {
     // Colours, each 0xRRGGBBAA. Text and dimmed text stay at least 4.5:1 against every fill they
     // sit on, and the focus ring and an item's edge 3:1 against the panel, over any game
     // (tools/test_overlay_theme.cpp). The edge is all an unchecked box or a slider's track shows.
+    // No text sits on a slider's grab, the accent, which is light enough to stand out from the
+    // track at 3:1 and so too light for text: the menu's sliders have their values beside them.
     uint32_t backdrop = 0x0B0E148C;      // over the game while the menu is open, 55%
     uint32_t panel = 0x141925EB;         // the menu's panel, 92%
     uint32_t item = 0x1E2533FF;          // a button, box or tab at rest

@@ -113,7 +113,9 @@ enum class OverlayAsk { none, restart, quit };
 #ifdef GCN_OVERLAY
 // Add a page after Display and Controllers before overlay_init. The callback draws that page
 // with ImGui. A page added after overlay_init, with an empty or taken title or with no callback,
-// prints one line on stderr and is refused.
+// prints one line on stderr and is refused. A slider's value is drawn on its grab, the accent,
+// at 1.57:1, so a page's slider has an empty format and its value as text beside it, as the
+// Buttons view's do.
 void overlay_add_page(const char* title, void (*draw)(void* user), void* user);
 // Once the window's GL context is current, with the menu's title. A null window draws no menu,
 // for tests: the overlay still opens, closes and holds input back. A window with no GL

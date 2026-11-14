@@ -28,7 +28,8 @@ bool menu_drawn() {
 }
 
 // A page as a game might add one, with the kinds of widget the menu's own pages use and a
-// slider, so the dumps show each kind.
+// slider, so the dumps show each kind. The slider's value is beside it, as the Buttons view has
+// its own, not on its grab (theme.h).
 void sample_page(void*) {
     static bool on = true;
     static int pick = 1;
@@ -38,7 +39,9 @@ void sample_page(void*) {
     ImGui::RadioButton("First", &pick, 0);
     ImGui::SameLine();
     ImGui::RadioButton("Second", &pick, 1);
-    ImGui::SliderFloat("Level", &level, 0.0f, 1.0f);
+    ImGui::SliderFloat("##Level", &level, 0.0f, 1.0f, "");
+    ImGui::SameLine();
+    ImGui::Text("Level %.2f", level);
     ImGui::TextDisabled("A dimmed note.");
     ImGui::Button("A button");
 }
