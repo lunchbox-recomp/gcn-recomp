@@ -132,9 +132,12 @@ bool face_is(const Bytes& b, size_t face, std::string_view want) {
 
 constexpr int kRoles = 5;
 constexpr const char* kRoleNames[kRoles] = {"title", "tabs", "items", "body", "footer"};
-// The atlas's texture is RGBA, as the GL renderer takes it, so 2048 by 1024 is 8 MB. Past that
-// Dear ImGui makes room by dropping glyphs of sizes no longer drawn.
-constexpr int kTexWidth = 2048, kTexHeight = 1024;
+// The atlas's texture is RGBA, as the GL renderer takes it, so 1024 by 2048 is 8 MB. Dear ImGui
+// grows it height first (ImFontAtlasTextureGrow), doubling its height while that's no more than
+// its width and its width otherwise, so it reaches a cap twice as tall as wide; at 2048 by 1024
+// it would stop at 1024 square, 4 MB. Past the cap it makes room by dropping glyphs of sizes no
+// longer drawn.
+constexpr int kTexWidth = 1024, kTexHeight = 2048;
 
 ImFontAtlas* g_atlas;
 ImFont* g_roles[kRoles];

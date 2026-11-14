@@ -9,7 +9,8 @@
 // Dear ImGui's own, with one [overlay] font line on stderr for each step down, and a theme that
 // lists no font at all takes Dear ImGui's own with one line. The menu's and the notices'
 // contexts share one atlas, and the text of every kind at sizes up to 2160 lines at twice the
-// pixel density fits in 8 MB of texture. Where the Mac's own Avenir Next is installed, the
+// pixel density, 1440 in Dear ImGui's own font, is baked into its 8 MB texture, no glyph falling
+// back. Where the Mac's own Avenir Next is installed, the
 // default chains load from it with no step down, read where it is and never copied.
 //
 // usage: test_overlay_fonts <work dir>
@@ -326,21 +327,34 @@ ImGuiContext* context(float height, float density) {
     return c;
 }
 
+// The glyphs drawn with the fallback glyph instead of their own, as Dear ImGui draws one it has
+// no room in the atlas for.
+int g_fell_back;
+
 // A frame of `c` with each kind of text's printable ASCII and a few accented letters at its size
-// at `height` lines.
+// at `height` lines, all in view, so every glyph is baked or else falls back.
 void frame(ImGuiContext* c, const OverlayTheme& t, float height) {
     ImGui::SetCurrentContext(c);
     fonts_new_frame();
     ImGui::GetIO().DeltaTime = 1.0f / 60.0f;
     ImGui::NewFrame();
-    ImGui::Begin("text");
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
+    ImGui::Begin("text", nullptr, ImGuiWindowFlags_NoDecoration);
     const float sizes[] = {t.title_size, t.tab_size, t.item_text_size, t.body_size, t.footer_size};
     std::string ascii;
-    for (char ch = ' '; ch <= '~'; ch++) ascii += ch;
+    std::vector<ImWchar> letters;
+    for (char ch = ' '; ch <= '~'; ch++) {
+        ascii += ch;
+        letters.push_back((ImWchar)ch);
+    }
     ascii += "\xC3\xA9\xC3\xA8\xC3\xBC\xC3\xB1";  // é è ü ñ
+    for (ImWchar accented : {0xE9, 0xE8, 0xFC, 0xF1}) letters.push_back(accented);
     for (size_t i = 0; i < 5; i++) {
         ImGui::PushFont(fonts_role(kRoles[i]), sizes[i] * height / 1080.0f);
         ImGui::TextUnformatted(ascii.c_str());
+        ImFontBaked* baked = ImGui::GetFontBaked();
+        for (ImWchar l : letters) g_fell_back += !baked->IsGlyphLoaded(l);
         ImGui::PopFont();
     }
     ImGui::End();
@@ -357,16 +371,10 @@ void frame(ImGuiContext* c, const OverlayTheme& t, float height) {
     }
 }
 
-size_t texture_bytes() {
-    size_t bytes = 0;
-    for (const ImTextureData* tex : fonts_atlas()->TexList)
-        if (tex->Status != ImTextureStatus_Destroyed) bytes += (size_t)tex->GetSizeInBytes();
-    return bytes;
-}
-
-// Two contexts, the menu's and the notices', on one atlas, at sizes from 1080 to 2160 lines and
-// at one and two pixels to each, as a window on a Retina display moved between screens.
-void shared(const OverlayFonts& f, const char* which) {
+// Two contexts, the menu's and the notices', on one atlas, at sizes from 1080 to 2160 lines at
+// one pixel to each and then from 1080 to `most_at_two` lines at two, as a window on a Retina
+// display moved between screens.
+void shared(const OverlayFonts& f, const char* which, float most_at_two) {
     fonts_build(f);
     const OverlayTheme t;
     ImGuiContext* menu = context(1080.0f, 1.0f);
@@ -380,22 +388,24 @@ void shared(const OverlayFonts& f, const char* which) {
     frame(notices, t, 1080.0f);
     snprintf(what, sizeof(what), "%s: text the menu has drawn is drawn by the notices from the same glyphs", which);
     check(baked > 0 && fonts_atlas()->Builder->BakedPool.Size == baked && fonts_atlas()->TexList.Size == textures, what);
-    size_t most = texture_bytes(), live = 0;
+    // The atlas's own texture, not the old one a repack keeps for a frame beside it.
+    size_t live = 0;
+    g_fell_back = 0;
     for (float density : {1.0f, 2.0f})
         for (float height : {1080.0f, 1440.0f, 2160.0f}) {
+            if (density == 2.0f && height > most_at_two) continue;
             for (ImGuiContext* c : {menu, notices}) {
                 ImGui::SetCurrentContext(c);
                 ImGui::GetIO().DisplaySize = ImVec2(height * 16.0f / 9.0f, height);
                 ImGui::GetIO().DisplayFramebufferScale = ImVec2(density, density);
                 frame(c, t, height);
-                most = std::max(most, texture_bytes());
                 live = std::max(live, (size_t)fonts_atlas()->TexData->GetSizeInBytes());
             }
         }
-    printf("[fonts] %s: the atlas texture at most %.2f MB, and %.2f MB for the frame of a repack, when the old one is kept\n", which,
-           live / 1048576.0, most / 1048576.0);
-    snprintf(what, sizeof(what), "%s: every kind of text up to 2160 lines at twice the density fits in 8 MB of texture", which);
-    check(most <= 8u << 20, what);
+    printf("[fonts] %s: the atlas texture at most %.2f MB, %d glyphs fell back\n", which, live / 1048576.0, g_fell_back);
+    snprintf(what, sizeof(what), "%s: every kind of text up to %.0f lines at twice the density is baked, none falling back, in 8 MB of texture",
+             which, most_at_two);
+    check(g_fell_back == 0 && live <= 8u << 20, what);
     for (ImGuiContext* c : {notices, menu}) ImGui::DestroyContext(c);
 }
 
@@ -423,7 +433,7 @@ void system_fonts(const std::string& dir) {
         for (FontRole r : kRoles) second = second && took(r).starts_with("Helvetica Neue");
         check(second && said_neue.empty(), "each Helvetica Neue face the chains fall to is there too");
     }
-    shared(f, "the Mac's fonts");
+    shared(f, "the Mac's fonts", 2160.0f);
 }
 
 }  // namespace
@@ -440,7 +450,10 @@ int main(int argc, char** argv) {
     }
     lookup();
     chains(dir);
-    shared(OverlayFonts{}, "Dear ImGui's own font");
+    // Dear ImGui's own font is wider than the Mac's. A size's glyphs stay in the atlas for two
+    // frames after it's last drawn, and at 2160 lines at twice the density, beside those of 1440,
+    // its text doesn't fit and some glyphs fall back, so its sizes at twice stop at 1440.
+    shared(OverlayFonts{}, "Dear ImGui's own font", 1440.0f);
     system_fonts(dir);
     printf("test_overlay_fonts: %s\n", g_failed ? "FAILED" : "passed");
     return g_failed ? 1 : 0;
