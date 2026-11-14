@@ -180,19 +180,24 @@ int main() {
     put32(bad, 4 * 12 + 0, 0x00FFFFFF);
     check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "a name past the end is refused");
     bad = fst;
+    put32(bad, 4 * 12 + 0, (uint32_t)(bad.size() - 5 * 12));  // the root's opening.bnr's name, just past the end
+    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "and one starting just past it");
+    bad = fst;
     put32(bad, 2 * 12 + 8, 2);  // a directory that ends where it starts
     check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "a directory going nowhere is refused");
     bad = fst;
     put32(bad, 2 * 12 + 8, 0x10000);  // one past the table
-    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "and one ending past the table");
+    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "one ending past the table ends the walk");
 
     Disc past = make_disc(fst, bnr1);
     put32(past.bytes, 0x424, 0x7FFFFFF0);
     check(!banner_read(past.reader(), rgba.data()), "a table past the disc's end is refused");
     Disc short_banner = make_disc(make_fst({{false, "opening.bnr", 0x8000, 0x1960}}), std::vector<uint8_t>(0x100, 0));
     check(!banner_read(short_banner.reader(), rgba.data()), "and a banner past it");
-    Disc wrong_size = make_disc(make_fst({{false, "opening.bnr", 0x8000, 0x1000}}), bnr1);
-    check(!banner_read(wrong_size.reader(), rgba.data()), "and one whose file isn't a banner's size");
+    const std::vector<uint8_t> wrong_fst = make_fst({{false, "opening.bnr", 0x8000, 0x1000}});
+    Disc wrong_size = make_disc(wrong_fst, bnr1);
+    check(!banner_read(wrong_size.reader(), rgba.data()) && wrong_size.read == 8 + wrong_fst.size(),
+          "and one whose file isn't a banner's size, read no further");
 
     return g_failed ? 1 : 0;
 }

@@ -51,7 +51,7 @@ bool fst_find_root_file(const uint8_t* fst, size_t size, const char* name, uint3
         const uint8_t* e = fst + (size_t)i * 12;
         if (e[0]) {  // a directory: on past its entries
             const uint32_t end = be32(e + 8);
-            if (end <= i || end > count) return false;
+            if (end <= i) return false;
             i = end;
             continue;
         }

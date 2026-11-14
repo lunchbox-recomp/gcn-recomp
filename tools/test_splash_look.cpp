@@ -86,15 +86,16 @@ int main() {
     check(black.size() == 4 && black[2] == (SplashRect{5, 0, 1, 1, 0x204060}) && black[3] == (SplashRect{95, 31, 1, 1, 0xFF0000}),
           "a clear pixel is left out, and rows go top to bottom");
     const std::vector<SplashRect> blue = banner_runs(rgba.data(), 0x204060);
-    bool halfway = blue.size() == 3;
-    for (int sh = 0; halfway && sh < 24; sh += 8) {
-        const double got = (blue[1].rgb >> sh) & 0xFF, mid = (((0x204060 >> sh) & 0xFF) + 255) / 2.0;
-        if (got < mid - 1 || got > mid + 1) halfway = false;
-    }
-    check(halfway, "half-clear white over a colour is halfway between them");
+    // (255 x 128 + c x 127) / 255 for c = 0x20, 0x40, 0x60 is 143.9, 159.9 and 175.8 before the
+    // rounding, so a blend that cuts the fraction off is 0x8F9FAF.
+    check(blue.size() == 3 && blue[1].rgb == 0x90A0B0, "half-clear white over a colour is halfway, rounded to the nearest");
     check(blue.size() == 3 && blue[2] == (SplashRect{95, 31, 1, 1, 0xFF0000}), "and a pixel the colour of the background is left out");
     std::vector<uint8_t> clear(kBannerW * kBannerH * 4, 0);
     check(banner_runs(clear.data(), 0x18191C).empty(), "a clear banner is no runs");
+    set(clear, 10, 7, 255, 0, 0, 255);
+    set(clear, 12, 7, 255, 0, 0, 255);
+    const std::vector<SplashRect> gap = banner_runs(clear.data(), 0x000000);
+    check(gap.size() == 2 && gap[0].w == 1 && gap[1].x == 12, "two of a colour with a clear pixel between are two runs");
 
     check(splash_scale(2560, 1920) == 8 && splash_scale(1280, 960) == 4, "the banner is a third of the window at most");
     check(splash_scale(2560, 600) == 6, "of its height too");
