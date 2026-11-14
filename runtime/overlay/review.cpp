@@ -1,12 +1,14 @@
-// The menu's output dumps under --dump-output (overlay.h): its frame watched until it settles,
-// then drawn again into a target of the window's size, over the held frame or, with
-// GCN_OVERLAY_PLAIN, over plain grey, and read back to a PNG in the dump directory.
+// The menu for a run nobody is at (overlay.h): GCN_OVERLAY_AT and GCN_OVERLAY_PAGE read, and
+// under --dump-output its frame watched until it settles, then drawn again into a target of the
+// window's size, over the held frame or, with GCN_OVERLAY_PLAIN, over plain grey, and read back
+// to a PNG in the dump directory.
 #include "overlay/overlay.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
 #include <SDL3/SDL.h>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 #include "imgui.h"
@@ -39,12 +41,35 @@ uint64_t hash_draw(const ImDrawData* d) {
 
 }  // namespace
 
-void dump_watch_reset() {
+bool review_parse_at(const char* e, long long& frame, long& left) {
+    char* end = nullptr;
+    const unsigned long f = strtoul(e, &end, 10);
+    if (end != e && *end == ':' && end[1] >= '0' && end[1] <= '9') {
+        const long l = strtol(end + 1, &end, 10);
+        if (!*end && l > 0 && f <= UINT32_MAX) {
+            frame = (long long)f;
+            left = l;
+            return true;
+        }
+    }
+    fprintf(stderr, "[overlay] GCN_OVERLAY_AT=%s isn't <frame>:<host frames>, so it doesn't open\n", e);
+    return false;
+}
+
+int review_parse_page(const char* e, int last) {
+    char* end = nullptr;
+    const long n = strtol(e, &end, 10);
+    if (end != e && !*end && n >= 0 && n <= last) return (int)n;
+    fprintf(stderr, "[overlay] GCN_OVERLAY_PAGE=%s isn't a page from 0 to %d, so it opens where it was\n", e, last);
+    return -1;
+}
+
+void review_watch_reset() {
     g_last = 0;
     g_same = 0;
 }
 
-bool dump_settled(const ImDrawData* d) {
+bool review_settled(const ImDrawData* d) {
     if (!d || d->TotalVtxCount <= 0) return false;
     const uint64_t h = hash_draw(d);
     g_same = h == g_last ? g_same + 1 : 0;
@@ -52,7 +77,7 @@ bool dump_settled(const ImDrawData* d) {
     return g_same >= kSettleFrames;
 }
 
-void dump_menu(SDL_Window* window, ImDrawData* d, int page, bool plain) {
+void review_dump(SDL_Window* window, ImDrawData* d, int page, bool plain) {
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window, &w, &h);
     if (w <= 0 || h <= 0) return;

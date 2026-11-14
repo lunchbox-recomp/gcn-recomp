@@ -21,10 +21,15 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
 
-// dump.cpp's: the watch on the menu's frame as it settles, and its dump.
-void dump_watch_reset();
-bool dump_settled(const ImDrawData* d);
-void dump_menu(SDL_Window* window, ImDrawData* d, int page, bool plain);
+// review.cpp's. GCN_OVERLAY_AT=<frame>:<host frames>, both whole numbers, the second over 0,
+// into `frame` and `left`, which a value it refuses leaves alone. GCN_OVERLAY_PAGE=<n>, a page
+// from 0 (Display) to `last`, or -1 for a value it refuses. Then the watch on the menu's frame
+// as it settles, and its dump.
+bool review_parse_at(const char* e, long long& frame, long& left);
+int review_parse_page(const char* e, int last);
+void review_watch_reset();
+bool review_settled(const ImDrawData* d);
+void review_dump(SDL_Window* window, ImDrawData* d, int page, bool plain);
 // overlay_display.cpp's.
 void display_init(const OverlayPicture& picture);
 void display_page(SDL_Window* window);
@@ -124,7 +129,7 @@ void set_open(bool on) {
     g_focus = true;
     g_dumped = false;
     g_select = g_page;
-    dump_watch_reset();
+    review_watch_reset();
 }
 
 // Every gamepad SDL has, held open, so that the menu reads each one and each one's Back opens
@@ -281,35 +286,8 @@ bool is_input(const SDL_Event& e) {
     }
 }
 
-// GCN_OVERLAY_AT=<frame>:<host frames>, both whole numbers, the second over 0.
-void parse_at(const char* e) {
-    char* end = nullptr;
-    const unsigned long frame = strtoul(e, &end, 10);
-    if (end != e && *end == ':' && end[1] >= '0' && end[1] <= '9') {
-        const long left = strtol(end + 1, &end, 10);
-        if (!*end && left > 0 && frame <= UINT32_MAX) {
-            g_at_frame = (long long)frame;
-            g_at_left = left;
-            return;
-        }
-    }
-    fprintf(stderr, "[overlay] GCN_OVERLAY_AT=%s isn't <frame>:<host frames>, so it doesn't open\n", e);
-}
-
 // GCN_OVERLAY_AT's frame has been presented, so overlay_draw opens the menu.
 bool at_frame_due() { return g_at_frame >= 0 && gx::present_count() >= g_at_frame; }
-
-// GCN_OVERLAY_PAGE=<n>, a page from 0 (Display) to the last one added.
-void parse_page(const char* e) {
-    const int last = 1 + (int)g_pages.size();
-    char* end = nullptr;
-    const long n = strtol(e, &end, 10);
-    if (end != e && !*end && n >= 0 && n <= last) {
-        g_page = (int)n;
-        return;
-    }
-    fprintf(stderr, "[overlay] GCN_OVERLAY_PAGE=%s isn't a page from 0 to %d, so it opens where it was\n", e, last);
-}
 
 // A page's tab, selected by the draw after the menu opens where GCN_OVERLAY_PAGE gave it.
 bool page_tab(const char* title, int index) {
@@ -456,9 +434,9 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_window = window;
     g_title = title;
     display_init(picture);
-    if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) parse_at(e);
-    g_page = -1;
-    if (const char* e = getenv_nonempty("GCN_OVERLAY_PAGE")) parse_page(e);
+    if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) review_parse_at(e, g_at_frame, g_at_left);
+    const char* page = getenv_nonempty("GCN_OVERLAY_PAGE");
+    g_page = page ? review_parse_page(page, 1 + (int)g_pages.size()) : -1;
     g_plain = getenv_nonempty("GCN_OVERLAY_PLAIN") != nullptr;
     if (!window) return;
     g_gl = SDL_GL_GetCurrentContext() != nullptr;
@@ -580,11 +558,11 @@ void overlay_draw() {
     }
     notices_frame();
     if (!g_open || !paused()) return;
-    // The dump waits for a frame that looks as the ones before it did (dump.cpp).
+    // The dump waits for a frame that looks as the ones before it did (review.cpp).
     const bool dumps = gx::g_dump_output && gx::g_dump_dir;
-    if (!g_dumped && dumps && dump_settled(ImGui::GetDrawData())) {
+    if (!g_dumped && dumps && review_settled(ImGui::GetDrawData())) {
         g_dumped = true;
-        dump_menu(g_window, ImGui::GetDrawData(), g_page, g_plain);
+        review_dump(g_window, ImGui::GetDrawData(), g_page, g_plain);
     }
     if (g_at_left > 0 && --g_at_left == 0) {
         if (dumps && !g_dumped) fprintf(stderr, "[overlay] the menu closed before its frame settled, so there's no dump\n");
