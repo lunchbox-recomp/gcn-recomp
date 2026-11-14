@@ -299,15 +299,15 @@ void tabs_chord(const std::string& dir) {
     check(overlay_open() && overlay_page() == 1,
           "Z down as the menu closes and let go while it's closed turns no page as the menu opens again");
 
-    // The chord pressed in a button at a time, as a hand does, and held its second.
+    // The chord pressed in a button at a time, as a hand does, and held its second. The page
+    // is checked at each press, since L's turn back and R's on would cancel out.
     const int showing = overlay_page();
-    set_button(cube, SDL_GAMEPAD_BUTTON_MISC3, true);
-    host_frame(guest);
-    set_button(cube, SDL_GAMEPAD_BUTTON_MISC4, true);
-    host_frame(guest);
-    set_button(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true);
-    host_frame(guest);
-    const bool held_still = overlay_open() && overlay_page() == showing;
+    bool held_still = true;
+    for (int b : {SDL_GAMEPAD_BUTTON_MISC3, SDL_GAMEPAD_BUTTON_MISC4, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
+        set_button(cube, b, true);
+        host_frame(guest);
+        held_still = held_still && overlay_open() && overlay_page() == showing;
+    }
     g_host_ns += 1000000000;
     host_frame(guest);
     const bool closed = !overlay_open() && overlay_page() == showing;
