@@ -86,18 +86,18 @@ static_assert(2.0f * kUiSoundLongestEdgeMs <= kUiSoundLongestMs, "a voice's two 
 
 UiSoundTheme ui_sound_fit(const UiSoundTheme& theme) {
     UiSoundTheme t = theme;
-    t.peak_dbfs = std::isfinite(t.peak_dbfs) ? std::min(t.peak_dbfs, kUiSoundMaxDbfs) : kUiSoundMaxDbfs;
-    t.pan = std::isfinite(t.pan) ? std::clamp(t.pan, 0.0f, 1.0f) : 0.0f;
+    t.peak_dbfs = !std::isnan(t.peak_dbfs) ? std::min(t.peak_dbfs, kUiSoundMaxDbfs) : kUiSoundMaxDbfs;
+    t.pan = !std::isnan(t.pan) ? std::clamp(t.pan, 0.0f, 1.0f) : 0.0f;
     for (UiVoice& v : t.voices) {
-        for (float& hz : v.notes) hz = std::isfinite(hz) && hz >= kUiSoundLowestHz ? std::min(hz, 20000.0f) : 0.0f;
+        for (float& hz : v.notes) hz = !std::isnan(hz) && hz >= kUiSoundLowestHz ? std::min(hz, 20000.0f) : 0.0f;
         const auto edge = [](float ms) {
-            return std::isfinite(ms) ? std::clamp(ms, kUiSoundEdgeMs, kUiSoundLongestEdgeMs) : kUiSoundEdgeMs;
+            return !std::isnan(ms) ? std::clamp(ms, kUiSoundEdgeMs, kUiSoundLongestEdgeMs) : kUiSoundEdgeMs;
         };
         v.attack_ms = edge(v.attack_ms);
         v.release_ms = edge(v.release_ms);
-        v.decay_ms = std::isfinite(v.decay_ms) && v.decay_ms > 0.0f ? std::max(v.decay_ms, kUiSoundEdgeMs) : 0.0f;
+        v.decay_ms = !std::isnan(v.decay_ms) && v.decay_ms > 0.0f ? std::max(v.decay_ms, kUiSoundEdgeMs) : 0.0f;
         const float edges = v.attack_ms + v.release_ms;  // never over kUiSoundLongestMs
-        v.ms = std::isfinite(v.ms) ? std::clamp(v.ms, edges, kUiSoundLongestMs) : edges;
+        v.ms = !std::isnan(v.ms) ? std::clamp(v.ms, edges, kUiSoundLongestMs) : edges;
     }
     return t;
 }

@@ -19,7 +19,9 @@
 // attack, release or decay under 2 ms is held to that. No value of a theme hangs or crashes the making:
 // every note 0, below 0, under 20 Hz or not a number makes every voice silent and its length, a
 // single such note is left out, and an attack or release of 1e9 ms, or the largest float, is held
-// to 1 s, each voice keeping its shape and lasting no more than 2 s.
+// to 1 s, each voice keeping its shape and lasting no more than 2 s. Its level, pan, notes,
+// length, attack, decay or release at +inf or -inf makes each voice as the largest or lowest float
+// does.
 //
 // The queue: off, the default, a play queues nothing and a pull adds nothing. On, a voice starts
 // in the pull after it's queued, audible in that pull, and plays exactly as it was made across
@@ -344,6 +346,35 @@ void odd_values() {
     check(held(slow) && held(late) && held(longest) &&
               ui_sound_render(longest, UiSound::refused).size() == 2 * 96000u,
           "each attack and release held to 1 s and each voice to 2 s");
+
+    // The default theme with one kind of its values, kFields[field], each `v`.
+    static const char* const kFields[] = {"level", "pan", "notes", "length", "attack", "decay", "release"};
+    const auto with = [](int field, float v) {
+        UiSoundTheme t = ui_sound_theme_default();
+        if (field == 0) t.peak_dbfs = v;
+        if (field == 1) t.pan = v;
+        for (UiVoice& voice : t.voices) {
+            if (field == 2)
+                for (float& note : voice.notes) note = v;
+            float* const ms[] = {&voice.ms, &voice.attack_ms, &voice.decay_ms, &voice.release_ms};
+            if (field >= 3) *ms[field - 3] = v;
+        }
+        return t;
+    };
+    const float inf = std::numeric_limits<float>::infinity(), largest = std::numeric_limits<float>::max();
+    for (float sign : {1.0f, -1.0f}) {
+        std::string differ;
+        for (int field = 0; field < 7; field++)
+            for (int i = 0; i < kUiSounds; i++)
+                if (ui_sound_render(with(field, sign * inf), (UiSound)i) !=
+                    ui_sound_render(with(field, sign * largest), (UiSound)i)) {
+                    differ += std::string(" ") + kFields[field] + "/" + kNames[i];
+                }
+        if (!differ.empty()) printf("     made otherwise:%s\n", differ.c_str());
+        check(differ.empty(), std::string("a theme's level, pan, notes, length, attack, decay or release at ") +
+                                  (sign > 0 ? "+inf makes each voice as the largest float does"
+                                            : "-inf makes each voice as the lowest float does"));
+    }
 }
 
 void themes() {
