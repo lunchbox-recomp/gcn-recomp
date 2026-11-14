@@ -255,10 +255,15 @@ void capture(const std::string& path, const std::function<void()>& f) {
 }
 
 #ifdef GCN_OVERLAY
-bool host_frame(Guest& g) {
+bool frontend_frame() {
     const bool running = pump_events();
     update_pads(0);
     overlay_menu_frame();
+    return running;
+}
+
+bool host_frame(Guest& g) {
+    const bool running = frontend_frame();
     guest_on(g);
     return running;
 }

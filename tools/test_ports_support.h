@@ -150,8 +150,10 @@ struct Guest {
     }
 };
 
-// One host frame, the menu's included where there's a window, then the guest on past its next
-// boundary, or held there. pump_events' answer.
+// One frame of the frontend, the menu's included where there's a window, with no guest stepped.
+// pump_events' answer.
+bool frontend_frame();
+// frontend_frame, then the guest on past its next boundary, or held there. pump_events' answer.
 bool host_frame(Guest& g);
 // The guest on past its next boundary, or held there: host_frame's end.
 void guest_on(Guest& g);
