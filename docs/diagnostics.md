@@ -859,7 +859,9 @@ window opens, and a `GCN_SPLASH` that isn't 0 or 1 says so and leaves the build'
 
 `ninja test_banner` builds `tools/test_banner.cpp`, which decodes banners and walks file
 tables the test makes up. It covers every pixel mode and alpha, the tile order and both
-banner kinds, and the tables and banners to refuse. `ninja test_splash_look` builds
+banner kinds, and the tables and banners to refuse, with a table for each of the walk's
+bounds that only it refuses. `ninja unit` builds it with ASan and UBSan where the compiler
+has them, so a read past a table stops it. `ninja test_splash_look` builds
 `tools/test_splash_look.cpp`, which checks the colour flag, `GCN_SPLASH`, the 300 ms rule,
 the banner's runs and where they and the bar go. `ninja test_clear_draw` checks the
 clear-drawn font and rects on a fake GL. `ninja bench_splash` measures a splash frame and the

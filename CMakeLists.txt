@@ -827,6 +827,14 @@ function(gcn_add_game)
     endif()
   endif()
 
+  # Whether the compiler has the address and undefined behaviour sanitizers, for the checks
+  # that read data cut short: the fonts' (test_overlay_fonts) and the disc banner's
+  # (test_banner).
+  include(CheckCXXSourceCompiles)
+  set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
+  check_cxx_source_compiles("int main() { return 0; }" GCN_HAVE_SANITIZERS)
+  unset(CMAKE_REQUIRED_FLAGS)
+
   # The gamepad port checks (tools/test_ports.sh runs them): the frontend's input loop and
   # the SI layer against SDL's virtual joysticks. Needs no disc image, and nothing of the
   # game: tools/test_ports.cpp includes main.cpp and hw/si.cpp itself, then its checks from
@@ -884,10 +892,6 @@ function(gcn_add_game)
       target_compile_definitions(test_overlay_fonts PRIVATE GCN_OVERLAY)
       # The address and undefined behaviour sanitizers, where the compiler has them, so a read
       # past the end of one of the checks' cut-off font files stops them.
-      include(CheckCXXSourceCompiles)
-      set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
-      check_cxx_source_compiles("int main() { return 0; }" GCN_HAVE_SANITIZERS)
-      unset(CMAKE_REQUIRED_FLAGS)
       if(GCN_HAVE_SANITIZERS)
         target_compile_options(test_overlay_fonts PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all
           -fno-omit-frame-pointer)
@@ -987,6 +991,13 @@ function(gcn_add_game)
     _gcn_set_standards(test_banner)
     target_include_directories(test_banner PRIVATE ${RT})
     target_compile_options(test_banner PRIVATE ${GCN_RUNTIME_WARNINGS})
+    # The file table comes off the disc as it is, so its walk is checked under the sanitizers
+    # too: a read past the table stops the checks, not only a wrong answer.
+    if(GCN_HAVE_SANITIZERS)
+      target_compile_options(test_banner PRIVATE -fsanitize=address,undefined -fno-sanitize-recover=all
+                             -fno-omit-frame-pointer)
+      target_link_options(test_banner PRIVATE -fsanitize=address,undefined)
+    endif()
 
     # The boot splash's look (tools/test_splash_look.cpp): runtime/gx/splash_look.cpp's colour,
     # bar rule, banner runs and placement, on banners the test makes up.

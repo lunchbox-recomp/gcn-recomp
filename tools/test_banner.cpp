@@ -2,13 +2,15 @@
 //
 // runtime/banner.cpp finds opening.bnr in a disc's file table and decodes its RGB5A3 picture.
 // Every disc and banner here is made up by this file: the pixel modes and all eight alphas,
-// the tile order, BNR1 and BNR2, and the tables and banners it must refuse.
+// the tile order, BNR1 and BNR2, and the tables and banners it must refuse. `ninja unit` builds
+// it with the address and undefined-behaviour sanitizers where the compiler has them.
 //
 // usage: test_banner
 // Exits 0 only if every check passes.
 #include "banner.h"
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -170,18 +172,28 @@ int main() {
     std::vector<uint8_t> big = fst;
     big.resize((1u << 20) + 1, 0);
     check(!fst_find_root_file(big.data(), big.size(), "opening.bnr", &off, &len), "one over 1 MiB is refused");
-    put32(bad, 8, 0x10000);
-    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "a count whose entries don't fit is refused");
-    bad = fst;
-    bad.back() = 'x';
-    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "a table not ending in a NUL is refused");
+    // Each of the next three is refused by one bound alone. Past the table's end, in the bytes
+    // the caller has there, is what a walk without it would read: a name that matches, or the
+    // end of a block exactly the table's size, which the sanitizers stop (CMakeLists.txt).
+    {
+        // 13 bytes: the root's entry, saying there are two, and a NUL. The second isn't there.
+        std::unique_ptr<uint8_t[]> t(new uint8_t[13]());
+        t[0] = 1;
+        t[11] = 2;
+        check(!fst_find_root_file(t.get(), 13, "opening.bnr", &off, &len),
+              "a count whose entries don't fit is refused, with nothing past them read");
+    }
+    // The table ends with the root's opening.bnr's name cut to "opening"; ".bnr" and its NUL
+    // come after.
+    check(!fst_find_root_file(fst.data(), fst.size() - 5, "opening.bnr", &off, &len),
+          "a table not ending in a NUL is refused, though its last name goes on past it");
+    // The table ends before the root's opening.bnr's name, which is there just past it.
+    check(!fst_find_root_file(fst.data(), fst.size() - 12, "opening.bnr", &off, &len),
+          "a name starting at the table's end is refused, though it matches past it");
     bad = fst;
     put32(bad, 3 * 12 + 0, 0x00FFFFFF);  // the first opening.bnr's name, far past the end
     put32(bad, 4 * 12 + 0, 0x00FFFFFF);
-    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "a name past the end is refused");
-    bad = fst;
-    put32(bad, 4 * 12 + 0, (uint32_t)(bad.size() - 5 * 12));  // the root's opening.bnr's name, just past the end
-    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "and one starting just past it");
+    check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "a name far past the end is refused");
     bad = fst;
     put32(bad, 2 * 12 + 8, 2);  // a directory that ends where it starts
     check(!fst_find_root_file(bad.data(), bad.size(), "opening.bnr", &off, &len), "a directory going nowhere is refused");
