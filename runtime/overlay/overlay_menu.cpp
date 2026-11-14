@@ -150,6 +150,7 @@ void draw_menu() {
     } else if (overlay_bindings_shown()) {
         bindings_page();
     } else {
+        tabs_focus(overlay_open());
         page();
         actions();
     }
@@ -238,7 +239,7 @@ void menu_clear_pages() {
 
 const std::vector<std::string>& overlay_test_pages() { return g_titles; }
 
-void overlay_test_pick_page(int page) { tabs_show(page); }
+void overlay_test_pick_page(int page) { tabs_pick(page, false); }
 
 bool overlay_test_page_shown() { return g_on_page; }
 #endif
