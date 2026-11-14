@@ -34,6 +34,8 @@ void ui_sound_mix(int16_t* out, int frames);
 // as the audio thread last left them.
 size_t ui_sound_queued();
 int ui_sound_playing();
+#ifdef GCN_OVERLAY_TEST
 // For a check with no audio thread (tools/test_ports_sounds.cpp): the ids queued, in order,
 // taken off the queue as a pull takes them, but not played.
 std::vector<UiSound> ui_sound_take();
+#endif
