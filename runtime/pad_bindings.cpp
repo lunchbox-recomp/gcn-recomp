@@ -72,6 +72,22 @@ bool parse_fraction(const std::string& word, int& raw) {
 // escapes them.
 bool escaped_in_name(unsigned char c) { return c == '"' || c == '%' || c < 0x20 || c == 0x7F; }
 
+// A name as a line gives it, with the escapes line_for writes decoded. Any other `%`, as in a
+// name a file had before names were escaped, is kept as it is.
+std::string name_decode(const std::string& word) {
+    std::string out, byte;
+    for (size_t i = 0; i < word.size(); i++) {
+        if (word[i] == '%' && percent_decode(word.substr(i, 3), byte) && byte.size() == 1 &&
+            escaped_in_name((unsigned char)byte[0])) {
+            out += byte;
+            i += 2;
+        } else {
+            out += word[i];
+        }
+    }
+    return out;
+}
+
 std::string line_for(const SavedBinding& b, PadControl c) {
     const PadBinding& k = b.binding;
     const PadSource& s = k.source[(int)c];
@@ -343,7 +359,7 @@ SavedBindings bindings_parse(const std::string& text, const char* name) {
         } else if (block < 0) {
             err = "a control before any gamepad's line";
         } else if (parse_control(w, saved[block], err)) {
-            if (saved[block].name.empty() && !percent_decode(w[2], saved[block].name)) saved[block].name = w[2];
+            if (saved[block].name.empty()) saved[block].name = name_decode(w[2]);
             continue;
         }
         fprintf(stderr, "%s:%d: %s, so the line is skipped\n", name, n, err.c_str());

@@ -410,6 +410,12 @@ void file_text() {
                 bindings_find(read, odd, PadBinding{}) == m && bindings_format(read) == text;
     }
     check(marks, "a serial or a name with a '#', a '=' or a '\"' in it comes back as it was, with nothing said");
+    // A name a file had before names were escaped, with a `%XX` this file never writes for one.
+    const SavedBindings old = bindings_parse("# gamepad 030000005e040000130b000000000000 -\n"
+                                             "A = \"Pad %41 %22\" gamepad west\n", "pads.txt");
+    check(old.size() == 1 && old[0].name == "Pad %41 \"" &&
+              bindings_format(old).find("A = \"Pad %2541 %22\" gamepad west\n") != std::string::npos,
+          "in a name, a '%' that isn't one of the escapes names are written with reads as it is");
 }
 
 void file_forgives() {

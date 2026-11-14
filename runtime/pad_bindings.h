@@ -32,8 +32,9 @@
 // and a line that can't be read is reported and skipped. The name in the lines is the
 // gamepad's, for controls.txt; this file goes by the block's first line, split on whitespace
 // alone. The name is percent-encoded where it holds a `"`, a `%` or a control character,
-// which controls.txt doesn't decode. Two gamepads with the same GUID and no serial share a
-// block.
+// which controls.txt doesn't decode, and only those escapes are decoded here, so an older
+// file's name with another `%XX` in it reads as it is. Two gamepads with the same GUID and no
+// serial share a block.
 //
 // Press-to-bind (bind_listen, bind_hear) waits 5 s for the next button, or an axis pushed past
 // half its travel, on one gamepad. Back and Guide cancel and are never bound. A button held or
