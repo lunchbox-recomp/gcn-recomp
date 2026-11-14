@@ -7,6 +7,7 @@
 #include "overlay/fonts.h"
 #include "overlay/footer.h"
 #include "overlay/review.h"
+#include "overlay/state.h"
 #include "overlay/tabs.h"
 #include "gx/render_gl.h"
 #include "pause.h"
@@ -40,12 +41,6 @@ void menu_frame();
 #ifdef GCN_OVERLAY_TEST
 void menu_clear_pages();
 #endif
-// Below, for overlay_input.cpp, overlay_menu.cpp and footer.cpp too: whether overlay_init has
-// run, the window the menu is over, null in tests, which draw nothing, and the menu opened or
-// closed.
-bool overlay_ready();
-SDL_Window* overlay_window();
-void overlay_set_open(bool on);
 // Below, for the notices too: a Dear ImGui context over `window`, made current, with the GL
 // backend where `gl` says the window has a GL context and none otherwise, so it's laid out and
 // never drawn. It writes no file, opens no link, offers no item picker and reads no gamepad

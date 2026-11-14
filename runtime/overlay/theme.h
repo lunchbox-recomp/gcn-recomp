@@ -154,3 +154,5 @@ void theme_set(const OverlayTheme& theme);
 void theme_style(const OverlayTheme& theme, float scale);
 float theme_scale(int height);
 void theme_fit(int height);
+// One of the theme's 0xRRGGBBAA colours as Dear ImGui packs one (IM_COL32), its ImU32.
+uint32_t theme_colour(uint32_t rgba);

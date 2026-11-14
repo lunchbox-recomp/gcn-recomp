@@ -3,6 +3,7 @@
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
 #include "overlay/footer.h"
+#include "overlay/state.h"
 #include "overlay/tabs.h"
 #include "runtime.h"  // host_ns
 #include <SDL3/SDL.h>
@@ -14,10 +15,7 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 
-// overlay.cpp's: whether overlay_init has run, the window the menu is over, and the current
-// context's style fitted to the window.
-bool overlay_ready();
-SDL_Window* overlay_window();
+// overlay.cpp's: the current context's style fitted to the window.
 void overlay_style_fit(SDL_Window* window);
 // overlay_input.cpp's: the held gamepads read for the menu's frame.
 void overlay_read_pads();
@@ -79,8 +77,7 @@ void draw_menu(uint64_t now) {
     panel_size();
     // Begin draws the panel's edge in the Border colour, an item's edge. It takes the theme's
     // fainter panel edge instead. The menu's title is in its header, not a title bar.
-    const uint32_t e = theme_now().panel_edge;
-    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(e >> 24, e >> 16 & 0xFF, e >> 8 & 0xFF, e & 0xFF));
+    ImGui::PushStyleColor(ImGuiCol_Border, theme_colour(theme_now().panel_edge));
     ImGui::Begin(g_title.c_str(), nullptr,
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
@@ -114,9 +111,9 @@ void draw_menu(uint64_t now) {
 void backdrop(uint64_t now) {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     const uint32_t c = theme_now().backdrop;
-    const int alpha = (int)((float)(c & 0xFF) * appear_backdrop(now) + 0.5f);
+    const uint32_t alpha = (uint32_t)((float)(c & 0xFF) * appear_backdrop(now) + 0.5f);
     ImGui::GetBackgroundDrawList()->AddRectFilled(vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y),
-                                                  IM_COL32(c >> 24, c >> 16 & 0xFF, c >> 8 & 0xFF, alpha));
+                                                  theme_colour((c & ~0xFFu) | alpha));
 }
 
 // Once the menu has opened, its panel drawn whole for the first time.

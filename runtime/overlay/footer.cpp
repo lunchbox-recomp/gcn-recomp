@@ -2,6 +2,7 @@
 #include "overlay/footer.h"
 #include "overlay/fonts.h"
 #include "overlay/overlay.h"
+#include "overlay/state.h"
 #include "overlay/theme.h"
 #include "frontend.h"
 #include "input_log.h"
@@ -11,16 +12,11 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
 
-// overlay.cpp's: the menu opened or closed.
-void overlay_set_open(bool on);
-
 namespace {
 
 OverlayAsk g_ask;     // what the menu is asking before it does it
 OverlayAsk g_asked;   // the button that asked, which takes the focus back at the next draw
 bool g_focus_cancel;  // Cancel takes the focus at the next draw, as the menu starts asking
-
-ImU32 col(uint32_t c) { return IM_COL32(c >> 24, c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF); }
 
 // The menu asks before it restarts or quits, with Cancel focused, and goes back to the button
 // that asked. FocusItem moves the focus without pressing what it lands on, which
@@ -58,9 +54,9 @@ float hints(const Hint (&list)[N], ImVec2 at, float height) {
     float x = at.x;
     for (const Hint& h : list) {
         if (x > at.x) x += 3.0f * gap;
-        dl->AddText(ImVec2(x, y), col(t.text), h.key);
+        dl->AddText(ImVec2(x, y), theme_colour(t.text), h.key);
         x += ImGui::CalcTextSize(h.key).x + gap;
-        dl->AddText(ImVec2(x, y), col(t.dim), h.does);
+        dl->AddText(ImVec2(x, y), theme_colour(t.dim), h.does);
         x += ImGui::CalcTextSize(h.does).x;
     }
     return x - at.x;
@@ -136,8 +132,8 @@ void footer_card() {
     ImGui::SameLine();
     // The confirm on the danger colour, its text the panel's colour, whole.
     for (ImGuiCol c : {ImGuiCol_Button, ImGuiCol_ButtonHovered, ImGuiCol_ButtonActive})
-        ImGui::PushStyleColor(c, col(t.danger));
-    ImGui::PushStyleColor(ImGuiCol_Text, col(t.panel | 0xFF));
+        ImGui::PushStyleColor(c, theme_colour(t.danger));
+    ImGui::PushStyleColor(ImGuiCol_Text, theme_colour(t.panel | 0xFF));
     if (ImGui::Button(confirm)) {
         if (restart) frontend_restart();
         else quit();
@@ -147,8 +143,8 @@ void footer_card() {
     ImGui::PopFont();
     const ImVec2 lo(left, at.y), hi(left + inner + 2.0f * pad, ImGui::GetItemRectMax().y + pad);
     dl->ChannelsSetCurrent(0);
-    dl->AddRectFilled(lo, hi, col(t.item), t.item_radius * s);
-    dl->AddRect(lo, hi, col(t.panel_edge), t.item_radius * s, 0, ImGui::GetStyle().WindowBorderSize);
+    dl->AddRectFilled(lo, hi, theme_colour(t.item), t.item_radius * s);
+    dl->AddRect(lo, hi, theme_colour(t.panel_edge), t.item_radius * s, 0, ImGui::GetStyle().WindowBorderSize);
     dl->ChannelsMerge();
     ImGui::SetCursorScreenPos(ImVec2(left, hi.y));
     ImGui::Dummy(ImVec2(hi.x - lo.x, 0.0f));

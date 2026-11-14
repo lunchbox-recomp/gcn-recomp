@@ -71,6 +71,8 @@ void theme_style(const OverlayTheme& t, float scale) {
     ImGui::GetStyle() = s;
 }
 
+uint32_t theme_colour(uint32_t c) { return IM_COL32(c >> 24, c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF); }
+
 void theme_fit(int height) {
     const float scale = theme_scale(height);
     if (ImGui::GetStyle().FontScaleMain != scale) theme_style(g_theme, scale);

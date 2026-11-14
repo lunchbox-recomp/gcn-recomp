@@ -2,6 +2,7 @@
 // what it holds back from the game.
 #include "overlay/overlay.h"
 #include "overlay/footer.h"
+#include "overlay/state.h"
 #include "gamepads.h"
 #include "input_map.h"
 #include "pause.h"
@@ -13,11 +14,6 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 
-// overlay.cpp's: whether overlay_init has run, the window the menu is over (null in tests,
-// which draw nothing), and the menu opened or closed.
-bool overlay_ready();
-SDL_Window* overlay_window();
-void overlay_set_open(bool on);
 // overlay_controllers.cpp's and overlay_bindings.cpp's.
 bool controllers_event(const SDL_Event& e);
 bool bindings_event(const SDL_Event& e);

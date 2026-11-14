@@ -28,8 +28,6 @@ ImDrawList* g_list;
 int g_begin, g_end;
 float g_scale = 1.0f;
 
-ImU32 col(uint32_t c) { return IM_COL32(c >> 24, c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF); }
-
 bool pressed(std::initializer_list<ImGuiKey> keys) {
     return std::any_of(keys.begin(), keys.end(), [](ImGuiKey k) { return ImGui::IsKeyPressed(k, false); });
 }
@@ -117,7 +115,7 @@ void tabs_header(const std::string& title, const std::vector<std::string>& pages
 
     ImGui::PushFont(fonts_role(FontRole::title), t.title_size);
     const ImVec2 named = ImGui::CalcTextSize(title.c_str());
-    dl->AddText(ImVec2(at.x, at.y + (height - named.y) / 2.0f), col(t.text), title.c_str());
+    dl->AddText(ImVec2(at.x, at.y + (height - named.y) / 2.0f), theme_colour(t.text), title.c_str());
     ImGui::PopFont();
 
     // The shoulders' names are plain text until F6's glyphs draw each pad's own.
@@ -136,7 +134,7 @@ void tabs_header(const std::string& title, const std::vector<std::string>& pages
     // Centred in the panel, or as near as the title leaves room for.
     const float x = std::max(at.x + (width - row) / 2.0f, at.x + named.x + 2.0f * gap);
     const float text_y = at.y + (height - ImGui::GetFontSize()) / 2.0f;
-    const ImU32 dim = col(t.dim), text = col(t.text);
+    const ImU32 dim = theme_colour(t.dim), text = theme_colour(t.text);
     const ImGuiStyle& style = ImGui::GetStyle();
     if (!pages.empty()) follow(left[g_page], wide[g_page], now);
     const bool still = g_pill_x.done(now) && g_pill_w.done(now);
