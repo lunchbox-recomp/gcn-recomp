@@ -2,9 +2,11 @@
 #include "overlay/overlay.h"
 #include "overlay/fonts.h"
 #include "overlay/theme.h"
+#include "overlay/toasts.h"
 #include "runtime.h"  // host_ns
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include "imgui.h"
@@ -16,28 +18,40 @@ void overlay_style_fit(SDL_Window* window);              // overlay.cpp's
 
 namespace {
 
-constexpr uint64_t kShownNs = 2000000000;  // how long each one shows, in host time
 struct Notice {
     std::string text;
     size_t lead;     // the controller's name, the text's first `lead` bytes
     uint64_t since;  // host_ns as it was queued
+    Tween slot;      // its place in the stack, 0 the lowest (toasts.h)
 };
 std::vector<Notice> g_notices;
 ImGuiContext* g_context;  // their own, null with no window
 SDL_Window* g_window;     // the one they show over
 bool g_gl;                // drawn, not only laid out
 long g_frames;            // frames they've been laid out in
+bool g_motion = true;
 
-void expire() {
-    const uint64_t now = host_ns();
-    std::erase_if(g_notices, [&](const Notice& n) { return now - n.since >= kShownNs; });
+// Each one gone at exactly kToastNs, motion or not, and the ones above it moving down into its
+// place.
+void expire(uint64_t now) {
+    std::erase_if(g_notices, [&](const Notice& n) { return now - n.since >= kToastNs; });
+    for (size_t i = 0; i < g_notices.size(); i++) {
+        Tween& slot = g_notices[i].slot;
+        if (slot.to != (float)i) slot = toast_reflow(theme_now(), slot, now, (float)i, g_motion);
+    }
+}
+
+// The theme's 0xRRGGBBAA colour `c` as Dear ImGui packs one, its alpha times `a`.
+ImU32 faded(uint32_t c, float a) {
+    return theme_colour((c & ~0xFFu) | (uint32_t)std::lround(std::clamp((float)(c & 0xFF) * a, 0.0f, 255.0f)));
 }
 
 // Each notice a pill in the window's draw list: the panel's colour with its edge, the body text
 // in it, the controller's name in the text's colour and what happened in the dimmed one. The
 // oldest sits lowest, the theme's margin above the window's bottom edge, each newer one above
-// the last, all centred across.
-void pills() {
+// the last, all centred across. Each fades and rises as it ages, and moves down as the stack
+// reflows, at `now` (toasts.h).
+void pills(uint64_t now) {
     const OverlayTheme& t = theme_now();
     const float s = ImGui::GetStyle().FontScaleMain;
     const ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -45,19 +59,19 @@ void pills() {
     const float h = t.item_min_height * s, pad = t.padding * s, gap = t.item_spacing * s;
     const float edge = ImGui::GetStyle().FrameBorderSize;
     const float bottom = vp->Pos.y + vp->Size.y - t.margin * s;
-    for (size_t i = 0; i < g_notices.size(); i++) {
-        const Notice& n = g_notices[i];
+    for (const Notice& n : g_notices) {
+        const ToastLook look = toast_look(t, now - n.since, g_motion);
         const char* text = n.text.c_str();
         const char* split = text + n.lead;
         const float lead_w = ImGui::CalcTextSize(text, split).x;
         const float w = lead_w + ImGui::CalcTextSize(split).x + 2.0f * pad;
-        const ImVec2 lo(vp->GetCenter().x - w / 2.0f, bottom - (float)i * (h + gap) - h);
+        const ImVec2 lo(vp->GetCenter().x - w / 2.0f, bottom - n.slot.at(now) * (h + gap) - h + look.below * s);
         const ImVec2 hi(lo.x + w, lo.y + h);
-        dl->AddRectFilled(lo, hi, theme_colour(t.panel), h / 2.0f);
-        if (edge > 0.0f) dl->AddRect(lo, hi, theme_colour(t.panel_edge), h / 2.0f, 0, edge);
+        dl->AddRectFilled(lo, hi, faded(t.panel, look.alpha), h / 2.0f);
+        if (edge > 0.0f) dl->AddRect(lo, hi, faded(t.panel_edge, look.alpha), h / 2.0f, 0, edge);
         const float y = lo.y + (h - ImGui::GetFontSize()) / 2.0f;
-        dl->AddText(ImVec2(lo.x + pad, y), theme_colour(t.text), text, split);
-        dl->AddText(ImVec2(lo.x + pad + lead_w, y), theme_colour(t.dim), split);
+        dl->AddText(ImVec2(lo.x + pad, y), faded(t.text, look.alpha), text, split);
+        dl->AddText(ImVec2(lo.x + pad + lead_w, y), faded(t.dim, look.alpha), split);
     }
 }
 
@@ -66,11 +80,15 @@ void pills() {
 void overlay_pads_notice(const std::string& name, const std::string& what) {
     const std::string text = name + what;
     fprintf(stderr, "[pads] %s\n", text.c_str());
-    g_notices.push_back({text, name.size(), host_ns()});
+    Tween slot;
+    slot.from = slot.to = (float)g_notices.size();
+    g_notices.push_back({text, name.size(), host_ns(), slot});
 }
 
+void notices_motion(bool on) { g_motion = on; }
+
 std::vector<std::string> overlay_notices() {
-    expire();
+    expire(host_ns());
     std::vector<std::string> out;
     for (const Notice& n : g_notices) out.push_back(n.text);
     return out;
@@ -94,7 +112,8 @@ void notices_init(SDL_Window* window, bool gl) {
 // of their own that has no background or edge and takes no input or focus. With none showing
 // there's no frame at all.
 void notices_frame() {
-    expire();
+    const uint64_t now = host_ns();
+    expire(now);
     if (!g_context || g_notices.empty()) return;
     ImGuiContext* menu = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(g_context);
@@ -111,7 +130,7 @@ void notices_frame() {
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground |
                      ImGuiWindowFlags_NoSavedSettings);
     ImGui::PushFont(fonts_role(FontRole::body), theme_now().body_size);
-    pills();
+    pills(now);
     ImGui::PopFont();
     ImGui::End();
     ImGui::PopStyleVar(2);
