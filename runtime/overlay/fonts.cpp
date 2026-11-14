@@ -200,8 +200,11 @@ int fonts_find_face(const uint8_t* data, size_t size, std::string_view name) {
     if (!b.has(0, 12)) return -1;
     const uint32_t version = b.u32(0);
     if (version == tag("ttcf")) {
+        const uint32_t ttc_version = b.u32(4);  // 2.0 adds a signature after the offsets
+        if (ttc_version != 0x00010000 && ttc_version != 0x00020000) return -1;
+        // Its faces' offsets, four bytes each: divided, not multiplied, so no size_t wraps.
         const size_t count = b.u32(8);
-        if (!b.has(12, 4 * count)) return -1;
+        if (count > (size - 12) / 4) return -1;
         for (size_t i = 0; i < count; i++)
             if (face_is(b, b.u32(12 + 4 * i), name)) return (int)i;
         return -1;

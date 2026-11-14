@@ -300,6 +300,11 @@ void lookup() {
     check(find(count_past, heavy_name.c_str()) == -1 && find(at_end, heavy_name.c_str()) == -1,
           "a cmap listing more subtables than it has room for, or a subtable starting at its end, isn't taken");
     const std::vector<uint8_t> junk = {'h', 'e', 'l', 'l', 'o', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    std::vector<uint8_t> two = ttc, three = ttc;
+    set32(two, 4, 0x00020000);
+    set32(three, 4, 0x00030000);
+    check(find(two, "Test Sans Heavy") == 3 && find(three, "Test Sans Heavy") == -1,
+          "a collection of version 2.0 is read as 1.0 is, and one of another version isn't read");
     std::vector<uint8_t> many = ttc;
     set32(many, 8, 0x7FFFFFFF);  // more faces than the file has room to list
     check(find(junk, "hello") == -1 && find(many, "Test Sans Heavy") == -1 && fonts_find_face(nullptr, 0, "x") == -1,
