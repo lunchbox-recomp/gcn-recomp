@@ -3,6 +3,8 @@
 // window, as Dolphin rebuilds its style on a scale change: scaling the last one again would
 // round each size again each time.
 #include "overlay/theme.h"
+#include <algorithm>
+#include <cmath>
 #include "imgui.h"
 
 namespace {
@@ -53,12 +55,15 @@ void theme_style(const OverlayTheme& t, float scale) {
     colours(t, s.Colors);
     s.WindowPadding = ImVec2(t.padding, t.padding);
     s.WindowRounding = t.panel_radius;
-    s.WindowBorderSize = s.PopupBorderSize = t.border_size;
     s.PopupRounding = s.FrameRounding = s.GrabRounding = s.TabRounding = t.item_radius;
     // A button or a box is an item's height with the body text in it.
     s.FramePadding = ImVec2(t.padding / 2.0f, (t.item_height - t.body_size) / 2.0f);
     s.ItemSpacing = s.ItemInnerSpacing = ImVec2(t.item_spacing, t.item_spacing);
     s.ScaleAllSizes(scale);
+    // The panel and each item have an edge, which stays a pixel wide in a small window, where
+    // ScaleAllSizes would round it to none: an unchecked box is only its edge on the panel.
+    const float edge = t.border_size > 0.0f ? std::max(1.0f, std::floor(t.border_size * scale)) : 0.0f;
+    s.WindowBorderSize = s.PopupBorderSize = s.FrameBorderSize = edge;
     // The base size stays at 1080 lines, so a page's own sizes are in the theme's terms too.
     s.FontSizeBase = t.body_size;
     s.FontScaleMain = scale;

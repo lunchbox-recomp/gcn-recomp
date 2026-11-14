@@ -134,6 +134,37 @@ void contrasts(const OverlayTheme& t) {
     }
 }
 
+// What isn't text but has to be seen, at least 3:1 by WCAG 2.1's 1.4.11, read from the style
+// built from `t`: an item's edge on the panel, which is all an unchecked box, a radio button
+// not picked or a slider's track shows of itself there, at every height; a check mark on its
+// box; and a slider's grab on its track, at rest, focused and held.
+void edges(const OverlayTheme& t) {
+    ImGui::CreateContext();
+    const ImGuiStyle& s = ImGui::GetStyle();
+    bool drawn = true;
+    for (int height : {480, 720, 1080, 2160}) {
+        theme_style(t, theme_scale(height));
+        drawn = drawn && s.FrameBorderSize >= 1.0f;
+    }
+    check(drawn, "an item has an edge at least 1 px wide at 480, 720, 1080 and 2160 lines");
+    const ImVec4* c = s.Colors;
+    const struct {
+        ImGuiCol mark, on;
+    } kMarks[] = {{ImGuiCol_Border, ImGuiCol_WindowBg},          {ImGuiCol_CheckMark, ImGuiCol_CheckboxSelectedBg},
+                  {ImGuiCol_CheckMark, ImGuiCol_FrameBg},        {ImGuiCol_CheckMark, ImGuiCol_FrameBgHovered},
+                  {ImGuiCol_CheckMark, ImGuiCol_FrameBgActive},  {ImGuiCol_SliderGrab, ImGuiCol_FrameBg},
+                  {ImGuiCol_SliderGrab, ImGuiCol_FrameBgHovered}, {ImGuiCol_SliderGrabActive, ImGuiCol_FrameBgActive}};
+    for (const auto& m : kMarks) {
+        const uint32_t on = m.on == ImGuiCol_WindowBg ? 0 : packed(c[m.on]);
+        const double r = worst(t, packed(c[m.mark]), on);
+        char what[160];
+        snprintf(what, sizeof(what), "%s on %s is %.2f:1, at least 3:1", ImGui::GetStyleColorName(m.mark),
+                 ImGui::GetStyleColorName(m.on), r);
+        check(r >= 3.0, what);
+    }
+    ImGui::DestroyContext();
+}
+
 void couch(const OverlayTheme& t) {
     check(t.body_size >= 22.0f, "body text is at least 22 px at 1080 lines");
     check(t.item_min_height >= 48.0f && t.item_height >= t.item_min_height,
@@ -182,6 +213,7 @@ void style(const OverlayTheme& t) {
 int main() {
     const OverlayTheme t = overlay_theme_default();
     contrasts(t);
+    edges(t);
     couch(t);
     style(t);
     printf("test_overlay_theme: %s\n", g_failed ? "FAILED" : "passed");

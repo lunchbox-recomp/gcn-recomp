@@ -12,13 +12,14 @@
 
 struct OverlayTheme {
     // Colours, each 0xRRGGBBAA. Text and dimmed text stay at least 4.5:1 against every fill they
-    // sit on, and the focus ring 3:1 against the panel, over any game (tools/test_overlay_theme.cpp).
+    // sit on, and the focus ring and an item's edge 3:1 against the panel, over any game
+    // (tools/test_overlay_theme.cpp). The edge is all an unchecked box or a slider's track shows.
     uint32_t backdrop = 0x0B0E148C;      // over the game while the menu is open, 55%
     uint32_t panel = 0x141925EB;         // the menu's panel, 92%
     uint32_t item = 0x1E2533FF;          // a button, box or tab at rest
     uint32_t focused = 0x2A3346FF;       // the same with the focus on it
     uint32_t pressed = 0x344059FF;       // the same held down
-    uint32_t border = 0xFFFFFF1A;        // the panel's edge, white at 10%
+    uint32_t border = 0xFFFFFF66;        // the edge of the panel and of each item, white at 40%
     uint32_t divider = 0xFFFFFF0F;       // a line between sections, white at 6%
     uint32_t text = 0xF2F4F8FF;
     uint32_t dim = 0xA9B1C2FF;           // text that says less, as a note does
@@ -42,7 +43,7 @@ struct OverlayTheme {
     float margin = 64.0f;             // the least room between the panel and the window's edge
     float padding = 32.0f;            // inside the panel
     float panel_radius = 20.0f;
-    float border_size = 1.0f;
+    float border_size = 1.0f;         // the panel's edge and each item's, at least a pixel
     // What's on it.
     float item_height = 56.0f;        // a button, box or tab
     float item_min_height = 48.0f;    // nothing to press is shorter
