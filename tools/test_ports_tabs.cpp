@@ -8,6 +8,8 @@
 // change the page's first item has the focus, so A presses it. Read in by tools/test_ports.cpp
 // after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
+#include "overlay/tabs.h"  // where the header laid out each pill
+#include <cmath>
 
 namespace {
 
@@ -18,6 +20,41 @@ float g_knob_level = 0.5f;
 void knobs_page(void*) {
     if (ImGui::Button("Press")) g_knob_presses++;
     ImGui::SliderFloat("##Level", &g_knob_level, 0.0f, 1.0f, "");
+}
+
+// The Probe page: a button, whose vertices in the menu window's draw list it notes as it draws.
+ImDrawList* g_probe_list;
+int g_probe_begin = -1, g_probe_end = -1;
+void probe_page(void*) {
+    g_probe_list = ImGui::GetWindowDrawList();
+    g_probe_begin = g_probe_list->VtxBuffer.Size;
+    ImGui::Button("Probe");
+    g_probe_end = g_probe_list->VtxBuffer.Size;
+}
+
+// The Probe page's vertices as the menu's frame last left them, each one's x and alpha: none if
+// that frame didn't draw the page.
+struct Drawn {
+    std::vector<float> x;
+    std::vector<int> alpha;
+};
+Drawn probe_drawn() {
+    Drawn d;
+    for (int i = std::max(g_probe_begin, 0); g_probe_list && g_probe_begin >= 0 && i < g_probe_end; i++) {
+        d.x.push_back(g_probe_list->VtxBuffer[i].pos.x);
+        d.alpha.push_back((int)(g_probe_list->VtxBuffer[i].col >> IM_COL32_A_SHIFT & 0xFF));
+    }
+    g_probe_begin = -1;
+    return d;
+}
+
+// Whether `now` is `rest` moved `dx` pixels across, within a hundredth of one, with every alpha
+// 0 where `clear` and as at rest where not.
+bool shifted(const Drawn& rest, const Drawn& now, float dx, bool clear) {
+    if (rest.x.empty() || now.x.size() != rest.x.size()) return false;
+    for (size_t i = 0; i < rest.x.size(); i++)
+        if (std::fabs(now.x[i] - rest.x[i] - dx) > 0.01f || now.alpha[i] != (clear ? 0 : rest.alpha[i])) return false;
+    return true;
 }
 
 // A trigger pulled in to `travel` as SDL's gamepad reads it, 0 to 32767, all the way unless
@@ -325,6 +362,53 @@ void page_motion(const std::string& dir) {
     const Turned off = page_change(window, dir, false);
     check(off.changed && !off.moving && !off.before_end && off.still_at_end,
           "with menu_motion off a page change is whole at once");
+    close_window(window);
+}
+
+// A click on a pill, as Dear ImGui takes the mouse, with menu_motion on: the page it picks comes
+// in from its side from the click's own frame, not drawn at rest for a frame first.
+void pill_click(const std::string& dir) {
+    SDL_Window* window = open_window();
+    if (!window) return;
+    overlay_test_reset_pages();
+    overlay_add_page("Probe", probe_page, nullptr);
+    OverlayPicture picture;
+    picture.path = dir + "/pill-settings.txt";
+    picture.apply = record_apply;
+    overlay_init(window, "Test title", picture);
+    const OverlayTheme theme = overlay_theme_default();
+    Guest guest;
+    const auto settle = [&] {
+        g_host_ns += 1000 * kMs;
+        host_frame(guest);
+    };
+    g_host_ns += 10000 * kMs;  // past every tween an earlier check left
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
+    overlay_test_pick_page(page_at("Probe"));
+    host_frame(guest);
+    settle();
+    const Drawn rest = probe_drawn();
+    overlay_test_pick_page(0);
+    host_frame(guest);
+    settle();
+    float x = 0.0f, y = 0.0f;
+    const bool laid_out = tabs_test_pill(page_at("Probe"), x, y);
+    ImGuiIO& io = ImGui::GetIO();
+    io.AddMousePosEvent(x, y);
+    io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+    host_frame(guest);
+    const bool picked = overlay_page() == page_at("Probe");
+    const Drawn clicked = probe_drawn();
+    io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+    g_host_ns += (uint64_t)theme.page_ms * kMs;
+    host_frame(guest);
+    const Drawn settled = probe_drawn();
+    const float slide = theme.page_slide * ImGui::GetStyle().FontScaleMain;
+    check(laid_out && picked && shifted(rest, clicked, slide, true) && shifted(rest, settled, 0.0f, false),
+          "a click on a pill shows its page coming in from its side from the click's own frame, at rest at page_ms");
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
     close_window(window);
 }
 

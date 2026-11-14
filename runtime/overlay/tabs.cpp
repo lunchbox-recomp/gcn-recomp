@@ -27,6 +27,9 @@ Tween g_slide, g_fade;
 ImDrawList* g_list;
 int g_begin, g_end;
 float g_scale = 1.0f;
+#ifdef GCN_OVERLAY_TEST
+std::vector<ImRect> g_pills;  // each page's pill as the header last laid it out
+#endif
 
 bool pressed(std::initializer_list<ImGuiKey> keys) {
     return std::any_of(keys.begin(), keys.end(), [](ImGuiKey k) { return ImGui::IsKeyPressed(k, false); });
@@ -83,6 +86,15 @@ void tabs_reset() {
 
 int tabs_page() { return g_page; }
 
+#ifdef GCN_OVERLAY_TEST
+bool tabs_test_pill(int page, float& x, float& y) {
+    if (page < 0 || page >= (int)g_pills.size()) return false;
+    x = g_pills[page].GetCenter().x;
+    y = g_pills[page].GetCenter().y;
+    return true;
+}
+#endif
+
 void tabs_show(int page) {
     g_page = page;
     g_drawn = -1;
@@ -136,14 +148,21 @@ void tabs_header(const std::string& title, const std::vector<std::string>& pages
     const float text_y = at.y + (height - ImGui::GetFontSize()) / 2.0f;
     const ImU32 dim = theme_colour(t.dim), text = theme_colour(t.text);
     const ImGuiStyle& style = ImGui::GetStyle();
+    const auto pill = [&](size_t i) { return ImRect(x + left[i], at.y, x + left[i] + wide[i], at.y + height); };
+#ifdef GCN_OVERLAY_TEST
+    g_pills.clear();
+    for (size_t i = 0; i < pages.size(); i++) g_pills.push_back(pill(i));
+#endif
+    // A click on a pill is taken before the pill and the page follow it, so the page it picks
+    // comes in from this frame, as a shoulder's does.
+    const bool clicked = live && ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    for (size_t i = 0; clicked && i < pages.size(); i++)
+        if (ImGui::IsMouseHoveringRect(pill(i).Min, pill(i).Max)) tabs_pick((int)i, false);
     if (!pages.empty()) follow(left[g_page], wide[g_page], now);
     const bool still = g_pill_x.done(now) && g_pill_w.done(now);
-    const bool clicked = live && ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-    for (size_t i = 0; i < pages.size(); i++) {
-        const ImVec2 lo(x + left[i], at.y), hi(x + left[i] + wide[i], at.y + height);
-        if (!still || (int)i != g_page) dl->AddRectFilled(lo, hi, ImGui::GetColorU32(style.Colors[ImGuiCol_Tab]), height / 2.0f);
-        if (clicked && ImGui::IsMouseHoveringRect(lo, hi)) tabs_pick((int)i, false);
-    }
+    for (size_t i = 0; i < pages.size(); i++)
+        if (!still || (int)i != g_page)
+            dl->AddRectFilled(pill(i).Min, pill(i).Max, ImGui::GetColorU32(style.Colors[ImGuiCol_Tab]), height / 2.0f);
     if (!pages.empty()) {
         const float px = x + g_pill_x.at(now);
         dl->AddRectFilled(ImVec2(px, at.y), ImVec2(px + g_pill_w.at(now), at.y + height),

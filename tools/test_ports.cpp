@@ -257,6 +257,7 @@ int run_ports(const std::string& dir) {
     tabs_turn(dir);
     tabs_chord(dir);
     page_motion(dir);
+    pill_click(dir);
 #endif
     return finish("ports");
 }

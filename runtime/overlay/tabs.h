@@ -45,3 +45,8 @@ void tabs_no_contents();
 void tabs_apply(ImDrawData* d, uint64_t now);
 // Whether a change is still moving the pill or the page's contents.
 bool tabs_moving(uint64_t now);
+#ifdef GCN_OVERLAY_TEST
+// The middle of page `page`'s pill as the header last laid it out, in the window's pixels, for a
+// click there. False for no such pill.
+bool tabs_test_pill(int page, float& x, float& y);
+#endif
