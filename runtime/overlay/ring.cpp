@@ -32,8 +32,8 @@ ImRect toward(const ImRect& at, const ImRect& to, float k) {
 
 // The ring around `at`, moved `dx` across and faded by `alpha`, in the foreground's draw list,
 // which the panel's motion scales and fades with the menu's contents (appear_apply). Where the
-// item is cut off by `clip`, its window's, the ring goes around what shows of it, as Dear ImGui's
-// own highlight does.
+// item is cut off by `clip`, its window's, the ring is still the whole item's, clipped to what
+// shows of the item grown by the ring's reach, so its side at the cut is left open.
 void draw(const ImRect& at, const ImRect& clip, float dx, float alpha) {
     const OverlayTheme& t = theme_now();
     const float s = ImGui::GetStyle().FontScaleMain;
