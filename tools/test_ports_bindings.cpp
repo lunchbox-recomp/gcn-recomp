@@ -140,6 +140,34 @@ void bindings_merged(const std::string& dir) {
         unplug({&v});
         gamepads_shutdown();
     }
+
+    // A saves/ that can't be written, with no pads.txt in it: the file reads as none, so a change
+    // is saved, the save fails, and the change is this session's alone.
+    const std::string locked_dir = dir + "/locked-saves", locked_file = locked_dir + "/pads.txt";
+    mkdir(locked_dir.c_str(), 0555);
+    if (access(locked_dir.c_str(), W_OK) == 0) {
+        check(false, "a saves/ that can't be written (this check can't run as root)");
+    } else {
+        gamepads_bindings_file(locked_file.c_str());
+        const std::string said = dir + "/pads-unwritable.txt";
+        Bound kept = Bound::refused;
+        capture(said, [&] {
+            power_on(1);
+            gamepads_init();
+            attach(v);
+            frame();
+            gamepads_binding(v.id, b);
+            pad_binding_set(b, PadControl::B, {false, SDL_GAMEPAD_BUTTON_NORTH, 0, false});
+            kept = gamepads_bind(v.id, b);
+        });
+        check(kept == Bound::unsaved && lines_with(said, "can't write it") == 1 &&
+                  sends(v, SDL_GAMEPAD_BUTTON_NORTH) == PAD_B && !exists_path(locked_file),
+              "a saves/ that can't be written and has no pads.txt: a change is tried, said to be unsaved, and kept for "
+              "the session");
+        unplug({&v});
+        gamepads_shutdown();
+    }
+    chmod(locked_dir.c_str(), 0755);
     gamepads_bindings_file(nullptr);
 }
 

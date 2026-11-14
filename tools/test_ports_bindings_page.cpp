@@ -167,10 +167,12 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
           "a row press-to-bind ended on as the menu closed isn't picked when the view opens again");
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
 
-    // A save that fails says the change lasts until the game quits. The file set anew reads as
-    // the map, so north is a change for Start.
-    write_file(dir + "/not-a-folder", "a file\n");
-    gamepads_bindings_file((dir + "/not-a-folder/pads.txt").c_str());
+    // A save that fails says the change lasts until the game quits: a folder that can't be
+    // written, with no pads.txt in it, so the file set anew reads as the map and north is a
+    // change for Start.
+    const std::string locked = dir + "/locked";
+    mkdir(locked.c_str(), 0555);
+    gamepads_bindings_file((locked + "/pads.txt").c_str());
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     overlay_bindings_open(pad.id);
     overlay_bindings_listen(PadControl::Start);
@@ -184,7 +186,7 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
                                      "again. pads.txt couldn't be written, so this lasts until the game quits.",
           "Reset to default, right of Test rumble, says what it put back, and that pads.txt couldn't take it");
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
-    std::remove((dir + "/not-a-folder").c_str());
+    chmod(locked.c_str(), 0755);
 
     load_controls(dir + "/view-controls.txt", "A = \"virtual pad buttons other\" button 0\n");
     check(!overlay_bindings_open(other.id), "a gamepad controls.txt binds can't be put up in the view");
