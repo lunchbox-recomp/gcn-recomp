@@ -143,8 +143,8 @@ int main(int argc, char** argv) {
     // GCN_READY_FILE: each word once, with the time of its first mark since the process
     // started. The directory comes only after window's first marks, so those fail, each mark
     // tried for 250 ms and then once a second; by then it holds an earlier run's lines, which
-    // window's line replaces. Then the directory can't be written for frame's first try, and
-    // the next mark, inside the 250 ms, writes it.
+    // window's line replaces. Then a directory where the file's .tmp goes keeps frame's first
+    // try out, as it would for any user, root too, and the next mark, inside the 250 ms, writes it.
     const std::string later = dir + "/later", e = later + "/e.txt";
     setenv("GCN_READY_FILE", e.c_str(), 1);
     const double before = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_main).count();
@@ -170,9 +170,9 @@ int main(int argc, char** argv) {
           "a second after its last try it's tried again, and its line, with its first mark's time, replaces the earlier run's");
     ready_relaunching();
     check(getenv("GCN_READY_FILE"), "a console reset before the frame line leaves the variable for the run after");
-    chmod(later.c_str(), 0555);
+    mkdir((e + ".tmp").c_str(), 0755);
     const int frame_said = lines_said(dir + "/frame-said.txt", [&] { ready_mark_at("frame", ago + 2000); });
-    chmod(later.c_str(), 0755);
+    rmdir((e + ".tmp").c_str());
     const bool held = slurp(e) == "window " + std::to_string(ago) + "\n";
     ready_mark_at("frame", ago + 2249);
     check(held && frame_said == 1 && slurp(e).find("\nframe ") != std::string::npos,
