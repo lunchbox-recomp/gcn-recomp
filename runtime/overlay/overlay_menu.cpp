@@ -57,11 +57,12 @@ bool g_on_page;             // its last frame showed a page, not a question or a
 // pixels at the theme's scale then (panel_place). A view or a question is left out, so backing
 // out of one puts the page back in a panel its pages' size.
 float g_tallest, g_tallest_scale;
-float g_most;  // the panel's greatest height at this frame, in pixels (panel_place)
+float g_most;     // the panel's greatest height at this frame, in pixels (panel_place)
+bool g_rescaled;  // and whether the theme's scale changed at this frame, with the window's height
 // The Buttons view's height at the frame laid out last, at 1080 lines as the theme's sizes are, so
 // it holds across a change of the window's height; -1 with no view then.
 float g_view = -1.0f;
-ImGuiID g_region;      // the window of the region the view scrolls in, once one has been laid out (view)
+ImGuiID g_region;  // the window of the region the view scrolls in, once one has been laid out (view)
 
 // The page showing, drawn by its own callback.
 void page() {
@@ -88,7 +89,8 @@ void section_gap() { ImGui::Dummy(ImVec2(0.0f, gap())); }
 void panel_place() {
     const OverlayTheme& t = theme_now();
     const float s = ImGui::GetStyle().FontScaleMain;
-    if (s != g_tallest_scale) {  // a new window height lays it all out again (menu_opened)
+    g_rescaled = s != g_tallest_scale;
+    if (g_rescaled) {  // a new window height lays it all out again (menu_opened)
         g_tallest = 0.0f;
         g_on_page = false;
     }
@@ -109,7 +111,8 @@ void panel_place() {
 // window's height lays the region out again at once. That first frame sizes the panel at the
 // next as a page's does; a region Dear ImGui sized to its contents would show nothing at its
 // first. Dear ImGui scrolls the region to keep the item with the focus in it, however the focus
-// got there, as it scrolls the panel itself for a page taller than the panel. The region's items
+// got there, as it scrolls the panel itself for a page taller than the panel, and the view scrolls
+// it back to that item as a change of the window's height moves the rows. The region's items
 // take the focus as the panel's own (NavFlattened), so a click on the panel past the region
 // leaves the focus on its row, not on the region as a whole. The region is the panel's width,
 // with its padding across and its items' width, so the view is laid out across as it would be on
@@ -131,8 +134,12 @@ void view(float last) {
     ImGui::PushItemWidth(w->DC.ItemWidth);  // the panel's, which a region its width wouldn't take
     bindings_page();
     ImGui::PopItemWidth();
-    const ImGuiWindow* region = ImGui::GetCurrentWindow();
+    ImGuiWindow* region = ImGui::GetCurrentWindow();
     g_region = region->ID;
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    if (g_rescaled && g.NavWindow == region && g.NavIdIsAlive)
+        ImGui::ScrollToRectEx(region, ImGui::WindowRectRelToAbs(region, region->NavRectRel[ImGuiNavLayer_Main]),
+                              ImGuiScrollFlags_KeepVisibleEdgeY | ImGuiScrollFlags_NoScrollParent);
     g_view = (region->DC.CursorMaxPos.y - region->DC.CursorStartPos.y) / s;
     const float right = region->WorkRect.Max.x;
     ImGui::EndChild();

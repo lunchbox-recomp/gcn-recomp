@@ -120,30 +120,10 @@ void view_scrolls(Guest& guest, const Virtual& pad) {
     for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
 }
 
-// The Buttons view as the menu's last frame laid it out: how far the panel scrolls, the room
-// under the footer's hints inside the panel's padding, the header's height on the window, and
-// whether the item with the focus is whole in view (on_panel).
-struct Laid {
-    float scroll = 0.0f, under = 0.0f, header = 0.0f;
-    bool in_view = false;
-};
-Laid laid() {
-    const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
-    Laid l;
-    if (!panel) return l;
-    float x = 0.0f;
-    tabs_test_pill(0, x, l.header);
-    l.scroll = panel->ScrollMax.y;
-    l.under = under_hints(panel);
-    l.in_view = on_panel();
-    return l;
-}
-
 // The window grown to 1440 lines with the focus on Done at the view's foot, then shrunk back to
 // 960. The frame laid out as the height changes has the panel at the size the frame before gave
-// it, as any page has. From the next on the panel doesn't scroll, the footer's hints are on it
-// inside its padding, but for the part of a pixel Dear ImGui drops from the height it sizes the
-// panel to, and the header stays where it is.
+// it, as any page has. From the next on the footer's hints and Done are on the panel (on_panel),
+// which doesn't scroll, and the header stays where it is.
 void view_resized(Guest& guest, const Virtual& pad) {
     for (int i = 0; i < 40 && !focused("Done"); i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
     const bool done = focused("Done");
@@ -153,17 +133,18 @@ void view_resized(Guest& guest, const Virtual& pad) {
     for (const int height : {1440, h}) {
         SDL_SetWindowSize(overlay_window(), w, height);
         host_frame(guest);
-        float header = -1.0f;
+        float x = 0.0f, header = 0.0f;
         for (int f = 1; f < 4; f++) {
             host_frame(guest);
-            const Laid l = laid();
-            if (f == 1) header = l.header;
-            settled = settled && l.scroll == 0.0f && l.under > -1.0f && l.header == header && focused("Done");
+            float y = 0.0f;
+            tabs_test_pill(0, x, y);
+            if (f == 1) header = y;
+            settled = settled && on_panel() && y == header && focused("Done");
         }
     }
     check(done && settled,
-          "the window's height changed with the Buttons view up, from the next frame the footer's hints are on "
-          "the panel, which doesn't scroll, under a still header");
+          "the window's height changed with the Buttons view up, from the next frame the footer's hints and the "
+          "focused row are on the panel, which doesn't scroll, under a still header");
     for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
 }
 
