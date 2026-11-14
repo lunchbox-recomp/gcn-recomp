@@ -209,6 +209,11 @@ void overlay_gate(int port, PadState& p);
 // Draws the menu over the window's framebuffer while it's open, after the frame and before the
 // swap.
 void overlay_draw();
+// For gx::render_overlay_blur, ahead of overlay_draw: whether the open menu holds the guest with
+// the theme's blur_backdrop on, which --dump-output turns off, and how far the blur has faded in,
+// from 0 to 1 on the host clock, 0 with it off.
+bool overlay_blur_hold();
+float overlay_blur_alpha();
 // What overlay_draw does short of drawing, for a window with no GL context: while it's open, the
 // menu takes its input and lays out its frame. With no window, there's no ImGui frame.
 void overlay_menu_frame();
@@ -261,4 +266,6 @@ inline bool overlay_animating() { return false; }
 inline void overlay_close() {}
 inline void overlay_gate(int, PadState&) {}
 inline void overlay_draw() {}
+inline bool overlay_blur_hold() { return false; }
+inline float overlay_blur_alpha() { return 0.0f; }
 #endif

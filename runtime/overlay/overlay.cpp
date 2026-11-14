@@ -67,6 +67,7 @@ bool g_ready, g_open;
 bool g_view_left;  // it closed from a view in place of a page, drawn as it fades (overlay_set_open)
 SDL_Window* g_window;  // null in tests, which draw nothing
 bool g_gl;             // the window has a GL context to draw the menu with, which tests' don't
+bool g_blur_allowed;    // the theme's blur_backdrop, and not under --dump-output
 bool g_dumped;            // since it opened, under --dump-output
 long long g_at_frame = -1;  // GCN_OVERLAY_AT's, -1 for none or once it's opened the overlay
 long g_at_left;             // draws over the held frame left before GCN_OVERLAY_AT's closes it
@@ -183,6 +184,7 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     tabs_motion(motion);
     ring_motion(motion);
     notices_motion(motion);
+    g_blur_allowed = theme_now().blur_backdrop && !gx::g_dump_output;
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) review_parse_at(e, g_at_frame, g_at_left);
     const char* page = getenv_nonempty("GCN_OVERLAY_PAGE");
     g_page = page ? review_parse_page(page, 1 + menu_added_pages()) : -1;
@@ -230,6 +232,8 @@ void overlay_imgui_context_end(bool gl) {
 #endif
 
 bool overlay_open() { return g_open; }
+bool overlay_blur_hold() { return g_blur_allowed && g_open && paused(); }
+float overlay_blur_alpha() { return g_blur_allowed ? appear_blur(host_ns()) : 0.0f; }
 
 bool overlay_menu_due() { return menu_showing() || at_frame_due(); }
 

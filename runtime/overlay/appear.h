@@ -2,8 +2,9 @@
 // backdrop dims the game over the theme's backdrop_ms, out-quad, and the panel fades in and grows
 // from the theme's open_scale over its open_ms, out-back, with its contents following
 // contents_delay_ms behind and whole with it. As it closes, the panel, its contents and the
-// backdrop fade out over close_ms, in-quad, the panel shrinking to close_scale. Opened or closed
-// mid-way, each starts from where it was. With motion off each change is whole at once.
+// backdrop fade out over close_ms, in-quad, the panel shrinking to close_scale. The held frame's
+// blur crossfades in over blur_ms, out-quad, and out over it, in-quad. Opened or closed mid-way,
+// each starts from where it was. With motion off each change is whole at once.
 #pragma once
 #include "overlay/theme.h"
 #include <cstdint>
@@ -23,6 +24,8 @@ bool appear_shown(uint64_t now);
 // From 0 to 1: the backdrop, as a share of the theme's alpha for it; the panel's alpha and its
 // contents'. And the panel's scale.
 float appear_backdrop(uint64_t now);
+// From 0, the sharp frame, to 1, the held frame's blur (gx::render_overlay_blur) whole.
+float appear_blur(uint64_t now);
 float appear_panel_alpha(uint64_t now);
 float appear_contents_alpha(uint64_t now);
 float appear_scale(uint64_t now);

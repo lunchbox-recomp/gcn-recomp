@@ -816,6 +816,17 @@ refuses a page turn past either end (`runtime/overlay/overlay.h`). They're made 
 before the movie tap, so a `GCN_WAV` recording never holds one and a `--record` movie does. Off
 by default.
 
+With the theme's `blur_backdrop` on, the default, the GL present path blurs the held frame
+behind the backdrop (`render_overlay_blur` in `runtime/gx/render_gl_present.cpp`). It fits the
+frame into a target a quarter of the window's size and runs two Kawase passes over it, once when
+the hold starts and again only when the window's size or the output aspect changes. The blur
+crossfades in from the sharp frame over the theme's `blur_ms` of 150 ms and out again as the menu
+closes, over the frames the guest draws again. `menu_motion off` snaps it in and out.
+`--dump-output` turns it off, and the menu's dumps draw the held frame again themselves, so no
+dump shows it. `--eye` goes without, and a Metal present path would need its own. On an M4 Max,
+timed with GL queries over a made-up frame, it adds 0.03 ms of GPU time to each held frame at
+1920x1080 and 0.04 to 0.08 ms at 3840x2160, and making it costs 0.06 ms and 0.11 ms once a hold.
+
 `test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`, its one runner) dumps
 each page that way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in
 `<build>/unit/test_overlay_pages` for a person to look at, the menu's backdrop dimming the grey.

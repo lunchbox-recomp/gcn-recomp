@@ -343,6 +343,9 @@ static void show_frame(SDL_Window* win) {
         // closed touch none, so the lock is taken only while it's open or opening.
         std::unique_lock<std::recursive_mutex> lk(g_pads_mutex, std::defer_lock);
         if (overlay_menu_due()) lk.lock();
+        // The menu's blurred backdrop over the held frame. --eye draws the window from its own
+        // target, which the blur doesn't read, so it goes without (render_gl.h).
+        if (!g_eye_mode) gx::render_overlay_blur(overlay_blur_hold(), overlay_blur_alpha());
         overlay_draw();
     }
     if (record::active()) {

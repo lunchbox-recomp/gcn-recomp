@@ -130,6 +130,7 @@ namespace gx {
 const char* g_dump_dir;
 bool g_dump_output;
 bool render_present_last() { return false; }
+void render_overlay_blur(bool, float) {}
 void render_set_output_fbo(unsigned) {}
 }
 #endif

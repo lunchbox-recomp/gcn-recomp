@@ -11,6 +11,8 @@ bool g_motion = true;
 // From 0, gone, to 1, whole: the panel's alpha, its contents' and the backdrop's share of the
 // theme's. And the panel's scale.
 Tween g_panel, g_contents, g_backdrop, g_scale;
+// The held frame's blur, sharp at 0 and blurred at 1, over the theme's blur_ms each way.
+Tween g_blur;
 
 // A change's length, none with motion off. A game's theme may give a time that's negative,
 // infinite or not a number, which takes none.
@@ -32,6 +34,7 @@ void appear_open(const OverlayTheme& t, uint64_t now) {
     if (gone) g_scale.from = t.open_scale;
     g_contents = tween_to(g_contents, now, 1.0f, span(open - delay), Ease::out_quad, span(delay));
     g_backdrop = tween_to(g_backdrop, now, 1.0f, span(t.backdrop_ms), Ease::out_quad);
+    g_blur = tween_to(g_blur, now, 1.0f, span(t.blur_ms), Ease::out_quad);
 }
 
 void appear_close(const OverlayTheme& t, uint64_t now) {
@@ -40,11 +43,14 @@ void appear_close(const OverlayTheme& t, uint64_t now) {
     g_scale = tween_to(g_scale, now, t.close_scale, ms, Ease::in_quad);
     g_contents = tween_to(g_contents, now, 0.0f, ms, Ease::in_quad);
     g_backdrop = tween_to(g_backdrop, now, 0.0f, ms, Ease::in_quad);
+    g_blur = tween_to(g_blur, now, 0.0f, span(t.blur_ms), Ease::in_quad);
 }
 
 bool appear_closing(uint64_t now) { return !opened() && appear_moving(now); }
 
-// The scale moves with the panel, over the same time, so the panel says when both are done.
+// The scale moves with the panel, over the same time, so the panel says when both are done. The
+// blur isn't counted, so it keeps no menu up: it ends 30 ms after the Night theme's close, over
+// frames the guest draws again, and the held frame is drawn again each 16 ms regardless.
 bool appear_moving(uint64_t now) {
     return !g_panel.done(now) || !g_contents.done(now) || !g_backdrop.done(now);
 }
@@ -52,6 +58,7 @@ bool appear_moving(uint64_t now) {
 bool appear_shown(uint64_t now) { return opened() && g_panel.done(now) && g_contents.done(now); }
 
 float appear_backdrop(uint64_t now) { return std::clamp(g_backdrop.at(now), 0.0f, 1.0f); }
+float appear_blur(uint64_t now) { return std::clamp(g_blur.at(now), 0.0f, 1.0f); }
 
 float appear_panel_alpha(uint64_t now) { return std::clamp(g_panel.at(now), 0.0f, 1.0f); }
 
