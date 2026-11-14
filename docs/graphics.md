@@ -220,6 +220,14 @@ there can be), at most 2.4 ms. A made-up cache of 334 programs loaded in a media
 at once, 525 ms in steps with nothing drawn and 539 ms in steps under the splash, so the
 splash adds about 40 ms to the `[shaders]` line, about 25 of them the steps.
 
+The window's wait ends later than the `[shaders]` line, since the splash still draws and swaps
+its last frame after it, so the bench also prints the end of the load (`<mode>: <ms> ms to
+the end of the load`). On the same machine under a load average of about 115 on its 16
+cores, three runs each of that cache gave medians of 1,254 ms at once, 1,238 in steps and
+1,345 under the splash on the `[shaders]` line, and 1,264, 1,240 and 1,486 ms to the end of
+the load. So the splash added about 90 ms to the line and about 220 to the load's end, and
+the steps with nothing drawn added none that the noise shows.
+
 ## Stereo scaffolding
 
 `gx/render_gl_eye.cpp`, `gx/render_gl_view.cpp` and `gx/shadergen.cpp` carry the stereo
