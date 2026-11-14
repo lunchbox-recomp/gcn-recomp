@@ -803,10 +803,11 @@ While it moves the paused frontend waits 8 ms for a batch, not 16, so it's drawn
 `menu_motion off` and `--dump-output` show and close it at once, so a dump never catches it
 moving.
 
-`test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`) dumps each page that
-way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in
-`<build>/unit/test_overlay_pages` for a person to look at, the menu's backdrop dimming the grey. It prints each page's menu frame time
-on the CPU too. Where SDL can make no GL window it's skipped.
+`test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`, and a run of
+`tools/test_ports.sh`) dumps each page that way over a hidden window at 1920x1080 and 1440x1080
+with no game. The PNGs land in `<build>/unit/test_overlay_pages` for a person to look at, the
+menu's backdrop dimming the grey. It prints each page's menu frame time on the CPU too. Where
+SDL can make no GL window it's skipped.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under
