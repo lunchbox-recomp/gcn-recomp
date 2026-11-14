@@ -11,7 +11,8 @@ bool g_motion = true;
 // From 0, gone, to 1, whole: the panel's alpha, its contents' and the backdrop's share of the
 // theme's. And the panel's scale.
 Tween g_panel, g_contents, g_backdrop, g_scale;
-// The held frame's blur, sharp at 0 and blurred at 1, over the theme's blur_ms each way.
+// The held frame's blur, sharp at 0 and blurred at 1: in over the theme's blur_ms, out over
+// its close_ms.
 Tween g_blur;
 
 // A change's length, none with motion off. A game's theme may give a time that's negative,
@@ -43,14 +44,15 @@ void appear_close(const OverlayTheme& t, uint64_t now) {
     g_scale = tween_to(g_scale, now, t.close_scale, ms, Ease::in_quad);
     g_contents = tween_to(g_contents, now, 0.0f, ms, Ease::in_quad);
     g_backdrop = tween_to(g_backdrop, now, 0.0f, ms, Ease::in_quad);
-    g_blur = tween_to(g_blur, now, 0.0f, span(t.blur_ms), Ease::in_quad);
+    // Over the frames the guest draws again, so the held one drops away first, out-cubic.
+    g_blur = tween_to(g_blur, now, 0.0f, ms, Ease::out_cubic);
 }
 
 bool appear_closing(uint64_t now) { return !opened() && appear_moving(now); }
 
 // The scale moves with the panel, over the same time, so the panel says when both are done. The
-// blur isn't counted, so it keeps no menu up: it ends 30 ms after the Night theme's close, over
-// frames the guest draws again, and the held frame is drawn again each 16 ms regardless.
+// blur isn't counted: it ends with the panel as it closes, and as it opens it's drawn over held
+// frames, which are drawn again each 16 ms regardless.
 bool appear_moving(uint64_t now) {
     return !g_panel.done(now) || !g_contents.done(now) || !g_backdrop.done(now);
 }

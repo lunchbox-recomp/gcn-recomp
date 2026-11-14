@@ -8,8 +8,8 @@
 // behind the panel and the backdrop last, and is whole when the panel and the contents are,
 // within 200 ms, or at once with an open time that's negative, infinite or not a number. It
 // closes over the theme's close time, at once with one of those, and can open again from
-// wherever it was. The held frame's blur crossfades over 150 ms each way and keeps no menu up
-// past the close. With motion off each change is whole at once. Its transform of a frame's draw
+// wherever it was. The held frame's blur crossfades in over 150 ms and drops away over the close
+// time, out-cubic. With motion off each change is whole at once. Its transform of a frame's draw
 // data scales every list but the backdrop's about the centre, clip rects too, and fades the
 // panel's vertices and the contents' each by their own alpha. runtime/overlay/toasts.h fades a
 // notice in and out and rises it into its place at the theme's times, in exactly 2 s, and moves
@@ -127,9 +127,11 @@ void opens_and_closes() {
     check(!appear_closing(gone) && !appear_moving(gone) && near(appear_panel_alpha(gone), 0.0f) &&
               near(appear_backdrop(gone), 0.0f) && appear_closing(gone - kMs),
           "it's gone at the theme's close time and not before");
-    check(near(appear_blur(t1), 1.0f) && near(appear_blur(t1 + 75 * kMs), 0.75f) && appear_blur(gone) > 0.0f &&
-              near(appear_blur(t1 + 150 * kMs), 0.0f),
-          "the blur crossfades back to the sharp frame over 150 ms, in-quad, past the close it keeps no menu up for");
+    // Out-cubic over close_ms, 120 ms: (1 - t / 120)^3.
+    check(near(appear_blur(t1), 1.0f) && near(appear_blur(t1 + 16 * kMs), 0.6510f) &&
+              near(appear_blur(t1 + 50 * kMs), 0.1985f) && near(appear_blur(t1 + 100 * kMs), 0.0046f) &&
+              appear_blur(gone - kMs) > 0.0f && near(appear_blur(gone), 0.0f),
+          "the blur drops away first as it closes, 0.65 at 16 ms, 0.20 at 50 and 0.005 at 100, gone with the panel");
     appear_close(th, t1);
     const float shrunk = appear_scale(t1 + 60 * kMs);
     appear_open(th, t1 + 60 * kMs);

@@ -3,7 +3,7 @@
 // moves and 16 ms once it's still, and an `[overlay] shown after N ms` line comes once it's
 // whole, while the backdrop dims the game from clear and the held frame's blur is asked for,
 // crossfading in over 150 ms. As it closes the guest goes on at once while the menu fades with no
-// input of its own, from a key, the mouse or a gamepad, the blur fading out 30 ms after it, and
+// input of its own, from a key, the mouse or a gamepad, the blur dropping away first, and
 // once both are gone 600 closed frames lay out no menu frame and no notice and ask for no blur.
 // With menu_motion off the blur snaps in and out, and under --dump-output, or with the theme's
 // blur_backdrop off, there's none. With menu_motion off, and under --dump-output, nothing moves,
@@ -435,15 +435,18 @@ void overlay_motion(const std::string& dir) {
           "F1 closes it and the guest goes on at once, the menu still fading");
     check(overlay_menu_due() && overlay_animating() && overlay_menu_frames() > menu_frames && enter_reaches_game(),
           "as it fades the menu is still due and laid out, and a key reaches the game, not the menu");
+    g_host_ns = closed + 16 * kMs;
+    host_frame(guest);
+    const bool blur_dropping = !overlay_blur_hold() && std::fabs(overlay_blur_alpha() - 0.651f) < 1e-3f;
     g_host_ns = closed + (uint64_t)theme.close_ms * kMs - kMs;
     host_frame(guest);
     const bool fading = overlay_menu_due();
+    const float blur_left = overlay_blur_alpha();
     g_host_ns = closed + (uint64_t)theme.close_ms * kMs;
     check(fading && !overlay_menu_due() && !overlay_animating(), "it's gone at the theme's close time and not before");
-    const float blur_left = overlay_blur_alpha();
-    g_host_ns = closed + (uint64_t)theme.blur_ms * kMs;
-    check(!overlay_blur_hold() && blur_left > 0.0f && overlay_blur_alpha() == 0.0f,
-          "the blur, no longer held, fades out past the close and is gone at 150 ms");
+    check(blur_dropping && blur_left > 0.0f && overlay_blur_alpha() == 0.0f,
+          "the blur, no longer held, drops away first over the frames the guest draws, 0.65 at 16 ms, and is gone "
+          "with the panel");
     const long gone = overlay_menu_frames(), notices = overlay_notice_frames();
     const std::string closed_said = dir + "/motion-closed-stderr.txt";
     bool no_blur = true;

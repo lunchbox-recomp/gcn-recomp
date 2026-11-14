@@ -820,8 +820,9 @@ With the theme's `blur_backdrop` on, the default, the GL present path blurs the 
 behind the backdrop (`render_overlay_blur` in `runtime/gx/render_gl_present.cpp`). It fits the
 frame into a target a quarter of the window's size and runs two Kawase passes over it, once when
 the hold starts and again only when the window's size or the output aspect changes. The blur
-crossfades in from the sharp frame over the theme's `blur_ms` of 150 ms and out again as the menu
-closes, over the frames the guest draws again. `menu_motion off` snaps it in and out.
+crossfades in from the sharp frame over the theme's `blur_ms` of 150 ms. As the menu closes it
+fades out over `close_ms` on an out-cubic curve, so over the frames the guest draws again the held
+one drops away first, to 0.65 at 16 ms and 0.20 at 50 ms. `menu_motion off` snaps it in and out.
 `--dump-output` turns it off, and the menu's dumps draw the held frame again themselves, so no
 dump shows it. `--eye` goes without, and a Metal present path would need its own. On an M4 Max,
 timed with GL queries over a made-up frame, it adds 0.03 ms of GPU time to each held frame at

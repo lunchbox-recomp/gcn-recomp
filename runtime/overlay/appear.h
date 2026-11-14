@@ -3,7 +3,8 @@
 // from the theme's open_scale over its open_ms, out-back, with its contents following
 // contents_delay_ms behind and whole with it. As it closes, the panel, its contents and the
 // backdrop fade out over close_ms, in-quad, the panel shrinking to close_scale. The held frame's
-// blur crossfades in over blur_ms, out-quad, and out over it, in-quad. Opened or closed mid-way,
+// blur crossfades in over blur_ms, out-quad, and out over close_ms, out-cubic, so over the frames
+// the guest draws again the held one drops away first. Opened or closed mid-way,
 // each starts from where it was. With motion off each change is whole at once.
 #pragma once
 #include "overlay/theme.h"
