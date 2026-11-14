@@ -150,6 +150,7 @@ void render_set_output_fbo(unsigned) {}
 #include "test_ports_motion.cpp"          // the menu fading and growing in and out on the host clock
 #include "test_ports_theme.cpp"           // the menu's theme and its style at a new window height
 #include "test_ports_tabs.cpp"            // the menu's pages turned by shoulders, triggers and keys
+#include "test_ports_header.cpp"          // the panel's height across pages, views and resets
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
@@ -260,6 +261,8 @@ int run_ports(const std::string& dir) {
     page_vertices(dir);
     pill_click(dir);
     header_still(dir);
+    header_reset(dir);
+    header_view(dir);
 #endif
     return finish("ports");
 }

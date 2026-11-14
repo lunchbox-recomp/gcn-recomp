@@ -454,52 +454,6 @@ void page_vertices(const std::string& dir) {
     close_window(window);
 }
 
-// A page as tall as ten buttons, taller than the others.
-void tall_page(void*) {
-    for (int i = 0; i < 10; i++) ImGui::Button(("Row " + std::to_string(i)).c_str());
-}
-
-// The header stays where it is across pages: the panel is never shorter than it's been since
-// the menu opened, so only a page taller than any yet moves it, up, and once each has shown it's
-// at the same height on every page. Opened again, the panel starts from the page it opens on.
-void header_still(const std::string& dir) {
-    SDL_Window* window = open_window();
-    if (!window) return;
-    add_extra_page();
-    overlay_add_page("Tall", tall_page, nullptr);
-    OverlayPicture picture;
-    picture.path = dir + "/header-settings.txt";
-    picture.apply = record_apply;
-    picture.now.menu_motion = false;
-    overlay_init(window, "Test title", picture);
-    Guest guest;
-    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
-    // The header's y with page `page` showing: the middle of its first pill, two frames after
-    // it's picked, as Dear ImGui sizes a window by what it held at the frame before.
-    const auto header_y = [&](int page) {
-        overlay_test_pick_page(page);
-        host_frame(guest);
-        host_frame(guest);
-        float x = 0.0f, y = 0.0f;
-        return tabs_test_pill(0, x, y) ? y : -1.0f;
-    };
-    const int extra = page_at("Extra"), tall = page_at("Tall");
-    const float display = header_y(0), controllers = header_y(1), tallest = header_y(tall), shorter = header_y(extra);
-    bool same = true;
-    for (int page : {0, 1, extra, tall}) same = same && header_y(page) == tallest;
-    check(display >= 0.0f && controllers <= display && tallest < controllers && shorter == tallest && same,
-          "the header moves only up, for a page taller than any yet, and once each page has shown it's at one y on all");
-    header_y(extra);
-    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
-    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
-    host_frame(guest);
-    float x = 0.0f, y = 0.0f;
-    check(overlay_open() && tabs_test_pill(0, x, y) && y > tallest,
-          "opened again on a shorter page, the panel starts from that page's height");
-    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
-    close_window(window);
-}
-
 // A click on a pill, as Dear ImGui takes the mouse, with menu_motion on: the page it picks comes
 // in from its side from the click's own frame, not drawn at rest for a frame first.
 void pill_click(const std::string& dir) {
