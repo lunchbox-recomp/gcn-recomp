@@ -321,6 +321,11 @@ void listen() {
     check(r_axis && r_button && bind_hear(l, pull, 10, got) == BindHeard::bound && got == button(23),
           "for L or R a trigger past half beats a button in the same reading, its travel kept; at half, and for "
           "the other controls, the button wins");
+    l = bind_listen(PadControl::L, pushing(kPadLeftTrigger, 32767), 0);
+    const bool l_held = bind_hear(l, pushing(kPadLeftTrigger, 32767), 10, got) == BindHeard::waiting;
+    bind_hear(l, rest, 20, got);
+    check(l_held && bind_hear(l, pushing(kPadLeftTrigger, 32767), 30, got) == BindHeard::bound && got == axis(kPadLeftTrigger),
+          "L picked with a trigger pulled in waits for it to be let go, then takes it pulled again");
 }
 
 // ---- pads.txt
