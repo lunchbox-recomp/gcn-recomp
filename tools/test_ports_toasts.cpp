@@ -228,10 +228,11 @@ void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const c
     host_frame(guest);
 }
 
-// A toast starting and ending in "1", whose ink is narrower than its advance: the pill's
-// padding matches its text's ink on both sides.
-void toast_padding(SDL_Window* window, const std::string& dir) {
-    SDL_SetWindowSize(window, 1440, 1080);
+// A toast starting and ending in "1", whose ink is narrower than its advance, in a window
+// `width` by `height`: the pill's padding matches its text's ink on both sides, and is the
+// theme's padding scaled by the height over 1080.
+void toast_padding(SDL_Window* window, const std::string& dir, int width, int height) {
+    SDL_SetWindowSize(window, width, height);
     Guest guest;
     toasts_init(window, dir, false, false);
     overlay_pads_notice("1Pad one", " connected as player 1");
@@ -239,10 +240,12 @@ void toast_padding(SDL_Window* window, const std::string& dir) {
     const std::vector<OverlayTestToast> laid = overlay_test_toasts();
     const float left = laid.size() == 1 ? laid[0].ink_left - laid[0].left : -1.0f;
     const float right = laid.size() == 1 ? laid[0].right - laid[0].ink_right : -100.0f;
+    const float pad = overlay_theme_default().padding * (float)height / 1080.0f;
     char said[256];
-    snprintf(said, sizeof(said), "a toast with \"1\" at both ends has even padding: %.1f px left of its ink, %.1f px right",
-             left, right);
-    const float pad = overlay_theme_default().padding;
+    snprintf(said, sizeof(said),
+             "at %dx%d a toast with \"1\" at both ends has even padding: %.1f px left of its ink, %.1f px right, "
+             "the theme's %.1f",
+             width, height, left, right, pad);
     check(std::fabs(left - right) < 0.05f && std::fabs(left - pad) < 0.05f, said);
     g_host_ns += 5000 * kToastMsNs;
     host_frame(guest);
@@ -252,9 +255,11 @@ void toast_padding(SDL_Window* window, const std::string& dir) {
     const std::vector<OverlayTestToast> unnamed = overlay_test_toasts();
     const float unnamed_left = unnamed.size() == 1 ? unnamed[0].ink_left - unnamed[0].left : -1.0f;
     const float unnamed_right = unnamed.size() == 1 ? unnamed[0].right - unnamed[0].ink_right : -1.0f;
+    snprintf(said, sizeof(said), "at %dx%d an empty pad name leaves no leading space and keeps the pill's padding even",
+             width, height);
     check(overlay_notices() == std::vector<std::string>{"connected as player 1"} &&
               std::fabs(unnamed_left - unnamed_right) < 0.05f && std::fabs(unnamed_left - pad) < 0.05f,
-          "an empty pad name leaves no leading space and keeps the pill's padding even");
+          said);
     SDL_SetWindowSize(window, 1280, 960);
 }
 
@@ -269,7 +274,8 @@ void toasts(const std::string& dir) {
     toast_stack(window, dir, true, true, "under --dump-output");
     toast_wait(window, dir, true, "with menu_motion on");
     toast_wait(window, dir, false, "with menu_motion off");
-    toast_padding(window, dir);
+    toast_padding(window, dir, 1440, 1080);
+    toast_padding(window, dir, 1280, 960);
     close_window(window);
 }
 
