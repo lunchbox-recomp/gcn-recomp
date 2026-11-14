@@ -824,11 +824,17 @@ asked for but not yet held leaves it playing.
 ## Starting a run
 
 `GCN_PROGRESS=<N>` prints `[progress] frame <count>` to stderr every N presented frames.
-The count starts at 1 and is the same one used by frame dumps and replay. It advances in
-`--hidden --fast` runs too. Unset or empty prints nothing. A value that isn't a positive
-integer from 1 through 4294967295 prints one `[progress] GCN_PROGRESS isn't a positive frame interval`
-line and turns progress off. The desktop frontend reads it once when the run starts
-(`runtime/main.cpp:467`).
+The first presented frame is 1, using the same count as frame dumps, `--exit-after` and
+`GCN_QUIT_AT`. It advances in `--hidden --fast` runs too.
+
+Unset or empty prints nothing. Only decimal values from 1 through 4294967295 with no leading
+zeroes are accepted. Any other nonempty value prints
+`[progress] GCN_PROGRESS=<value> isn't a positive frame interval, so it prints nothing`
+and turns progress off.
+
+The desktop frontend reads it once when the run starts (`runtime/main.cpp`). A non-replay
+reset relaunches the run, so the first presented frame after `[reset]` is 1 again. `--vr` and
+`--headless` print nothing.
 
 `GCN_READY_FILE=<path>` has the window's run add a line to that file as it gets going, so a
 launcher can keep its own window up until the game's has something on it
