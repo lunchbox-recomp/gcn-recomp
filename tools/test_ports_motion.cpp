@@ -361,10 +361,16 @@ void overlay_motion(const std::string& dir) {
     const std::string said = dir + "/motion-stderr.txt";
     bool asked = false, moving = false, fast = false, early = false;
     int dim_first = -1, panel_early = -1, panel_whole = -1;
-    bool blur_held = false;
+    bool blur_not_yet = false, blur_held = false;
     float blur_first = -1, blur_mid = -1, blur_whole = -1;
     capture(said, [&] {
-        key(guest, SDL_SCANCODE_F1, SDLK_F1, true);
+        // host_frame's steps, with the guest let on only once the blur's hold has been read.
+        push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+        pump_events();
+        update_pads(0);
+        overlay_menu_frame();
+        blur_not_yet = overlay_open() && !paused() && !overlay_blur_hold();
+        guest_on(guest);
         asked = overlay_open() && pause_requested();
         host_frame(guest);
         moving = overlay_animating() && paused();
@@ -395,6 +401,8 @@ void overlay_motion(const std::string& dir) {
     check(blur_held && blur_first == 0.0f && std::fabs(blur_mid - 0.75f) < 1e-4f && blur_whole == 1.0f,
           "once the guest is held the blur is asked for, crossfading in from the sharp frame on the host clock: "
           "0 at the open, 0.75 at 75 ms and whole at 150 ms");
+    check(blur_not_yet,
+          "open with the guest not yet held, it asks for no blur, since the frame shown may not be the held one");
     char line[96];
     snprintf(line, sizeof(line), "[overlay] shown after %d ms\n", (int)theme.open_ms);
     check(panel_early > 0 && panel_early < panel_whole && panel_whole == (int)(theme.panel & 0xFF),

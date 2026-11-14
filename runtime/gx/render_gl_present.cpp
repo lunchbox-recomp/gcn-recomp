@@ -249,11 +249,14 @@ void present(const EfbCopyCmd& c) {
 }
 
 // The menu's blurred backdrop (render_overlay_blur): two targets a quarter of the window's size,
-// the blur ending in the first, and what it was made at, so a new hold, a resize or a new output
-// aspect makes it again. 4 MB of targets at 3840x2160.
+// the blur ending in the first, and what it was made at, so a new hold, a resize, a new output
+// aspect or a frame presented after the hold began makes it again. 4 MB of targets at 3840x2160.
 static GLuint g_blur_tex[2], g_blur_fbo[2];
 static int g_blur_win_w, g_blur_win_h;
 static float g_blur_aspect;
+// The presented count it was made at. A frame the front end had queued still presents after the
+// hold begins, since pause_gate holds the guest as a batch is read, ahead of its draw.
+static uint32_t g_blur_present;
 static bool g_blur_ready, g_blur_holding;
 
 static void blur_free() {
@@ -336,6 +339,7 @@ static void blur_make() {
     g_blur_win_w = g_win_w;
     g_blur_win_h = g_win_h;
     g_blur_aspect = output_aspect();
+    g_blur_present = g_present_count;
     g_blur_ready = true;
 }
 
@@ -376,7 +380,7 @@ void render_overlay_blur(bool hold, float alpha) {
     g_blur_holding = hold;
     if (!g_have_last || g_win_w <= 0 || g_win_h <= 0) return;
     const bool remake = hold && (!g_blur_ready || g_blur_win_w != g_win_w || g_blur_win_h != g_win_h ||
-                                 g_blur_aspect != output_aspect());
+                                 g_blur_aspect != output_aspect() || g_blur_present != g_present_count);
     if (remake) blur_make();
     if (g_blur_ready && alpha > 0.0f) blur_draw(alpha);
     if (remake || (g_blur_ready && alpha > 0.0f)) gl_state_invalidate();

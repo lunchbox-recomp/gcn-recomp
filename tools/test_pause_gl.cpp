@@ -222,6 +222,12 @@ void blur_checks() {
     gx::render_overlay_blur(true, 0.0f);
     gx::render_overlay_blur(true, 1.0f);
     check(g_blur_passes == 8 * kMake, "and the next hold makes it once more");
+    present_frame(23, display_copy(0x00400000, 480));
+    gx::render_overlay_blur(true, 1.0f);
+    gx::render_overlay_blur(true, 1.0f);
+    check(g_blur_passes == 9 * kMake && g_tex[gx::g_blur_tex[0]] == 23 && g_window == 23,
+          "a frame the front end had queued, presented after the hold began, is blurred once in place of the "
+          "one before");
     gx::render_overlay_blur(false, 0.0f);
 }
 
