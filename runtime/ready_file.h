@@ -17,7 +17,8 @@
 // which only guards a launcher that forgets.
 #pragma once
 
-// Appends the word's line to GCN_READY_FILE the first time it's called with that word, and
+// Writes the word's line to GCN_READY_FILE the first time it's called with that word, after
+// the lines before it or, for the run's first, in place of what the file held, and
 // does nothing after or without the variable. A line that can't be written (on Windows, a
 // launcher holding the file open) is tried again at the word's next call. Main thread only.
 void ready_mark(const char* word);
