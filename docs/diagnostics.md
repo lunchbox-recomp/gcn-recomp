@@ -824,11 +824,12 @@ asked for but not yet held leaves it playing.
 ## Starting a run
 
 `GCN_PROGRESS=<N>` prints `[progress] frame <count>` to stderr every N presented frames.
-The first presented frame is 1, using the same count as frame dumps, `--exit-after` and
-`GCN_QUIT_AT`. It advances in `--hidden --fast` runs too.
+The first presented frame is 1, using the same count as frame dumps and `GCN_QUIT_AT`.
+`--exit-after` counts the main loop's presented frames, which step with it. It advances in
+`--hidden --fast` runs too.
 
 Unset or empty prints nothing. Only decimal values from 1 through 4294967295 with no leading
-zeroes are accepted. Any other nonempty value prints
+zero are accepted. Any other nonempty value prints
 `[progress] GCN_PROGRESS=<value> isn't a positive frame interval, so it prints nothing`
 and turns progress off.
 
