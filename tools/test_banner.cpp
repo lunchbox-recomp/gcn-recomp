@@ -178,9 +178,11 @@ int main() {
     {
         // 13 bytes: the root's entry, saying there are two, and a NUL. The second isn't there.
         // Without the bound the walk still refuses it, as every name starts at count * 12 or
-        // later, past the table, so no input gets a wrong answer from it; what it stops is the
-        // read of the missing entry, which only the sanitizers see. A build without them
-        // doesn't check this bound.
+        // later, past the table, so no input gets a wrong answer from it. What it stops is reads
+        // past the table: an entry there that looks like a directory sends the walk to its end,
+        // up to count * 12 bytes on, which can crash a build without the sanitizers too. Here
+        // the missing entry is read just past the 13 bytes, which only the sanitizers see, so
+        // a build without them doesn't check this bound.
         std::unique_ptr<uint8_t[]> t(new uint8_t[13]());
         t[0] = 1;
         t[11] = 2;
