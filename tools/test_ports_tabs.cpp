@@ -365,6 +365,84 @@ void page_motion(const std::string& dir) {
     close_window(window);
 }
 
+// The Probe page turned to by E from the page before it and by Q from the one after, with
+// menu_motion on and --dump-output at overlay_init or not, read in the menu window's vertices:
+// the Probe page's at rest, at the turn and at page_ms after it. A key's turn shows the focus as
+// a move does from the frame after it, so the page at rest after one has its focus drawn too.
+struct Turn {
+    Drawn at, end, rest;  // at the turn, at page_ms, and a second on
+    bool moving;          // anything moving at the turn
+};
+struct Slid {
+    Drawn rest;  // picked, with no focus shown
+    Turn e, q;
+};
+Slid probe_turns(SDL_Window* window, const std::string& dir, bool dump_output) {
+    overlay_test_reset_pages();
+    overlay_add_page("Probe", probe_page, nullptr);
+    overlay_add_page("Extra", draw_added_page, &g_page_draws);
+    OverlayPicture picture;
+    picture.path = dir + "/slide-settings.txt";
+    picture.apply = record_apply;
+    gx::g_dump_output = dump_output;
+    overlay_init(window, "Test title", picture);
+    gx::g_dump_output = false;
+    const uint64_t ms = (uint64_t)overlay_theme_default().page_ms * kMs;
+    Guest guest;
+    const auto settle = [&] {
+        g_host_ns += 1000 * kMs;
+        host_frame(guest);
+    };
+    g_host_ns += 10000 * kMs;  // past every tween an earlier check left
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
+    const int probe = page_at("Probe");
+    // From `from`, the key turning to Probe.
+    const auto turn = [&](int from, SDL_Scancode scancode, SDL_Keycode keycode) {
+        overlay_test_pick_page(from);
+        host_frame(guest);
+        settle();
+        Turn r;
+        const uint64_t t = g_host_ns;
+        key(guest, scancode, keycode, true);
+        r.at = probe_drawn();
+        r.moving = overlay_animating();
+        key(guest, scancode, keycode, false);
+        g_host_ns = t + ms;
+        host_frame(guest);
+        r.end = probe_drawn();
+        settle();
+        r.rest = probe_drawn();
+        return r;
+    };
+    Slid s{};
+    overlay_test_pick_page(probe);
+    host_frame(guest);
+    settle();
+    s.rest = probe_drawn();
+    s.e = turn(probe - 1, SDL_SCANCODE_E, SDLK_E);
+    s.q = turn(probe + 1, SDL_SCANCODE_Q, SDLK_Q);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
+    return s;
+}
+
+void page_vertices(const std::string& dir) {
+    SDL_Window* window = open_window();
+    if (!window) return;
+    const Slid on = probe_turns(window, dir, false);
+    const float slide = overlay_theme_default().page_slide * ImGui::GetStyle().FontScaleMain;
+    check(on.e.moving && shifted(on.rest, on.e.at, slide, true) && shifted(on.e.rest, on.e.end, 0.0f, false),
+          "after E the new page's vertices sit page_slide to the right at alpha 0, and at rest at page_ms");
+    check(on.q.moving && shifted(on.rest, on.q.at, -slide, true) && shifted(on.q.rest, on.q.end, 0.0f, false),
+          "after Q they sit page_slide to the left at alpha 0, and at rest at page_ms");
+    const Slid dumping = probe_turns(window, dir, true);
+    check(!dumping.e.moving && !dumping.q.moving && shifted(dumping.rest, dumping.e.at, 0.0f, false) &&
+              shifted(dumping.rest, dumping.q.at, 0.0f, false),
+          "under --dump-output with menu_motion on, E and Q turn to a page drawn at rest at once");
+    close_window(window);
+}
+
 // A page as tall as ten buttons, taller than the others.
 void tall_page(void*) {
     for (int i = 0; i < 10; i++) ImGui::Button(("Row " + std::to_string(i)).c_str());
