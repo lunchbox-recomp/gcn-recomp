@@ -38,9 +38,18 @@ int first_alpha() {
 
 bool near_px(float a, float b) { return std::fabs(a - b) < 0.01f; }
 
+// A host frame, the menu's included, with no guest stepped. With the menu closed the guest plays
+// no part in the notices, and host_frame's wait for it to pass a boundary takes a millisecond or
+// more of the wall clock, which these checks' thousands of frames add up to many seconds.
+void toast_frame() {
+    pump_events();
+    update_pads(0);
+    overlay_menu_frame();
+}
+
 // The menu set up over `window` with menu_motion `motion`, under --dump-output or not, and a host
 // clock past anything an earlier check left showing.
-void toasts_init(SDL_Window* window, const std::string& dir, bool motion, bool dump_output, Guest& guest) {
+void toasts_init(SDL_Window* window, const std::string& dir, bool motion, bool dump_output) {
     overlay_test_reset_pages();
     OverlayPicture picture;
     picture.path = dir + "/toasts-settings.txt";
@@ -50,14 +59,13 @@ void toasts_init(SDL_Window* window, const std::string& dir, bool motion, bool d
     overlay_init(window, "Test title", picture);
     gx::g_dump_output = false;
     g_host_ns += 10000 * kToastMsNs;
-    host_frame(guest);
+    toast_frame();
 }
 
 // One notice through its life, then two, the older going first, as `what` describes: the menu
 // set up with `motion` and `dump_output`, and `moves` whether a toast should move.
 void toast_life(SDL_Window* window, const std::string& dir, bool motion, bool dump_output, const char* what) {
-    Guest guest;
-    toasts_init(window, dir, motion, dump_output, guest);
+    toasts_init(window, dir, motion, dump_output);
     const bool moves = motion && !dump_output;
     int width = 0, height = 0;
     SDL_GetWindowSize(window, &width, &height);
@@ -71,7 +79,7 @@ void toast_life(SDL_Window* window, const std::string& dir, bool motion, bool du
     bool aged = true, drawn = true;
     for (size_t i = 0; i < std::size(kAt); i++) {
         g_host_ns = queued + kAt[i] * kToastMsNs;
-        host_frame(guest);
+        toast_frame();
         const std::vector<OverlayTestToast>& laid = overlay_test_toasts();
         const float alpha = moves ? kAlpha[i] : 1.0f, below = moves ? kBelow[i] * s : 0.0f;
         aged = aged && laid.size() == 1 && std::fabs(laid[0].alpha - alpha) < 1e-4f &&
@@ -81,11 +89,11 @@ void toast_life(SDL_Window* window, const std::string& dir, bool motion, bool du
         drawn = drawn && first_alpha() == (fill ? fill : -1);
     }
     g_host_ns = queued + 2000 * kToastMsNs - 1;
-    host_frame(guest);
+    toast_frame();
     const bool kept = overlay_notices().size() == 1 && overlay_test_toasts().size() == 1;
     const long showing = overlay_notice_frames() - notice_frames;
     g_host_ns = queued + 2000 * kToastMsNs;
-    host_frame(guest);
+    toast_frame();
     const bool gone = overlay_notices().empty() && overlay_test_toasts().empty() &&
                       overlay_notice_frames() - notice_frames == showing;
     char said[256];
@@ -107,14 +115,14 @@ void toast_life(SDL_Window* window, const std::string& dir, bool motion, bool du
     g_host_ns = first + 500 * kToastMsNs;
     overlay_pads_notice("Pad two", " connected as player 2");
     g_host_ns = first + 700 * kToastMsNs;  // the second whole in its place
-    host_frame(guest);
+    toast_frame();
     const std::vector<OverlayTestToast> both = overlay_test_toasts();
     const bool stacked = both.size() == 2 && near_px(both[0].top, rest_top(window, 0)) &&
                          near_px(both[1].top, rest_top(window, 1));
     std::vector<float> tops;
     for (uint64_t ms : {2000, 2080, 2160}) {
         g_host_ns = first + ms * kToastMsNs;
-        host_frame(guest);
+        toast_frame();
         const std::vector<OverlayTestToast>& laid = overlay_test_toasts();
         tops.push_back(laid.size() == 1 ? laid[0].top : -1.0f);
     }
@@ -127,9 +135,9 @@ void toast_life(SDL_Window* window, const std::string& dir, bool motion, bool du
              moves ? "over 160 ms, out-cubic" : "at once");
     check(reflowed, said);
     g_host_ns = first + 2500 * kToastMsNs;
-    host_frame(guest);
+    toast_frame();
     const long none = overlay_notice_frames();
-    for (int i = 0; i < 600; i++) host_frame(guest);
+    for (int i = 0; i < 600; i++) toast_frame();
     snprintf(said, sizeof(said), "%s: once the last has gone 600 closed frames lay out no notice and no menu", what);
     check(overlay_notices().empty() && overlay_notice_frames() == none && overlay_menu_frames() == menu_frames, said);
 }
@@ -139,8 +147,7 @@ void toast_life(SDL_Window* window, const std::string& dir, bool motion, bool du
 // overlapping, and B, queued over A, rises from no further than the gap between them, so its
 // first frame sits on A's top.
 void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool dump_output, const char* what) {
-    Guest guest;
-    toasts_init(window, dir, motion, dump_output, guest);
+    toasts_init(window, dir, motion, dump_output);
     const bool moves = motion && !dump_output;
     int width = 0, height = 0;
     SDL_GetWindowSize(window, &width, &height);
@@ -152,7 +159,7 @@ void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool d
     for (uint64_t ms = 0; ms <= 2600; ms += 2) {
         g_host_ns = a + ms * kToastMsNs;
         if (ms == 500) overlay_pads_notice("Pad two", " connected as player 2");
-        host_frame(guest);
+        toast_frame();
         if (ms == 2000) overlay_pads_notice("Pad three", " connected as player 3");
         const std::vector<OverlayTestToast>& laid = overlay_test_toasts();
         for (size_t i = 1; i < laid.size(); i++) apart = apart && laid[i].top + laid[i].height <= laid[i - 1].top + 0.01f;
@@ -170,14 +177,14 @@ void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool d
                    : "is in its place from its first frame");
     check(rose, said);
     g_host_ns = a + 5000 * kToastMsNs;
-    host_frame(guest);
+    toast_frame();
 
     const uint64_t late = g_host_ns;
     overlay_pads_notice("Pad one", " connected as player 1");
     g_host_ns = late + 1900 * kToastMsNs;
     overlay_pads_notice("Pad two", " connected as player 2");
     g_host_ns = late + 2000 * kToastMsNs;
-    host_frame(guest);
+    toast_frame();
     const std::vector<OverlayTestToast> after_a = overlay_test_toasts();
     const bool kept_over = after_a.size() == 1 &&
                            near_px(after_a[0].top, rest_top(window, moves ? 1 : 0) + (moves ? gap * 0.125f : 0.0f));
@@ -186,14 +193,14 @@ void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool d
 
     g_host_ns = late + 4000 * kToastMsNs;
     overlay_pads_notice("Pad three", " connected as player 3");
-    host_frame(guest);
+    toast_frame();
     const std::vector<OverlayTestToast> after_gap = overlay_test_toasts();
     const bool fresh = after_gap.size() == 1 &&
                        near_px(after_gap[0].top, rest_top(window, 0) + (moves ? 16.0f * s : 0.0f));
     snprintf(said, sizeof(said), "%s: a notice queued after expiry and before a frame starts in the lowest slot", what);
     check(fresh, said);
     g_host_ns = late + 7000 * kToastMsNs;
-    host_frame(guest);
+    toast_frame();
 }
 
 // With the menu open over the held game and `motion` as `what` says, the paused wait at each
@@ -201,7 +208,7 @@ void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool d
 // down into A's place, and 16 ms while both rest. Without motion it's 16 ms throughout.
 void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const char* what) {
     Guest guest;
-    toasts_init(window, dir, motion, false, guest);
+    toasts_init(window, dir, motion, false);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns += 1000 * kToastMsNs;  // past the open's motion
     host_frame(guest);
@@ -232,7 +239,7 @@ void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const c
 void toast_padding(SDL_Window* window, const std::string& dir) {
     SDL_SetWindowSize(window, 1440, 1080);
     Guest guest;
-    toasts_init(window, dir, false, false, guest);
+    toasts_init(window, dir, false, false);
     overlay_pads_notice("1Pad one", " connected as player 1");
     host_frame(guest);
     const std::vector<OverlayTestToast> laid = overlay_test_toasts();
