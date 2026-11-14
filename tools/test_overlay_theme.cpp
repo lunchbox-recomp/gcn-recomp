@@ -6,8 +6,10 @@
 // a question's confirm's included, and the focus ring and its pulse, an item's edge, a check
 // mark and a slider's grab at least 3:1 against what's around them, by WCAG 2's contrast ratio.
 // The panel is translucent, so it's taken over the backdrop over black and over white,
-// whichever is worse. At 1080 lines the body text is at least 22 px, nothing to press is under
-// 48 px and the focus ring is at least 3 px wide. Each kind of text has its size and, on macOS, its chain of the Mac's own fonts.
+// whichever is worse; a notice's pill, which shows with the menu closed too, over black and
+// white with no backdrop. At 1080 lines the body text is at least 22 px, nothing to press is
+// under 48 px and the focus ring is at least 3 px wide. Each kind of text has its size and, on
+// macOS, its chain of the Mac's own fonts.
 // The style built from it
 // (runtime/overlay/theme.cpp) carries its colours, has its sizes at 1080 lines, and is built
 // afresh at another height rather than scaled again, so a height and back gives the same sizes.
@@ -159,6 +161,22 @@ void contrasts(const OverlayTheme& t) {
     }
 }
 
+// A notice's pill (runtime/overlay/notices.cpp) is the panel's colour with the menu closed as
+// often as open, so with no backdrop under it: the text and the dimmed text on the panel straight
+// over black and over white, whichever is worse.
+void notices(const OverlayTheme& t) {
+    for (const auto& ink : {std::pair<const char*, uint32_t>{"a notice's text", t.text}, {"its dimmed text", t.dim}}) {
+        double least = 1e9;
+        for (uint32_t game : {0x000000FFu, 0xFFFFFFFFu}) {
+            const uint32_t seen = over(t.panel, game);
+            least = std::min(least, contrast(over(ink.second, seen), seen));
+        }
+        char what[160];
+        snprintf(what, sizeof(what), "%s on its pill, with no backdrop, is %.2f:1, at least 4.5:1", ink.first, least);
+        check(least >= 4.5, what);
+    }
+}
+
 // What isn't text but has to be seen, at least 3:1 by WCAG 2.1's 1.4.11, read from the style
 // built from `t`: an item's edge on the panel, which is all an unchecked box, a radio button
 // not picked or a slider's track shows of itself there, at every height; a check mark on its
@@ -301,6 +319,7 @@ void style(const OverlayTheme& t) {
 int main() {
     const OverlayTheme t = overlay_theme_default();
     contrasts(t);
+    notices(t);
     edges(t);
     couch(t);
     fonts(t);

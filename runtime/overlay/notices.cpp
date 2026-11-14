@@ -1,5 +1,7 @@
 // The notices over the game about controllers (overlay.h).
 #include "overlay/overlay.h"
+#include "overlay/fonts.h"
+#include "overlay/theme.h"
 #include "runtime.h"  // host_ns
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -17,6 +19,7 @@ namespace {
 constexpr uint64_t kShownNs = 2000000000;  // how long each one shows, in host time
 struct Notice {
     std::string text;
+    size_t lead;     // the controller's name, the text's first `lead` bytes
     uint64_t since;  // host_ns as it was queued
 };
 std::vector<Notice> g_notices;
@@ -30,11 +33,40 @@ void expire() {
     std::erase_if(g_notices, [&](const Notice& n) { return now - n.since >= kShownNs; });
 }
 
+// Each notice a pill in the window's draw list: the panel's colour with its edge, the body text
+// in it, the controller's name in the text's colour and what happened in the dimmed one. The
+// oldest sits lowest, the theme's margin above the window's bottom edge, each newer one above
+// the last, all centred across.
+void pills() {
+    const OverlayTheme& t = theme_now();
+    const float s = ImGui::GetStyle().FontScaleMain;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float h = t.item_min_height * s, pad = t.padding * s, gap = t.item_spacing * s;
+    const float edge = ImGui::GetStyle().FrameBorderSize;
+    const float bottom = vp->Pos.y + vp->Size.y - t.margin * s;
+    for (size_t i = 0; i < g_notices.size(); i++) {
+        const Notice& n = g_notices[i];
+        const char* text = n.text.c_str();
+        const char* split = text + n.lead;
+        const float lead_w = ImGui::CalcTextSize(text, split).x;
+        const float w = lead_w + ImGui::CalcTextSize(split).x + 2.0f * pad;
+        const ImVec2 lo(vp->GetCenter().x - w / 2.0f, bottom - (float)i * (h + gap) - h);
+        const ImVec2 hi(lo.x + w, lo.y + h);
+        dl->AddRectFilled(lo, hi, theme_colour(t.panel), h / 2.0f);
+        if (edge > 0.0f) dl->AddRect(lo, hi, theme_colour(t.panel_edge), h / 2.0f, 0, edge);
+        const float y = lo.y + (h - ImGui::GetFontSize()) / 2.0f;
+        dl->AddText(ImVec2(lo.x + pad, y), theme_colour(t.text), text, split);
+        dl->AddText(ImVec2(lo.x + pad + lead_w, y), theme_colour(t.dim), split);
+    }
+}
+
 }  // namespace
 
-void overlay_pads_notice(const std::string& text) {
+void overlay_pads_notice(const std::string& name, const std::string& what) {
+    const std::string text = name + what;
     fprintf(stderr, "[pads] %s\n", text.c_str());
-    g_notices.push_back({text, host_ns()});
+    g_notices.push_back({text, name.size(), host_ns()});
 }
 
 std::vector<std::string> overlay_notices() {
@@ -58,8 +90,9 @@ void notices_init(SDL_Window* window, bool gl) {
     g_gl = gl;
 }
 
-// overlay.cpp's, after the menu, if one is showing: centred at the bottom of the window, oldest
-// first, in a window that takes no input or focus.
+// overlay.cpp's, after the menu, if one is showing: the pills over the whole window, in a window
+// of their own that has no background or edge and takes no input or focus. With none showing
+// there's no frame at all.
 void notices_frame() {
     expire();
     if (!g_context || g_notices.empty()) return;
@@ -70,14 +103,18 @@ void notices_frame() {
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(ImVec2(vp->GetCenter().x, vp->WorkPos.y + vp->WorkSize.y - ImGui::GetTextLineHeight()),
-                            ImGuiCond_Always, ImVec2(0.5f, 1.0f));
-    ImGui::SetNextWindowBgAlpha(0.8f);
+    ImGui::SetNextWindowPos(vp->Pos);
+    ImGui::SetNextWindowSize(vp->Size);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::Begin("##pads notices", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground |
                      ImGuiWindowFlags_NoSavedSettings);
-    for (const Notice& n : g_notices) ImGui::TextUnformatted(n.text.c_str());
+    ImGui::PushFont(fonts_role(FontRole::body), theme_now().body_size);
+    pills();
+    ImGui::PopFont();
     ImGui::End();
+    ImGui::PopStyleVar(2);
     ImGui::Render();
     if (g_gl) ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     g_frames++;

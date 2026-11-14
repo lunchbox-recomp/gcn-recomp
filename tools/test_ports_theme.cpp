@@ -36,7 +36,7 @@ void overlay_theme_fit(const std::string& dir) {
     });
     SDL_SetWindowSize(window, w, 720);
     Guest guest;
-    overlay_pads_notice("A notice laid out at the new height");
+    overlay_pads_notice("A notice", " laid out at the new height");
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     const float scale = 720.0f / 1080.0f;
     const bool menu = styled(scale, theme.panel);
