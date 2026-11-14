@@ -2,6 +2,7 @@
 // the menu's frame, laid out over the dimmed game and moved as it opens or closes.
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
+#include "overlay/tabs.h"
 #include "frontend.h"
 #include "input_log.h"
 #include "runtime.h"  // host_ns
@@ -39,20 +40,43 @@ struct AddedPage {
     void* user;
 };
 std::vector<AddedPage> g_pages;
+const std::vector<std::string> kOwnPages = {"Display", "Controllers"};
+std::vector<std::string> g_titles = kOwnPages;  // every page's, in order
 OverlayAsk g_ask;         // what the menu is asking before it does it
 OverlayAsk g_asked;       // the button that asked, which takes the focus back at the next draw
 bool g_focus_cancel;      // Cancel takes the focus at the next draw, as the menu starts asking
 bool g_focus;             // the menu takes the keyboard's and the gamepads' focus at its next draw
-int g_select = -1;          // the page the next draw selects, as the menu opens on GCN_OVERLAY_PAGE's
 uint64_t g_opened_ns;       // host_ns as it last opened
 bool g_said_shown;          // its `shown after` line, since it opened
 long g_menu_frames;         // frames that have laid out the menu
 ImDrawList* g_panel_list;   // the menu window's draw list at its last frame
 int g_panel_vtx;            // and how many of its vertices were the panel's own, before its contents
+bool g_on_page;             // its last frame showed a page, not a question or a view
 
-// A page's tab, selected by the draw after the menu opens where GCN_OVERLAY_PAGE gave it.
-bool page_tab(const char* title, int index) {
-    return ImGui::BeginTabItem(title, nullptr, g_select == index ? ImGuiTabItemFlags_SetSelected : 0);
+// The page showing, drawn by its own callback.
+void page() {
+    const int p = tabs_page();
+    if (p == 0) display_page(overlay_window());
+    else if (p == 1) controllers_page();
+    else g_pages[p - 2].draw(g_pages[p - 2].user);
+}
+
+// The room between the header, the page and the footer, past an item's own spacing.
+void section_gap() {
+    const OverlayTheme& t = theme_now();
+    const float s = ImGui::GetStyle().FontScaleMain;
+    ImGui::Dummy(ImVec2(0.0f, std::max(0.0f, (t.section_spacing - 2.0f * t.item_spacing) * s)));
+}
+
+// The panel's size: the theme's share of the window's width, at most its widest and inside its
+// margin, and as tall as what's on it up to the theme's share of the window's height.
+void panel_size() {
+    const OverlayTheme& t = theme_now();
+    const float s = ImGui::GetStyle().FontScaleMain;
+    const ImVec2 v = ImGui::GetMainViewport()->Size;
+    const float w = std::max(1.0f, std::min({t.panel_width * v.x, t.panel_max_width * s, v.x - 2.0f * t.margin * s}));
+    const float h = std::max(1.0f, std::min(t.panel_max_height * v.y, v.y - 2.0f * t.margin * s));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(w, 0.0f), ImVec2(w, h));
 }
 
 // The menu asks before it restarts or quits, with Cancel focused, and goes back to the button
@@ -105,16 +129,20 @@ void draw_menu() {
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     if (g_focus) ImGui::SetNextWindowFocus();
     g_focus = false;
-    // Begin draws the panel's edge, and the rule under its title that a frame border turns on, in
-    // the Border colour, an item's edge. They take the theme's fainter panel edge instead.
+    panel_size();
+    // Begin draws the panel's edge in the Border colour, an item's edge. It takes the theme's
+    // fainter panel edge instead. The menu's title is in its header, not a title bar.
     const uint32_t e = theme_now().panel_edge;
     ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(e >> 24, e >> 16 & 0xFF, e >> 8 & 0xFF, e & 0xFF));
     ImGui::Begin(g_title.c_str(), nullptr,
-                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-                     ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
+                     ImGuiWindowFlags_NoResize | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
     ImGui::PopStyleColor();
     g_panel_list = ImGui::GetWindowDrawList();
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
+    g_on_page = g_ask == OverlayAsk::none && overlay_controllers_asking() < 0 && !overlay_bindings_shown();
+    tabs_header(g_title, g_titles, g_on_page);
+    section_gap();
     if (g_ask != OverlayAsk::none) {
         asking();
     } else if (overlay_controllers_asking() >= 0) {
@@ -122,24 +150,7 @@ void draw_menu() {
     } else if (overlay_bindings_shown()) {
         bindings_page();
     } else {
-        if (ImGui::BeginTabBar("pages")) {
-            if (page_tab("Display", 0)) {
-                display_page(overlay_window());
-                ImGui::EndTabItem();
-            }
-            if (page_tab("Controllers", 1)) {
-                controllers_page();
-                ImGui::EndTabItem();
-            }
-            for (size_t i = 0; i < g_pages.size(); i++) {
-                if (page_tab(g_pages[i].title.c_str(), 2 + (int)i)) {
-                    g_pages[i].draw(g_pages[i].user);
-                    ImGui::EndTabItem();
-                }
-            }
-            ImGui::EndTabBar();
-            g_select = -1;
-        }
+        page();
         actions();
     }
     ImGui::End();
@@ -165,13 +176,16 @@ void say_shown(uint64_t now) {
 
 }  // namespace
 
-void menu_title(const char* title) { g_title = title; }
+void menu_init(const char* title) {
+    g_title = title;
+    tabs_reset();
+}
 
 int menu_added_pages() { return (int)g_pages.size(); }
 
 void menu_opened(int page, uint64_t now) {
     g_focus = true;
-    g_select = page;
+    if (page >= 0) tabs_show(page);
     g_opened_ns = now;
     g_said_shown = false;
 }
@@ -211,10 +225,22 @@ void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
     }
     if (!draw) { fprintf(stderr, "[overlay] page %s has no callback\n", title); return; }
     g_pages.push_back({title, draw, user});
+    g_titles.push_back(title);
 }
 
+int overlay_page() { return tabs_page(); }
+
 #ifdef GCN_OVERLAY_TEST
-void menu_clear_pages() { g_pages.clear(); }
+void menu_clear_pages() {
+    g_pages.clear();
+    g_titles = kOwnPages;
+}
+
+const std::vector<std::string>& overlay_test_pages() { return g_titles; }
+
+void overlay_test_pick_page(int page) { tabs_show(page); }
+
+bool overlay_test_page_shown() { return g_on_page; }
 #endif
 
 OverlayAsk overlay_asking() { return g_ask; }

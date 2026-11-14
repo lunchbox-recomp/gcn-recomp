@@ -81,10 +81,8 @@ struct OverlayTheme {
     // loads, or that lists none, takes Dear ImGui's own embedded font.
     OverlayFonts fonts = overlay_fonts_default();
 
-    // The panel, centred in the window.
-    // Its width, height and margin aren't read yet: today the panel is as wide and tall as its
-    // page, from about a quarter of a 1920 by 1080 window (Controllers) to 42% (Display), and the
-    // header, tabs and footer (F4) size it by these.
+    // The panel, centred in the window: panel_width of the window's width, and as tall as its
+    // page up to panel_max_height of it, past which the page scrolls.
     float panel_width = 0.62f;        // of the window's width, at most panel_max_width
     float panel_max_width = 1100.0f;
     float panel_max_height = 0.9f;    // of the window's height
@@ -94,11 +92,12 @@ struct OverlayTheme {
     float border_size = 1.0f;         // the panel's edge and each item's, at least a pixel
     // What's on it.
     float item_height = 56.0f;        // a button, box or tab
-    float item_min_height = 48.0f;    // nothing to press is shorter: the couch check's, and F4's
+    float item_min_height = 48.0f;    // nothing to press is shorter, and a page's pill this tall
     float item_radius = 12.0f;
     float item_spacing = 8.0f;
-    float section_spacing = 24.0f;    // not read yet (F4)
-    // Text sizes. Only body_size is read yet; the others are the fonts' roles (F2).
+    float section_spacing = 24.0f;    // between the header, the page and the footer
+    // Text sizes, the fonts' roles (F2): the menu's title, the pills, and the body. The items' and
+    // the footer's aren't read yet (F4's footer).
     float title_size = 36.0f;
     float tab_size = 26.0f;
     float item_text_size = 24.0f;

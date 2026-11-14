@@ -29,9 +29,10 @@ void notices_frame();
 // the menu until each is let go.
 void overlay_hold_pads();
 void overlay_latch_pads();
-// overlay_menu.cpp's: the menu's title, how many pages a game added, the menu opened on a page
-// (-1 for where it was) at a time, any question ended, and its frame.
-void menu_title(const char* title);
+// overlay_menu.cpp's: the menu set up with its title on its first page, how many pages a game
+// added, the menu opened on a page (-1 for where it was) at a time, any question ended, and its
+// frame.
+void menu_init(const char* title);
 int menu_added_pages();
 void menu_opened(int page, uint64_t now);
 void menu_end_ask();
@@ -63,7 +64,7 @@ void overlay_style_fit(SDL_Window* window);
 namespace {
 
 bool g_ready, g_open;
-bool g_view_left;  // it closed from a view in place of the tabs, drawn as it fades (overlay_set_open)
+bool g_view_left;  // it closed from a view in place of a page, drawn as it fades (overlay_set_open)
 SDL_Window* g_window;  // null in tests, which draw nothing
 bool g_gl;             // the window has a GL context to draw the menu with, which tests' don't
 bool g_dumped;            // since it opened, under --dump-output
@@ -72,7 +73,7 @@ long g_at_left;             // draws over the held frame left before GCN_OVERLAY
 int g_page = -1;            // GCN_OVERLAY_PAGE's, 0 for Display, -1 for none
 bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the held frame
 
-// What showed in place of the tabs ends with nothing done: Restart? or Quit?, the press-A order,
+// What showed in place of a page ends with nothing done: Restart? or Quit?, the press-A order,
 // and the Buttons view with any press-to-bind.
 void end_view() {
     g_view_left = false;
@@ -110,7 +111,7 @@ void overlay_set_open(bool on) {
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
     // A view up as it closes is drawn as it was while the menu fades, with no input reaching it,
     // and ends once it's gone (menu_lays_out), or at once with no fade. Opened again before then,
-    // the menu is back on its tabs.
+    // the menu is back on its page.
     if (on) {
         if (g_view_left) end_view();
     } else if (g_window && appear_closing(now)) {
@@ -173,7 +174,7 @@ void overlay_style_fit(SDL_Window* window) {
 void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& picture) {
     g_ready = true;
     g_window = window;
-    menu_title(title);
+    menu_init(title);
     display_init(picture);
     appear_motion(picture.now.menu_motion && !gx::g_dump_output);
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) review_parse_at(e, g_at_frame, g_at_left);

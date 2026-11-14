@@ -70,13 +70,12 @@ void overlay_buttons(const std::string& dir) {
     // A face or a key held as the menu opens stays out of it until it's let go, though the
     // focus is where the menu left it, here on Restart game (below).
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
-    const TabAt display = find_tab("Display"), controllers = find_tab("Controllers"), extra = find_tab("Extra");
-    const bool order = display.bar && controllers.bar == display.bar && extra.bar == display.bar &&
-                       controllers.index > display.index && extra.index > controllers.index && display.bar->Tabs.Size == 3;
-    pick_tab(guest, "Extra");
-    check(order, "Controllers follows Display, the added page's tab follows them, and refused pages add no tabs");
-    check(g_page_draws > 0, "selecting the added page calls its callback in the dummy window");
-    pick_tab(guest, "Display");
+    const bool order = overlay_test_pages() == std::vector<std::string>{"Display", "Controllers", "Extra"} &&
+                       overlay_page() == 0;
+    pick_page(guest, "Extra");
+    check(order, "the menu opens on Display, Controllers follows it, the added page's pill follows them, and refused pages add none");
+    check(g_page_draws > 0 && overlay_page() == 2, "selecting the added page calls its callback in the dummy window");
+    pick_page(guest, "Display");
     bottom_row(guest, pad);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, true);
