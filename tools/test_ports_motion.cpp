@@ -5,8 +5,9 @@
 // while the menu fades with no input of its own, from a key or a gamepad, and once it's gone
 // 600 closed frames lay out no menu frame and no notice. With menu_motion off, and under
 // --dump-output, nothing moves. Keys queued in the pump of the F1 that closes it press nothing
-// in its fade or at its next open. Read in by tools/test_ports.cpp after the frontend, with
-// GCN_OVERLAY.
+// in its fade or at its next open. Quit?, the press-A order and the Buttons view stay drawn as
+// they were through the fade and end after it. Read in by tools/test_ports.cpp after the
+// frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 
 namespace {
@@ -108,6 +109,114 @@ bool nothing_queued(SDL_Window* window, const std::string& dir, bool motion) {
     return g_applies == applies && !exists_path(picture.path);
 }
 
+// The menu's window as last laid out: its size and how many vertices it drew.
+struct Look {
+    ImVec2 size;
+    int vtx = -1;
+};
+Look look() {
+    const ImGuiWindow* w = ImGui::FindWindowByName("Test title");
+    return w ? Look{w->SizeFull, w->DrawList->VtxBuffer.Size} : Look{};
+}
+
+// F1 closes the menu from a view shown in place of its tabs, which `showing` says is up. Whether
+// the fade's first frame drew the view as the last open frame did, no larger or smaller, with
+// it still up, and whether it had ended once the fade was over.
+bool kept_through_fade(Guest& guest, bool (*showing)()) {
+    const Look open = look();
+    key(guest, SDL_SCANCODE_F1, SDLK_F1, true);
+    const Look first = look();
+    const bool fading = !overlay_open() && overlay_animating() && showing();
+    key(guest, SDL_SCANCODE_F1, SDLK_F1, false);
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
+    return fading && open.vtx > 0 && first.vtx == open.vtx && first.size.x == open.size.x &&
+           first.size.y == open.size.y && !showing();
+}
+
+// Quit?, the press-A order and the Buttons view each stay up through the close's fade, drawn as
+// they were, and end once it's over. One closed and opened again mid-fade has ended, and with
+// menu_motion off one ends as the menu closes.
+void views_kept(SDL_Window* window, const std::string& dir) {
+    overlay_test_reset_pages();
+    OverlayPicture picture;
+    picture.path = dir + "/views-settings.txt";
+    picture.apply = record_apply;
+    overlay_init(window, "Test title", picture);
+    gamepads_init();
+    Virtual pad{"virtual pad views"};
+    attach(pad);
+    Guest guest;
+    host_frame(guest);
+    const auto open = [&] {
+        tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+        g_host_ns += 1000 * kMs;
+        host_frame(guest);
+        host_frame(guest);
+    };
+    const auto ask_quit = [&] {
+        bottom_row(guest);
+        tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+        tap(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+        host_frame(guest);
+        return waiting(OverlayAsk::quit);
+    };
+    const auto quit_asked = [] { return overlay_asking() == OverlayAsk::quit; };
+    open();
+    check(ask_quit() && kept_through_fade(guest, quit_asked),
+          "closed from Quit?, the fade draws Quit? as it showed, and Quit? ends once the fade is over");
+
+    open();
+    overlay_controllers_order();
+    host_frame(guest);
+    host_frame(guest);
+    const bool ordering = overlay_controllers_asking() == 0;
+    check(ordering && kept_through_fade(guest, [] { return overlay_controllers_asking() >= 0; }),
+          "closed from the press-A order, the fade draws the order, and it ends once the fade is over");
+
+    open();
+    const bool shown = overlay_bindings_open(pad.id) && overlay_bindings_listen(PadControl::Z);
+    host_frame(guest);
+    host_frame(guest);
+    key(guest, SDL_SCANCODE_F1, SDLK_F1, true);
+    set_button(pad, SDL_GAMEPAD_BUTTON_NORTH, true);
+    host_frame(guest);
+    const bool listening = overlay_bindings_shown() && overlay_bindings_listening();
+    set_button(pad, SDL_GAMEPAD_BUTTON_NORTH, false);
+    key(guest, SDL_SCANCODE_F1, SDLK_F1, false);
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
+    check(shown && listening && !overlay_bindings_shown() && !overlay_bindings_listening() &&
+              !has(overlay_bindings_said(), "is now"),
+          "closed from the Buttons view as it listens, the fade draws it listening, a press then binds "
+          "nothing, and the view ends once the fade is over");
+    open();
+    overlay_bindings_open(pad.id);
+    host_frame(guest);
+    host_frame(guest);
+    check(kept_through_fade(guest, overlay_bindings_shown), "closed from the Buttons view, the fade draws the view");
+
+    open();
+    const bool asked = ask_quit();
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    check(asked && overlay_open() && overlay_animating() && overlay_asking() == OverlayAsk::none,
+          "closed from Quit? and opened again before the fade is over, it's back on its tabs");
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
+    unplug({&pad});
+    gamepads_shutdown();
+
+    overlay_test_reset_pages();
+    picture.now.menu_motion = false;
+    overlay_init(window, "Test title", picture);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    const bool still_asked = ask_quit();
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    check(still_asked && overlay_asking() == OverlayAsk::none, "with menu_motion off, Quit? ends as the menu closes");
+}
+
 void overlay_motion(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
@@ -199,6 +308,7 @@ void overlay_motion(const std::string& dir) {
           "Down and Space ahead of the F1 that closes it, in one pump, press nothing as it fades or as it opens again");
     check(nothing_queued(window, dir, false),
           "with menu_motion off they press nothing as it opens again, and none ahead of an F1 that opens it do");
+    views_kept(window, dir);
     close_window(window);
 }
 

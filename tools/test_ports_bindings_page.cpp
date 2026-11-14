@@ -136,8 +136,10 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     overlay_bindings_open(pad.id);
     overlay_bindings_listen(PadControl::Z);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000000000;  // past the close's fade, which still draws the view
+    host_frame(guest);
     check(!overlay_open() && !overlay_bindings_listening() && !overlay_bindings_shown(),
-          "F1 while it listens closes the menu, and the view and the listening end with it");
+          "F1 while it listens closes the menu, and the view and the listening end once it's faded");
     set_button(pad, SDL_GAMEPAD_BUTTON_WEST, true);
     host_frame(guest);
     const bool a_in_game = read(0).buttons == PAD_A;

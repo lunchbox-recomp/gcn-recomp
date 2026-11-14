@@ -39,7 +39,8 @@
 // default. As it opens, the pause is asked for at once while a backdrop dims the game and the
 // panel fades in and grows, and an `[overlay] shown after N ms` line says when the panel is
 // whole. As it closes, the guest goes on at once while the menu fades out and shrinks over the
-// game with no input of its own, then nothing more is laid out until it opens again. Its times
+// game with no input of its own, still showing what it showed, Quit? or the Buttons view, say,
+// which ends once it's gone. Then nothing more is laid out until it opens again. Its times
 // and sizes are the theme's (theme.h). With menu_motion off, and under --dump-output, each is
 // whole at once.
 //

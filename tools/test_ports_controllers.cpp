@@ -186,6 +186,8 @@ void controllers_order(Guest& guest, const std::string& dir) {
     tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
     const bool f1_asked = overlay_controllers_asking() == 0;
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000000000;  // past the close's fade, which still draws the order
+    host_frame(guest);
     const bool f1_closed = !overlay_open() && overlay_controllers_asking() == -1;
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     check(f1_asked && f1_closed && overlay_open() && overlay_controllers_asking() == -1 && tabs_shown(),

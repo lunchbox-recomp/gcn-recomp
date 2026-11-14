@@ -68,6 +68,7 @@ void theme_fit(int height);
 namespace {
 
 bool g_ready, g_open;
+bool g_view_left;  // it closed from a view in place of the tabs, drawn as it fades (set_open)
 SDL_Window* g_window;  // null in tests, which draw nothing
 bool g_gl;             // the window has a GL context to draw the menu with, which tests' don't
 std::string g_title;
@@ -115,18 +116,32 @@ uint32_t buttons_down(SDL_Gamepad* p) {
     return down;
 }
 
+// What showed in place of the tabs ends with nothing done: Restart? or Quit?, the press-A order,
+// and the Buttons view with any press-to-bind.
+void end_view() {
+    g_view_left = false;
+    g_ask = g_asked = OverlayAsk::none;
+    controllers_stop();
+    bindings_stop();
+}
+
 void set_open(bool on) {
     if (on == g_open) return;
     g_open = on;
-    g_ask = g_asked = OverlayAsk::none;
     pause_request(on);
     const uint64_t now = host_ns();
     if (on) appear_open(theme_now(), now);
     else appear_close(theme_now(), now);
     fprintf(stderr, "[overlay] %s\n", on ? "open" : "closed");
-    if (!on) {
-        controllers_stop();
-        bindings_stop();
+    // A view up as it closes is drawn as it was while the menu fades, with no input reaching it,
+    // and ends once it's gone (end_left_view), or at once with no fade. Opened again before then,
+    // the menu is back on its tabs.
+    if (on) {
+        if (g_view_left) end_view();
+    } else if (g_window && appear_closing(now)) {
+        g_view_left = true;
+    } else {
+        end_view();
     }
     if (!g_window) return;
     if (!on) {
@@ -444,6 +459,11 @@ void menu_frame() {
 // The menu is open or still fading out over a window.
 bool menu_showing() { return g_open || (g_window && appear_closing(host_ns())); }
 
+// Before a frame: a view the menu closed from ends once its fade is over (set_open).
+void end_left_view() {
+    if (g_view_left && !menu_showing()) end_view();
+}
+
 }  // namespace
 
 void overlay_latch_pads() {
@@ -598,12 +618,14 @@ void overlay_gate(int port, PadState& p) {
 
 void overlay_menu_frame() {
     if (!g_window) return;
+    end_left_view();
     if (menu_showing()) menu_frame();
     notices_frame();
 }
 
 void overlay_draw() {
     if (!g_window || !g_gl) return;
+    end_left_view();
     if (at_frame_due()) {
         g_at_frame = -1;
         set_open(true);
