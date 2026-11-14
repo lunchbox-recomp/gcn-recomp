@@ -22,7 +22,8 @@ int fonts_find_face(const uint8_t* data, size_t size, std::string_view name);
 // first face of its chain that loads, or else Dear ImGui's own embedded font. Each face that
 // doesn't load says so and where the text goes next in one `[overlay] font` line on stderr; a
 // theme that lists no face at all says so in one line. Kinds that take the same face share
-// one font. An atlas is never freed, as the contexts on it never are.
+// one font. The atlas before it is freed if no context is left on it, and kept otherwise; a
+// game's contexts last as long as it runs, so only checks that destroy theirs free one.
 // fonts_find_face checks each of its reads against the file's size, but once a face loads,
 // stb_truetype, Dear ImGui's loader, reads its tables (cmap, loca, glyf, hmtx and the rest) with
 // no bounds. So a font file a theme lists from its own path is read with no such guarantee: one

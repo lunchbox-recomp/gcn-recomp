@@ -214,6 +214,9 @@ int fonts_find_face(const uint8_t* data, size_t size, std::string_view name) {
 }
 
 void fonts_build(const OverlayFonts& fonts) {
+    // A context on the atlas counts itself in RefCount until it's destroyed, its renderer shut
+    // down first; at 0 nothing draws from the atlas or holds one of its fonts.
+    if (g_atlas && g_atlas->RefCount == 0) IM_DELETE(g_atlas);
     g_atlas = IM_NEW(ImFontAtlas)();
     g_atlas->TexMaxWidth = kTexWidth;
     g_atlas->TexMaxHeight = kTexHeight;

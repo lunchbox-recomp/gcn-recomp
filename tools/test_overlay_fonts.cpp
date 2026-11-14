@@ -7,7 +7,8 @@
 // ones this check writes, a few hundred bytes each with one empty glyph; no real font is kept
 // with the repository. Each kind of text takes the first face of its chain that loads, then
 // Dear ImGui's own, with one [overlay] font line on stderr for each step down, and a theme that
-// lists no font at all takes Dear ImGui's own with one line. The menu's and the notices'
+// lists no font at all takes Dear ImGui's own with one line. An atlas no context is on is freed
+// when the next is built. The menu's and the notices'
 // contexts share one atlas, and the text of every kind at sizes up to 2160 lines at twice the
 // pixel density, 1440 in Dear ImGui's own font, is baked into its 8 MB texture, no glyph falling
 // back. Where the Mac's own Avenir Next is installed, the
@@ -19,6 +20,7 @@
 #include "overlay/fonts.h"
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <unistd.h>
@@ -29,6 +31,17 @@
 namespace {
 
 int g_failed;
+
+// Dear ImGui's allocations not yet freed, as main has it allocate through these.
+long g_live;
+void* counted_alloc(size_t size, void*) {
+    g_live++;
+    return malloc(size);
+}
+void counted_free(void* p, void*) {
+    g_live -= p != nullptr;
+    free(p);
+}
 
 void check(bool ok, const char* what) {
     printf("%s: %s\n", ok ? "ok" : "FAIL", what);
@@ -354,6 +367,11 @@ void chains(const std::string& dir) {
     for (FontRole r : kRoles) own = own && took(r).empty();
     check(own && fonts_atlas()->Fonts.Size == 1 && empty.size() == 1 && has(empty[0], "[overlay] font: the theme lists no font"),
           "a theme that lists no font takes Dear ImGui's own embedded font and says so in one line");
+    // No context is on that atlas, so the next build frees it: Dear ImGui holds as many
+    // allocations after as before, not a second atlas's.
+    const long live = g_live;
+    said(dir + "/again-stderr.txt", [&] { fonts_build(OverlayFonts{}); });
+    check(live > 0 && g_live == live, "an atlas no context is on is freed when the next is built");
 }
 
 // A context of the overlay's kind on the shared atlas, with a renderer that takes texture
@@ -501,6 +519,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "%s exists or can't be made: give a new directory\n", dir.c_str());
         return 2;
     }
+    ImGui::SetAllocatorFunctions(counted_alloc, counted_free);
     lookup();
     chains(dir);
     // Dear ImGui's own font is wider than the Mac's. A size's glyphs stay in the atlas for two
