@@ -34,7 +34,8 @@ constexpr uint8_t kTravelL = 1, kTravelR = 2;
 PadState g_before[4];     // each port as the game last had it with the overlay closed
 
 // A gamepad held for the menu (overlay_hold_pads), and its buttons held as the menu opened, kept
-// from the menu until each is let go, a bit for each SDL_GamepadButton.
+// from the menu until each is let go, a bit for each SDL_GamepadButton and for each trigger
+// (kTriggerL and kTriggerR).
 struct HeldPad {
     SDL_JoystickID id;
     SDL_Gamepad* pad;
@@ -42,11 +43,27 @@ struct HeldPad {
 };
 std::vector<HeldPad> g_pads;
 
+// The triggers, as the menu takes them: buttons past SDL's own, each down while it's in past its
+// click (kGamepadTriggerClick), as the game's default binding clicks it.
+constexpr int kTriggerL = SDL_GAMEPAD_BUTTON_COUNT, kTriggerR = SDL_GAMEPAD_BUTTON_COUNT + 1;
+static_assert(kTriggerR < 32, "a HeldPad's latch has a bit for each button and trigger");
+
 uint32_t buttons_down(SDL_Gamepad* p) {
     uint32_t down = 0;
     for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; b++)
         if (SDL_GetGamepadButton(p, (SDL_GamepadButton)b)) down |= 1u << b;
     return down;
+}
+
+bool is_down(SDL_Gamepad* p, int b) {
+    if (b == kTriggerL) return SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > kGamepadTriggerClick;
+    if (b == kTriggerR) return SDL_GetGamepadAxis(p, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > kGamepadTriggerClick;
+    return SDL_GetGamepadButton(p, (SDL_GamepadButton)b);
+}
+
+// What the menu latches: the buttons and the triggers down.
+uint32_t latch_of(SDL_Gamepad* p) {
+    return buttons_down(p) | (uint32_t)is_down(p, kTriggerL) << kTriggerL | (uint32_t)is_down(p, kTriggerR) << kTriggerR;
 }
 
 // Whether the press `b` is of its gamepad's B, the face labeled B (gamepads_faces).
@@ -123,7 +140,7 @@ bool is_input(const SDL_Event& e) {
 }  // namespace
 
 void overlay_latch_pads() {
-    for (HeldPad& h : g_pads) h.latched = buttons_down(h.pad);
+    for (HeldPad& h : g_pads) h.latched = latch_of(h.pad);
 }
 
 // Every gamepad SDL has, held open, so that the menu reads each one and each one's Back opens
@@ -142,7 +159,7 @@ void overlay_hold_pads() {
             held.push_back(*was);
             was->pad = nullptr;  // still held, so not let go below
         } else if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) {
-            held.push_back({ids[i], p, overlay_open() ? buttons_down(p) : 0});
+            held.push_back({ids[i], p, overlay_open() ? latch_of(p) : 0});
         }
     }
     SDL_free(ids);
@@ -155,15 +172,14 @@ void overlay_hold_pads() {
 // them all as its SDL backend merges them but with each one's faces by their labels, as the
 // game takes them (gamepads_faces). The backend takes faces by position, so it's given no
 // gamepad (overlay_init). A latched button is up to the menu, and once it's let go it's no
-// longer latched.
+// longer latched. The triggers in past their click are L2 and R2, which turn the menu's pages
+// with L1 and R1 (tabs.h), since a GameCube pad has no L1 and its Z is SDL's R1.
 void overlay_read_pads() {
     if (g_pads.empty()) return;
     ImGuiIO& io = ImGui::GetIO();
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-    for (HeldPad& h : g_pads) h.latched &= buttons_down(h.pad);
-    const auto down = [](const HeldPad& h, int b) {
-        return SDL_GetGamepadButton(h.pad, (SDL_GamepadButton)b) && !(h.latched >> b & 1);
-    };
+    for (HeldPad& h : g_pads) h.latched &= latch_of(h.pad);
+    const auto down = [](const HeldPad& h, int b) { return is_down(h.pad, b) && !(h.latched >> b & 1); };
     static constexpr ImGuiKey kFaces[4] = {ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight,
                                            ImGuiKey_GamepadFaceLeft, ImGuiKey_GamepadFaceUp};
     bool faces[4] = {};
@@ -174,7 +190,7 @@ void overlay_read_pads() {
     for (int k = 0; k < 4; k++) io.AddKeyEvent(kFaces[k], faces[k]);
     static constexpr struct {
         ImGuiKey key;
-        SDL_GamepadButton button;
+        int button;
     } kButtons[] = {
         {ImGuiKey_GamepadDpadLeft, SDL_GAMEPAD_BUTTON_DPAD_LEFT},
         {ImGuiKey_GamepadDpadRight, SDL_GAMEPAD_BUTTON_DPAD_RIGHT},
@@ -182,6 +198,8 @@ void overlay_read_pads() {
         {ImGuiKey_GamepadDpadDown, SDL_GAMEPAD_BUTTON_DPAD_DOWN},
         {ImGuiKey_GamepadL1, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER},
         {ImGuiKey_GamepadR1, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER},
+        {ImGuiKey_GamepadL2, kTriggerL},
+        {ImGuiKey_GamepadR2, kTriggerR},
     };
     for (const auto& b : kButtons) {
         bool held = false;

@@ -15,7 +15,13 @@
 //
 // The panel is the theme's share of the window's width (theme.h) and as tall as its page. Its
 // header has the menu's title on the left and a pill for each page centred between the
-// shoulders' names, the page showing on the accent. A click on a pill shows its page.
+// shoulders' names, the page showing on the accent. A click on a pill shows its page, and so
+// does a shoulder: L1, L2 or Q goes back a page and R1, R2 or E on one, no further than the first
+// or the last. L2 and R2 are the triggers pressed in past their click, so a GameCube pad turns
+// pages with its L and R, and with its Z, SDL's R1. The shoulders and keys move nothing while the
+// menu asks, while the press-A order or the Buttons view is up, or while an item is active, as a
+// slider whose L1 and R1 step it is, and a shoulder held as the menu opens moves nothing until
+// it's let go. After a change the page's first item has the focus.
 //
 // A gamepad's A presses what's focused and its B goes back, and they're the faces labeled A and
 // B, the game's own A and B (gamepads_faces in gamepads.h). So a Switch Pro's east button
