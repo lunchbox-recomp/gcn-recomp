@@ -3,11 +3,12 @@
 //
 // The default theme (runtime/overlay/theme.h) must be readable from a couch over any game:
 // every text colour of the style built from it at least 4.5:1 against every fill text sits on,
-// and the focus ring and its pulse, an item's edge, a check mark and a slider's grab at least
-// 3:1 against what's around them, by WCAG 2's contrast ratio. The panel is translucent, so it's
-// taken over the backdrop over black and over white, whichever is worse. At 1080 lines the body
-// text is at least 22 px and nothing to press is under 48 px. Each kind of text has its size
-// and, on macOS, its chain of the Mac's own fonts. The style built from it
+// a question's confirm's included, and the focus ring and its pulse, an item's edge, a check
+// mark and a slider's grab at least 3:1 against what's around them, by WCAG 2's contrast ratio.
+// The panel is translucent, so it's taken over the backdrop over black and over white,
+// whichever is worse. At 1080 lines the body text is at least 22 px and nothing to press is
+// under 48 px. Each kind of text has its size and, on macOS, its chain of the Mac's own fonts.
+// The style built from it
 // (runtime/overlay/theme.cpp) carries its colours, has its sizes at 1080 lines, and is built
 // afresh at another height rather than scaled again, so a height and back gives the same sizes.
 //
@@ -125,6 +126,11 @@ void contrasts(const OverlayTheme& t) {
         check(r >= 4.5, what);
     }
     ImGui::DestroyContext();
+    // A question's confirm (runtime/overlay/footer.cpp): the panel's colour, whole, on danger.
+    const double confirm = worst(t, t.panel | 0xFF, t.danger);
+    char said[160];
+    snprintf(said, sizeof(said), "the confirm's text, the panel's colour, on danger is %.2f:1, at least 4.5:1", confirm);
+    check(confirm >= 4.5, said);
     for (const auto& ring : {std::pair<const char*, uint32_t>{"the focus ring", t.accent}, {"its pulse", t.accent_light}}) {
         const double r = worst(t, ring.second, 0);
         char what[160];
