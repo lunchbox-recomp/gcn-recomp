@@ -17,6 +17,14 @@
 // launcher holding the file open) is tried again at the word's next call. Main thread only.
 void ready_mark(const char* word);
 
+// Before a console reset runs the game again (plat_relaunch): takes GCN_READY_FILE out of the
+// environment once this run has written its frame line, so the run after writes no second
+// pair. A launcher waits for one window and one frame a launch, and has both. A reset before
+// the game's first frame leaves it, so the run after writes what this one didn't; its times
+// count from this run's start on macOS and Linux, where the relaunch keeps the process, and
+// from the new process's on Windows.
+void ready_relaunching();
+
 // `word ms` and a newline after what `path` holds, through `path`.tmp. False, with the reason on
 // stderr, when it can't be written.
 bool ready_file_append(const char* path, const char* word, long long ms);

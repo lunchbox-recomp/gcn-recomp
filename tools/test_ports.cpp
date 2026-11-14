@@ -7,7 +7,8 @@
 // (input_script.cpp) applied and the input log (input_log.cpp) consulted. gamepads.cpp,
 // port_memory.cpp, input_map.cpp, input_defaults.cpp, input_script.cpp, input_log.cpp,
 // bot_link.cpp (with no bot), platform.cpp, hw/mmio.cpp, vr_config.cpp (the headset's
-// default gamepad layout) and settings.cpp are linked as they are. Stubbed: force feedback
+// default gamepad layout), settings.cpp and ready_file.cpp (a reset's ready_relaunching) are
+// linked as they are. Stubbed: force feedback
 // (ffb_configure, ffb_attach, ffb_update, ffb_shutdown; ffb_update keeps the motor it was
 // given), the RTC (rtc_set_base), the event queue and interrupt request (event_schedule_in,
 // irq_request), and the frame counters (gx::g_frames_submitted, gx_frames_submitted, and the

@@ -3,8 +3,8 @@
 // runtime/ready_file.cpp writes GCN_READY_FILE's lines through a temporary file that then
 // replaces it, so a launcher watching it sees each version whole. These check the lines and
 // their order, that each word goes in once, that a reader polling the file meanwhile never
-// sees a line cut short, that no line waits for a sync, and that the times count from the
-// process's start. It prints what a line costs.
+// sees a line cut short, that no line waits for a sync, what a console reset leaves for the
+// run after, and that the times count from the process's start. It prints what a line costs.
 //
 // usage: test_ready_file WORKDIR
 // Exits 0 only if every check passes.
@@ -119,6 +119,8 @@ int main(int argc, char** argv) {
     plat_make_dirs(later);
     ready_mark("window");
     ready_mark("window");
+    ready_relaunching();
+    check(getenv("GCN_READY_FILE"), "a console reset before the frame line leaves the variable for the run after");
     ready_mark("frame");
     ready_mark("frame");
     const std::string got = slurp(e);
@@ -131,6 +133,10 @@ int main(int argc, char** argv) {
     // The process started before main did, and this run is well under a minute.
     check(parsed && (double)w + 1.0 >= before && fr < 60000, "the times count from the process's start");
     check(plat_ms_since_start() >= before, "plat_ms_since_start counts from before main");
+
+    // A console reset after both lines: the run after writes no second pair.
+    ready_relaunching();
+    check(!getenv("GCN_READY_FILE"), "a console reset after the frame line takes the variable away");
 
     return g_failed ? 1 : 0;
 }

@@ -828,6 +828,12 @@ launcher can keep its own window up until the game's has something on it
 `frame <ms>` at the first frame the game presents, each once, in milliseconds since the
 process started. With no boot splash (below), both go in at the game's first frame.
 
+That's one pair a launch. A console reset starts the game again with `GCN_READY_FILE` taken
+out of its environment, so it writes no second pair for a launcher still watching. A reset
+before the game's first frame keeps it, and the run after writes the lines this one didn't,
+timed from the first run's start on macOS and Linux (the relaunch is the same process) and
+from the new process's on Windows.
+
 Each line goes in through `<path>.tmp`, which then replaces the file, so a reader never sees
 a line cut short. Nothing waits for the disk, since the file is only for a reader at the
 time: a line costs the main thread no sync, and a power cut can leave the file empty. A

@@ -3,8 +3,13 @@
 #include "env.h"
 #include "platform.h"
 #include <cstdio>
+#include <cstdlib>
 #include <set>
 #include <string>
+
+namespace {
+std::set<std::string> g_done;  // the words whose lines are in
+}  // namespace
 
 bool ready_file_append(const char* path, const char* word, long long ms) {
     std::string text;
@@ -21,8 +26,16 @@ bool ready_file_append(const char* path, const char* word, long long ms) {
 }
 
 void ready_mark(const char* word) {
-    static std::set<std::string> s_done;  // the words whose lines are in
     const char* path = getenv_nonempty("GCN_READY_FILE");
-    if (!path || s_done.count(word)) return;
-    if (ready_file_append(path, word, (long long)plat_ms_since_start())) s_done.insert(word);
+    if (!path || g_done.count(word)) return;
+    if (ready_file_append(path, word, (long long)plat_ms_since_start())) g_done.insert(word);
+}
+
+void ready_relaunching() {
+    if (!g_done.count("frame")) return;
+#ifdef _WIN32
+    _putenv_s("GCN_READY_FILE", "");
+#else
+    unsetenv("GCN_READY_FILE");
+#endif
 }

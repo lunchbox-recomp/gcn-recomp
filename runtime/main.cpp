@@ -363,6 +363,7 @@ static void relaunch(const char* why = nullptr) {
     if (input_replay_loaded()) return;
     if (why) fprintf(stderr, "[reset] %s\n", why);
     session_relaunching();
+    ready_relaunching();
     plat_relaunch(g_argv);
 }
 
