@@ -845,10 +845,13 @@ function(gcn_add_game)
   # the SI layer against SDL's virtual joysticks. Needs no disc image, and nothing of the
   # game: tools/test_ports.cpp includes main.cpp and hw/si.cpp itself, then its checks from
   # tools/test_ports_*.cpp, which aren't compiled on their own. macOS and Linux.
+  # tools/test_overlay_early.cpp stands for a game's file, whose static initializer gives the
+  # overlay a theme and a page (--init-order), so it comes ahead of the overlay's files, as a
+  # game's come ahead of them in the desktop executable.
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
-      ${RT}/gamepads.cpp ${RT}/pad_numbers.cpp ${RT}/pad_bindings.cpp ${RT}/pad_glyph.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp
+      ${GCN_RECOMP_DIR}/tools/test_overlay_early.cpp ${RT}/gamepads.cpp ${RT}/pad_numbers.cpp ${RT}/pad_bindings.cpp ${RT}/pad_glyph.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp
       ${RT}/input_defaults.cpp ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/bot_link.cpp ${RT}/platform.cpp
       ${RT}/hw/mmio.cpp ${RT}/vr_config.cpp ${RT}/settings.cpp ${RT}/reset.cpp ${RT}/ram_patches.cpp ${RT}/ready_file.cpp)
     _gcn_set_standards(test_ports)
@@ -1298,6 +1301,12 @@ function(gcn_add_game)
       set_tests_properties(test_overlay_pages PROPERTIES FIXTURES_REQUIRED unit_dirs SKIP_RETURN_CODE 77
                            TIMEOUT 60 ENVIRONMENT SDL_AUDIO_DRIVER=dummy)
       list(APPEND _unit_dirs ${_unit_work}/test_overlay_pages)
+      # A theme and a page given before main, from a file linked ahead of the overlay's
+      # (tools/test_overlay_early.cpp), kept through overlay_init and the menu's first frame.
+      add_test(NAME test_overlay_init_order COMMAND test_ports --init-order ${_unit_work}/test_overlay_init_order)
+      set_tests_properties(test_overlay_init_order PROPERTIES FIXTURES_REQUIRED unit_dirs
+                           TIMEOUT 60 ENVIRONMENT SDL_AUDIO_DRIVER=dummy)
+      list(APPEND _unit_dirs ${_unit_work}/test_overlay_init_order)
     endif()
     add_test(NAME test_engine_sha COMMAND ${CMAKE_COMMAND} -DENGINE_SHA=${GCN_RECOMP_DIR}/tools/engine_sha.cmake
              -DBASE=${_unit_work}/test_engine_sha -P ${GCN_RECOMP_DIR}/tools/test_engine_sha.cmake)

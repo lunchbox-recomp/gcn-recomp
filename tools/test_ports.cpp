@@ -60,6 +60,11 @@
 //                                              window, with its frame time, then the notices;
 //                                              exit 77 with no GL window or no overlay in the
 //                                              build
+//        test_ports --init-order <empty work dir>   the theme and the page given before main
+//                                                   by tools/test_overlay_early.cpp, kept
+//                                                   through overlay_init and the menu's first
+//                                                   frame; exit 77 with no overlay in the build.
+//                                                   Every other mode drops them at main.
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -158,6 +163,7 @@ void render_set_output_fbo(unsigned) {}
 #include "test_ports_sounds.cpp"          // the menu's sounds as it raises them
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #include "test_ports_pages_toasts.cpp"    // the notices dumped over the same window, and their cost
+#include "test_ports_init_order.cpp"      // a theme and a page given before main, kept
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
 #include "test_ports_exit.cpp"    // how a run ends: RunEnd, GCN_QUIT_AT and the modes that end it
@@ -286,6 +292,15 @@ int main(int argc, char** argv) {
     // virtual gamepads kept to the allow list.
     for (const auto& h : kRealDriversOff) SDL_SetHintWithPriority(h.hint, h.value, SDL_HINT_OVERRIDE);
     unsetenv(kSteamVirtualGamepads);
+#ifdef GCN_OVERLAY
+    if (argc == 3 && !strcmp(argv[1], "--init-order")) return run_init_order(argv[2]);
+    overlay_test_reset_pages();  // tools/test_overlay_early.cpp's theme and page are --init-order's
+#else
+    if (argc == 3 && !strcmp(argv[1], "--init-order")) {
+        printf("test_ports init-order: skipped, the build has no overlay\n");
+        return 77;
+    }
+#endif
     if (argc == 2) return run_ports(argv[1]);
     if (argc == 3 && !strcmp(argv[1], "--record")) return run_record(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--replay")) return run_replay(argv[2]);
@@ -309,6 +324,6 @@ int main(int argc, char** argv) {
     }
 #endif
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay|--pages] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay|--pages|--init-order] <work dir>\n");
     return 2;
 }
