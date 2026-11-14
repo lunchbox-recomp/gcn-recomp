@@ -97,6 +97,16 @@ void overlay_buttons(const std::string& dir) {
         detach(v);
         host_frame(guest);
     }
+    // A disc is as wide as it's tall, PlayStation's with its shape on it in place of the word, and
+    // a face whose label doesn't fit one, as an unknown pad's south, is a pill as tall.
+    const float tall = ImGui::GetFontSize() * 1.3f;
+    const auto wide = [&](PadFamily f, int label) {
+        return overlay_glyph_width(overlay_pad_glyph(theme, f, {false, kPadSouth}, label), tall);
+    };
+    check(wide(PadFamily::xbox, SDL_GAMEPAD_BUTTON_LABEL_A) == tall &&
+              wide(PadFamily::ps5, SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE) == tall &&
+              wide(PadFamily::other, SDL_GAMEPAD_BUTTON_LABEL_UNKNOWN) > 2.0f * tall,
+          "an A disc and a Triangle disc are as wide as they're tall, and a South button face is a wider pill");
     // With gamepads in, a key takes the footer to keycaps, a button to its gamepad's glyphs, and
     // a stick to its gamepad's once pushed as far as the menu's navigation takes as a push, 10%
     // past the dead zone of 8000, about 10477. The right stick moves no focus. Q on the first

@@ -1,9 +1,12 @@
+// The menu's button and key glyphs (glyph.h).
 #include "overlay/glyph.h"
 #include "overlay/theme.h"
 #include <algorithm>
 #include <cmath>
 
 namespace {
+
+// WCAG 2's relative luminance of an opaque 0xRRGGBBAA colour.
 double luminance(uint32_t rgba) {
     double sum = 0;
     for (int i = 0; i < 3; i++) {
@@ -13,56 +16,97 @@ double luminance(uint32_t rgba) {
     }
     return sum;
 }
+
+// Black or white, whichever has more contrast on `fill`.
+uint32_t ink_on(uint32_t fill) { return luminance(fill) > 0.179 ? 0x000000FF : 0xFFFFFFFF; }
+
+// Each by the glyph's height: how wide a label a disc takes, a pill's and a keycap's corners, and
+// the room either side of a label on either.
+constexpr float kDiscLabel = 0.62f, kPillRadius = 0.42f, kKeyRadius = 0.18f, kSides = 0.4f;
+
+// Whether `g` is drawn as a disc `height` across: a face with a mark, or a label that fits it.
+bool disc(const OverlayGlyph& g, float height) {
+    return g.shape == OverlayGlyphShape::circle &&
+           (g.mark != OverlayGlyphMark::none || ImGui::CalcTextSize(g.label.c_str()).x <= height * kDiscLabel);
 }
 
-uint32_t overlay_glyph_ink(uint32_t fill) {
-    return luminance(fill) > 0.179 ? 0x000000FF : 0xFFFFFFFF;
+// `g`'s mark in its ink, on its disc of radius `r` about `c`.
+void draw_mark(ImDrawList* dl, ImVec2 c, float r, const OverlayGlyph& g) {
+    const ImU32 ink = theme_colour(g.ink);
+    const float w = std::max(1.0f, r * 0.16f);
+    const float a = r * 0.42f;
+    switch (g.mark) {
+    case OverlayGlyphMark::cross:
+        dl->AddLine(ImVec2(c.x - a, c.y - a), ImVec2(c.x + a, c.y + a), ink, w);
+        dl->AddLine(ImVec2(c.x - a, c.y + a), ImVec2(c.x + a, c.y - a), ink, w);
+        break;
+    case OverlayGlyphMark::circle: dl->AddCircle(c, r * 0.48f, ink, 0, w); break;
+    case OverlayGlyphMark::square: dl->AddRect(ImVec2(c.x - a, c.y - a), ImVec2(c.x + a, c.y + a), ink, 0.0f, 0, w); break;
+    case OverlayGlyphMark::triangle: {
+        // Its corners `t` from a point a quarter of that below the disc's centre, which centres it
+        // top to bottom.
+        const float t = r * 0.58f;
+        const ImVec2 m(c.x, c.y + t * 0.25f);
+        dl->AddTriangle(ImVec2(m.x, m.y - t), ImVec2(m.x + t * 0.866f, m.y + t * 0.5f),
+                        ImVec2(m.x - t * 0.866f, m.y + t * 0.5f), ink, w);
+        break;
+    }
+    case OverlayGlyphMark::none: break;
+    }
 }
+
+}  // namespace
 
 OverlayGlyph overlay_pad_glyph(const OverlayTheme& t, PadFamily f, const PadSource& s, int face_label) {
-    const std::string label = pad_glyph(f, s, face_label);
     const bool face = !s.axis && s.index >= kPadSouth && s.index <= kPadNorth;
-    uint32_t fill = t.item;
-    if (face) {
-        const OverlayTheme::Faces* colours = nullptr;
-        if (f == PadFamily::xbox || f == PadFamily::xbox360) colours = &t.xbox;
-        if (f == PadFamily::ps3 || f == PadFamily::ps4 || f == PadFamily::ps5) colours = &t.playstation;
-        if (f == PadFamily::gamecube) colours = &t.gamecube;
-        if (colours) {
-            const uint32_t entries[] = {colours->a, colours->b, colours->x, colours->y};
-            int n = s.index;
-            if (face_label == 1 || face_label == 5) n = 0;
-            else if (face_label == 2 || face_label == 6) n = 1;
-            else if (face_label == 3 || face_label == 7) n = 2;
-            else if (face_label == 4 || face_label == 8) n = 3;
-            fill = entries[n];
-        }
-    } else if (f == PadFamily::gamecube && !s.axis && s.index == kPadRightShoulder) fill = t.gamecube_z;
-    const bool mono = f == PadFamily::nintendo || f == PadFamily::joycon_left || f == PadFamily::joycon_right ||
-                      f == PadFamily::joycon_left_upright || f == PadFamily::joycon_right_upright || f == PadFamily::other;
-    return {label, fill, mono ? t.text : overlay_glyph_ink(fill), face ? OverlayGlyphShape::circle : OverlayGlyphShape::pill};
+    const OverlayTheme::Faces* colours = nullptr;
+    if (f == PadFamily::xbox || f == PadFamily::xbox360) colours = &t.xbox;
+    if (f == PadFamily::ps3 || f == PadFamily::ps4 || f == PadFamily::ps5) colours = &t.playstation;
+    if (f == PadFamily::gamecube) colours = &t.gamecube;
+    OverlayGlyph g{pad_glyph(f, s, face_label), t.item, t.text, t.border,
+                   face ? OverlayGlyphShape::circle : OverlayGlyphShape::pill, OverlayGlyphMark::none};
+    // A face takes its colour by the label printed on it, A or Cross first (SDL's labels 1 to 8),
+    // or with none by its place, south first.
+    bool coloured = false;
+    if (face && colours) {
+        const uint32_t entries[] = {colours->a, colours->b, colours->x, colours->y};
+        g.fill = entries[face_label >= 1 && face_label <= 8 ? (face_label - 1) % 4 : s.index];
+        coloured = true;
+    } else if (f == PadFamily::gamecube && !s.axis && s.index == kPadRightShoulder) {
+        g.fill = t.gamecube_z;
+        coloured = true;
+    }
+    // One in a colour has black or white on it and no edge; one on the item's colour has the
+    // text's and the item's edge, as a button has.
+    if (coloured) {
+        g.ink = ink_on(g.fill);
+        g.edge = 0;
+    }
+    if (face && face_label >= 5 && face_label <= 8) g.mark = (OverlayGlyphMark)(face_label - 4);
+    return g;
 }
 
 OverlayGlyph overlay_key_glyph(const OverlayTheme& t, const char* label) {
-    return {label, t.item, overlay_glyph_ink(t.item), OverlayGlyphShape::keycap};
+    return {label, t.item, t.text, t.text, OverlayGlyphShape::keycap, OverlayGlyphMark::none};
 }
 
 float overlay_glyph_width(const OverlayGlyph& g, float height) {
-    const float text = ImGui::CalcTextSize(g.label.c_str()).x;
-    return g.shape == OverlayGlyphShape::circle ? std::max(height, text + height * 0.38f)
-                                                 : text + height * 0.8f;
+    return disc(g, height) ? height : ImGui::CalcTextSize(g.label.c_str()).x + 2.0f * kSides * height;
 }
 
 void overlay_draw_glyph(ImDrawList* dl, ImVec2 at, float height, const OverlayGlyph& g) {
     const float width = overlay_glyph_width(g, height);
-    const ImVec2 end(at.x + width, at.y + height);
-    const float radius = g.shape == OverlayGlyphShape::circle ? height * 0.5f
-                         : g.shape == OverlayGlyphShape::pill ? height * 0.42f : height * 0.18f;
-    if (g.shape == OverlayGlyphShape::circle)
-        dl->AddCircleFilled(ImVec2(at.x + width * 0.5f, at.y + height * 0.5f), width * 0.5f, theme_colour(g.fill));
-    else dl->AddRectFilled(at, end, theme_colour(g.fill), radius);
-    if (g.shape == OverlayGlyphShape::keycap) dl->AddRect(at, end, theme_colour(g.ink), radius);
+    const ImVec2 end(at.x + width, at.y + height), centre(at.x + width * 0.5f, at.y + height * 0.5f);
+    const float edge = std::max(1.0f, ImGui::GetStyle().FrameBorderSize);
+    if (disc(g, height)) {
+        dl->AddCircleFilled(centre, height * 0.5f, theme_colour(g.fill));
+        if (g.edge & 0xFF) dl->AddCircle(centre, height * 0.5f - edge * 0.5f, theme_colour(g.edge), 0, edge);
+        if (g.mark != OverlayGlyphMark::none) return draw_mark(dl, centre, height * 0.5f, g);
+    } else {
+        const float radius = height * (g.shape == OverlayGlyphShape::keycap ? kKeyRadius : kPillRadius);
+        dl->AddRectFilled(at, end, theme_colour(g.fill), radius);
+        if (g.edge & 0xFF) dl->AddRect(at, end, theme_colour(g.edge), radius, 0, edge);
+    }
     const ImVec2 size = ImGui::CalcTextSize(g.label.c_str());
-    dl->AddText(ImVec2(at.x + (width - size.x) * 0.5f, at.y + (height - size.y) * 0.5f), theme_colour(g.ink),
-                g.label.c_str());
+    dl->AddText(ImVec2(centre.x - size.x * 0.5f, centre.y - size.y * 0.5f), theme_colour(g.ink), g.label.c_str());
 }

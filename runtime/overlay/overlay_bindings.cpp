@@ -181,9 +181,8 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
             const OverlayGlyph mark = overlay_pad_glyph(theme, family, source, face_label);
             const float height = ImGui::GetFontSize() * 1.3f;
             const float width = overlay_glyph_width(mark, height);
-            const float visual_height = mark.shape == OverlayGlyphShape::circle ? width : height;
             ImGui::PopFont();
-            if (ImGui::Button("##source", ImVec2(width + 12.0f, std::max(visual_height + 8.0f, ImGui::GetFrameHeight()))))
+            if (ImGui::Button("##source", ImVec2(width + 12.0f, std::max(height + 8.0f, ImGui::GetFrameHeight()))))
                 overlay_bindings_listen((PadControl)c);
             ImGui::PushFont(fonts_role(FontRole::footer), theme.footer_size);
             const ImVec2 lo = ImGui::GetItemRectMin(), hi = ImGui::GetItemRectMax();
