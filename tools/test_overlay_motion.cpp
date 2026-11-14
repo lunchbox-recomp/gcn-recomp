@@ -10,7 +10,9 @@
 // closes over the theme's close time, at once with one of those, and can open again from
 // wherever it was. With motion off each change is whole at once. Its transform of a frame's draw
 // data scales every list but the backdrop's about the centre, clip rects too, and fades the
-// panel's vertices and the contents' each by their own alpha. The standard library checks its
+// panel's vertices and the contents' each by their own alpha. runtime/overlay/toasts.h fades a
+// notice in and out and rises it into its place at the theme's times, in exactly 2 s, and moves
+// the ones above one that goes down into its place. The standard library checks its
 // preconditions as these run (CMakeLists.txt), and stdout is unbuffered so that the checks
 // before a broken one still show.
 //
@@ -18,7 +20,9 @@
 // Exits 0 only if every check passes.
 #include "overlay/appear.h"
 #include "overlay/motion.h"
+#include "overlay/toasts.h"
 #include <cmath>
+#include <iterator>
 #include <cstdio>
 #include <vector>
 #include "imgui.h"
@@ -223,6 +227,78 @@ void transform() {
     ImGui::DestroyContext();
 }
 
+// A notice as a toast (runtime/overlay/toasts.h) at 0, 100, 200, 1820, 1910 and 2000 ms of its
+// life: with motion, 16 px below its place and clear, then rising out-cubic and whole at 200 ms,
+// whole until 1820 ms, fading in-quad to nothing at 2000 ms; without, whole in its place until
+// 2000 ms. It moves only as it fades in or out, and never without motion. One queued over another
+// rises from no further than the gap between them. A theme's times that aren't finite or are
+// negative take none, a rise that isn't finite or is negative none, and a long time is cut to
+// the toast's 2 s. A toast above one that goes moves down into its place over 160 ms, out-cubic,
+// or at once without motion.
+void toasts() {
+    const OverlayTheme th = overlay_theme_default();
+    const uint64_t kAt[] = {0, 100, 200, 1820, 1910, 2000};
+    const float kAlpha[] = {0.0f, 0.875f, 1.0f, 1.0f, 0.75f, 0.0f};
+    const float kBelow[] = {16.0f, 2.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    bool moving = true, still = true;
+    for (size_t i = 0; i < std::size(kAt); i++) {
+        const ToastLook on = toast_look(th, kAt[i] * kMs, true), off = toast_look(th, kAt[i] * kMs, false);
+        moving = moving && near(on.alpha, kAlpha[i]) && near(on.below, kBelow[i]);
+        const bool showing = kAt[i] < 2000;
+        still = still && near(off.alpha, showing ? 1.0f : 0.0f) && near(off.below, 0.0f);
+    }
+    check(moving && th.toast_in_ms == 200.0f && th.toast_out_ms == 180.0f && th.toast_rise == 16.0f,
+          "with motion a toast is clear 16 px below its place at 0 ms, 0.875 and 2 px at 100 ms, whole in its place "
+          "from 200 ms to 1820 ms, 0.75 at 1910 ms and gone at 2000 ms");
+    check(still, "without motion it's whole in its place from 0 ms and gone at 2000 ms");
+    const ToastLook last = toast_look(th, kToastNs - kMs, true);
+    check(kToastNs == 2000 * kMs && last.alpha > 0.0f && last.alpha < 0.02f &&
+              near(toast_look(th, kToastNs - 1, false).alpha, 1.0f),
+          "a toast lasts exactly 2 s: a millisecond before it's faint with motion, and a nanosecond before whole without");
+    OverlayTheme low = th;
+    low.toast_rise = 4.0f;
+    check(th.item_spacing == 8.0f && near(toast_look(th, 0, true, true).below, 8.0f) &&
+              near(toast_look(th, 100 * kMs, true, true).below, 1.0f) && near(toast_look(low, 0, true, true).below, 4.0f) &&
+              near(toast_look(th, 0, false, true).below, 0.0f),
+          "one queued over another rises from no further than the 8 px gap, out-cubic, and a lower rise is kept");
+    bool moves = true, rests = true;
+    for (uint64_t ms : {0, 199, 1820, 1999}) moves = moves && toast_moving(th, ms * kMs, true) && !toast_moving(th, ms * kMs, false);
+    for (uint64_t ms : {200, 1000, 1819, 2000}) rests = rests && !toast_moving(th, ms * kMs, true);
+    check(moves && rests && !toast_moving(th, kToastNs - 1, false),
+          "a toast moves as it fades in to 200 ms and out from 1820 ms, rests between and once gone, and never without motion");
+
+    OverlayTheme odd = th;
+    odd.toast_in_ms = NAN;
+    odd.toast_out_ms = -5.0f;
+    odd.toast_rise = INFINITY;
+    const ToastLook first = toast_look(odd, 0, true), late = toast_look(odd, 1999 * kMs, true);
+    odd.toast_in_ms = 1e9f;
+    odd.toast_out_ms = INFINITY;
+    const ToastLook slow = toast_look(odd, 1000 * kMs, true);
+    check(near(first.alpha, 1.0f) && near(first.below, 0.0f) && near(late.alpha, 1.0f) && near(slow.alpha, 0.875f),
+          "a theme's time that isn't a number or is negative takes none, and a rise that isn't finite none; "
+          "one longer than 2 s takes 2 s");
+    OverlayTheme sunk = th;
+    sunk.toast_rise = -5.0f;
+    check(near(toast_look(sunk, 0, true).below, 0.0f) && near(toast_look(sunk, 100 * kMs, true).below, 0.0f) &&
+              near(toast_look(sunk, 0, true, true).below, 0.0f) && near(toast_look(sunk, 100 * kMs, true).alpha, 0.875f),
+          "a rise of -5 px takes none, alone or over another, and the toast still fades in");
+
+    Tween slot;
+    slot.from = slot.to = 1.0f;
+    const uint64_t t0 = 5000 * kMs;
+    slot = toast_reflow(th, slot, t0, 0.0f, true);
+    check(th.toast_reflow_ms == 160.0f && near(slot.at(t0), 1.0f) && near(slot.at(t0 + 80 * kMs), 0.125f) &&
+              near(slot.at(t0 + 160 * kMs), 0.0f) && slot.done(t0 + 160 * kMs) && !slot.done(t0 + 159 * kMs),
+          "as the one under it goes, a toast moves down a place over 160 ms, out-cubic");
+    Tween again = toast_reflow(th, slot, t0 + 80 * kMs, -1.0f, true);
+    check(near(again.at(t0 + 80 * kMs), 0.125f), "and goes on from where it is if another goes on the way");
+    Tween snap;
+    snap.from = snap.to = 2.0f;
+    snap = toast_reflow(th, snap, t0, 1.0f, false);
+    check(near(snap.at(t0), 1.0f) && snap.done(t0), "without motion it's in its new place at once");
+}
+
 }  // namespace
 
 int main() {
@@ -232,6 +308,7 @@ int main() {
     tweens();
     opens_and_closes();
     transform();
+    toasts();
     printf("test_overlay_motion: %s\n", g_failed ? "FAILED" : "passed");
     return g_failed ? 1 : 0;
 }

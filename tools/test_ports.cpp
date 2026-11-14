@@ -57,8 +57,9 @@
 //        test_ports --restart-replay <empty work dir>   the menu, then a restart asked for,
 //                                                       in a replay past its log's end
 //        test_ports --pages <empty work dir>   each page of the menu dumped over a hidden GL
-//                                              window, with its frame time; exit 77 with no
-//                                              GL window or no overlay in the build
+//                                              window, with its frame time, then the notices;
+//                                              exit 77 with no GL window or no overlay in the
+//                                              build
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -148,10 +149,12 @@ void render_set_output_fbo(unsigned) {}
 #include "test_ports_bindings_page.cpp"   // the Buttons view and its press-to-bind
 #include "test_ports_menu_window.cpp"     // the menu over a window, then the Controllers checks
 #include "test_ports_motion.cpp"          // the menu fading and growing in and out on the host clock
+#include "test_ports_toasts.cpp"          // the notices fading, rising and reflowing on the host clock
 #include "test_ports_theme.cpp"           // the menu's theme and its style at a new window height
 #include "test_ports_tabs.cpp"            // the menu's pages turned by shoulders, triggers and keys
 #include "test_ports_header.cpp"          // the panel's height across pages, views and resets
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
+#include "test_ports_pages_toasts.cpp"    // the notices dumped over the same window, and their cost
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
 #include "test_ports_exit.cpp"    // how a run ends: RunEnd, GCN_QUIT_AT and the modes that end it
@@ -253,6 +256,7 @@ int run_ports(const std::string& dir) {
     overlay(dir);
     overlay_buttons(dir);
     overlay_motion(dir);
+    toasts(dir);
     overlay_theme_fit(dir);
     overlay_panel_edge(dir);
     tabs_turn(dir);

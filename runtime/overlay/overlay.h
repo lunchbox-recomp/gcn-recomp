@@ -94,9 +94,15 @@
 // The menu's own A and B stay the faces labeled so, whatever the game's binding says.
 //
 // A notice over the bottom of the window says for 2 s of host time that a controller
-// connected, disconnected or moved, and logs the same as a `[pads]` line. It shows with the
-// menu closed too, never pauses the game and takes no input. Frame and output dumps never
-// include it.
+// connected, disconnected or moved, and logs the same as a `[pads]` line. Each is a pill in
+// the theme's panel colour and body text, the controller's name in the text's colour and what
+// happened in the dimmed one, centred across the window the theme's margin above its bottom
+// edge, the oldest lowest and each newer one above it. With menu_motion on each rises into its
+// place as it fades in and fades out at the end of its 2 s, and as one goes the ones above it
+// move down into its place, on the host clock at the theme's times (toasts.h). With it off, and
+// under --dump-output, each shows in its place whole and goes at 2 s. A notice shows with the
+// menu closed too, never pauses the game and takes no input, and with none showing nothing is
+// laid out for them. Frame and output dumps never include one.
 //
 // GCN_OVERLAY_AT=<frame>:<host frames> opens it once <frame> frames have been presented and
 // closes it after it's been drawn over the held frame <host frames> times, for a run nobody is
@@ -104,7 +110,9 @@
 // pages added. With --dump-output the first draw over the held frame that looks as the two
 // before it did goes to overlay_NNNNN.png in the dump directory too, or overlay_page<n>.png with
 // GCN_OVERLAY_PAGE, drawn again into a target of the window's size as output dumps are, and over
-// plain grey instead of the held frame with GCN_OVERLAY_PLAIN set.
+// plain grey instead of the held frame with GCN_OVERLAY_PLAIN set. GCN_OVERLAY_TOASTS=<n> does
+// the same for the notices, open or closed: the first frame of them with n or more showing that
+// looks as the two before it did goes to overlay_toasts.png, once a run.
 #pragma once
 #include "hw/pad.h"
 #include "overlay/theme.h"
@@ -152,6 +160,13 @@ void overlay_test_reset_pages();
 void overlay_test_end();
 // The notices' context, null with none.
 struct ImGuiContext* overlay_test_notices_context();
+// Each notice's pill as the notices' last frame laid it out, oldest first, none if there was no
+// frame: its top in the window's pixels, its height, its alpha from 0 to 1, its left and right
+// edges, and the leftmost and rightmost x of the glyphs its text drew, none if clear.
+struct OverlayTestToast {
+    float top, height, alpha, left, right, ink_left, ink_right;
+};
+const std::vector<OverlayTestToast>& overlay_test_toasts();
 // Every page's title in the header's order, and the page `page` shown as a click on its pill
 // shows it.
 const std::vector<std::string>& overlay_test_pages();
@@ -173,7 +188,8 @@ bool overlay_open();
 // Whether overlay_draw lays out the menu this time: it's open or still fading out, or
 // GCN_OVERLAY_AT's frame has been presented, so that overlay_draw opens it first.
 bool overlay_menu_due();
-// Whether the menu is still opening or closing, so the frontend draws a held frame again sooner.
+// Whether the menu is still opening or closing, its page is changing or a notice is moving, so
+// the frontend draws a held frame again sooner.
 bool overlay_animating();
 // Closes it if it's open, and the guest goes on.
 void overlay_close();
@@ -191,8 +207,9 @@ void overlay_menu_frame();
 // What the Display page does with `next`, the picture with its change made: the frontend applies
 // it, and each key where it differs from the picture now is saved.
 void overlay_display_change(const Settings& next);
-// A notice about a controller (notices.cpp), and its `[pads]` line.
-void overlay_pads_notice(const std::string& text);
+// A notice about a controller (notices.cpp), `name` then `what` happened to it, and its
+// `[pads]` line.
+void overlay_pads_notice(const std::string& name, const std::string& what);
 // The notices still showing, oldest first, and how many frames have shown them. For the tests.
 std::vector<std::string> overlay_notices();
 long overlay_notice_frames();
@@ -217,7 +234,7 @@ const char* overlay_bindings_cancel();
 // What the view says the last change did. For the tests.
 const std::string& overlay_bindings_said();
 #else
-inline void overlay_pads_notice(const std::string&) {}
+inline void overlay_pads_notice(const std::string&, const std::string&) {}
 inline void overlay_add_page(const char*, void (*)(void*), void*) {}
 inline void overlay_init(SDL_Window*, const char*, const OverlayPicture&) {}
 inline bool overlay_event(const SDL_Event&) { return false; }

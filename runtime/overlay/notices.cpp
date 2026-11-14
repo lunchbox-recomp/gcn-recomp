@@ -1,44 +1,180 @@
 // The notices over the game about controllers (overlay.h).
 #include "overlay/overlay.h"
-#include "runtime.h"  // host_ns
+#include "overlay/fonts.h"
+#include "overlay/review.h"
+#include "overlay/theme.h"
+#include "overlay/toasts.h"
+#include "env.h"
+#include "gx/render_gl.h"  // the dump's flags
+#include "runtime.h"       // host_ns
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <cfloat>
 #include <cstdio>
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
+#include "imgui_internal.h"  // ImTextCharFromUtf8
 
 void overlay_imgui_context(SDL_Window* window, bool gl);  // overlay.cpp's
 void overlay_style_fit(SDL_Window* window);              // overlay.cpp's
 
 namespace {
 
-constexpr uint64_t kShownNs = 2000000000;  // how long each one shows, in host time
 struct Notice {
     std::string text;
+    size_t lead;     // the controller's name, the text's first `lead` bytes
     uint64_t since;  // host_ns as it was queued
+    Tween slot;      // its place in the stack, 0 the lowest (toasts.h)
+    bool over;       // queued over another, so it rises no further than the gap (toasts.h)
 };
 std::vector<Notice> g_notices;
 ImGuiContext* g_context;  // their own, null with no window
 SDL_Window* g_window;     // the one they show over
 bool g_gl;                // drawn, not only laid out
 long g_frames;            // frames they've been laid out in
+bool g_motion = true;
+int g_review;             // GCN_OVERLAY_TOASTS's count, 0 for none or once they're dumped
+bool g_plain;             // GCN_OVERLAY_PLAIN: dumped over plain grey, not the held frame
+ReviewWatch g_watch;      // their frame settling for the dump
+#ifdef GCN_OVERLAY_TEST
+std::vector<OverlayTestToast> g_laid;  // each pill as the last frame laid it out
+#endif
 
-void expire() {
-    const uint64_t now = host_ns();
-    std::erase_if(g_notices, [&](const Notice& n) { return now - n.since >= kShownNs; });
+// Each one gone at exactly kToastNs, motion or not, and the ones above it moving down into its
+// place.
+void expire(uint64_t now) {
+    std::erase_if(g_notices, [&](const Notice& n) { return now - n.since >= kToastNs; });
+    for (size_t i = 0; i < g_notices.size(); i++) {
+        Tween& slot = g_notices[i].slot;
+        if (slot.to != (float)i) slot = toast_reflow(theme_now(), slot, now, (float)i, g_motion);
+    }
+}
+
+// The theme's 0xRRGGBBAA colour `c` as Dear ImGui packs one, its alpha times `a`.
+ImU32 faded(uint32_t c, float a) {
+    return theme_colour((c & ~0xFFu) | (uint32_t)std::lround(std::clamp((float)(c & 0xFF) * a, 0.0f, 255.0f)));
+}
+
+// How far `text` to `end` advances in the current font, not rounded.
+float advance(const char* text, const char* end) {
+    return ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, 0.0f, text, end).x;
+}
+
+// Where the ink of `text` to `end`, which isn't empty, starts and ends past where it's drawn
+// from, its glyphs `width` across by their advances: its first glyph's left edge, and its
+// last's right edge, short of that one's advance.
+struct Ink {
+    float left, right;
+};
+Ink ink_of(const char* text, const char* end, float width) {
+    ImFontBaked* baked = ImGui::GetFontBaked();
+    const float scale = ImGui::GetFontSize() / baked->Size;
+    const char* last = end - 1;
+    while (last > text && ((unsigned char)*last & 0xC0) == 0x80) last--;
+    unsigned int first_c = 0, last_c = 0;
+    ImTextCharFromUtf8(&first_c, text, end);
+    ImTextCharFromUtf8(&last_c, last, end);
+    // Read before the next FindGlyph, which may load a glyph and move the others.
+    const float left = baked->FindGlyph((ImWchar)first_c)->X0 * scale;
+    const ImFontGlyph* g = baked->FindGlyph((ImWchar)last_c);
+    return {left, width - (g->AdvanceX - g->X1) * scale};
+}
+
+// Each notice a pill in the window's draw list: the panel's colour with its edge, the body text
+// in it, the controller's name in the text's colour and what happened in the dimmed one. The
+// oldest sits lowest, the theme's margin above the window's bottom edge, each newer one above
+// the last, all centred across. Each fades and rises as it ages, and moves down as the stack
+// reflows, at `now` (toasts.h).
+void pills(uint64_t now) {
+    const OverlayTheme& t = theme_now();
+    const float s = ImGui::GetStyle().FontScaleMain;
+    const ImGuiViewport* vp = ImGui::GetMainViewport();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const float h = t.item_min_height * s, pad = t.padding * s, gap = t.item_spacing * s;
+    const float edge = ImGui::GetStyle().FrameBorderSize;
+    const float bottom = vp->Pos.y + vp->Size.y - t.margin * s;
+    for (const Notice& n : g_notices) {
+        const ToastLook look = toast_look(t, now - n.since, g_motion, n.over);
+        const char* text = n.text.c_str();
+        const char* split = text + n.lead;
+        const char* end = text + n.text.size();
+        // The pill fits the text's ink, not the advance and rounding past its last glyph, so its
+        // padding is even. AddText starts each run on a whole pixel, so the text starts on one
+        // and what happened a whole pixel on.
+        const float on = std::floor(advance(text, split));
+        const Ink ink = ink_of(text, end, on + advance(split, end));
+        const float x = std::round(vp->GetCenter().x - (ink.left + ink.right) / 2.0f);
+        const ImVec2 lo(x + ink.left - pad, bottom - n.slot.at(now) * (h + gap) - h + look.below * s);
+        const ImVec2 hi(x + ink.right + pad, lo.y + h);
+        dl->AddRectFilled(lo, hi, faded(t.panel, look.alpha), h / 2.0f);
+        if (edge > 0.0f) dl->AddRect(lo, hi, faded(t.panel_edge, look.alpha), h / 2.0f, 0, edge);
+        const float y = lo.y + (h - ImGui::GetFontSize()) / 2.0f;
+#ifdef GCN_OVERLAY_TEST
+        const int glyphs = dl->VtxBuffer.Size;
+#endif
+        dl->AddText(ImVec2(x, y), faded(t.text, look.alpha), text, split);
+        dl->AddText(ImVec2(x + on, y), faded(t.dim, look.alpha), split, end);
+#ifdef GCN_OVERLAY_TEST
+        float ink_lo = hi.x, ink_hi = lo.x;
+        for (int v = glyphs; v < dl->VtxBuffer.Size; v++) {
+            ink_lo = std::min(ink_lo, dl->VtxBuffer[v].pos.x);
+            ink_hi = std::max(ink_hi, dl->VtxBuffer[v].pos.x);
+        }
+        g_laid.push_back({lo.y, h, look.alpha, lo.x, hi.x, ink_lo, ink_hi});
+#endif
+    }
+}
+
+// Under --dump-output with GCN_OVERLAY_TOASTS=<n>, the first frame with n or more showing that
+// looks as the two before it did is written once as overlay_toasts.png. A frame with fewer starts
+// the watch again.
+void dump() {
+    if (!g_review || !g_gl || !gx::g_dump_output || !gx::g_dump_dir) return;
+    if (g_notices.size() < (size_t)g_review) {
+        g_watch = {};
+        return;
+    }
+    if (!review_settled(g_watch, ImGui::GetDrawData())) return;
+    g_review = 0;
+    review_write(g_window, ImGui::GetDrawData(), "overlay_toasts.png", g_plain);
 }
 
 }  // namespace
 
-void overlay_pads_notice(const std::string& text) {
+void overlay_pads_notice(const std::string& name, const std::string& what) {
+    const uint64_t now = host_ns();
+    expire(now);
+    const std::string text = name.empty() && !what.empty() && what.front() == ' ' ? what.substr(1) : name + what;
     fprintf(stderr, "[pads] %s\n", text.c_str());
-    g_notices.push_back({text, host_ns()});
+    // Its place moves as the one under it does, a place above it, so the two never close up as
+    // the stack reflows.
+    const bool over = !g_notices.empty();
+    Tween slot;
+    if (over) {
+        slot = g_notices.back().slot;
+        slot.from += 1.0f;
+        slot.to += 1.0f;
+    }
+    g_notices.push_back({text, name.size(), now, slot, over});
+}
+
+void notices_motion(bool on) { g_motion = on; }
+
+// overlay.cpp's: whether any notice is rising or fading at `now`, or moving down as the stack
+// reflows.
+bool notices_moving(uint64_t now) {
+    expire(now);
+    const OverlayTheme& t = theme_now();
+    return std::any_of(g_notices.begin(), g_notices.end(), [&](const Notice& n) {
+        return toast_moving(t, now - n.since, g_motion) || !n.slot.done(now);
+    });
 }
 
 std::vector<std::string> overlay_notices() {
-    expire();
+    expire(host_ns());
     std::vector<std::string> out;
     for (const Notice& n : g_notices) out.push_back(n.text);
     return out;
@@ -56,12 +192,21 @@ void notices_init(SDL_Window* window, bool gl) {
     g_context = ImGui::GetCurrentContext();
     g_window = window;
     g_gl = gl;
+    const char* review = getenv_nonempty("GCN_OVERLAY_TOASTS");
+    g_review = review ? review_parse_toasts(review) : 0;
+    g_plain = getenv_nonempty("GCN_OVERLAY_PLAIN") != nullptr;
+    g_watch = {};
 }
 
-// overlay.cpp's, after the menu, if one is showing: centred at the bottom of the window, oldest
-// first, in a window that takes no input or focus.
+// overlay.cpp's, after the menu, if one is showing: the pills over the whole window, in a window
+// of their own that has no background or edge and takes no input or focus. With none showing
+// there's no frame at all.
 void notices_frame() {
-    expire();
+    const uint64_t now = host_ns();
+    expire(now);
+#ifdef GCN_OVERLAY_TEST
+    g_laid.clear();
+#endif
     if (!g_context || g_notices.empty()) return;
     ImGuiContext* menu = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(g_context);
@@ -70,17 +215,22 @@ void notices_frame() {
     ImGui_ImplSDL3_NewFrame();
     ImGui::NewFrame();
     const ImGuiViewport* vp = ImGui::GetMainViewport();
-    ImGui::SetNextWindowPos(ImVec2(vp->GetCenter().x, vp->WorkPos.y + vp->WorkSize.y - ImGui::GetTextLineHeight()),
-                            ImGuiCond_Always, ImVec2(0.5f, 1.0f));
-    ImGui::SetNextWindowBgAlpha(0.8f);
+    ImGui::SetNextWindowPos(vp->Pos);
+    ImGui::SetNextWindowSize(vp->Size);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
     ImGui::Begin("##pads notices", nullptr,
-                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
+                 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoBackground |
                      ImGuiWindowFlags_NoSavedSettings);
-    for (const Notice& n : g_notices) ImGui::TextUnformatted(n.text.c_str());
+    ImGui::PushFont(fonts_role(FontRole::body), theme_now().body_size);
+    pills(now);
+    ImGui::PopFont();
     ImGui::End();
+    ImGui::PopStyleVar(2);
     ImGui::Render();
     if (g_gl) ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     g_frames++;
+    dump();
     ImGui::SetCurrentContext(menu);
 }
 
@@ -98,4 +248,6 @@ void notices_test_end() {
 }
 
 ImGuiContext* overlay_test_notices_context() { return g_context; }
+
+const std::vector<OverlayTestToast>& overlay_test_toasts() { return g_laid; }
 #endif

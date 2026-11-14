@@ -1,12 +1,13 @@
-// The menu for a run nobody is at (overlay.h): GCN_OVERLAY_AT and GCN_OVERLAY_PAGE read, and
-// under --dump-output its frame watched until it settles, then drawn again into a target of the
-// window's size, over the held frame or, with GCN_OVERLAY_PLAIN, over plain grey, and read back
-// to a PNG in the dump directory.
+// The menu for a run nobody is at (overlay.h): GCN_OVERLAY_AT, GCN_OVERLAY_PAGE and
+// GCN_OVERLAY_TOASTS read, and under --dump-output the menu's frame or the notices' watched until
+// it settles, then drawn again into a target of the window's size, over the held frame or, with
+// GCN_OVERLAY_PLAIN, over plain grey, and read back to a PNG in the dump directory.
 #include "overlay/review.h"
 #include "overlay/overlay.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
 #include <SDL3/SDL.h>
+#include <climits>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -23,8 +24,6 @@ namespace {
 // sizes an auto-sized window from what it held the frame before, so a page's first frames
 // still move.
 constexpr int kSettleFrames = 2;
-uint64_t g_last;  // the frame before's draw, hashed
-int g_same;       // frames in a row that matched the one before
 
 // FNV-1a over every draw list's vertices and indices.
 uint64_t hash_draw(const ImDrawData* d) {
@@ -65,20 +64,30 @@ int review_parse_page(const char* e, int last) {
     return -1;
 }
 
-void review_watch_reset() {
-    g_last = 0;
-    g_same = 0;
+int review_parse_toasts(const char* e) {
+    char* end = nullptr;
+    const long n = strtol(e, &end, 10);
+    if (end != e && !*end && n >= 1 && n <= INT_MAX) return (int)n;
+    fprintf(stderr, "[overlay] GCN_OVERLAY_TOASTS=%s isn't a count of 1 or more, so the notices aren't dumped\n", e);
+    return 0;
 }
 
-bool review_settled(const ImDrawData* d) {
+bool review_settled(ReviewWatch& watch, const ImDrawData* d) {
     if (!d || d->TotalVtxCount <= 0) return false;
     const uint64_t h = hash_draw(d);
-    g_same = h == g_last ? g_same + 1 : 0;
-    g_last = h;
-    return g_same >= kSettleFrames;
+    watch.same = h == watch.last ? watch.same + 1 : 0;
+    watch.last = h;
+    return watch.same >= kSettleFrames;
 }
 
 void review_dump(SDL_Window* window, ImDrawData* d, int page, bool plain) {
+    char name[64];
+    if (page >= 0) snprintf(name, sizeof(name), "overlay_page%d.png", page);
+    else snprintf(name, sizeof(name), "overlay_%05u.png", gx::present_count());
+    review_write(window, d, name, plain);
+}
+
+void review_write(SDL_Window* window, ImDrawData* d, const char* name, bool plain) {
     int w = 0, h = 0;
     SDL_GetWindowSizeInPixels(window, &w, &h);
     if (w <= 0 || h <= 0) return;
@@ -109,8 +118,7 @@ void review_dump(SDL_Window* window, ImDrawData* d, int page, bool plain) {
         for (int y = 0; y < h; y++) memcpy(&rows[y * stride], &px[(size_t)(h - 1 - y) * stride], stride);
         for (size_t i = 3; i < rows.size(); i += 4) rows[i] = 255;
         char path[512];
-        if (page >= 0) snprintf(path, sizeof(path), "%s/overlay_page%d.png", gx::g_dump_dir, page);
-        else snprintf(path, sizeof(path), "%s/overlay_%05u.png", gx::g_dump_dir, gx::present_count());
+        snprintf(path, sizeof(path), "%s/%s", gx::g_dump_dir, name);
         write_png(path, rows.data(), w, h);
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

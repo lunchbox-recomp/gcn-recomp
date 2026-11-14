@@ -27,6 +27,8 @@ void controllers_stop();
 void bindings_stop();
 // notices.cpp's.
 void notices_init(SDL_Window* window, bool gl);
+void notices_motion(bool on);
+bool notices_moving(uint64_t now);
 void notices_frame();
 // overlay_input.cpp's: the gamepads held for the menu, and the buttons each has down kept out of
 // the menu until each is let go.
@@ -68,6 +70,7 @@ long long g_at_frame = -1;  // GCN_OVERLAY_AT's, -1 for none or once it's opened
 long g_at_left;             // draws over the held frame left before GCN_OVERLAY_AT's closes it
 int g_page = -1;            // GCN_OVERLAY_PAGE's, 0 for Display, -1 for none
 bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the held frame
+ReviewWatch g_watch;        // the menu's frame settling for its dump, from each open
 
 // What showed in place of a page ends with nothing done: Restart? or Quit?, the press-A order,
 // and the Buttons view with any press-to-bind.
@@ -138,7 +141,7 @@ void overlay_set_open(bool on) {
     overlay_latch_pads();
     menu_opened(g_page, now);
     g_dumped = false;
-    review_watch_reset();
+    g_watch = {};
 }
 
 void overlay_set_theme(const OverlayTheme& theme) {
@@ -172,8 +175,10 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_window = window;
     menu_init(title);
     display_init(picture);
-    appear_motion(picture.now.menu_motion && !gx::g_dump_output);
-    tabs_motion(picture.now.menu_motion && !gx::g_dump_output);
+    const bool motion = picture.now.menu_motion && !gx::g_dump_output;
+    appear_motion(motion);
+    tabs_motion(motion);
+    notices_motion(motion);
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) review_parse_at(e, g_at_frame, g_at_left);
     const char* page = getenv_nonempty("GCN_OVERLAY_PAGE");
     g_page = page ? review_parse_page(page, 1 + menu_added_pages()) : -1;
@@ -226,7 +231,7 @@ bool overlay_menu_due() { return menu_showing() || at_frame_due(); }
 
 bool overlay_animating() {
     const uint64_t now = host_ns();
-    return g_window && (appear_moving(now) || (g_open && tabs_moving(now)));
+    return g_window && (appear_moving(now) || (g_open && tabs_moving(now)) || notices_moving(now));
 }
 
 void overlay_close() { overlay_set_open(false); }
@@ -255,7 +260,7 @@ void overlay_draw() {
     if (!g_open || !paused()) return;
     // The dump waits for a frame that looks as the ones before it did (review.cpp).
     const bool dumps = gx::g_dump_output && gx::g_dump_dir;
-    if (!g_dumped && dumps && review_settled(ImGui::GetDrawData())) {
+    if (!g_dumped && dumps && review_settled(g_watch, ImGui::GetDrawData())) {
         g_dumped = true;
         review_dump(g_window, ImGui::GetDrawData(), g_page, g_plain);
     }

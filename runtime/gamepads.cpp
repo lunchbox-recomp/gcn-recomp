@@ -115,7 +115,7 @@ void say_sent(int i) {
 
 // A notice over the game and its [pads] line (overlay.h), as `name` `what` player `port` + 1.
 void notice(const char* name, const char* what, int port) {
-    overlay_pads_notice(name + std::string(what) + std::to_string(port + 1));
+    overlay_pads_notice(name, what + std::to_string(port + 1));
 }
 
 int g_keyboard_port = 0;    // the keyboard's port, which only gamepads_assign moves
@@ -215,8 +215,8 @@ void add(const std::vector<SDL_JoystickID>& ids) {
             const int i = got[first + k];
             if (i < 0) {
                 fprintf(stderr, "gamepads: \"%s\" left out: no port is free\n", pad_name(a.pad));
-                overlay_pads_notice(pad_name(a.pad) + std::string(" has no player: all four are taken. "
-                                                                  "The menu's Controllers page can give it one."));
+                overlay_pads_notice(pad_name(a.pad), " has no player: all four are taken. "
+                                                     "The menu's Controllers page can give it one.");
                 SDL_SetGamepadPlayerIndex(a.pad, -1);
                 SDL_CloseGamepad(a.pad);
                 g_left_out.push_back(a.which);
@@ -454,7 +454,7 @@ bool gamepads_unassign(int port) {
 bool gamepads_assign(uint32_t device, int port) {
     if (!changeable(port)) return false;
     if (device == kKeyboard) {
-        if (g_keyboard_port != port) overlay_pads_notice("Keyboard is now player " + std::to_string(port + 1));
+        if (g_keyboard_port != port) overlay_pads_notice("Keyboard", " is now player " + std::to_string(port + 1));
         g_keyboard_port = port;
         return true;
     }

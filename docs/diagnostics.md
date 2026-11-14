@@ -791,9 +791,12 @@ shows it. A menu that closes before then has no dump and says so in an `[overlay
 `GCN_OVERLAY_PAGE=<n>` opens it on page n (0 is Display, 1 Controllers, then the game's pages
 in the order it added them), and its dump is `overlay_page<n>.png`. A value that isn't one of
 the pages is refused with an `[overlay]` line. `GCN_OVERLAY_PLAIN=1` draws the dump over plain
-grey (128, 128, 128) instead of the held frame, so the PNG holds nothing of the game. Frame and
-output dumps never include it or the notices about controllers, so a run that opened it writes
-the same frame dumps as one that didn't.
+grey (128, 128, 128) instead of the held frame, so the PNG holds nothing of the game.
+`GCN_OVERLAY_TOASTS=<n>` does the same for the notices about controllers, with the menu open or
+closed: the first frame of them with n or more showing that looks as the two before it did goes
+to `overlay_toasts.png`, once a run. A value that isn't a count of 1 or more is refused with an
+`[overlay]` line. Frame and output dumps never include the menu or the notices, so a run that
+opened it writes the same frame dumps as one that didn't.
 
 With `menu_motion on` in `settings.txt`, the default, the menu fades in and grows over a dimmed
 game as it opens, and fades out and shrinks as it closes, on the host clock. The pause is still
@@ -801,13 +804,17 @@ asked for at once as it opens, and the guest goes on at once as it closes. Each 
 `[overlay] shown after N ms` once the panel is whole, N counted from the open on the host clock.
 While it moves the paused frontend waits 8 ms for a batch, not 16, so it's drawn more often.
 `menu_motion off` and `--dump-output` show and close it at once, so a dump never catches it
-moving.
+moving. A notice rises 16 px and fades in over 200 ms, fades out over the last 180 ms of its
+2 s, and as one goes the ones above it move down over 160 ms; with `menu_motion off` and under
+`--dump-output` each shows at rest and goes at exactly 2 s.
 
 `test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`, its one runner) dumps
 each page that way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in
 `<build>/unit/test_overlay_pages` for a person to look at, the menu's backdrop dimming the grey.
-It prints each page's menu frame time on the CPU too. Where SDL can make no GL window it's
-skipped.
+It prints each page's menu frame time on the CPU too. Then, with the menu closed, it dumps two
+notices as `toasts/overlay_toasts.png` and prints `overlay_draw`'s CPU time with no notice and
+with two showing, and how many frames of notices each laid out. Where SDL can make no GL window
+it's skipped.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under

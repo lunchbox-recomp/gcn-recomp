@@ -3,7 +3,7 @@
 #pragma once
 #include <cstdint>
 
-// out_cubic is a page change's slide (tabs.h), and the toasts' (F7), which nothing draws yet.
+// out_cubic is a page change's slide (tabs.h), and the toasts' (toasts.h).
 enum class Ease { out_quad, out_cubic, in_quad, out_back };
 
 // `e` at `t` from 0 to 1, clamped to that, from 0 to 1. out_back passes 1 before it settles there,

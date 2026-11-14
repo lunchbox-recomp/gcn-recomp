@@ -228,6 +228,10 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
     return asked && kept && ended;
 }
 
+// tools/test_ports_pages_toasts.cpp's: the notices' review dump at a size, and their cost with the
+// menu closed.
+void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
+
 double percentile(std::vector<double> v, double p) {
     if (v.empty()) return 0.0;
     std::sort(v.begin(), v.end());
@@ -278,6 +282,7 @@ int run_pages(const std::string& dir) {
         check(each_draw, (std::to_string(pw) + "x" + std::to_string(ph) +
                           ": the shared atlas has its own update once at each overlay_draw, which no context makes")
                              .c_str());
+        toasts_review(window, out, std::to_string(pw) + "x" + std::to_string(ph));
         if (size.w == kSizes[0].w) {
             // No game frame is kept here, so without the plain background there's nothing to dump.
             const std::string bare = out + "/bare";
@@ -297,7 +302,7 @@ int run_pages(const std::string& dir) {
             const long notices = overlay_notice_frames();
             PageRun shared;
             capture(dir + "/notice-stderr.txt", [&] {
-                overlay_pads_notice("A notice over the menu: \xC3\xA0 \xC3\xA9 \xC3\xBC");
+                overlay_pads_notice("A notice", " over the menu: \xC3\xA0 \xC3\xA9 \xC3\xBC");
                 shared = open_on(window, "0", 0, true, notice);
             });
             check(overlay_notice_frames() > notices && exists_path(notice + "/overlay_page0.png") && shared.atlas_made &&
