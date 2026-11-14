@@ -266,6 +266,19 @@ void listen() {
     l = bind_listen(PadControl::L, rest, 0);
     check(bind_hear(l, pressing(kPadLeftShoulder), 10, got) == BindHeard::bound && got == button(kPadLeftShoulder),
           "L takes a button");
+    // A GameCube adapter's full pull: the trigger click (SDL's misc4) and the trigger's axis in one reading.
+    PadReading pull = pressing(23);
+    pull.axis[kPadRightTrigger] = 32767;
+    l = bind_listen(PadControl::R, rest, 0);
+    const bool r_axis = bind_hear(l, pull, 10, got) == BindHeard::bound && got == axis(kPadRightTrigger);
+    pull.axis[kPadRightTrigger] = kBindHalf;
+    l = bind_listen(PadControl::R, rest, 0);
+    const bool r_button = bind_hear(l, pull, 10, got) == BindHeard::bound && got == button(23);
+    pull.axis[kPadRightTrigger] = 32767;
+    l = bind_listen(PadControl::Z, rest, 0);
+    check(r_axis && r_button && bind_hear(l, pull, 10, got) == BindHeard::bound && got == button(23),
+          "for L or R a trigger past half beats a button in the same reading, its travel kept; at half, and for "
+          "the other controls, the button wins");
 }
 
 // ---- pads.txt

@@ -123,8 +123,9 @@ BindListen bind_listen(PadControl c, const PadReading& r, uint64_t now);
 // What the gamepad did by `now`, reading `r`. With bound, `out` is the source: for a stick
 // axis, the stick axis that was pushed, turned round if it went left or up, so that the
 // direction asked for (right, up) is the GameCube's plus; a stick axis takes no button or
-// trigger. For L and R, a trigger, a button or one way of a stick axis; for the others, a
-// button, a trigger or one way of a stick axis.
+// trigger. For L and R, a trigger, a button or one way of a stick axis, a trigger past half
+// before a button pressed in the same reading, so that a pull that also clicks keeps its
+// travel; for the others, a button, a trigger or one way of a stick axis.
 BindHeard bind_hear(BindListen& l, const PadReading& r, uint64_t now, PadSource& out);
 
 // ---- saves/pads.txt

@@ -248,6 +248,14 @@ BindHeard bind_hear(BindListen& l, const PadReading& r, uint64_t now, PadSource&
     auto pressed = [&](int k) { return r.button[k] && !l.held.button[k]; };
     if (pressed(kPadBack) || pressed(kPadGuide)) return BindHeard::cancelled;
     const bool stick = pad_control_is_stick(l.control);
+    // A full pull on a trigger with a click button (a GameCube adapter's misc3 and misc4) can show
+    // both in one reading. L and R take the trigger, so that they keep its travel.
+    if (trigger(l.control))
+        for (const int a : {kPadLeftTrigger, kPadRightTrigger})
+            if (!l.held.axis[a] && r.axis[a] > kBindHalf) {
+                out = {true, a, 0, false};
+                return BindHeard::bound;
+            }
     for (int k = 0; k < kPadButtons && !stick; k++)
         if (pressed(k)) {
             out = {false, k, 0, false};
