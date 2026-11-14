@@ -228,6 +228,14 @@ void style(const OverlayTheme& t) {
     pink.accent = 0xFF6FB5FF;
     theme_style(pink, 1.0f);
     check(same(s.Colors[ImGuiCol_CheckMark], pink.accent), "a theme's own accent reaches the style");
+    // An edge stays a pixel wide in a small window, and a theme with none has none there.
+    theme_style(t, theme_scale(540));
+    const bool pixel = near(s.FrameBorderSize, 1.0f) && near(s.WindowBorderSize, 1.0f);
+    OverlayTheme bare = t;
+    bare.border_size = 0.0f;
+    theme_style(bare, theme_scale(540));
+    check(pixel && s.WindowBorderSize == 0.0f && s.PopupBorderSize == 0.0f && s.FrameBorderSize == 0.0f,
+          "at 540 lines an edge is still a pixel wide, and a theme with no edge has none");
     ImGui::DestroyContext();
 }
 
