@@ -255,6 +255,7 @@ int run_ports(const std::string& dir) {
     overlay_theme_fit(dir);
     overlay_panel_edge(dir);
     tabs_turn(dir);
+    tabs_chord(dir);
     page_motion(dir);
 #endif
     return finish("ports");

@@ -192,12 +192,6 @@ void overlay(const std::string& dir) {
     // past their click (kGamepadTriggerClick) where it doesn't. The second is on the host clock
     // (host_ns), which g_host_ns sets here. SDL keeps a virtual gamepad's mapping under the first
     // nine characters of its name, so each name here starts differently.
-    constexpr Uint32 kCubeButtons =
-        1u << SDL_GAMEPAD_BUTTON_SOUTH | 1u << SDL_GAMEPAD_BUTTON_EAST | 1u << SDL_GAMEPAD_BUTTON_WEST |
-        1u << SDL_GAMEPAD_BUTTON_NORTH | 1u << SDL_GAMEPAD_BUTTON_START | 1u << SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER |
-        1u << SDL_GAMEPAD_BUTTON_DPAD_UP | 1u << SDL_GAMEPAD_BUTTON_DPAD_DOWN | 1u << SDL_GAMEPAD_BUTTON_DPAD_LEFT |
-        1u << SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
-    constexpr Uint32 kClicks = 1u << SDL_GAMEPAD_BUTTON_MISC3 | 1u << SDL_GAMEPAD_BUTTON_MISC4;
     Virtual cube{"gamecube pad overlay"};
     cube.button_mask = kCubeButtons | kClicks;
     Virtual bare{"bare cube pad overlay"};  // one whose mapping has no click buttons

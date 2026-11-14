@@ -2,7 +2,9 @@
 // L1, either trigger and E and Q each move exactly one page, and no further than the first or
 // the last. A shoulder, a trigger or a key held as the menu opens moves nothing, and nothing
 // moves while a slider is active, while the menu asks or during the press-A order. A trigger
-// turns a page past the gamepad's own trigger click, lowered too, and not short of it. After a
+// turns a page past the gamepad's own trigger click, lowered too, and not short of it. On a
+// gamepad with only the GameCube's buttons Z and the clicks turn a page as they're let go, so the
+// chord turns none. After a
 // change the page's first item has the focus, so A presses it. Read in by tools/test_ports.cpp
 // after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -175,6 +177,103 @@ void tabs_turn(const std::string& dir) {
 
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
     unplug({&pad});
+    gamepads_shutdown();
+    close_window(window);
+}
+
+// On a gamepad with only the GameCube's buttons, whose Z and trigger clicks are the chord's, each
+// turns a page as it's let go, pressed alone, and none when another went down during its press,
+// so the chord held its second closes the menu on the page it showed. Another gamepad's R1 turns
+// a page as it goes down.
+void tabs_chord(const std::string& dir) {
+    SDL_Window* window = open_window();
+    if (!window) return;
+    add_extra_page();
+    OverlayPicture picture;
+    picture.path = dir + "/chord-settings.txt";
+    picture.apply = record_apply;
+    picture.now.menu_motion = false;
+    overlay_init(window, "Test title", picture);
+    gamepads_init();
+    Virtual cube{"cube chord tabs"};
+    cube.button_mask = kCubeButtons | kClicks;
+    Virtual bare{"bare chord tabs"};  // one whose mapping has no click buttons
+    bare.button_mask = kCubeButtons;
+    Virtual pad{"virtual pad chord tabs"};
+    attach(cube);
+    attach(bare);
+    attach(pad);
+    Guest guest;
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    const bool opened = overlay_open() && overlay_page() == 0;
+
+    // `button` on `v` pressed, then let go, a host frame each: the page while it was down and
+    // the page after.
+    struct Pressed {
+        int down, up;
+    };
+    const auto press_up = [&](const Virtual& v, int button) {
+        set_button(v, button, true);
+        host_frame(guest);
+        const int down = overlay_page();
+        set_button(v, button, false);
+        host_frame(guest);
+        return Pressed{down, overlay_page()};
+    };
+    const Pressed z = press_up(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+    const Pressed l = press_up(cube, SDL_GAMEPAD_BUTTON_MISC3);
+    const Pressed r = press_up(cube, SDL_GAMEPAD_BUTTON_MISC4);
+    check(opened && z.down == 0 && z.up == 1 && l.down == 1 && l.up == 0 && r.down == 0 && r.up == 1,
+          "on a gamepad with only the GameCube's buttons, Z and each click turn a page as they're let go, not as they go down");
+    set_axis(bare, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 32767);
+    host_frame(guest);
+    const int bare_down = overlay_page();
+    set_axis(bare, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, -32768);
+    host_frame(guest);
+    check(bare_down == 1 && overlay_page() == 2,
+          "where SDL maps no clicks there, a trigger in past its click turns a page as it's let go");
+
+    const Pressed l1 = press_up(pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+    check(l1.down == 1 && l1.up == 1, "a gamepad with a Back still turns a page as its shoulder goes down");
+
+    // Pressed over each other, Z inside R's press or R inside Z's, neither turns, from a page
+    // either would turn on from.
+    const auto over = [&](const Virtual& v, int outer, int inner) {
+        set_button(v, outer, true);
+        host_frame(guest);
+        press_up(v, inner);
+        set_button(v, outer, false);
+        host_frame(guest);
+    };
+    over(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, SDL_GAMEPAD_BUTTON_MISC4);
+    const bool z_outer = overlay_page() == 1;
+    over(cube, SDL_GAMEPAD_BUTTON_MISC4, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+    check(z_outer && overlay_page() == 1, "Z and a click pressed over each other turn no page, either inside the other");
+
+    // The chord pressed in a button at a time, as a hand does, and held its second.
+    const int showing = overlay_page();
+    set_button(cube, SDL_GAMEPAD_BUTTON_MISC3, true);
+    host_frame(guest);
+    set_button(cube, SDL_GAMEPAD_BUTTON_MISC4, true);
+    host_frame(guest);
+    set_button(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true);
+    host_frame(guest);
+    const bool held_still = overlay_open() && overlay_page() == showing;
+    g_host_ns += 1000000000;
+    host_frame(guest);
+    const bool closed = !overlay_open() && overlay_page() == showing;
+    for (int b : {SDL_GAMEPAD_BUTTON_MISC4, SDL_GAMEPAD_BUTTON_MISC3, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}) {
+        set_button(cube, b, false);
+        host_frame(guest);
+    }
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    check(held_still && closed && overlay_open() && overlay_page() == showing,
+          "Z, L and R pressed in one at a time and held their second close the menu with its page unchanged, "
+          "and it opens there again");
+
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    unplug({&cube, &bare, &pad});
     gamepads_shutdown();
     close_window(window);
 }

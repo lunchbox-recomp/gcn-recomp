@@ -1,6 +1,7 @@
 // What more than one area of the gamepad port checks uses: the checks' count, SDL's virtual
 // gamepads, a frame of the frontend and a port as the guest reads it, the work dir's files and
-// stderr, and with GCN_OVERLAY a thread for the guest and the menu's keys and tabs.
+// stderr, and with GCN_OVERLAY a GameCube pad's buttons, a thread for the guest and the menu's
+// keys and tabs.
 // tools/test_ports_support.cpp defines them. tools/test_ports.cpp reads this, that and each
 // area's file in after the frontend it compiles in, so all of them see the frontend's statics.
 #pragma once
@@ -108,6 +109,16 @@ void stderr_back(int saved, const std::string& path);
 void capture(const std::string& path, const std::function<void()>& f);
 
 #ifdef GCN_OVERLAY
+// A gamepad's buttons as SDL maps a GameCube pad on Nintendo's adapter, a Virtual's button_mask:
+// the GameCube's own, with no Back or Guide, and the trigger clicks, SDL's MISC3 and MISC4, which
+// a mapping may lack.
+constexpr Uint32 kCubeButtons =
+    1u << SDL_GAMEPAD_BUTTON_SOUTH | 1u << SDL_GAMEPAD_BUTTON_EAST | 1u << SDL_GAMEPAD_BUTTON_WEST |
+    1u << SDL_GAMEPAD_BUTTON_NORTH | 1u << SDL_GAMEPAD_BUTTON_START | 1u << SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER |
+    1u << SDL_GAMEPAD_BUTTON_DPAD_UP | 1u << SDL_GAMEPAD_BUTTON_DPAD_DOWN | 1u << SDL_GAMEPAD_BUTTON_DPAD_LEFT |
+    1u << SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+constexpr Uint32 kClicks = 1u << SDL_GAMEPAD_BUTTON_MISC3 | 1u << SDL_GAMEPAD_BUTTON_MISC4;
+
 // A thread stands in for the guest. Each host frame lets it reach one more frame boundary
 // (pause_gate), after the frontend has taken its events and set the ports.
 struct Guest {

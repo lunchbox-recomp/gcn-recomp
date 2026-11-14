@@ -30,11 +30,16 @@ PadState g_before[4];     // each port as the game last had it with the overlay 
 
 // A gamepad held for the menu (overlay_hold_pads), and its buttons held as the menu opened, kept
 // from the menu until each is let go, a bit for each SDL_GamepadButton and for each trigger
-// (kTriggerL and kTriggerR).
+// (kTriggerL and kTriggerR). On one with only the GameCube's buttons (cube_only), whose Z and
+// trigger clicks are the chord's, also those of them down at the menu's last frame, those that
+// have been down with another or while an item was active, and those let go this frame alone,
+// which turn a page (chord_turns).
 struct HeldPad {
     SDL_JoystickID id;
     SDL_Gamepad* pad;
     uint32_t latched;
+    bool cube;
+    uint32_t chord_down, spoiled, turns;
 };
 std::vector<HeldPad> g_pads;
 
@@ -42,6 +47,8 @@ std::vector<HeldPad> g_pads;
 // (clicked).
 constexpr int kTriggerL = SDL_GAMEPAD_BUTTON_COUNT, kTriggerR = SDL_GAMEPAD_BUTTON_COUNT + 1;
 static_assert(kTriggerR < 32, "a HeldPad's latch has a bit for each button and trigger");
+// The chord's buttons as the menu takes them: Z, SDL's R1 on a GameCube pad, and the two clicks.
+constexpr uint32_t kChordKeys = 1u << SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER | 1u << kTriggerL | 1u << kTriggerR;
 
 uint32_t buttons_down(SDL_Gamepad* p) {
     uint32_t down = 0;
@@ -77,6 +84,18 @@ bool is_down(SDL_Gamepad* p, int b) {
 // What the menu latches: the buttons and the triggers down.
 uint32_t latch_of(SDL_Gamepad* p) {
     return buttons_down(p) | (uint32_t)is_down(p, kTriggerL) << kTriggerL | (uint32_t)is_down(p, kTriggerR) << kTriggerR;
+}
+
+// The chord's buttons on `h` that turn a page at this frame, into h.turns. Each turns one as
+// it's let go, if it went down and up with no other of them down and no item active, so that
+// the chord turns none on its way in or out. `active` is whether an item was at the last frame,
+// and a latched button isn't down to the menu.
+void chord_turns(HeldPad& h, bool active) {
+    const uint32_t down = latch_of(h.pad) & ~h.latched & kChordKeys;
+    if (active || (down & (down - 1))) h.spoiled |= down;
+    h.turns = h.chord_down & ~down & ~h.spoiled;
+    h.spoiled &= down;
+    h.chord_down = down;
 }
 
 // Whether the press `b` is of its gamepad's B, the face labeled B (gamepads_faces).
@@ -146,7 +165,10 @@ bool is_input(const SDL_Event& e) {
 }  // namespace
 
 void overlay_latch_pads() {
-    for (HeldPad& h : g_pads) h.latched = latch_of(h.pad);
+    for (HeldPad& h : g_pads) {
+        h.latched = latch_of(h.pad);
+        h.chord_down = h.spoiled = h.turns = 0;
+    }
 }
 
 // Every gamepad SDL has, held open, so that the menu reads each one and each one's Back opens
@@ -165,7 +187,7 @@ void overlay_hold_pads() {
             held.push_back(*was);
             was->pad = nullptr;  // still held, so not let go below
         } else if (SDL_Gamepad* p = SDL_OpenGamepad(ids[i])) {
-            held.push_back({ids[i], p, overlay_open() ? latch_of(p) : 0});
+            held.push_back({ids[i], p, overlay_open() ? latch_of(p) : 0, cube_only(p), 0, 0, 0});
         }
     }
     SDL_free(ids);
@@ -179,13 +201,23 @@ void overlay_hold_pads() {
 // game takes them (gamepads_faces). The backend takes faces by position, so it's given no
 // gamepad (overlay_init). A latched button is up to the menu, and once it's let go it's no
 // longer latched. The triggers in past their click are L2 and R2, which turn the menu's pages
-// with L1 and R1 (tabs.h), since a GameCube pad has no L1 and its Z is SDL's R1.
+// with L1 and R1 (tabs.h), since a GameCube pad has no L1 and its Z is SDL's R1. On a gamepad
+// with only the GameCube's buttons, Z and the clicks are the chord's too, so each is down to
+// the menu only for the frame it's let go alone (chord_turns), which turns a page then, or
+// while an item is active, as a slider takes R1.
 void overlay_read_pads() {
     if (g_pads.empty()) return;
     ImGuiIO& io = ImGui::GetIO();
     io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-    for (HeldPad& h : g_pads) h.latched &= latch_of(h.pad);
-    const auto down = [](const HeldPad& h, int b) { return is_down(h.pad, b) && !(h.latched >> b & 1); };
+    const bool active = ImGui::IsAnyItemActive();
+    for (HeldPad& h : g_pads) {
+        h.latched &= latch_of(h.pad);
+        if (h.cube) chord_turns(h, active);
+    }
+    const auto down = [active](const HeldPad& h, int b) {
+        if (h.cube && !active && (kChordKeys >> b & 1)) return (h.turns >> b & 1) != 0;
+        return is_down(h.pad, b) && !(h.latched >> b & 1);
+    };
     static constexpr ImGuiKey kFaces[4] = {ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight,
                                            ImGuiKey_GamepadFaceLeft, ImGuiKey_GamepadFaceUp};
     bool faces[4] = {};

@@ -20,10 +20,13 @@
 // shoulders' names, the page showing on the accent. A click on a pill shows its page, and so
 // does a shoulder: L1, L2 or Q goes back a page and R1, R2 or E on one, no further than the first
 // or the last. L2 and R2 are the triggers pressed in past their click, so a GameCube pad turns
-// pages with its L and R, and with its Z, SDL's R1. The shoulders and keys move nothing while the
-// menu asks, while the press-A order or the Buttons view is up, or while an item is active, as a
-// slider whose L1 and R1 step it is, and a shoulder held as the menu opens moves nothing until
-// it's let go. After a change the page's first item has the focus.
+// pages with its L and R, and with its Z, SDL's R1. On a gamepad with only the GameCube's
+// buttons, where those three are the chord, each turns a page as it's let go, and only if it
+// went down and up alone, so the chord turns none and closes the menu on the page it showed.
+// Every other gamepad turns a page as the button goes down. The shoulders and keys move nothing
+// while the menu asks, while the press-A order or the Buttons view is up, or while an item is
+// active, as a slider whose L1 and R1 step it is, and a shoulder held as the menu opens moves
+// nothing until it's let go. After a change the page's first item has the focus.
 //
 // A gamepad's A presses what's focused and its B goes back, and they're the faces labeled A and
 // B, the game's own A and B (gamepads_faces in gamepads.h). So a Switch Pro's east button
