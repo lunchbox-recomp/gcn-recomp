@@ -67,13 +67,13 @@ void render_keep_last(bool on);
 // presented since render_keep_last(true).
 bool render_present_last();
 // The menu's blurred backdrop, drawn over the output after render_present_last and before the
-// menu. While `hold` the newest presented frame is blurred once: drawn at a quarter of the
-// window's size and blurred by two Kawase passes, and again only when a new hold starts or the
-// window's size or the output aspect changes. Each call blends that blur over the output at
-// `alpha`, so a close can fade it out over the frames the guest draws again. With `hold` false
-// and `alpha` 0 it draws nothing and frees the blur. Dumps never come through here. GL only: a Metal present path
-// would need its own beside its redraw of the held frame, and the --eye path, which draws the
-// window from its own target, goes without.
+// menu. While `hold` the newest presented frame is blurred once, drawn at a quarter of the
+// window's size and blurred by two Kawase passes, and again only when a new hold starts, a frame
+// presents during the hold, or the window's size or the output aspect changes. Each call blends
+// that blur over the output at `alpha`, so a close can fade it out over the frames the guest
+// draws again. With `hold` false and `alpha` 0 it draws nothing and frees the blur. Dumps never
+// come through here. GL only. A Metal present path would need its own beside its redraw of the
+// held frame, and the --eye path, which draws the window from its own target, goes without.
 void render_overlay_blur(bool hold, float alpha);
 
 // Frames presented so far, for tracing what a display frame is actually showing.
