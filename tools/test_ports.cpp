@@ -156,6 +156,7 @@ void render_set_output_fbo(unsigned) {}
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
 #include "test_ports_exit.cpp"    // how a run ends: RunEnd, GCN_QUIT_AT and the modes that end it
+#include "test_ports_progress.cpp"  // GCN_PROGRESS on presented frames, with no disc
 
 namespace {
 
@@ -249,6 +250,7 @@ int run_ports(const std::string& dir) {
     telemetry_flags();
     run_end(dir);
     quit_at_frame(dir);
+    progress_frames(dir);
     input_log_switch(dir);
 #ifdef GCN_OVERLAY
     overlay(dir);
