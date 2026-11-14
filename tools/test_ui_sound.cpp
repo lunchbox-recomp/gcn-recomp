@@ -7,9 +7,12 @@
 // Each voice of the default theme is made and must peak at -14 dBFS, no louder than -12, start
 // and end on a zero sample, rise over its first 2 ms and fall over its last 2 ms no faster than
 // a raised cosine over 2 ms does, its envelope changing no faster than that anywhere, and have no
-// click: no step from one sample to the next over 3 times the largest step within 2 ms either side
-// of it, and over 1% of its peak, and no level, its samples through a 20 ms triangle, over 15% of
-// its peak. A jump of 40% of its peak into each voice, over any of 1 to 24 samples, is a click.
+// click: no step off the line through the samples either side over 3 times the largest within
+// 2 ms either side of it and over 1% of its peak, and no level, its samples through a 20 ms
+// triangle, over 15% of its peak. The clicks it's shown to catch, each at two places in every
+// voice, its loudest frame and its middle: a jump of 40% of its peak spread over 1 to 24 samples
+// and held to the end, which has a level, and a spike of 40% for one sample, which has none and is
+// caught by its step alone, as is the confirm with its phase jumping 1.5 rad halfway.
 // A page's swish is louder on the side the page turns to, and every other voice is the same in
 // both channels.
 // A theme's level, notes and length change the voice, a level over -12 dBFS is held to it, and an
@@ -88,17 +91,19 @@ double edge_ramp(int n) { return n >= kEdge ? 1.0 : (1.0 - std::cos(std::numbers
 // Its steepest step from one frame to the next, at its middle.
 const double kSteepest = edge_ramp(kEdge / 2) - edge_ramp(kEdge / 2 - 1);
 
-// The largest step in channel `c` of stereo `s` from one sample to the next over 3 times the
-// largest within 2 ms either side of it, the steps beside it left out, as a share of `peak`: a
-// click over a sample or two.
+// The largest step in channel `c` of stereo `s` off the line through the samples either side,
+// over 3 times the largest within 2 ms either side of it, the steps beside it left out, as a
+// share of `peak`: a click over a sample or two. Off the line, not from the last sample, so a
+// voice's own slope, steepest in a high note, counts for little and a spike in it still shows.
 double sharpest_step(const std::vector<int16_t>& s, int c, int peak) {
     const int frames = (int)s.size() / 2;
     std::vector<int> step(frames, 0);
-    for (int n = 1; n < frames; n++) step[n] = std::abs(s[2 * n + c] - s[2 * (n - 1) + c]);
+    for (int n = 1; n + 1 < frames; n++)
+        step[n] = std::abs(s[2 * (n + 1) + c] - 2 * s[2 * n + c] + s[2 * (n - 1) + c]);
     double worst = 0.0;
-    for (int n = 1; n < frames; n++) {
+    for (int n = 1; n + 1 < frames; n++) {
         int around = 0;
-        for (int m = std::max(1, n - kEdge); m <= std::min(frames - 1, n + kEdge); m++)
+        for (int m = std::max(1, n - kEdge); m <= std::min(frames - 2, n + kEdge); m++)
             if (std::abs(m - n) > 1) around = std::max(around, step[m]);
         if (step[n] > 3 * around) worst = std::max(worst, (double)step[n] / peak);
     }
@@ -128,16 +133,19 @@ double largest_level(const std::vector<int16_t>& s, int c, int peak) {
 // The worst of each measure over every voice checked, printed against the jumps' (jumps()).
 double g_worst_step, g_worst_level;
 
-// Whether channel `c` of stereo `s` has a click: a step over 1% of `peak` and 3 times those
-// around it, or a level over 15% of `peak`.
+// Whether a step and a level, each a share of the peak, are a click: a step over 1% and 3 times
+// those around it, or a level over 15%.
 constexpr double kClickStep = 0.01, kClickLevel = 0.15;
+bool is_click(double step, double level) { return step > kClickStep || level > kClickLevel; }
+
+// Whether channel `c` of stereo `s` has a click, its peak `peak`.
 bool clicks(const std::vector<int16_t>& s, int c, int peak) {
     const double step = sharpest_step(s, c, peak), level = largest_level(s, c, peak);
     g_worst_step = std::max(g_worst_step, step);
     g_worst_level = std::max(g_worst_level, level);
     if (step > kClickStep) printf("     a step of %.1f%% of its peak, over 3 times those around it\n", 100 * step);
     if (level > kClickLevel) printf("     a level of %.1f%% of its peak\n", 100 * level);
-    return step > kClickStep || level > kClickLevel;
+    return is_click(step, level);
 }
 
 // One voice's shape: its length, its peak at `dbfs`, its edges and no click.
@@ -186,6 +194,25 @@ void voices() {
     check(middle, "every other voice is the same in both channels");
 }
 
+// The largest step and level of either channel of `s`, each a share of `peak`.
+std::pair<double, double> step_and_level(const std::vector<int16_t>& s, int peak) {
+    double step = 0.0, level = 0.0;
+    for (int c = 0; c < 2; c++) {
+        step = std::max(step, sharpest_step(s, c, peak));
+        level = std::max(level, largest_level(s, c, peak));
+    }
+    return {step, level};
+}
+
+// The last frame of stereo `s` where either channel is at its peak.
+int loudest_frame(const std::vector<int16_t>& s) {
+    const int peak = peak_of(s);
+    int loudest = 0;
+    for (int n = 0; n < (int)s.size() / 2; n++)
+        if (std::max(std::abs(s[2 * n]), std::abs(s[2 * n + 1])) == peak) loudest = n;
+    return loudest;
+}
+
 // That the click check catches a click: into each voice of the default theme, at its loudest
 // frame and at its middle, a jump of 40% of its peak spread evenly over 1 to 24 samples and held
 // to its end. Then the click scores, the voices' worst against the jumps' weakest.
@@ -197,23 +224,16 @@ void jumps() {
         for (int i = 0; i < kUiSounds; i++) {
             const std::vector<int16_t> made = ui_sound_render(t, (UiSound)i);
             const int peak = peak_of(made), frames = (int)made.size() / 2;
-            int loudest = 0;
-            for (int n = 0; n < frames; n++)
-                if (std::max(std::abs(made[2 * n]), std::abs(made[2 * n + 1])) == peak) loudest = n;
-            for (int at : {loudest, frames / 2}) {
+            for (int at : {loudest_frame(made), frames / 2}) {
                 std::vector<int16_t> s = made;
                 for (int n = at; n < frames; n++) {
                     const int add = (int)std::lround(0.4 * peak * std::min(1.0, (n - at + 1.0) / width));
                     s[2 * n] = (int16_t)(s[2 * n] + add);
                     s[2 * n + 1] = (int16_t)(s[2 * n + 1] + add);
                 }
-                double step = 0.0, level = 0.0;
-                for (int c = 0; c < 2; c++) {
-                    step = std::max(step, sharpest_step(s, c, peak));
-                    level = std::max(level, largest_level(s, c, peak));
-                }
+                const auto [step, level] = step_and_level(s, peak);
                 weakest = std::min(weakest, level);
-                caught = caught && (step > kClickStep || level > kClickLevel);
+                caught = caught && is_click(step, level);
             }
         }
         check(caught, "a jump of 40% over " + std::to_string(width) + (width == 1 ? " sample" : " samples") +
@@ -222,6 +242,58 @@ void jumps() {
     printf("[sound] a voice made steps %.1f%% of its peak at most and reaches a level of %.1f%%; a jump, %.1f%% at "
            "least. A click is a step over %.0f%% or a level over %.0f%%\n",
            100 * g_worst_step, 100 * g_worst_level, 100 * weakest, 100 * kClickStep, 100 * kClickLevel);
+}
+
+// Clicks with no level, which only the step catches: the confirm with its phase jumping 1.5 rad
+// halfway, and a spike of 40% of its peak for one sample at each voice's loudest frame and at its
+// middle. Each must be a click with a level under the bar, so its step alone is over its bar.
+void steps_alone() {
+    const UiSoundTheme t = ui_sound_theme_default();
+    // The confirm made as ui_sound_synth.cpp makes it, its phase carried from note to note, with
+    // `jump` rad more from halfway.
+    const auto confirm = [&](double jump) {
+        const UiVoice v = ui_sound_fit(t).voices[(int)UiSound::confirm];
+        const int frames = (int)std::lround(v.ms * kUiSoundRate / 1000.0f);
+        std::vector<double> x(frames);
+        double phase = 0.0, most = 0.0;
+        for (int n = 0; n < frames; n++) {
+            if (n == frames / 2) phase += jump;
+            x[n] = std::sin(phase) * ui_sound_envelope(v, n, frames);
+            most = std::max(most, std::fabs(x[n]));
+            phase += 2.0 * std::numbers::pi * (n < frames / 2 ? v.notes[0] : v.notes[1]) / kUiSoundRate;
+        }
+        std::vector<int16_t> s(2 * (size_t)frames);
+        for (int n = 0; n < frames; n++) s[2 * n] = s[2 * n + 1] = (int16_t)std::lround(x[n] * level(-14.0f) / most);
+        return s;
+    };
+    const std::vector<int16_t> made = ui_sound_render(t, UiSound::confirm), same = confirm(0.0);
+    bool near = made.size() == same.size();
+    for (size_t i = 0; near && i < made.size(); i++) near = std::abs(made[i] - same[i]) <= 1;
+    const auto [phase_step, phase_level] = step_and_level(confirm(1.5), level(-14.0f));
+    check(near && is_click(phase_step, phase_level) && phase_level <= kClickLevel,
+          "the confirm, made again here to within 1 of each sample, with its phase jumping 1.5 rad halfway, is a "
+          "click by its step alone");
+
+    double weakest = 1e9, most_level = phase_level;
+    bool caught = true;
+    for (int i = 0; i < kUiSounds; i++) {
+        const std::vector<int16_t> voice = ui_sound_render(t, (UiSound)i);
+        const int peak = peak_of(voice), frames = (int)voice.size() / 2;
+        for (int at : {loudest_frame(voice), frames / 2}) {
+            std::vector<int16_t> s = voice;
+            const int add = (int)std::lround((s[2 * at] < 0 ? -0.4 : 0.4) * peak);
+            s[2 * at] = (int16_t)(s[2 * at] + add);
+            s[2 * at + 1] = (int16_t)(s[2 * at + 1] + add);
+            const auto [step, lvl] = step_and_level(s, peak);
+            weakest = std::min(weakest, step);
+            most_level = std::max(most_level, lvl);
+            caught = caught && is_click(step, lvl) && lvl <= kClickLevel;
+        }
+    }
+    check(caught, "a spike of 40% for one sample, in every voice, is a click by its step alone");
+    printf("[sound] with no level: the phase jump steps %.1f%% of its peak and a spike %.1f%% at least, their "
+           "level %.1f%% at most\n",
+           100 * phase_step, 100 * weakest, 100 * most_level);
 }
 
 // Themes no one should write, each made without hanging or crashing.
@@ -500,6 +572,7 @@ int main(int argc, char** argv) {
     voices();
     themes();
     jumps();
+    steps_alone();
     queue(made);
     through_audio_render(dir, made);
     costs();
