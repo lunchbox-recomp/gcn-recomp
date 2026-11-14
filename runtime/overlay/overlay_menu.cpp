@@ -124,7 +124,7 @@ void asking() {
     }
 }
 
-void draw_menu() {
+void draw_menu(uint64_t now) {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     if (g_focus) ImGui::SetNextWindowFocus();
@@ -141,7 +141,8 @@ void draw_menu() {
     g_panel_list = ImGui::GetWindowDrawList();
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
     g_on_page = g_ask == OverlayAsk::none && overlay_controllers_asking() < 0 && !overlay_bindings_shown();
-    tabs_header(g_title, g_titles, g_on_page);
+    tabs_header(g_title, g_titles, g_on_page, now);
+    tabs_no_contents();
     section_gap();
     if (g_ask != OverlayAsk::none) {
         asking();
@@ -151,7 +152,9 @@ void draw_menu() {
         bindings_page();
     } else {
         tabs_focus(overlay_open());
+        tabs_contents_begin();
         page();
+        tabs_contents_end();
         actions();
     }
     ImGui::End();
@@ -206,9 +209,10 @@ void menu_frame() {
     ImGui_ImplSDL3_NewFrame();
     if (overlay_open()) overlay_read_pads();
     ImGui::NewFrame();
-    draw_menu();
+    draw_menu(now);
     backdrop(now);
     ImGui::Render();
+    tabs_apply(ImGui::GetDrawData(), now);
     const ImVec2 c = ImGui::GetMainViewport()->GetCenter();
     appear_apply(ImGui::GetDrawData(), ImGui::GetBackgroundDrawList(), g_panel_list, g_panel_vtx, c.x, c.y,
                  appear_scale(now), appear_panel_alpha(now), appear_contents_alpha(now));

@@ -6,6 +6,7 @@
 #include "overlay/appear.h"
 #include "overlay/fonts.h"
 #include "overlay/review.h"
+#include "overlay/tabs.h"
 #include "gx/render_gl.h"
 #include "pause.h"
 #include "runtime.h"  // host_ns
@@ -177,6 +178,7 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     menu_init(title);
     display_init(picture);
     appear_motion(picture.now.menu_motion && !gx::g_dump_output);
+    tabs_motion(picture.now.menu_motion && !gx::g_dump_output);
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) review_parse_at(e, g_at_frame, g_at_left);
     const char* page = getenv_nonempty("GCN_OVERLAY_PAGE");
     g_page = page ? review_parse_page(page, 1 + menu_added_pages()) : -1;
@@ -227,7 +229,10 @@ bool overlay_open() { return g_open; }
 
 bool overlay_menu_due() { return menu_showing() || at_frame_due(); }
 
-bool overlay_animating() { return g_window && appear_moving(host_ns()); }
+bool overlay_animating() {
+    const uint64_t now = host_ns();
+    return g_window && (appear_moving(now) || (g_open && tabs_moving(now)));
+}
 
 void overlay_close() { overlay_set_open(false); }
 

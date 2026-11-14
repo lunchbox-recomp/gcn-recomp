@@ -112,9 +112,9 @@ struct OverlayTheme {
     float contents_delay_ms = 40.0f;  // the page's contents follow the panel
     float close_ms = 120.0f;          // the panel fades out and shrinks to close_scale
     float close_scale = 0.98f;
-    // The rest aren't read yet: a page change (F4), the focus ring (F5) and the toasts (F7).
-    float page_ms = 160.0f;           // a page change, its contents sliding page_slide pixels
+    float page_ms = 160.0f;           // a page change (tabs.h), its contents sliding page_slide pixels
     float page_slide = 32.0f;
+    // The rest aren't read yet: the focus ring (F5) and the toasts (F7).
     float focus_ms = 45.0f;           // how quickly the focus ring catches up with a move
     float pulse_ms = 1200.0f;         // one breath of the focus ring
     float press_scale = 0.98f;        // an item held down, springing back over press_ms
