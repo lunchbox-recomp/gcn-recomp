@@ -125,6 +125,7 @@ void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display
 #include "test_ports_placement.cpp"  // the port each gamepad takes: player indexes, --pads, launch
 #include "test_ports_controls.cpp"   // controls.txt's devices and pins, and gamecontrollerdb.txt
 #include "test_ports_memory.cpp"     // the ports remembered in saves/ports.txt
+#include "test_ports_bindings.cpp"   // each gamepad's binding in saves/pads.txt
 #include "test_ports_gamepads.cpp"   // each gamepad's lines in the output, its rumble and labels
 #include "test_ports_flags.cpp"      // main()'s flags and variables, and --no-gamepads
 #ifdef GCN_OVERLAY
@@ -214,6 +215,7 @@ int run_ports(const std::string& dir) {
     memory_file(dir, file);
     memory_no_pads(dir, file);
     memory_unreadable(dir, file);
+    bindings_merged(dir);
     gamepads_remember(nullptr);
     said(dir);
     gamecube_rumble(dir);

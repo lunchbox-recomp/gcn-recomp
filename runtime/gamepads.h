@@ -57,6 +57,7 @@
 // fails after that isn't reported, so `0 of N calls failed` doesn't mean the pad shook.
 #pragma once
 #include "hw/pad.h"
+#include "pad_bindings.h"
 #include <array>
 #include <cstdint>
 #include <string>
@@ -85,15 +86,11 @@ void gamepads_remember(const char* path);
 void gamepads_init();
 // Gamepads coming and going. Every SDL event may be passed.
 void gamepads_event(const SDL_Event& e);
-// The gamepad on `port` (0 is port 1) merged into `p`: buttons are added, and a stick or
-// trigger is taken over only while it is pushed. `p.connected` is set while a gamepad is
-// on the port. Each of SDL's buttons and axes is also counted here, for the line said when
-// the gamepad leaves.
+// The gamepad on `port` (0 is port 1) merged into `p` through its binding (below): buttons are
+// added, and a stick or trigger is taken over only while it is pushed. `p.connected` is set
+// while a gamepad is on the port. Each of SDL's buttons and axes is also counted here, for the
+// line said when the gamepad leaves.
 void gamepads_merge(int port, PadState& p);
-// How far a trigger's axis (0 to 32767) goes before gamepads_merge takes it for the GameCube's
-// digital L or R, the click at the bottom of its travel. The overlay's chord takes them the same
-// way on a gamepad SDL maps no click buttons on (overlay.h).
-constexpr int kGamepadTriggerClick = 30000;
 // The pad's rumble motor on the gamepad on `port`, renewed while it runs.
 void gamepads_rumble(int port, bool motor);
 // Stops any rumble, says what each gamepad on a port sent, and closes the gamepads.
@@ -133,3 +130,25 @@ bool gamepads_swap(int a, int b);
 bool gamepads_unassign(int port);
 // The keyboard's port, which main.cpp merges the keyboard into.
 int gamepads_keyboard_port();
+
+// ---- Each gamepad's binding (pad_bindings.h)
+//
+// A gamepad's binding is what saves/pads.txt has for it, over the map above for any control
+// it leaves out, and the map itself when it has nothing. It's taken as the gamepad lands on a
+// port and goes with it through swaps.
+
+// Where the bindings are kept, or nowhere for null or empty, which is how a program starts. The
+// file is read when a gamepad first needs a binding and written only by gamepads_bind and
+// gamepads_reset_binding. A file that exists and can't be read is never written over. Call it
+// before gamepads_init.
+void gamepads_bindings_file(const char* path);
+// The binding gamepad `device` has, on a port or not, into `out`. False for the keyboard, a
+// device that isn't a gamepad here, and one controls.txt binds.
+bool gamepads_binding(uint32_t device, PadBinding& out);
+// `device` given `b`, saved at once, and on a port at once. Every gamepad on a port that pads.txt
+// can't tell from it, the same GUID and serial, has it too. Refused as gamepads_binding is.
+bool gamepads_bind(uint32_t device, const PadBinding& b);
+// `device` back to the map, its block taken out of the file. Refused as gamepads_binding is.
+bool gamepads_reset_binding(uint32_t device);
+// What the open gamepad `g` holds now, as its binding reads it.
+PadReading gamepads_read(SDL_Gamepad* g);

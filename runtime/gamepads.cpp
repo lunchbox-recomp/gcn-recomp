@@ -19,7 +19,7 @@ struct Port {
     SDL_Gamepad* pad = nullptr;
     SDL_JoystickID which = 0;  // the pad's instance ID
     bool rumbling = false;
-    std::array<SDL_GamepadButton, 4> face{};  // the GameCube's A, B, X and Y on this gamepad (faces)
+    PadBinding bind;  // how it drives the port, taken as it lands (binding_of)
     // What the gamepad sent while on the port (gamepads_merge) and how its rumble went
     // (gamepads_rumble), said when it leaves the port (say_sent).
     bool read = false;  // merged at least once, so that lo and hi hold values
@@ -93,18 +93,13 @@ void say_landed(int i) {
 // pressed and how many times, each axis's lowest and highest raw value, then how often its
 // rumble was turned on and how many calls for it failed.
 void say_sent(int i) {
-    static const char* const kButtons[] = {
-        "south", "east", "west", "north", "back", "guide", "start", "leftstick", "rightstick",
-        "leftshoulder", "rightshoulder", "up", "down", "left", "right", "misc1", "rightpaddle1",
-        "leftpaddle1", "rightpaddle2", "leftpaddle2", "touchpad", "misc2", "misc3", "misc4", "misc5", "misc6"};
-    static_assert(std::size(kButtons) == SDL_GAMEPAD_BUTTON_COUNT, "a name for each of SDL's buttons");
     const Port& g = g_ports[i];
     if (!g.read) {
         fprintf(stderr, "gamepads: port %d was never read\n", i + 1);
     } else {
         std::string s;
         for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; k++)
-            if (g.presses[k]) s += std::string(" ") + kButtons[k] + " " + std::to_string(g.presses[k]) + ",";
+            if (g.presses[k]) s += std::string(" ") + pad_button_name(k) + " " + std::to_string(g.presses[k]) + ",";
         fprintf(stderr,
                 "gamepads: port %d sent%s left stick x %d to %d y %d to %d, right stick x %d to %d y %d to %d, "
                 "triggers left %d to %d right %d to %d\n",
@@ -146,6 +141,38 @@ PortDevice device_of(SDL_Gamepad* g) {
     d.vendor = SDL_GetGamepadVendor(g);
     d.product = SDL_GetGamepadProduct(g);
     return d;
+}
+
+// pad_bindings.h numbers the buttons and axes as SDL does.
+static_assert((int)kPadButtons == SDL_GAMEPAD_BUTTON_COUNT && (int)kPadAxes == SDL_GAMEPAD_AXIS_COUNT);
+static_assert((int)kPadBack == SDL_GAMEPAD_BUTTON_BACK && (int)kPadGuide == SDL_GAMEPAD_BUTTON_GUIDE &&
+              (int)kPadStart == SDL_GAMEPAD_BUTTON_START && (int)kPadRightShoulder == SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER &&
+              (int)kPadUp == SDL_GAMEPAD_BUTTON_DPAD_UP && (int)kPadRight == SDL_GAMEPAD_BUTTON_DPAD_RIGHT &&
+              (int)kPadNorth == SDL_GAMEPAD_BUTTON_NORTH && 15 == SDL_GAMEPAD_BUTTON_MISC1 && 25 == SDL_GAMEPAD_BUTTON_MISC6);
+static_assert((int)kPadLeftX == SDL_GAMEPAD_AXIS_LEFTX && (int)kPadRightY == SDL_GAMEPAD_AXIS_RIGHTY &&
+              (int)kPadLeftTrigger == SDL_GAMEPAD_AXIS_LEFT_TRIGGER && (int)kPadRightTrigger == SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+// pad_glyph.cpp's families go by SDL's types.
+static_assert(SDL_GAMEPAD_TYPE_XBOX360 == 2 && SDL_GAMEPAD_TYPE_PS3 == 4 && SDL_GAMEPAD_TYPE_PS5 == 6 &&
+              SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO == 7 && SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR == 10 &&
+              SDL_GAMEPAD_TYPE_GAMECUBE == 11);
+
+std::string g_bindings_path;  // where the bindings are kept, empty for nowhere
+SavedBindings g_bindings;     // what the file said, and what's been changed since
+bool g_bindings_loaded = false;
+bool g_bindings_may_save = true;  // false once the file turned out to exist and not be readable
+
+// The bindings, read when a gamepad first needs one, so that a launch with no gamepad reads nothing.
+void load_bindings() {
+    if (g_bindings_path.empty() || g_bindings_loaded) return;
+    g_bindings = bindings_load(g_bindings_path, g_bindings_may_save);
+    g_bindings_loaded = true;
+}
+
+// The binding the open gamepad `g` has: what pads.txt has for it over the map.
+PadBinding binding_of(SDL_Gamepad* g) {
+    load_bindings();
+    const std::array<SDL_GamepadButton, 4> f = faces(g);
+    return bindings_find(g_bindings, device_of(g), pad_binding_default({f[0], f[1], f[2], f[3]}));
 }
 
 // Each placed gamepad's player index set to its port, a new one's included. A joystick
@@ -207,7 +234,7 @@ void add(const std::vector<SDL_JoystickID>& ids) {
                 g_left_out.push_back(a.which);
                 continue;
             }
-            g_ports[i] = {a.pad, a.which, false, faces(a.pad)};
+            g_ports[i] = {a.pad, a.which, false, binding_of(a.pad)};
             if (!g_memory_path.empty() && ports_assign(g_saved, i, present[first + k].id)) moved = true;
             fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(a.pad), i + 1);
             say_landed(i);
@@ -216,13 +243,6 @@ void add(const std::vector<SDL_JoystickID>& ids) {
         if (moved && g_may_save) ports_save(g_memory_path, g_saved);
     }
     if (!arrivals.empty() || disturbed) set_indexes();
-}
-
-uint8_t axis_to_u8(int v, bool invert) {
-    float f = v / 32767.0f;
-    if (invert) f = -f;
-    int r = 128 + (int)(f * 100.0f);
-    return (uint8_t)std::clamp(r, 0, 255);
 }
 
 // Whether the gamepad `g` is asked for rumble: one SDL says has none isn't, unless SDL types
@@ -365,39 +385,25 @@ void gamepads_merge(int port, PadState& p) {
     SDL_Gamepad* c = g.pad;
     if (!c) return;
     // Every button, the frontend's or not, and every axis before any dead zone.
+    const PadReading r = gamepads_read(c);
     for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; k++) {
-        const bool down = SDL_GetGamepadButton(c, (SDL_GamepadButton)k);
-        if (down && !g.down[k]) g.presses[k]++;
-        g.down[k] = down;
+        if (r.button[k] && !g.down[k]) g.presses[k]++;
+        g.down[k] = r.button[k];
     }
     for (int k = 0; k < SDL_GAMEPAD_AXIS_COUNT; k++) {
-        const int v = SDL_GetGamepadAxis(c, (SDL_GamepadAxis)k);
-        g.lo[k] = g.read ? std::min(g.lo[k], v) : v;
-        g.hi[k] = g.read ? std::max(g.hi[k], v) : v;
+        g.lo[k] = g.read ? std::min(g.lo[k], r.axis[k]) : r.axis[k];
+        g.hi[k] = g.read ? std::max(g.hi[k], r.axis[k]) : r.axis[k];
     }
     g.read = true;
     p.connected = true;
-    auto b = [&](SDL_GamepadButton btn) { return SDL_GetGamepadButton(c, btn); };
-    if (b(g.face[0])) p.buttons |= PAD_A;
-    if (b(g.face[1])) p.buttons |= PAD_B;
-    if (b(g.face[2])) p.buttons |= PAD_X;
-    if (b(g.face[3])) p.buttons |= PAD_Y;
-    if (b(SDL_GAMEPAD_BUTTON_START)) p.buttons |= PAD_START;
-    if (b(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER)) p.buttons |= PAD_Z;
-    if (b(SDL_GAMEPAD_BUTTON_DPAD_UP)) p.buttons |= PAD_UP;
-    if (b(SDL_GAMEPAD_BUTTON_DPAD_DOWN)) p.buttons |= PAD_DOWN;
-    if (b(SDL_GAMEPAD_BUTTON_DPAD_LEFT)) p.buttons |= PAD_LEFT;
-    if (b(SDL_GAMEPAD_BUTTON_DPAD_RIGHT)) p.buttons |= PAD_RIGHT;
-    int lx = SDL_GetGamepadAxis(c, SDL_GAMEPAD_AXIS_LEFTX);
-    int ly = SDL_GetGamepadAxis(c, SDL_GAMEPAD_AXIS_LEFTY);
-    if (abs(lx) > 4000 || abs(ly) > 4000) { p.stick_x = axis_to_u8(lx, false); p.stick_y = axis_to_u8(ly, true); }
-    int rx = SDL_GetGamepadAxis(c, SDL_GAMEPAD_AXIS_RIGHTX);
-    int ry = SDL_GetGamepadAxis(c, SDL_GAMEPAD_AXIS_RIGHTY);
-    if (abs(rx) > 1000 || abs(ry) > 1000) { p.cstick_x = axis_to_u8(rx, false); p.cstick_y = axis_to_u8(ry, true); }
-    int lt = SDL_GetGamepadAxis(c, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
-    int rt = SDL_GetGamepadAxis(c, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
-    if (lt > 1000) { p.trig_l = std::max(p.trig_l, (uint8_t)(lt * 255 / 32767)); if (lt > kGamepadTriggerClick) p.buttons |= PAD_L; }
-    if (rt > 1000) { p.trig_r = std::max(p.trig_r, (uint8_t)(rt * 255 / 32767)); if (rt > kGamepadTriggerClick) p.buttons |= PAD_R; }
+    pad_binding_merge(g.bind, r, p);
+}
+
+PadReading gamepads_read(SDL_Gamepad* g) {
+    PadReading r;
+    for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; k++) r.button[k] = SDL_GetGamepadButton(g, (SDL_GamepadButton)k);
+    for (int k = 0; k < SDL_GAMEPAD_AXIS_COUNT; k++) r.axis[k] = SDL_GetGamepadAxis(g, (SDL_GamepadAxis)k);
+    return r;
 }
 
 void gamepads_rumble(int port, bool motor) {
@@ -429,10 +435,13 @@ void gamepads_shutdown() {
     }
     g_left_out.clear();
     g_keyboard_port = 0;
-    // The next launch in this process reads the file again.
+    // The next launch in this process reads the files again.
     g_saved = SavedPorts{};
     g_saved_loaded = false;
     g_may_save = true;
+    g_bindings = SavedBindings{};
+    g_bindings_loaded = false;
+    g_bindings_may_save = true;
 }
 
 std::array<int, 4> gamepads_faces(SDL_Gamepad* g) {
@@ -484,7 +493,7 @@ bool gamepads_assign(uint32_t device, int port) {
     const std::array<SDL_JoystickID, 4> before = occupants();
     g_left_out.erase(out);
     if (g_ports[port].pad) leave(port);
-    g_ports[port] = {g, device, false, faces(g)};
+    g_ports[port] = {g, device, false, binding_of(g)};
     fprintf(stderr, "gamepads: \"%s\" on port %d\n", pad_name(g), port + 1);
     say_landed(port);
     notice(pad_name(g), " is now player ", port);
@@ -493,3 +502,60 @@ bool gamepads_assign(uint32_t device, int port) {
 }
 
 int gamepads_keyboard_port() { return g_keyboard_port; }
+
+// ---- Each gamepad's binding (gamepads.h)
+
+namespace {
+
+// `f` given the open gamepad `device`: one on a port, one the overlay holds, or one opened for
+// the call. False, with `f` not called, for a device that isn't a gamepad here or that
+// controls.txt binds.
+template <typename F> bool with_gamepad(uint32_t device, F f) {
+    if (device == kKeyboard || input_map_binds(device) || !SDL_IsGamepad(device)) return false;
+    SDL_Gamepad* g = SDL_GetGamepadFromID(device);
+    const bool opened = !g;
+    if (opened) g = SDL_OpenGamepad(device);
+    if (!g) return false;
+    f(g);
+    if (opened) SDL_CloseGamepad(g);
+    return true;
+}
+
+// After a change to the bindings: each gamepad on a port that pads.txt can't tell from `id`
+// takes its binding again, and the file is saved.
+void rebind(const PortDevice& id) {
+    for (Port& p : g_ports) {
+        if (!p.pad) continue;
+        const PortDevice d = device_of(p.pad);
+        if (d.guid == id.guid && d.serial == id.serial) p.bind = binding_of(p.pad);
+    }
+    if (!g_bindings_path.empty() && g_bindings_may_save) bindings_save(g_bindings_path, g_bindings);
+}
+
+}  // namespace
+
+void gamepads_bindings_file(const char* path) {
+    g_bindings_path = path ? path : "";
+    g_bindings = SavedBindings{};
+    g_bindings_loaded = false;
+    g_bindings_may_save = true;
+}
+
+bool gamepads_binding(uint32_t device, PadBinding& out) {
+    return with_gamepad(device, [&](SDL_Gamepad* g) { out = binding_of(g); });
+}
+
+bool gamepads_bind(uint32_t device, const PadBinding& b) {
+    return with_gamepad(device, [&](SDL_Gamepad* g) {
+        load_bindings();
+        bindings_put(g_bindings, device_of(g), pad_name(g), b);
+        rebind(device_of(g));
+    });
+}
+
+bool gamepads_reset_binding(uint32_t device) {
+    return with_gamepad(device, [&](SDL_Gamepad* g) {
+        load_bindings();
+        if (bindings_forget(g_bindings, device_of(g))) rebind(device_of(g));
+    });
+}

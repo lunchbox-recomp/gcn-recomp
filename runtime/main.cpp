@@ -316,6 +316,7 @@ static void open_controllers(const char* controls) {
     if (!g_gamepads) return;
     gamepads_load_mappings();
     gamepads_remember("saves/ports.txt");
+    gamepads_bindings_file("saves/pads.txt");
     gamepads_init();
 }
 
