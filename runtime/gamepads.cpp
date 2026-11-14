@@ -493,11 +493,11 @@ template <typename F> bool with_gamepad(uint32_t device, F f) {
     return true;
 }
 
-// After a change to the bindings: each gamepad on a port that pads.txt can't tell from `id`
-// takes its binding again, and the file is saved if it may be.
-Bound rebind(const PortDevice& id) {
+// After a change to one block of the bindings: each gamepad on a port takes its binding again,
+// which changes only for those that block is for, and the file is saved if it may be.
+Bound rebind() {
     for (Port& p : g_ports)
-        if (p.pad && bindings_same_block(device_of(p.pad), id)) p.bind = binding_of(p.pad);
+        if (p.pad) p.bind = binding_of(p.pad);
     const bool saved = !g_bindings_path.empty() && g_bindings_may_save && bindings_save(g_bindings_path, g_bindings);
     return saved ? Bound::saved : Bound::unsaved;
 }
@@ -525,7 +525,7 @@ Bound gamepads_bind(uint32_t device, const PadBinding& b) {
             return;
         }
         bindings_put(g_bindings, device_of(g), pad_name(g), b);
-        did = rebind(device_of(g));
+        did = rebind();
     });
     return did;
 }
@@ -534,7 +534,7 @@ Bound gamepads_reset_binding(uint32_t device) {
     Bound did = Bound::refused;
     with_gamepad(device, [&](SDL_Gamepad* g) {
         load_bindings();
-        did = bindings_forget(g_bindings, device_of(g)) ? rebind(device_of(g)) : Bound::unchanged;
+        did = bindings_forget(g_bindings, device_of(g)) ? rebind() : Bound::unchanged;
     });
     return did;
 }
