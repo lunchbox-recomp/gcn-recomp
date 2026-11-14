@@ -10,7 +10,8 @@
 # usage: cmake -DDIR=<gcn-recomp> -DGENERATOR=<generator> -DMAKE=<its build tool>
 #        -DCC=<C compiler> -DCXX=<C++ compiler> [-DSYSROOT=<SDK>] -DWORK=<dir>
 #        -P test_game_check_state.cmake
-# Writes WORK/project and configures it into WORK/build. Exits 0 only if every check passes.
+# Writes WORK/project and configures it into a fresh WORK/build. Exits 0 only if every check
+# passes; on CMake before 3.26 it prints "skipped:", which the test reports as skipped.
 cmake_minimum_required(VERSION 3.20)
 if(NOT DIR OR NOT GENERATOR OR NOT MAKE OR NOT CC OR NOT CXX OR NOT WORK)
   message(FATAL_ERROR "usage: cmake -DDIR=<gcn-recomp> -DGENERATOR=<generator> -DMAKE=<its build tool> -DCC=<C compiler> -DCXX=<C++ compiler> [-DSYSROOT=<SDK>] -DWORK=<dir> -P test_game_check_state.cmake")
@@ -20,6 +21,8 @@ if(CMAKE_VERSION VERSION_LESS 3.26)
   return()
 endif()
 
+# A build left by an earlier run would pass on its old cache.
+file(REMOVE_RECURSE "${WORK}/build")
 file(MAKE_DIRECTORY "${WORK}/project")
 file(WRITE "${WORK}/project/CMakeLists.txt"
   "cmake_minimum_required(VERSION 3.20)\n"

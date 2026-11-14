@@ -1341,7 +1341,8 @@ function(gcn_add_game)
                -DCC=${CMAKE_C_COMPILER} -DCXX=${CMAKE_CXX_COMPILER} "-DSYSROOT=${CMAKE_OSX_SYSROOT}"
                -DWORK=${_unit_work}/test_game_check_state
                -P ${GCN_RECOMP_DIR}/tools/test_game_check_state.cmake)
-      set_tests_properties(test_game_check_state PROPERTIES FIXTURES_REQUIRED unit_dirs)
+      set_tests_properties(test_game_check_state PROPERTIES FIXTURES_REQUIRED unit_dirs
+                           SKIP_REGULAR_EXPRESSION "skipped:")
       list(APPEND _unit_dirs ${_unit_work}/test_game_check_state)
     endif()
     # runtime_check's engine commit (tools/test_runtime_engine_sha.cmake): it builds after
