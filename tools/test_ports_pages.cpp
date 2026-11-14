@@ -6,6 +6,7 @@
 // a view the menu closed from once the fade is over. With no GL window, as on a machine with no
 // display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
+#include "overlay/fonts.h"  // the atlas the menu and the notices share
 #include <cstdio>
 
 namespace {
@@ -106,6 +107,7 @@ struct PageRun {
     int dumped_at = -1;      // the frame whose draw wrote the dump
     bool on_page = false;    // the page asked for was selected as the menu first drew
     bool ended = false;      // its Dear ImGui contexts were destroyed once it was done
+    bool atlas_made = false;  // the shared font atlas had its GL texture before they were (fonts.h)
     bool let_go = false;     // Display, picked after the dump, was still selected near the end
     double first_ms = -1;    // overlay_draw on the CPU as it first drew, making its GL objects
     std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
@@ -160,6 +162,8 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         if (display.bar && f == held - 2) run.let_go = display.bar->SelectedTabId == display.bar->Tabs[display.index].ID;
         guest_on(guest);
     }
+    const ImTextureData* tex = fonts_atlas()->TexData;
+    run.atlas_made = tex->Status == ImTextureStatus_OK && tex->TexID != ImTextureID_Invalid;
     overlay_test_end();
     run.ended = !ImGui::GetCurrentContext() && !overlay_test_notices_context();
     return run;
@@ -261,6 +265,18 @@ int run_pages(const std::string& dir) {
             check(!exists_path(brief + "/overlay_page0.png") &&
                       lines_with(said, "[overlay] the menu closed before its frame settled, so there's no dump\n") == 1,
                   "a menu closed before its frame settles writes no dump and says so once");
+            // A notice over the open menu, its letters not all on the page, drawn by the notices'
+            // own context and GL renderer from the atlas the menu's shares (fonts.h).
+            const std::string notice = out + "/notice";
+            plat_make_dirs(notice);
+            const long notices = overlay_notice_frames();
+            PageRun shared;
+            capture(dir + "/notice-stderr.txt", [&] {
+                overlay_pads_notice("A notice over the menu: \xC3\xA0 \xC3\xA9 \xC3\xBC");
+                shared = open_on(window, "0", 0, true, notice);
+            });
+            check(overlay_notice_frames() > notices && exists_path(notice + "/overlay_page0.png") && shared.atlas_made,
+                  "a notice over the open menu draws from the atlas the menu's GL renderer made, both contexts on it");
             const std::string bad = dir + "/bad-page-stderr.txt";
             PageRun past, word;
             capture(bad, [&] {
