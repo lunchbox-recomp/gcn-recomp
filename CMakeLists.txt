@@ -812,7 +812,7 @@ function(gcn_add_game)
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
-      ${RT}/gamepads.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp ${RT}/input_defaults.cpp
+      ${RT}/gamepads.cpp ${RT}/pad_bindings.cpp ${RT}/port_memory.cpp ${RT}/input_map.cpp ${RT}/input_defaults.cpp
       ${RT}/input_script.cpp ${RT}/input_log.cpp ${RT}/bot_link.cpp ${RT}/platform.cpp ${RT}/hw/mmio.cpp
       ${RT}/vr_config.cpp ${RT}/settings.cpp ${RT}/reset.cpp ${RT}/ram_patches.cpp)
     _gcn_set_standards(test_ports)
@@ -916,6 +916,16 @@ function(gcn_add_game)
     _gcn_set_standards(test_port_memory)
     target_include_directories(test_port_memory PRIVATE ${RT})
     target_compile_options(test_port_memory PRIVATE ${GCN_RUNTIME_WARNINGS})
+
+    # The gamepad binding checks (tools/test_pad_bindings.cpp): the map with nothing saved,
+    # rebound controls as the game reads them, press-to-bind, and pads.txt loaded and saved in
+    # a work dir. Needs no disc image, device or SDL.
+    add_executable(test_pad_bindings EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_pad_bindings.cpp
+      ${RT}/pad_bindings.cpp ${RT}/port_memory.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_pad_bindings)
+    target_include_directories(test_pad_bindings PRIVATE ${RT})
+    target_compile_options(test_pad_bindings PRIVATE ${GCN_RUNTIME_WARNINGS})
+
 
     # The SRAM file checks (tools/test_sram.cpp): loading and saving it in a work dir.
     add_executable(test_sram EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_sram.cpp
@@ -1095,7 +1105,7 @@ function(gcn_add_game)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
-    set(_unit_in_dir test_settings test_port_memory test_sram test_exi test_session test_disc_overlay test_feed_dump
+    set(_unit_in_dir test_settings test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_code_table test_code_watch test_aid)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)

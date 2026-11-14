@@ -27,10 +27,19 @@ bool is_saved(const SavedPorts& saved, const PortDevice& d) {
 
 bool plain(unsigned char c) { return c > 0x20 && c != 0x7F && c != '%'; }
 
+int hex_digit(char c) {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+    return -1;
+}
+
+}  // namespace
+
 // A serial as one token. `-` stands for none, and a percent escape stands for any byte a
 // token can't hold. A serial that's only `-` is escaped too, so that it can't be taken for
 // none.
-std::string encode_serial(const std::string& serial) {
+std::string ports_encode_serial(const std::string& serial) {
     if (serial.empty()) return "-";
     if (serial == "-") return "%2D";
     std::string out;
@@ -46,14 +55,7 @@ std::string encode_serial(const std::string& serial) {
     return out;
 }
 
-int hex_digit(char c) {
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-bool decode_serial(const std::string& token, std::string& out) {
+bool ports_decode_serial(const std::string& token, std::string& out) {
     out.clear();
     if (token == "-") return true;
     for (size_t i = 0; i < token.size(); i++) {
@@ -70,6 +72,15 @@ bool decode_serial(const std::string& token, std::string& out) {
     return true;
 }
 
+bool ports_is_guid(const std::string& text) {
+    if (text.size() != 32) return false;
+    for (char c : text)
+        if (hex_digit(c) < 0) return false;
+    return true;
+}
+
+namespace {
+
 // A USB ID, one to four hex digits.
 bool parse_id(const std::string& text, uint16_t& out) {
     if (text.empty() || text.size() > 4) return false;
@@ -80,13 +91,6 @@ bool parse_id(const std::string& text, uint16_t& out) {
         v = v * 16 + (unsigned)d;
     }
     out = (uint16_t)v;
-    return true;
-}
-
-bool parse_guid(const std::string& text) {
-    if (text.size() != 32) return false;
-    for (char c : text)
-        if (hex_digit(c) < 0) return false;
     return true;
 }
 
@@ -112,11 +116,11 @@ bool parse_line(const std::vector<std::string>& t, int& port, std::optional<Port
         device.reset();
         return true;
     }
-    if (t.size() != 4 || !parse_guid(t[1])) return false;
+    if (t.size() != 4 || !ports_is_guid(t[1])) return false;
     const size_t colon = t[3].find(':');
     PortDevice d;
     if (colon == std::string::npos || !parse_id(t[3].substr(0, colon), d.vendor) ||
-        !parse_id(t[3].substr(colon + 1), d.product) || !decode_serial(t[2], d.serial))
+        !parse_id(t[3].substr(colon + 1), d.product) || !ports_decode_serial(t[2], d.serial))
         return false;
     d.guid = t[1];
     device = d;
@@ -181,7 +185,7 @@ std::string ports_format(const SavedPorts& saved) {
         }
         char ids[16];
         snprintf(ids, sizeof(ids), "%04x:%04x", saved[p]->vendor, saved[p]->product);
-        text += saved[p]->guid + " " + encode_serial(saved[p]->serial) + " " + ids + "\n";
+        text += saved[p]->guid + " " + ports_encode_serial(saved[p]->serial) + " " + ids + "\n";
     }
     return text;
 }

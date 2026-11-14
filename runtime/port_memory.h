@@ -63,6 +63,13 @@ std::vector<int> match_ports(const SavedPorts& saved, const std::vector<PresentD
 // Puts `device` on `port` in `saved`. True if that changed what was saved there.
 bool ports_assign(SavedPorts& saved, int port, const PortDevice& device);
 
+// A serial as one word of the file, and back, as above (pads.txt writes them the same way).
+// False if the word stands for no serial.
+std::string ports_encode_serial(const std::string& serial);
+bool ports_decode_serial(const std::string& word, std::string& serial);
+// Whether `text` is an SDL GUID as the file has it, 32 hex digits.
+bool ports_is_guid(const std::string& text);
+
 // The file's text for `saved`.
 std::string ports_format(const SavedPorts& saved);
 // The ports in `text`. A line that can't be read is skipped, with its line number and
