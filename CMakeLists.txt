@@ -926,6 +926,13 @@ function(gcn_add_game)
     target_include_directories(test_pad_bindings PRIVATE ${RT})
     target_compile_options(test_pad_bindings PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The gamepad glyph checks (tools/test_pad_glyph.cpp): the name a player sees for each
+    # button and axis, family by family. Needs no device or SDL.
+    add_executable(test_pad_glyph EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_pad_glyph.cpp
+      ${RT}/pad_glyph.cpp ${RT}/pad_bindings.cpp ${RT}/port_memory.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_pad_glyph)
+    target_include_directories(test_pad_glyph PRIVATE ${RT})
+    target_compile_options(test_pad_glyph PRIVATE ${GCN_RUNTIME_WARNINGS})
 
     # The SRAM file checks (tools/test_sram.cpp): loading and saving it in a work dir.
     add_executable(test_sram EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_sram.cpp
@@ -1103,7 +1110,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clock test_pause
+    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_code_table test_code_watch test_aid)
