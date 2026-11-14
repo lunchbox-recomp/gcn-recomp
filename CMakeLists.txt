@@ -838,6 +838,15 @@ function(gcn_add_game)
       target_link_libraries(test_overlay_theme PRIVATE gcn_imgui)
       target_compile_options(test_overlay_theme PRIVATE ${GCN_RUNTIME_WARNINGS})
       target_compile_definitions(test_overlay_theme PRIVATE GCN_OVERLAY)
+      # The motion's checks (tools/test_overlay_motion.cpp): the easings and tweens, how the
+      # menu comes and goes, and its transform of a frame's draw data, with no window.
+      add_executable(test_overlay_motion EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_overlay_motion.cpp
+        ${RT}/overlay/motion.cpp ${RT}/overlay/appear.cpp)
+      _gcn_set_standards(test_overlay_motion)
+      target_include_directories(test_overlay_motion PRIVATE ${RT})
+      target_link_libraries(test_overlay_motion PRIVATE gcn_imgui)
+      target_compile_options(test_overlay_motion PRIVATE ${GCN_RUNTIME_WARNINGS})
+      target_compile_definitions(test_overlay_motion PRIVATE GCN_OVERLAY)
     endif()
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page
@@ -1132,8 +1141,8 @@ function(gcn_add_game)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()
-    if(TARGET test_overlay_theme)
-      list(APPEND _unit_plain test_overlay_theme)
+    if(TARGET test_overlay_theme AND TARGET test_overlay_motion)
+      list(APPEND _unit_plain test_overlay_theme test_overlay_motion)
     endif()
     set(_unit_dirs ${_unit_work}/test_engine_sha)
     foreach(_t ${_unit_plain})
