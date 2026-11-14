@@ -33,8 +33,8 @@
 //                                 lefttrigger righttrigger, which run 0 to 1. saves/pads.txt
 //                                 is written in these (pad_bindings.h), though a block of it
 //                                 reads a little differently here, as pad_bindings.h says. A
-//                                 joystick SDL has no gamepad mapping for reads nothing on
-//                                 such a line, which is said once
+//                                 joystick SDL has no gamepad mapping for, or can't open as
+//                                 a gamepad, reads nothing on such a line, which is said once
 // A device is named as SDL names it; "<name> #2" is the second of two with that name.
 // A gamepad with a name the file uses gets no gamepad port (gamepads.h) whatever its #n,
 // so a line for "<name> #2" keeps the first of them off the gamepad ports too.
