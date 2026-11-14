@@ -8,11 +8,11 @@
 // with the repository. Each kind of text takes the first face of its chain that loads, then
 // Dear ImGui's own, with one [overlay] font line on stderr for each step down, and a theme that
 // lists no font at all takes Dear ImGui's own with one line. An atlas no context is on is freed
-// when the next is built. The menu's and the notices' contexts share one atlas, its texture
-// capped at 8 MB, and the text of every kind at sizes up to 2160 lines at twice the pixel
-// density, 1440 in Dear ImGui's own font, is baked into it, no glyph falling back. Where the
-// Mac's own Avenir Next is installed, the default chains load from it with no step down, read
-// where it is and never copied.
+// when the next is built, and one a context is on is kept. The menu's and the notices'
+// contexts share one atlas, its texture capped at 8 MB, and the text of every kind at sizes up
+// to 2160 lines at twice the pixel density, 1440 in Dear ImGui's own font, is baked into it,
+// no glyph falling back. Where the Mac's own Avenir Next is installed, the default chains load
+// from it with no step down, read where it is and never copied.
 //
 // usage: test_overlay_fonts <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if every
@@ -372,6 +372,17 @@ void chains(const std::string& dir) {
     const long live = g_live;
     said(dir + "/again-stderr.txt", [&] { fonts_build(OverlayFonts{}); });
     check(live > 0 && g_live == live, "an atlas no context is on is freed when the next is built");
+    // One a context is on is kept, whole, for that context to go on reading; under the
+    // sanitizers a read of a freed one stops the check. Once the context is gone, nothing
+    // else frees it, so the check does.
+    ImFontAtlas* const old = fonts_atlas();
+    ImGuiContext* c = ImGui::CreateContext(old);
+    said(dir + "/kept-stderr.txt", [&] { fonts_build(OverlayFonts{}); });
+    ImGui::SetCurrentContext(c);
+    check(fonts_atlas() != old && ImGui::GetIO().Fonts == old && ImGui::GetIO().Fonts->Fonts.Size == 1,
+          "an atlas a context is still on is kept when the next is built");
+    ImGui::DestroyContext(c);
+    IM_DELETE(old);
 }
 
 // A context of the overlay's kind on the shared atlas, with a renderer that takes texture
