@@ -831,9 +831,15 @@ function(gcn_add_game)
   # that read data cut short: the fonts' (test_overlay_fonts) and the disc banner's
   # (test_banner).
   include(CheckCXXSourceCompiles)
+  include(CMakePushCheckState)
+  cmake_push_check_state()  # a game project's own CMAKE_REQUIRED_FLAGS come back after
   set(CMAKE_REQUIRED_FLAGS "-fsanitize=address,undefined")
   check_cxx_source_compiles("int main() { return 0; }" GCN_HAVE_SANITIZERS)
-  unset(CMAKE_REQUIRED_FLAGS)
+  cmake_pop_check_state()
+  if(NOT GCN_HAVE_SANITIZERS)
+    message(STATUS "The compiler has no address and undefined behaviour sanitizers, so"
+      " test_overlay_fonts and test_banner are built without them")
+  endif()
 
   # The gamepad port checks (tools/test_ports.sh runs them): the frontend's input loop and
   # the SI layer against SDL's virtual joysticks. Needs no disc image, and nothing of the
