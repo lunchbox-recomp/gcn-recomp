@@ -70,10 +70,15 @@ bool parse_fraction(const std::string& word, int& raw) {
     return true;
 }
 
+// What a quoted name can't hold as it is: its quote, a control character, and the '%' that
+// escapes them.
+bool escaped_in_name(unsigned char c) { return c == '"' || c == '%' || c < 0x20 || c == 0x7F; }
+
 std::string line_for(const SavedBinding& b, PadControl c) {
     const PadBinding& k = b.binding;
     const PadSource& s = k.source[(int)c];
-    std::string line = std::string(kControlNames[(int)c]) + " = \"" + b.name + "\" gamepad " + pad_source_name(s);
+    std::string line = std::string(kControlNames[(int)c]) + " = \"" + percent_encode(b.name, escaped_in_name) +
+                       "\" gamepad " + pad_source_name(s);
     if (s.invert) line += " invert";
     if (c == PadControl::StickX || c == PadControl::StickY) line += " deadzone " + fraction(k.stick_deadzone);
     if (c == PadControl::CStickX || c == PadControl::CStickY) line += " deadzone " + fraction(k.cstick_deadzone);
@@ -315,8 +320,9 @@ SavedBindings bindings_parse(const std::string& text, const char* name) {
         std::vector<std::string> w;
         std::string err;
         // A block's first line, which controls.txt reads as a comment.
+        // Split on whitespace alone, as ports.txt is, since a serial may hold '#', '=' or '"'.
         if (!strncmp(line.c_str(), "# gamepad ", 10)) {
-            controls_words(line.c_str() + 10, w, err);
+            w = ports_words(line.substr(10));
             SavedBinding b;
             if (w.size() == 2 && ports_is_guid(w[0]) && ports_decode_serial(w[1], b.id.serial)) {
                 b.id.guid = w[0];
@@ -332,7 +338,7 @@ SavedBindings bindings_parse(const std::string& text, const char* name) {
         } else if (block < 0) {
             err = "a control before any gamepad's line";
         } else if (parse_control(w, saved[block], err)) {
-            if (saved[block].name.empty()) saved[block].name = w[2];
+            if (saved[block].name.empty() && !percent_decode(w[2], saved[block].name)) saved[block].name = w[2];
             continue;
         }
         fprintf(stderr, "%s:%d: %s, so the line is skipped\n", name, n, err.c_str());

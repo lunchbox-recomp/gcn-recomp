@@ -25,7 +25,8 @@ bool is_saved(const SavedPorts& saved, const PortDevice& d) {
 
 // ---- The file's text
 
-bool plain(unsigned char c) { return c > 0x20 && c != 0x7F && c != '%'; }
+// What a word can't hold: a space, a control character, and the '%' that escapes them.
+bool not_plain(unsigned char c) { return c <= 0x20 || c == 0x7F || c == '%'; }
 
 int hex_digit(char c) {
     if (c >= '0' && c <= '9') return c - '0';
@@ -36,15 +37,10 @@ int hex_digit(char c) {
 
 }  // namespace
 
-// A serial as one token. `-` stands for none, and a percent escape stands for any byte a
-// token can't hold. A serial that's only `-` is escaped too, so that it can't be taken for
-// none.
-std::string ports_encode_serial(const std::string& serial) {
-    if (serial.empty()) return "-";
-    if (serial == "-") return "%2D";
+std::string percent_encode(const std::string& text, bool (*escaped)(unsigned char)) {
     std::string out;
-    for (unsigned char c : serial) {
-        if (plain(c)) {
+    for (unsigned char c : text) {
+        if (!escaped(c)) {
             out += (char)c;
         } else {
             char esc[4];
@@ -55,16 +51,15 @@ std::string ports_encode_serial(const std::string& serial) {
     return out;
 }
 
-bool ports_decode_serial(const std::string& token, std::string& out) {
+bool percent_decode(const std::string& text, std::string& out) {
     out.clear();
-    if (token == "-") return true;
-    for (size_t i = 0; i < token.size(); i++) {
-        if (token[i] != '%') {
-            out += token[i];
+    for (size_t i = 0; i < text.size(); i++) {
+        if (text[i] != '%') {
+            out += text[i];
             continue;
         }
-        const int hi = i + 2 < token.size() ? hex_digit(token[i + 1]) : -1;
-        const int lo = i + 2 < token.size() ? hex_digit(token[i + 2]) : -1;
+        const int hi = i + 2 < text.size() ? hex_digit(text[i + 1]) : -1;
+        const int lo = i + 2 < text.size() ? hex_digit(text[i + 2]) : -1;
         if (hi < 0 || lo < 0) return false;
         out += (char)(hi * 16 + lo);
         i += 2;
@@ -72,11 +67,38 @@ bool ports_decode_serial(const std::string& token, std::string& out) {
     return true;
 }
 
+// A serial as one word. `-` stands for none, and a percent escape stands for any byte a word
+// can't hold. A serial that's only `-` is escaped too, so that it can't be taken for none.
+std::string ports_encode_serial(const std::string& serial) {
+    if (serial.empty()) return "-";
+    if (serial == "-") return "%2D";
+    return percent_encode(serial, not_plain);
+}
+
+bool ports_decode_serial(const std::string& word, std::string& out) {
+    out.clear();
+    return word == "-" || percent_decode(word, out);
+}
+
 bool ports_is_guid(const std::string& text) {
     if (text.size() != 32) return false;
     for (char c : text)
         if (hex_digit(c) < 0) return false;
     return true;
+}
+
+std::vector<std::string> ports_words(const std::string& line) {
+    std::vector<std::string> out;
+    size_t i = 0;
+    while (i < line.size()) {
+        const size_t start = line.find_first_not_of(" \t\r", i);
+        if (start == std::string::npos) break;
+        const size_t end = line.find_first_of(" \t\r", start);
+        out.push_back(line.substr(start, end == std::string::npos ? std::string::npos : end - start));
+        if (end == std::string::npos) break;
+        i = end;
+    }
+    return out;
 }
 
 namespace {
@@ -92,20 +114,6 @@ bool parse_id(const std::string& text, uint16_t& out) {
     }
     out = (uint16_t)v;
     return true;
-}
-
-std::vector<std::string> tokens(const std::string& line) {
-    std::vector<std::string> out;
-    size_t i = 0;
-    while (i < line.size()) {
-        const size_t start = line.find_first_not_of(" \t\r", i);
-        if (start == std::string::npos) break;
-        const size_t end = line.find_first_of(" \t\r", start);
-        out.push_back(line.substr(start, end == std::string::npos ? std::string::npos : end - start));
-        if (end == std::string::npos) break;
-        i = end;
-    }
-    return out;
 }
 
 // One line's port (0 to 3) and its device, none for `none`. False if it isn't a port line.
@@ -196,7 +204,7 @@ SavedPorts ports_parse(const std::string& text, const char* name) {
     for (size_t start = 0; start < text.size();) {
         size_t end = text.find('\n', start);
         if (end == std::string::npos) end = text.size();
-        const std::vector<std::string> t = tokens(text.substr(start, end - start));
+        const std::vector<std::string> t = ports_words(text.substr(start, end - start));
         start = end + 1;
         n++;
         if (t.empty() || t[0][0] == '#') continue;

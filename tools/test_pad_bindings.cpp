@@ -303,6 +303,8 @@ void file_text() {
     const std::string said = stderr_of("parse-clean.txt", [&] { back = bindings_parse(kExpected, "pads.txt"); });
     check(said.empty() && back.size() == 1 && bindings_find(back, xbox(), PadBinding{}) == b,
           "read back, the block gives the same binding, and nothing is said");
+    check(bindings_format(back) == kExpected && back[0].name == "Xbox Wireless Controller",
+          "and written again it's the same text, the gamepad's name and all");
 
     // A serial with a space, every setting moved, every source kind.
     PadBinding m = pad_binding_default(kNintendo);
@@ -329,6 +331,21 @@ void file_text() {
           "a block taken out leaves the gamepad with what it's given instead");
     const PortDevice serialed{xbox().guid, "1234", 0, 0};
     check(bindings_find(back, serialed, m) == m, "the same GUID with another serial is another gamepad");
+
+    // Each of the words controls.txt's tokenizer stops at, in a serial and in a name.
+    bool marks = true;
+    for (const char* mark : {"#", "=", "\""}) {
+        const PortDevice odd{"050000007e0500000920000001800000", std::string("AB") + mark + "12", 0, 0};
+        const std::string name = std::string("Pad ") + mark + "Pro" + mark + " 100%";
+        SavedBindings one;
+        bindings_put(one, odd, name, m);
+        const std::string text = bindings_format(one);
+        SavedBindings read;
+        const std::string said = stderr_of("parse-marks.txt", [&] { read = bindings_parse(text, "pads.txt"); });
+        marks = marks && said.empty() && read.size() == 1 && read[0].id.serial == odd.serial && read[0].name == name &&
+                bindings_find(read, odd, PadBinding{}) == m && bindings_format(read) == text;
+    }
+    check(marks, "a serial or a name with a '#', a '=' or a '\"' in it comes back as it was, with nothing said");
 }
 
 void file_forgives() {
