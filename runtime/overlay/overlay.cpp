@@ -28,6 +28,7 @@ void bindings_stop();
 // notices.cpp's.
 void notices_init(SDL_Window* window, bool gl);
 void notices_motion(bool on);
+bool notices_moving(uint64_t now);
 void notices_frame();
 // overlay_input.cpp's: the gamepads held for the menu, and the buttons each has down kept out of
 // the menu until each is let go.
@@ -230,7 +231,7 @@ bool overlay_menu_due() { return menu_showing() || at_frame_due(); }
 
 bool overlay_animating() {
     const uint64_t now = host_ns();
-    return g_window && (appear_moving(now) || (g_open && tabs_moving(now)));
+    return g_window && (appear_moving(now) || (g_open && tabs_moving(now)) || notices_moving(now));
 }
 
 void overlay_close() { overlay_set_open(false); }

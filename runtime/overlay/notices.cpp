@@ -121,6 +121,16 @@ void overlay_pads_notice(const std::string& name, const std::string& what) {
 
 void notices_motion(bool on) { g_motion = on; }
 
+// overlay.cpp's: whether any notice is rising or fading at `now`, or moving down as the stack
+// reflows.
+bool notices_moving(uint64_t now) {
+    expire(now);
+    const OverlayTheme& t = theme_now();
+    return std::any_of(g_notices.begin(), g_notices.end(), [&](const Notice& n) {
+        return toast_moving(t, now - n.since, g_motion) || !n.slot.done(now);
+    });
+}
+
 std::vector<std::string> overlay_notices() {
     expire(host_ns());
     std::vector<std::string> out;

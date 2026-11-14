@@ -171,6 +171,37 @@ void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool d
     host_frame(guest);
 }
 
+// With the menu open over the held game and `motion` as `what` says, the paused wait at each
+// moment of two toasts' lives, A and B 500 ms after it: 8 ms while either rises, fades or moves
+// down into A's place, and 16 ms while both rest. Without motion it's 16 ms throughout.
+void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const char* what) {
+    Guest guest;
+    toasts_init(window, dir, motion, false, guest);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000 * kToastMsNs;  // past the open's motion
+    host_frame(guest);
+    const bool still = overlay_open() && paused() && batch_wait_ms() == 16;
+    const uint64_t a = g_host_ns;
+    overlay_pads_notice("Pad one", " connected as player 1");
+    const uint64_t kAt[] = {0, 100, 200, 500, 700, 1900, 2000, 2080, 2160};
+    const bool kMoving[] = {true, true, false, true, false, true, true, true, false};
+    bool waits = true;
+    for (size_t i = 0; i < std::size(kAt); i++) {
+        g_host_ns = a + kAt[i] * kToastMsNs;
+        if (kAt[i] == 500) overlay_pads_notice("Pad two", " connected as player 2");
+        host_frame(guest);
+        waits = waits && paused() && batch_wait_ms() == (motion && kMoving[i] ? 8 : 16);
+    }
+    char said[256];
+    snprintf(said, sizeof(said), "%s: with the menu open the paused wait is %s", what,
+             motion ? "8 ms while a toast rises, fades or moves down, and 16 ms while they rest"
+                    : "16 ms throughout two toasts' lives");
+    check(still && waits, said);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns = a + 5000 * kToastMsNs;
+    host_frame(guest);
+}
+
 void toasts(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
@@ -180,6 +211,8 @@ void toasts(const std::string& dir) {
     toast_stack(window, dir, true, false, "with menu_motion on");
     toast_stack(window, dir, false, false, "with menu_motion off");
     toast_stack(window, dir, true, true, "under --dump-output");
+    toast_wait(window, dir, true, "with menu_motion on");
+    toast_wait(window, dir, false, "with menu_motion off");
     close_window(window);
 }
 

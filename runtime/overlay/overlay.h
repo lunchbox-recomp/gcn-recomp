@@ -187,7 +187,8 @@ bool overlay_open();
 // Whether overlay_draw lays out the menu this time: it's open or still fading out, or
 // GCN_OVERLAY_AT's frame has been presented, so that overlay_draw opens it first.
 bool overlay_menu_due();
-// Whether the menu is still opening or closing, so the frontend draws a held frame again sooner.
+// Whether the menu is still opening or closing, its page is changing or a notice is moving, so
+// the frontend draws a held frame again sooner.
 bool overlay_animating();
 // Closes it if it's open, and the guest goes on.
 void overlay_close();
