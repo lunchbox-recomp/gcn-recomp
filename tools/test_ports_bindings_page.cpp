@@ -105,8 +105,10 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     overlay_bindings_listen(PadControl::B);
     host_frame(guest);
     const std::string adapter_hints = footer_test_hints();
+    const size_t adapter_glyphs = footer_test_glyphs().size();
     tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
-    check(adapter_hints == "Esc Cancel, Wait Cancel" && !overlay_bindings_listening() && file_id(file) == kept,
+    check(adapter_hints == "Esc Cancel, Wait Cancel" && adapter_glyphs == 1 &&
+              !overlay_bindings_listening() && file_id(file) == kept,
           "listening to a GameCube pad on the adapter, the footer hints Escape and the wait, and Escape cancels");
     unplug({&adapter});
 
