@@ -1025,6 +1025,16 @@ function(gcn_add_game)
     target_compile_options(test_bot_link PRIVATE ${GCN_RUNTIME_WARNINGS})
     target_compile_definitions(test_bot_link PRIVATE ${GCN_GAME_DEFS})
 
+    # The ready file's checks (tools/test_ready_file.cpp): runtime/ready_file.cpp writing
+    # GCN_READY_FILE's lines into a work dir, with a reader polling it meanwhile, and
+    # plat_ms_since_start. Needs no disc image, device, SDL or game.
+    add_executable(test_ready_file EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ready_file.cpp
+      ${RT}/ready_file.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_ready_file)
+    target_include_directories(test_ready_file PRIVATE ${RT})
+    target_link_libraries(test_ready_file PRIVATE Threads::Threads)
+    target_compile_options(test_ready_file PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The virtual clock's checks (tools/test_clock.cpp): cpu.cpp's clock run as a replay runs
     # it, its jumps against the total the AI DMA leaves out of the guest's time. The linker
     # drops the rest of cpu.cpp, which would otherwise want the whole runtime.
@@ -1158,7 +1168,7 @@ function(gcn_add_game)
     set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
-        test_ram_patches test_bot_link test_code_table test_code_watch test_aid)
+        test_ram_patches test_bot_link test_ready_file test_code_table test_code_watch test_aid)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
     endif()

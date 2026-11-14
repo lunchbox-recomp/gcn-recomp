@@ -20,6 +20,7 @@
 #include "settings.h"
 #include "session.h"
 #include "pause.h"
+#include "ready_file.h"
 #include "overlay/overlay.h"
 #ifdef GCN_OPENXR
 #include "xr_desktop.h"
@@ -934,6 +935,9 @@ int main(int argc, char** argv) {
         }
         if (presented) {
             show_frame(win);
+            // GCN_READY_FILE (ready_file.h): with no splash, the first frame shown is the game's.
+            ready_mark("window");
+            ready_mark("frame");
             frames++;
             // The window-close path: the loop ends and the shutdown below runs as usual, at
             // once, with no wait for a save.

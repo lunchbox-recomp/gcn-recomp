@@ -170,6 +170,14 @@ long plat_utc_offset_seconds() {
     return (long)(as_utc - t);
 }
 
+double plat_ms_since_start() {
+    FILETIME created, exited, kernel, user, now;
+    if (!GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user)) return 0.0;
+    GetSystemTimePreciseAsFileTime(&now);
+    auto ticks = [](const FILETIME& t) { return ((uint64_t)t.dwHighDateTime << 32) | t.dwLowDateTime; };
+    return (double)(int64_t)(ticks(now) - ticks(created)) / 1e4;  // 100 ns ticks
+}
+
 // ---- files ----
 bool plat_readable(const char* path) { return path && *path && _access(path, 4) == 0; }
 
@@ -386,6 +394,36 @@ long plat_utc_offset_seconds() {
     struct tm lt;
     localtime_r(&t, &lt);
     return (long)lt.tm_gmtoff;
+}
+
+double plat_ms_since_start() {
+#if defined(__APPLE__)
+    struct kinfo_proc kp = {};
+    size_t len = sizeof(kp);
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)getpid()};
+    if (sysctl(mib, 4, &kp, &len, nullptr, 0) == 0 && len == sizeof(kp)) {
+        struct timeval now;
+        gettimeofday(&now, nullptr);
+        const timeval& t = kp.kp_proc.p_starttime;
+        return (double)(now.tv_sec - t.tv_sec) * 1e3 + (double)(now.tv_usec - t.tv_usec) / 1e3;
+    }
+#elif defined(__linux__)
+    // Field 22 of /proc/self/stat, in clock ticks since boot, after the command's ")".
+    if (FILE* f = fopen("/proc/self/stat", "r")) {
+        char buf[1024];
+        const size_t n = fread(buf, 1, sizeof(buf) - 1, f);
+        fclose(f);
+        buf[n] = 0;
+        unsigned long long start = 0;
+        const char* p = strrchr(buf, ')');
+        struct timespec now;
+        if (p && sscanf(p + 2, "%*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %*u %*u %*d %*d %*d %*d %*d %*d %llu",
+                        &start) == 1 && clock_gettime(CLOCK_BOOTTIME, &now) == 0)
+            return (double)now.tv_sec * 1e3 + (double)now.tv_nsec / 1e6 - (double)start * 1e3 / (double)sysconf(_SC_CLK_TCK);
+    }
+#endif
+    static const auto t0 = std::chrono::steady_clock::now();
+    return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
 }
 
 bool plat_readable(const char* path) { return path && *path && access(path, R_OK) == 0; }

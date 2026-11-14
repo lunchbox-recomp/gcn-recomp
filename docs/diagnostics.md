@@ -819,6 +819,24 @@ out over 5 ms as the ring does when it runs dry, then keeps it silent with its p
 disc unmoved. The resume fades it back in over 8 ms from the next sample, and a pause that's
 asked for but not yet held leaves it playing.
 
+## Starting a run
+
+`GCN_READY_FILE=<path>` has the window's run add a line to that file as it gets going, so a
+launcher can keep its own window up until the game's has something on it
+(`runtime/ready_file.h`). `window <ms>` goes in at the first frame the window shows and
+`frame <ms>` at the first frame the game presents, each once, in milliseconds since the
+process started. With nothing before the game's first frame, both go in then.
+
+Each line goes in through `<path>.tmp`, which then replaces the file, so a reader never sees
+a line cut short. A watcher of the file itself sees it renamed over, so it watches the
+directory or opens the file again at each change. What the file held is kept, so a launcher
+removes it before a launch to see only that run's lines. A path that can't be written gets
+a line on stderr and the run goes on. `--headless` and `--vr` write nothing.
+
+`ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
+order, that a reader polling the file never sees part of one, and that the times count from
+before `main`.
+
 ## Ending a run
 
 `--exit-after=N` ends the run after the Nth presented frame and exits 0, shutting down as

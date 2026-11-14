@@ -71,6 +71,10 @@ bool plat_thread_sched(long tid, uint64_t* run_ns, uint64_t* wait_ns, int* cpu);
 // ---- time ----
 // Seconds to add to UTC to get local wall-clock time, including any DST in effect.
 long plat_utc_offset_seconds();
+// Milliseconds since this process started, by the OS's record of its start (macOS, Linux and
+// Windows keep one), so the time before main and the static constructors is counted too.
+// Where the OS can't say, since the first call.
+double plat_ms_since_start();
 
 // ---- the host ----
 // The OS and its version ("macOS 26.6 (25G104)", "Linux 6.8.0"), and the CPU's model name,
