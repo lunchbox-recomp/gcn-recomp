@@ -6,8 +6,8 @@
 // a question's confirm's included, and the focus ring and its pulse, an item's edge, a check
 // mark and a slider's grab at least 3:1 against what's around them, by WCAG 2's contrast ratio.
 // The panel is translucent, so it's taken over the backdrop over black and over white,
-// whichever is worse. At 1080 lines the body text is at least 22 px and nothing to press is
-// under 48 px. Each kind of text has its size and, on macOS, its chain of the Mac's own fonts.
+// whichever is worse. At 1080 lines the body text is at least 22 px, nothing to press is under
+// 48 px and the focus ring is at least 3 px wide. Each kind of text has its size and, on macOS, its chain of the Mac's own fonts.
 // The style built from it
 // (runtime/overlay/theme.cpp) carries its colours, has its sizes at 1080 lines, and is built
 // afresh at another height rather than scaled again, so a height and back gives the same sizes.
@@ -67,6 +67,17 @@ double worst(const OverlayTheme& t, uint32_t fg, uint32_t fill) {
     for (uint32_t game : {0x000000FFu, 0xFFFFFFFFu}) {
         const uint32_t seen = over(fill, over(t.panel, over(t.backdrop, game)));
         least = std::min(least, contrast(over(fg, seen), seen));
+    }
+    return least;
+}
+
+// The least contrast `a` and `b` have side by side on the panel, over the backdrop over black or
+// white.
+double beside(const OverlayTheme& t, uint32_t a, uint32_t b) {
+    double least = 1e9;
+    for (uint32_t game : {0x000000FFu, 0xFFFFFFFFu}) {
+        const uint32_t panel = over(t.panel, over(t.backdrop, game));
+        least = std::min(least, contrast(over(a, panel), over(b, panel)));
     }
     return least;
 }
@@ -137,6 +148,15 @@ void contrasts(const OverlayTheme& t) {
         snprintf(what, sizeof(what), "%s on the panel is %.2f:1, at least 3:1", ring.first, r);
         check(r >= 3.0, what);
     }
+    // The ring is focus_gap outside its item, on the panel, but against the item's fill beside it
+    // too, which the item with the focus shows, and at rest or pressed as it moves on or is held.
+    for (const auto& fill : {std::pair<const char*, uint32_t>{"an item at rest", t.item}, {"one focused", t.focused},
+                             {"one pressed", t.pressed}}) {
+        const double r = beside(t, t.accent, fill.second);
+        char what[160];
+        snprintf(what, sizeof(what), "the focus ring beside %s is %.2f:1, at least 3:1", fill.first, r);
+        check(r >= 3.0, what);
+    }
 }
 
 // What isn't text but has to be seen, at least 3:1 by WCAG 2.1's 1.4.11, read from the style
@@ -185,6 +205,8 @@ void couch(const OverlayTheme& t) {
     check(t.body_size >= 22.0f, "body text is at least 22 px at 1080 lines");
     check(t.item_min_height >= 48.0f && t.item_height >= t.item_min_height,
           "nothing to press is under 48 px at 1080 lines, items included");
+    check(t.focus_width >= 3.0f && t.focus_gap >= 2.0f,
+          "the focus ring is at least 3 px wide and 2 px outside its item at 1080 lines");
 }
 
 // Each kind of text has the design's size at 1080 lines. On macOS its chain is the Mac's own Avenir
@@ -235,10 +257,10 @@ void style(const OverlayTheme& t) {
     check(same(s.Colors[ImGuiCol_WindowBg], t.panel) && same(s.Colors[ImGuiCol_Text], t.text) &&
               same(s.Colors[ImGuiCol_Button], t.item) && same(s.Colors[ImGuiCol_ButtonHovered], t.focused) &&
               same(s.Colors[ImGuiCol_ButtonActive], t.pressed) && same(s.Colors[ImGuiCol_TabSelected], t.accent_dark) &&
-              same(s.Colors[ImGuiCol_CheckMark], t.accent) && same(s.Colors[ImGuiCol_NavCursor], t.accent) &&
+              same(s.Colors[ImGuiCol_CheckMark], t.accent) && same(s.Colors[ImGuiCol_NavCursor], 0) &&
               same(s.Colors[ImGuiCol_TextDisabled], t.dim) && same(s.Colors[ImGuiCol_Border], t.border) &&
               same(s.Colors[ImGuiCol_Separator], t.divider),
-          "the style's colours are the theme's");
+          "the style's colours are the theme's, with Dear ImGui's nav highlight clear for the focus ring");
     // At 2160 lines, twice over, every size is twice its 1080 one, not four times.
     theme_style(t, theme_scale(2160));
     theme_style(t, theme_scale(2160));

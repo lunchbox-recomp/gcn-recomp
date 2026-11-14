@@ -96,6 +96,11 @@ struct OverlayTheme {
     float item_radius = 12.0f;
     float item_spacing = 8.0f;
     float section_spacing = 24.0f;    // between the header, the page and the footer
+    // The focus ring (ring.h) around the item with the focus: focus_width wide, past WCAG 2.2's
+    // 2 px for a screen at arm's length since the menu is read from across a room, and focus_gap
+    // outside the item, so it never touches the item's own edge.
+    float focus_width = 3.0f;
+    float focus_gap = 2.0f;
     // Text sizes, the fonts' roles (F2): the menu's title, the pills, the buttons of a question's
     // card, the body, and the footer's hints and buttons. A page's own items take the body's.
     float title_size = 36.0f;

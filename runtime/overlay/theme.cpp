@@ -34,7 +34,8 @@ void colours(const OverlayTheme& t, ImVec4* c) {
     c[ImGuiCol_ScrollbarGrabActive] = rgba(t.pressed);
     c[ImGuiCol_TabSelected] = c[ImGuiCol_TabDimmedSelected] = rgba(t.accent_dark);
     c[ImGuiCol_TabSelectedOverline] = c[ImGuiCol_TabDimmedSelectedOverline] = rgba(t.accent);
-    c[ImGuiCol_CheckMark] = c[ImGuiCol_SliderGrab] = c[ImGuiCol_NavCursor] = rgba(t.accent);
+    c[ImGuiCol_CheckMark] = c[ImGuiCol_SliderGrab] = rgba(t.accent);
+    c[ImGuiCol_NavCursor] = none;  // the focus ring draws in its place (ring.h)
     c[ImGuiCol_TextLink] = c[ImGuiCol_DragDropTarget] = c[ImGuiCol_NavWindowingHighlight] = rgba(t.accent);
     c[ImGuiCol_SliderGrabActive] = rgba(t.accent_light);
     c[ImGuiCol_TextSelectedBg] = rgba(t.accent, 0.35f);

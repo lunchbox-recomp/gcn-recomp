@@ -3,6 +3,7 @@
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
 #include "overlay/footer.h"
+#include "overlay/ring.h"
 #include "overlay/state.h"
 #include "overlay/tabs.h"
 #include "runtime.h"  // host_ns
@@ -120,6 +121,7 @@ void draw_menu(uint64_t now) {
     }
     section_gap();
     footer(g_on_page);
+    ring_draw();
     ImGui::End();
 }
 

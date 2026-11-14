@@ -1,7 +1,7 @@
 // The overlay's set-up, opening and closing, and its frames; see overlay.h. What opens and
 // closes it and the input it holds back are overlay_input.cpp, the menu itself overlay_menu.cpp
-// with its header tabs.cpp and its footer footer.cpp, the Display page overlay_display.cpp, the
-// Controllers page overlay_controllers.cpp and the notices notices.cpp.
+// with its header tabs.cpp, its footer footer.cpp and its focus ring ring.cpp, the Display page
+// overlay_display.cpp, the Controllers page overlay_controllers.cpp and the notices notices.cpp.
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
 #include "overlay/fonts.h"
