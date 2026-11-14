@@ -13,6 +13,7 @@
 #include "gx/render_gl.h"
 #include "pause.h"
 #include "runtime.h"  // host_ns
+#include "ui_sound.h"
 #include <SDL3/SDL.h>
 #include <cstdint>
 #include <cstdio>
@@ -101,6 +102,7 @@ SDL_Window* overlay_window() { return g_window; }
 void overlay_set_open(bool on) {
     if (on == g_open) return;
     g_open = on;
+    ui_sound_play(on ? UiSound::open : UiSound::close);
     pause_request(on);
     const uint64_t now = host_ns();
     if (on) appear_open(theme_now(), now);

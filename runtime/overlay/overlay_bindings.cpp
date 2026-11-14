@@ -5,6 +5,7 @@
 #include "gamepads.h"
 #include "input_map.h"
 #include "pad_glyph.h"
+#include "ui_sound.h"
 #include "runtime.h"  // host_ns
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -93,7 +94,10 @@ void hear(SDL_Gamepad* g) {
     const std::string still = row + " is still " + glyph(g, c, b.source[(int)c]) + ".";
     switch (bind_hear(*g_listen, gamepads_read(g), host_ns(), got)) {
     case BindHeard::waiting: return;
-    case BindHeard::cancelled: end_listen(still); return;
+    case BindHeard::cancelled:
+        end_listen(still);
+        ui_sound_play(UiSound::back);
+        return;
     case BindHeard::timed_out:
         end_listen("Nothing was pressed in " + std::to_string(kBindListenNs / 1000000000) + " seconds, so " + still);
         return;
@@ -254,6 +258,7 @@ bool bindings_event(const SDL_Event& e) {
             PadBinding b;
             gamepads_binding(g_device, b);
             end_listen(std::string(kRows[(int)c]) + " is still " + glyph(g, c, b.source[(int)c]) + ".");
+            ui_sound_play(UiSound::back);
         }
         switch (e.type) {
         case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP: case SDL_EVENT_TEXT_INPUT:
@@ -266,6 +271,7 @@ bool bindings_event(const SDL_Event& e) {
     SDL_Gamepad* p = button ? SDL_GetGamepadFromID(e.gbutton.which) : nullptr;
     if (escape || (p && e.gbutton.button == gamepads_faces(p)[1])) {
         back();
+        ui_sound_play(UiSound::back);
         return true;
     }
     return false;

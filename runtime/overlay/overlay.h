@@ -65,6 +65,12 @@
 // and sizes are the theme's (theme.h). With menu_motion off, and under --dump-output, each is
 // whole at once.
 //
+// With menu_sounds on (settings.h), the menu sounds (ui_sound.h): it ticks as the player moves
+// the focus, not as a page or an open puts it on the first item, confirms as an item is pressed
+// or clicked, goes back as B, Back or Escape leaves a question, the press-A order, the Buttons
+// view or its press-to-bind, swishes to the side a page turns to, swells as it opens and as it
+// closes, and buzzes at a shoulder or key past the first or the last page.
+//
 // The Display page sets the aspect (4:3, 16:9, 16:10, 21:9 or the window's own shape),
 // fullscreen, Menu sounds (settings.txt's menu_sounds, off by default; ui_sound.h) and the
 // internal scale. A change applies at once, and settings.txt (settings.h)

@@ -3,6 +3,7 @@
 #include "overlay/overlay.h"
 #include "gamepads.h"
 #include "input_map.h"
+#include "ui_sound.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include "imgui.h"
@@ -31,6 +32,12 @@ void stop() {
     g_placed.clear();
     g_focus_order = true;
     overlay_latch_pads();
+}
+
+// The order ended by Back, B or Escape, which sounds as going back does.
+void back() {
+    stop();
+    ui_sound_play(UiSound::back);
 }
 
 void place(uint32_t device) {
@@ -125,7 +132,7 @@ bool controllers_event(const SDL_Event& e) {
     if (g_asking < 0) return false;
     if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
         if (e.key.scancode == SDL_SCANCODE_X) place(kKeyboard);
-        else if (e.key.scancode == SDL_SCANCODE_ESCAPE) stop();
+        else if (e.key.scancode == SDL_SCANCODE_ESCAPE) back();
         else return false;
         return true;
     }
@@ -135,7 +142,7 @@ bool controllers_event(const SDL_Event& e) {
     if (!p) return false;
     const std::array<int, 4> faces = gamepads_faces(p);
     if (e.gbutton.button == faces[0]) place(e.gbutton.which);
-    else if (e.gbutton.button == faces[1] || e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) stop();
+    else if (e.gbutton.button == faces[1] || e.gbutton.button == SDL_GAMEPAD_BUTTON_BACK) back();
     else return false;
     return true;
 }

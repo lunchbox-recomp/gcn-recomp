@@ -7,6 +7,7 @@
 #include "input_map.h"
 #include "pause.h"
 #include "runtime.h"  // host_ns
+#include "ui_sound.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cstdint>
@@ -274,6 +275,7 @@ bool overlay_event(const SDL_Event& e) {
     // While the menu asks, B or Escape goes back to it instead of closing it.
     if (cancel && overlay_asking() != OverlayAsk::none) {
         footer_back();
+        ui_sound_play(UiSound::back);
         return true;
     }
     if (key == SDL_SCANCODE_F1 || (pressed && opens(e.gbutton)) || cancel) {
