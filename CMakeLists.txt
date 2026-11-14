@@ -875,9 +875,10 @@ function(gcn_add_game)
       target_compile_options(test_overlay_theme PRIVATE ${GCN_RUNTIME_WARNINGS})
       target_compile_definitions(test_overlay_theme PRIVATE GCN_OVERLAY)
       # The motion's checks (tools/test_overlay_motion.cpp): the easings and tweens, how the
-      # menu comes and goes, and its transform of a frame's draw data, with no window.
+      # menu comes and goes, its transform of a frame's draw data, and the notices as toasts,
+      # with no window.
       add_executable(test_overlay_motion EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_overlay_motion.cpp
-        ${RT}/overlay/motion.cpp ${RT}/overlay/appear.cpp)
+        ${RT}/overlay/motion.cpp ${RT}/overlay/appear.cpp ${RT}/overlay/toasts.cpp)
       _gcn_set_standards(test_overlay_motion)
       target_include_directories(test_overlay_motion PRIVATE ${RT})
       target_link_libraries(test_overlay_motion PRIVATE gcn_imgui_asserts)

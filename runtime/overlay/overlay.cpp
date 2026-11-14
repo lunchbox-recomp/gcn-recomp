@@ -69,6 +69,7 @@ long long g_at_frame = -1;  // GCN_OVERLAY_AT's, -1 for none or once it's opened
 long g_at_left;             // draws over the held frame left before GCN_OVERLAY_AT's closes it
 int g_page = -1;            // GCN_OVERLAY_PAGE's, 0 for Display, -1 for none
 bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the held frame
+ReviewWatch g_watch;        // the menu's frame settling for its dump, from each open
 
 // What showed in place of a page ends with nothing done: Restart? or Quit?, the press-A order,
 // and the Buttons view with any press-to-bind.
@@ -139,7 +140,7 @@ void overlay_set_open(bool on) {
     overlay_latch_pads();
     menu_opened(g_page, now);
     g_dumped = false;
-    review_watch_reset();
+    g_watch = {};
 }
 
 void overlay_set_theme(const OverlayTheme& theme) {
@@ -258,7 +259,7 @@ void overlay_draw() {
     if (!g_open || !paused()) return;
     // The dump waits for a frame that looks as the ones before it did (review.cpp).
     const bool dumps = gx::g_dump_output && gx::g_dump_dir;
-    if (!g_dumped && dumps && review_settled(ImGui::GetDrawData())) {
+    if (!g_dumped && dumps && review_settled(g_watch, ImGui::GetDrawData())) {
         g_dumped = true;
         review_dump(g_window, ImGui::GetDrawData(), g_page, g_plain);
     }

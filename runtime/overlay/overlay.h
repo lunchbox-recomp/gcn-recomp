@@ -110,7 +110,9 @@
 // pages added. With --dump-output the first draw over the held frame that looks as the two
 // before it did goes to overlay_NNNNN.png in the dump directory too, or overlay_page<n>.png with
 // GCN_OVERLAY_PAGE, drawn again into a target of the window's size as output dumps are, and over
-// plain grey instead of the held frame with GCN_OVERLAY_PLAIN set.
+// plain grey instead of the held frame with GCN_OVERLAY_PLAIN set. GCN_OVERLAY_TOASTS=<n> does
+// the same for the notices, open or closed: the first frame of them with n or more showing that
+// looks as the two before it did goes to overlay_toasts.png, once a run.
 #pragma once
 #include "hw/pad.h"
 #include "overlay/theme.h"
@@ -158,6 +160,12 @@ void overlay_test_reset_pages();
 void overlay_test_end();
 // The notices' context, null with none.
 struct ImGuiContext* overlay_test_notices_context();
+// Each notice's pill as the notices' last frame laid it out, oldest first, none if there was no
+// frame: its top in the window's pixels, its height, and its alpha from 0 to 1.
+struct OverlayTestToast {
+    float top, height, alpha;
+};
+const std::vector<OverlayTestToast>& overlay_test_toasts();
 // Every page's title in the header's order, and the page `page` shown as a click on its pill
 // shows it.
 const std::vector<std::string>& overlay_test_pages();
