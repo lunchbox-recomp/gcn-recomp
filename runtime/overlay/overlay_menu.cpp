@@ -1,10 +1,9 @@
-// The overlay's menu (overlay.h): its pages, Restart game and Quit game and what they ask, and
-// the menu's frame, laid out over the dimmed game and moved as it opens or closes.
+// The overlay's menu (overlay.h): its pages, between the header (tabs.h) and the footer
+// (footer.h), and the menu's frame, laid out over the dimmed game and moved as it opens or closes.
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
+#include "overlay/footer.h"
 #include "overlay/tabs.h"
-#include "frontend.h"
-#include "input_log.h"
 #include "runtime.h"  // host_ns
 #include <SDL3/SDL.h>
 #include <algorithm>
@@ -14,13 +13,11 @@
 #include <vector>
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
-#include "imgui_internal.h"  // ImGui::FocusItem
 
-// overlay.cpp's: whether overlay_init has run, the window the menu is over, the menu opened or
-// closed, and the current context's style fitted to the window.
+// overlay.cpp's: whether overlay_init has run, the window the menu is over, and the current
+// context's style fitted to the window.
 bool overlay_ready();
 SDL_Window* overlay_window();
-void overlay_set_open(bool on);
 void overlay_style_fit(SDL_Window* window);
 // overlay_input.cpp's: the held gamepads read for the menu's frame.
 void overlay_read_pads();
@@ -28,8 +25,6 @@ void overlay_read_pads();
 void display_page(SDL_Window* window);
 void controllers_page();
 void bindings_page();
-// Below, for overlay_input.cpp too: back from a question to the button that asked.
-void menu_back();
 
 namespace {
 
@@ -42,9 +37,6 @@ struct AddedPage {
 std::vector<AddedPage> g_pages;
 const std::vector<std::string> kOwnPages = {"Display", "Controllers"};
 std::vector<std::string> g_titles = kOwnPages;  // every page's, in order
-OverlayAsk g_ask;         // what the menu is asking before it does it
-OverlayAsk g_asked;       // the button that asked, which takes the focus back at the next draw
-bool g_focus_cancel;      // Cancel takes the focus at the next draw, as the menu starts asking
 bool g_focus;             // the menu takes the keyboard's and the gamepads' focus at its next draw
 uint64_t g_opened_ns;       // host_ns as it last opened
 bool g_said_shown;          // its `shown after` line, since it opened
@@ -79,51 +71,6 @@ void panel_size() {
     ImGui::SetNextWindowSizeConstraints(ImVec2(w, 0.0f), ImVec2(w, h));
 }
 
-// The menu asks before it restarts or quits, with Cancel focused, and goes back to the button
-// that asked. FocusItem moves the focus without pressing what it lands on, which
-// SetKeyboardFocusHere does.
-void ask(OverlayAsk what) {
-    g_ask = what;
-    g_focus_cancel = true;
-}
-
-// Closes the overlay and asks SDL to quit, as the window's close button does, so the frontend's
-// loop stops and the run ends the way it does for an Escape.
-void quit() {
-    overlay_set_open(false);
-    SDL_Event e{};
-    e.type = SDL_EVENT_QUIT;
-    SDL_PushEvent(&e);
-}
-
-// Below the pages, so on every one. A replay has no Restart game, even once its log runs out:
-// the log can't hold one, and a relaunch would replay the log from its start (frontend_restart).
-void actions() {
-    ImGui::Separator();
-    if (!input_replay_loaded()) {
-        if (ImGui::Button("Restart game")) ask(OverlayAsk::restart);
-        if (overlay_open() && g_asked == OverlayAsk::restart) ImGui::FocusItem();
-        ImGui::SameLine();
-    }
-    if (ImGui::Button("Quit game")) ask(OverlayAsk::quit);
-    if (overlay_open() && g_asked == OverlayAsk::quit) ImGui::FocusItem();
-    g_asked = OverlayAsk::none;
-}
-
-void asking() {
-    const bool restart = g_ask == OverlayAsk::restart;
-    ImGui::TextUnformatted(restart ? "Restart the game? Anything it hasn't saved is lost."
-                                   : "Quit the game? Anything it hasn't saved is lost.");
-    if (ImGui::Button("Cancel")) menu_back();
-    if (overlay_open() && g_focus_cancel) ImGui::FocusItem();
-    g_focus_cancel = false;
-    ImGui::SameLine();
-    if (ImGui::Button(restart ? "Restart" : "Quit")) {
-        if (restart) frontend_restart();
-        else quit();
-    }
-}
-
 void draw_menu(uint64_t now) {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -140,12 +87,13 @@ void draw_menu(uint64_t now) {
     ImGui::PopStyleColor();
     g_panel_list = ImGui::GetWindowDrawList();
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
-    g_on_page = g_ask == OverlayAsk::none && overlay_controllers_asking() < 0 && !overlay_bindings_shown();
+    const bool asking = overlay_asking() != OverlayAsk::none;
+    g_on_page = !asking && overlay_controllers_asking() < 0 && !overlay_bindings_shown();
     tabs_header(g_title, g_titles, g_on_page, now);
     tabs_no_contents();
     section_gap();
-    if (g_ask != OverlayAsk::none) {
-        asking();
+    if (asking) {
+        footer_card();
     } else if (overlay_controllers_asking() >= 0) {
         controllers_page();  // the press-A order alone, with nothing to focus
     } else if (overlay_bindings_shown()) {
@@ -155,8 +103,9 @@ void draw_menu(uint64_t now) {
         tabs_contents_begin();
         page();
         tabs_contents_end();
-        actions();
     }
+    section_gap();
+    footer(g_on_page);
     ImGui::End();
 }
 
@@ -193,13 +142,6 @@ void menu_opened(int page, uint64_t now) {
     g_opened_ns = now;
     g_said_shown = false;
 }
-
-void menu_back() {
-    g_asked = g_ask;
-    g_ask = OverlayAsk::none;
-}
-
-void menu_end_ask() { g_ask = g_asked = OverlayAsk::none; }
 
 // The menu's frame: its input taken while it's open and its windows laid out, ready to draw,
 // moved as it opens or closes.
@@ -248,6 +190,5 @@ void overlay_test_pick_page(int page) { tabs_pick(page, false); }
 bool overlay_test_page_shown() { return g_on_page; }
 #endif
 
-OverlayAsk overlay_asking() { return g_ask; }
 
 long overlay_menu_frames() { return g_menu_frames; }

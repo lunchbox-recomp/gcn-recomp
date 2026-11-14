@@ -1,6 +1,7 @@
 // The overlay's input (overlay.h): what opens and closes it, the gamepads the menu reads, and
 // what it holds back from the game.
 #include "overlay/overlay.h"
+#include "overlay/footer.h"
 #include "gamepads.h"
 #include "input_map.h"
 #include "pause.h"
@@ -17,8 +18,6 @@
 bool overlay_ready();
 SDL_Window* overlay_window();
 void overlay_set_open(bool on);
-// overlay_menu.cpp's: back from a question to the button that asked.
-void menu_back();
 // overlay_controllers.cpp's and overlay_bindings.cpp's.
 bool controllers_event(const SDL_Event& e);
 bool bindings_event(const SDL_Event& e);
@@ -235,7 +234,7 @@ bool overlay_event(const SDL_Event& e) {
     const bool cancel = overlay_open() && (key == SDL_SCANCODE_ESCAPE || (pressed && is_b(e.gbutton)));
     // While the menu asks, B or Escape goes back to it instead of closing it.
     if (cancel && overlay_asking() != OverlayAsk::none) {
-        menu_back();
+        footer_back();
         return true;
     }
     if (key == SDL_SCANCODE_F1 || (pressed && opens(e.gbutton)) || cancel) {
