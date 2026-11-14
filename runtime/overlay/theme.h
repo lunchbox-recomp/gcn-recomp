@@ -5,6 +5,10 @@
 //
 // Sizes are pixels at 1080 lines. The menu scales them by its window's height over 1080, and
 // builds its style again from the theme whenever that changes.
+//
+// Some fields are read by nothing yet. Each says so, and which later piece of the look reads
+// it: F2 the fonts, F4 the header, tabs and footer, F5 the focus ring, F6 controller buttons'
+// glyphs, F7 the notices as toasts and D1 a game's own theme.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -23,11 +27,15 @@ struct OverlayTheme {
     uint32_t divider = 0xFFFFFF0F;       // a line between sections, white at 6%
     uint32_t text = 0xF2F4F8FF;
     uint32_t dim = 0xA9B1C2FF;           // text that says less, as a note does
-    uint32_t disabled = 0x5C6578FF;      // the text of what can't be picked
+    // The text of what can't be picked. Not read yet, and no piece reads it so far: Dear ImGui
+    // fades what can't be picked by its style's DisabledAlpha instead.
+    uint32_t disabled = 0x5C6578FF;
     uint32_t accent = 0x3DD6F5FF;        // what's picked, a mark and the focus ring
-    uint32_t accent_light = 0xA6EEFBFF;  // the ring's pulse and a grab held
+    uint32_t accent_light = 0xA6EEFBFF;  // the ring's pulse (F5) and a grab held
     uint32_t accent_dark = 0x177A90FF;   // the selected tab, under its text
-    uint32_t secondary = 0x3DD6F5FF;     // a second accent for a theme that wants one; here the accent
+    // Not read yet. A second accent for a theme that wants one (D1), here the accent; success
+    // and warning for no piece so far; danger for the ask's confirm (F4).
+    uint32_t secondary = 0x3DD6F5FF;
     uint32_t success = 0x4ADE80FF;
     uint32_t warning = 0xFACC15FF;
     uint32_t danger = 0xF87171FF;
@@ -37,6 +45,9 @@ struct OverlayTheme {
     std::vector<std::string> fonts;
 
     // The panel, centred in the window.
+    // Its width, height and margin aren't read yet: today the panel is as wide and tall as its
+    // page, from about a quarter of a 1920 by 1080 window (Controllers) to 42% (Display), and the
+    // header, tabs and footer (F4) size it by these.
     float panel_width = 0.62f;        // of the window's width, at most panel_max_width
     float panel_max_width = 1100.0f;
     float panel_max_height = 0.9f;    // of the window's height
@@ -46,11 +57,11 @@ struct OverlayTheme {
     float border_size = 1.0f;         // the panel's edge and each item's, at least a pixel
     // What's on it.
     float item_height = 56.0f;        // a button, box or tab
-    float item_min_height = 48.0f;    // nothing to press is shorter
+    float item_min_height = 48.0f;    // nothing to press is shorter: the couch check's, and F4's
     float item_radius = 12.0f;
     float item_spacing = 8.0f;
-    float section_spacing = 24.0f;
-    // Text sizes.
+    float section_spacing = 24.0f;    // not read yet (F4)
+    // Text sizes. Only body_size is read yet; the others are the fonts' roles (F2).
     float title_size = 36.0f;
     float tab_size = 26.0f;
     float item_text_size = 24.0f;
@@ -65,6 +76,7 @@ struct OverlayTheme {
     float contents_delay_ms = 40.0f;  // the page's contents follow the panel
     float close_ms = 120.0f;          // the panel fades out and shrinks to close_scale
     float close_scale = 0.98f;
+    // The rest aren't read yet: a page change (F4), the focus ring (F5) and the toasts (F7).
     float page_ms = 160.0f;           // a page change, its contents sliding page_slide pixels
     float page_slide = 32.0f;
     float focus_ms = 45.0f;           // how quickly the focus ring catches up with a move
@@ -77,7 +89,7 @@ struct OverlayTheme {
 
     // Controller buttons' colours, each 0xRRGGBBAA, by the face the game takes each as: A, B, X
     // and Y (gamepads_faces in gamepads.h). A Nintendo controller's faces are drawn in the text's
-    // colour.
+    // colour. Not read yet: the glyphs (F6) draw with them.
     struct Faces {
         uint32_t a, b, x, y;
     };
