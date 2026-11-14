@@ -27,6 +27,7 @@ void controllers_stop();
 void bindings_stop();
 // notices.cpp's.
 void notices_init(SDL_Window* window, bool gl);
+void notices_motion(bool on);
 void notices_frame();
 // overlay_input.cpp's: the gamepads held for the menu, and the buttons each has down kept out of
 // the menu until each is let go.
@@ -172,8 +173,10 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_window = window;
     menu_init(title);
     display_init(picture);
-    appear_motion(picture.now.menu_motion && !gx::g_dump_output);
-    tabs_motion(picture.now.menu_motion && !gx::g_dump_output);
+    const bool motion = picture.now.menu_motion && !gx::g_dump_output;
+    appear_motion(motion);
+    tabs_motion(motion);
+    notices_motion(motion);
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) review_parse_at(e, g_at_frame, g_at_left);
     const char* page = getenv_nonempty("GCN_OVERLAY_PAGE");
     g_page = page ? review_parse_page(page, 1 + menu_added_pages()) : -1;

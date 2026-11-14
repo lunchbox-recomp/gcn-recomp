@@ -97,9 +97,12 @@
 // connected, disconnected or moved, and logs the same as a `[pads]` line. Each is a pill in
 // the theme's panel colour and body text, the controller's name in the text's colour and what
 // happened in the dimmed one, centred across the window the theme's margin above its bottom
-// edge, the oldest lowest and each newer one above it. It shows with the menu closed too, never
-// pauses the game and takes no input, and with none showing nothing is laid out for them.
-// Frame and output dumps never include it.
+// edge, the oldest lowest and each newer one above it. With menu_motion on each rises into its
+// place as it fades in and fades out at the end of its 2 s, and as one goes the ones above it
+// move down into its place, on the host clock at the theme's times (toasts.h). With it off, and
+// under --dump-output, each shows in its place whole and goes at 2 s. A notice shows with the
+// menu closed too, never pauses the game and takes no input, and with none showing nothing is
+// laid out for them. Frame and output dumps never include one.
 //
 // GCN_OVERLAY_AT=<frame>:<host frames> opens it once <frame> frames have been presented and
 // closes it after it's been drawn over the held frame <host frames> times, for a run nobody is

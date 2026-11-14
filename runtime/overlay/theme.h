@@ -8,7 +8,7 @@
 //
 // Some fields are read by nothing yet. Each says so, and which later piece of the look reads
 // it: F2 the fonts, F4 the header, tabs and footer, F5 the focus ring, F6 controller buttons'
-// glyphs, F7 the notices as toasts and D1 a game's own theme.
+// glyphs and D1 a game's own theme.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -114,14 +114,16 @@ struct OverlayTheme {
     float close_scale = 0.98f;
     float page_ms = 160.0f;           // a page change (tabs.h), its contents sliding page_slide pixels
     float page_slide = 32.0f;
-    // The rest aren't read yet: the focus ring (F5) and the toasts (F7).
+    // A notice (toasts.h), which shows for 2 s whatever these say.
+    float toast_in_ms = 200.0f;       // a notice rising toast_rise pixels as it fades in
+    float toast_out_ms = 180.0f;      // and fading out at the end of its time
+    float toast_rise = 16.0f;
+    float toast_reflow_ms = 160.0f;   // the notices above one that goes moving down into its place
+    // The rest aren't read yet: the focus ring (F5).
     float focus_ms = 45.0f;           // how quickly the focus ring catches up with a move
     float pulse_ms = 1200.0f;         // one breath of the focus ring
     float press_scale = 0.98f;        // an item held down, springing back over press_ms
     float press_ms = 120.0f;
-    float toast_in_ms = 200.0f;       // a notice rising toast_rise pixels as it fades in
-    float toast_out_ms = 180.0f;      // and fading out at the end of its time
-    float toast_rise = 16.0f;
 
     // Controller buttons' colours, each 0xRRGGBBAA, by the face the game takes each as: A, B, X
     // and Y (gamepads_faces in gamepads.h). A Nintendo controller's faces are drawn in the text's
