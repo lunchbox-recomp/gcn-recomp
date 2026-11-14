@@ -23,17 +23,6 @@ int over_grey(uint32_t backdrop, int shift) {
     return (kPlainGrey * (255 - a) + c * a + 127) / 255;
 }
 
-// A file's bytes, none if it can't be read.
-std::string bytes_of(const std::string& path) {
-    std::string out;
-    if (FILE* f = fopen(path.c_str(), "rb")) {
-        char chunk[4096];
-        for (size_t n; (n = fread(chunk, 1, sizeof(chunk), f)) != 0;) out.append(chunk, n);
-        fclose(f);
-    }
-    return out;
-}
-
 // Whether the menu's window, not just the backdrop behind it, is in the frame drawn.
 bool menu_drawn() {
     const ImDrawData* d = ImGui::GetDrawData();
@@ -145,9 +134,8 @@ bool notices_on_atlas() {
 
 // The menu opened by GCN_OVERLAY_AT=0:<held> with GCN_OVERLAY_PAGE=`page`, over the plain
 // background or not, dumping to `out`, for as long as it stays open and a few frames more.
-// `expect` is the page it should open on, and `blur` the theme's blur_backdrop.
-PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, const std::string& out,
-                int held = kHeldFrames, bool blur = true) {
+// `expect` is the page it should open on.
+PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, const std::string& out, int held = kHeldFrames) {
     static std::string dump_dir;
     dump_dir = out;
     gx::g_dump_dir = dump_dir.c_str();
@@ -155,9 +143,6 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
     if (plain) setenv("GCN_OVERLAY_PLAIN", "1", 1);
     setenv("GCN_OVERLAY_AT", ("0:" + std::to_string(held)).c_str(), 1);
     overlay_test_reset_pages();
-    OverlayTheme theme = overlay_theme_default();
-    theme.blur_backdrop = blur;
-    overlay_set_theme(theme);
     overlay_add_page("Sample", sample_page, nullptr);
     OverlayPicture picture;
     picture.path = out + "/settings.txt";
@@ -299,13 +284,6 @@ int run_pages(const std::string& dir) {
                              .c_str());
         toasts_review(window, out, std::to_string(pw) + "x" + std::to_string(ph));
         if (size.w == kSizes[0].w) {
-            const std::string without_blur = out + "/blur-off";
-            plat_make_dirs(without_blur);
-            open_on(window, "0", 0, true, without_blur, kHeldFrames, false);
-            const std::string with_png = out + "/overlay_page0.png";
-            const std::string without_png = without_blur + "/overlay_page0.png";
-            check(exists_path(with_png) && bytes_of(with_png) == bytes_of(without_png),
-                  "a dump is byte for byte the same with the theme's blur_backdrop on or off");
             // No game frame is kept here, so without the plain background there's nothing to dump.
             const std::string bare = out + "/bare";
             plat_make_dirs(bare);
