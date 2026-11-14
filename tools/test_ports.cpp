@@ -57,7 +57,7 @@
 //                                                       in a replay past its log's end
 //        test_ports --pages <empty work dir>   each page of the menu dumped over a hidden GL
 //                                              window, with its frame time; exit 77 with no
-//                                              GL window
+//                                              GL window or no overlay in the build
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -276,6 +276,11 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--restart-replay")) return run_restart_replay(argv[2]);
 #ifdef GCN_OVERLAY
     if (argc == 3 && !strcmp(argv[1], "--pages")) return run_pages(argv[2]);
+#else
+    if (argc == 3 && !strcmp(argv[1], "--pages")) {
+        printf("test_ports pages: skipped, the build has no overlay\n");
+        return 77;
+    }
 #endif
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
                     "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay|--pages] <work dir>\n");
