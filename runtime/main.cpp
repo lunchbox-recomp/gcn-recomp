@@ -330,7 +330,7 @@ static void open_controllers(const char* controls) {
 
 // How long the loop waits for the guest's next batch, in ms. While the guest is held none comes,
 // and the held frame is drawn again each 16 ms, about 60 Hz, or each 8 ms while the overlay's
-// menu is moving, so its motion is smooth.
+// menu or a notice is moving, so its motion is smooth.
 static int batch_wait_ms() { return !paused() ? 4 : overlay_animating() ? 8 : 16; }
 
 // What has been drawn to the window, with the overlay over it, goes to it, and to the movie if

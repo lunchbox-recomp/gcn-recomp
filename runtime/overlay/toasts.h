@@ -23,6 +23,10 @@ struct ToastLook {
 // takes none and such a rise none, and no time is longer than kToastNs.
 ToastLook toast_look(const OverlayTheme& t, uint64_t ns, bool motion, bool over = false);
 
+// Whether the toast `ns` after it was queued is rising, fading in or fading out, which with
+// motion off it never is.
+bool toast_moving(const OverlayTheme& t, uint64_t ns, bool motion);
+
 // A toast's place in the stack, 0 the lowest, from where `was` has it at `now` to `slot`, over
 // the theme's toast_reflow_ms, out-cubic, as an older one under it goes; at once with motion off.
 Tween toast_reflow(const OverlayTheme& t, const Tween& was, uint64_t now, float slot, bool motion);
