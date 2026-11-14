@@ -24,6 +24,14 @@
 //                                 trigger, stick_left...) its whole travel is 0 to 1,
 //                                 which is what a pedal resting at one end wants.
 //   "<device>" axis <n>+ / <n>-   one half of an axis, from its centre outwards
+//   "<device>" gamepad <name>     a gamepad's button or axis as SDL's gamepad API names it,
+//                                 whatever the joystick numbers it: south east west north
+//                                 back guide start leftstick rightstick leftshoulder
+//                                 rightshoulder up down left right misc1 to misc6
+//                                 touchpad rightpaddle1 leftpaddle1 rightpaddle2 leftpaddle2,
+//                                 leftx lefty rightx righty (with + or - for one half) and
+//                                 lefttrigger righttrigger, which run 0 to 1. saves/pads.txt
+//                                 is written in these (pad_bindings.h)
 // A device is named as SDL names it; "<name> #2" is the second of two with that name.
 // A gamepad with a name the file uses gets no gamepad port (gamepads.h) whatever its #n,
 // so a line for "<name> #2" keeps the first of them off the gamepad ports too.

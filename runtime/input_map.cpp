@@ -2,6 +2,7 @@
 #include "input_map.h"
 #include "ffb.h"
 #include "input_defaults.h"
+#include "pad_bindings.h"
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -40,7 +41,7 @@ const TargetName kTargets[] = {
 
 bool bipolar(Target t) { return t >= Target::StickX && t <= Target::CStickY; }
 
-enum class Kind { Key, Button, Hat, Axis };
+enum class Kind { Key, Button, Hat, Axis, Gamepad };
 enum class Half { Whole, Plus, Minus };
 
 struct Binding {
@@ -57,6 +58,7 @@ struct Binding {
     float deadzone = -1.0f, gain = 1.0f, threshold = -1.0f;
     int port = 0;                 // 0 for port 1
     bool pinned = false;          // the line names its port
+    PadSource pad;                // a `gamepad` source's button or axis
     SDL_Joystick* joy = nullptr;  // resolved whenever a device comes or goes
 };
 
@@ -125,9 +127,22 @@ void attach_wheel() {
     g_ffb_port = steer ? steer->port : 0;
 }
 
+// The gamepads the file's `gamepad` sources read, held open while it binds them, once SDL's
+// gamepads are up (not under --list-controls or --test-ffb).
+std::vector<SDL_Gamepad*> g_gamepads;
+void hold_gamepads() {
+    std::vector<SDL_Gamepad*> held;
+    for (const auto& b : g_bindings)
+        if (b.kind == Kind::Gamepad && b.joy && SDL_WasInit(SDL_INIT_GAMEPAD))
+            if (SDL_Gamepad* g = SDL_OpenGamepad(SDL_GetJoystickID(b.joy))) held.push_back(g);
+    for (SDL_Gamepad* g : g_gamepads) SDL_CloseGamepad(g);
+    g_gamepads = std::move(held);
+}
+
 void resolve() {
     for (auto& b : g_bindings)
         if (b.kind != Kind::Key) b.joy = find_device(b.device, b.nth);
+    hold_gamepads();
     // A device pinned to a port shows it as its player number: the port of its first line
     // that names one. Only the first present device on a port does; the others get none,
     // since SDL lets one device hold an index and would move the rest to free ones, which
@@ -201,28 +216,6 @@ bool parse_ffb(const std::vector<std::string>& w, std::string& err) {
     return false;
 }
 
-// Splits a line into words: "quoted strings" are one word, '=' is a word of its own, and
-// '#' outside quotes ends the line.
-bool tokenize(const char* s, std::vector<std::string>& out, std::string& err) {
-    while (*s) {
-        if (isspace((unsigned char)*s)) { s++; continue; }
-        if (*s == '#') break;
-        if (*s == '=') { out.emplace_back("="); s++; continue; }
-        if (*s == '"') {
-            const char* e = strchr(s + 1, '"');
-            if (!e) { err = "no closing quote"; return false; }
-            out.emplace_back(s + 1, e);
-            s = e + 1;
-            continue;
-        }
-        const char* e = s;
-        while (*e && !isspace((unsigned char)*e) && *e != '=' && *e != '#' && *e != '"') e++;
-        out.emplace_back(s, e);
-        s = e;
-    }
-    return true;
-}
-
 bool parse_float(const std::string& s, float& v) {
     char* end;
     v = strtof(s.c_str(), &end);
@@ -255,7 +248,11 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
         if (i + 2 >= w.size()) { err = "expected \"<device>\" button|hat|axis <n>"; return false; }
         const std::string& what = w[i + 1];
         std::string num = w[i + 2];
-        if (what == "button") b.kind = Kind::Button;
+        if (what == "gamepad") {
+            if (!pad_source_parse(num, b.pad)) { err = "\"" + num + "\" is not a gamepad's button or axis"; return false; }
+            b.kind = Kind::Gamepad;
+            num = "0";
+        } else if (what == "button") b.kind = Kind::Button;
         else if (what == "hat") b.kind = Kind::Hat;
         else if (what == "axis") {
             b.kind = Kind::Axis;
@@ -263,7 +260,7 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
                 b.half = num.back() == '+' ? Half::Plus : Half::Minus;
                 num.pop_back();
             }
-        } else { err = "expected button, hat or axis after the device, not \"" + what + "\""; return false; }
+        } else { err = "expected button, hat, axis or gamepad after the device, not \"" + what + "\""; return false; }
         if (!parse_int(num, b.index)) { err = "\"" + w[i + 2] + "\" is not a " + what + " number"; return false; }
         i += 3;
         if (b.kind == Kind::Hat) {
@@ -295,7 +292,9 @@ bool parse_line(const std::vector<std::string>& w, Binding& b, std::string& err)
     // A whole axis onto a stick axis has a sliver of a dead zone unless the line gives one:
     // the stick's range starts where the game's response does (g_range), so the slightest
     // jitter at the centre would otherwise already be a step.
-    if (b.deadzone < 0.0f) b.deadzone = b.kind == Kind::Axis && b.half == Half::Whole && bipolar(b.target) ? 0.005f : 0.0f;
+    const bool whole_axis =
+        (b.kind == Kind::Axis && b.half == Half::Whole) || (b.kind == Kind::Gamepad && b.pad.axis && !b.pad.half);
+    if (b.deadzone < 0.0f) b.deadzone = whole_axis && bipolar(b.target) ? 0.005f : 0.0f;
     if (b.deadzone >= 1.0f) { err = "deadzone must be from 0 to below 1"; return false; }
     if (b.threshold < 0.0f) b.threshold = (b.target == Target::L || b.target == Target::R) ? 0.85f : 0.5f;
     return true;
@@ -315,6 +314,23 @@ float value(const Binding& b, const bool* keys) {
         if (b.half == Half::Plus) v = std::max(a, 0.0f);
         else if (b.half == Half::Minus) v = std::max(-a, 0.0f);
         else if (bipolar(b.target)) v = a;
+        else v = (a + 1.0f) * 0.5f;
+        break;
+    }
+    case Kind::Gamepad: {
+        SDL_Gamepad* g = b.joy ? SDL_GetGamepadFromID(SDL_GetJoystickID(b.joy)) : nullptr;
+        if (!g) return 0.0f;
+        if (!b.pad.axis) {
+            v = SDL_GetGamepadButton(g, (SDL_GamepadButton)b.pad.index) ? 1.0f : 0.0f;
+            break;
+        }
+        float a = std::clamp(SDL_GetGamepadAxis(g, (SDL_GamepadAxis)b.pad.index) / 32767.0f, -1.0f, 1.0f);
+        if (b.invert) a = -a;
+        // A trigger already runs 0 to 1.
+        const bool trigger = b.pad.index == kPadLeftTrigger || b.pad.index == kPadRightTrigger;
+        if (b.pad.half > 0) v = std::max(a, 0.0f);
+        else if (b.pad.half < 0) v = std::max(-a, 0.0f);
+        else if (trigger || bipolar(b.target)) v = a;
         else v = (a + 1.0f) * 0.5f;
         break;
     }
@@ -360,7 +376,7 @@ bool input_map_load(const char* path) {
         std::string err;
         Binding b;
         b.line = n;
-        if (tokenize(line, w, err)) {
+        if (controls_words(line, w, err)) {
             if (w.empty()) continue;
             if (parse_range(w, err)) continue;
             if (err.empty() && (w[0].compare(0, 3, "ffb") == 0 ? parse_ffb(w, err) : parse_line(w, b, err))) {

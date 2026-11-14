@@ -47,6 +47,41 @@ void named(const std::string& dir) {
     no_controls(dir);
 }
 
+// ---- controls.txt binding a gamepad's buttons and axes by SDL's gamepad names, as a block
+// copied from pads.txt has them.
+void gamepad_sources(const std::string& dir) {
+    load_controls(dir + "/gamepad-controls.txt",
+                  "# gamepad 00000000000000000000000000000000 -\n"
+                  "A = \"virtual pad by name\" gamepad west\n"
+                  "L = \"virtual pad by name\" gamepad lefttrigger threshold 0.9\n"
+                  "dpad_up = \"virtual pad by name\" gamepad lefty-\n"
+                  "stick_x = \"virtual pad by name\" gamepad rightx invert\n");
+    power_on(1);
+    gamepads_init();
+    Virtual v{"virtual pad by name"};
+    attach(v);
+    frame();
+    press(v, SDL_GAMEPAD_BUTTON_WEST, true);
+    const PadState west = read(0);
+    press(v, SDL_GAMEPAD_BUTTON_WEST, false);
+    SDL_Joystick* j = SDL_GetJoystickFromID(v.id);
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 32767);
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFTY, -32768);
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_RIGHTX, 32767);
+    frame();
+    const PadState pushed = read(0);
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, 0);
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_LEFTY, 0);
+    SDL_SetJoystickVirtualAxis(j, SDL_GAMEPAD_AXIS_RIGHTX, 0);
+    frame();
+    check(west.buttons == PAD_A, "a controls.txt line for a gamepad's west makes its west press A");
+    check(pushed.trig_l == 255 && (pushed.buttons & PAD_L) && (pushed.buttons & PAD_UP) && pushed.stick_x < 0x80,
+          "its left trigger is L and L's click, its left stick up is dpad_up, and its right stick turned round is stick_x");
+    unplug({&v});
+    gamepads_shutdown();
+    no_controls(dir);
+}
+
 // ---- A `port <n>` line pins its device to the port. A device line with port 3, and a
 // key line with port 5, which is refused.
 void pins(const std::string& dir) {

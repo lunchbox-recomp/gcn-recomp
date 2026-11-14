@@ -203,6 +203,8 @@ int run_ports(const std::string& dir) {
     pins_more(dir);
     fresh_file(file);
     mappings(dir);
+    fresh_file(file);
+    gamepad_sources(dir);
     memory_order(file);
     memory_reversed(file);
     memory_twins(file);
