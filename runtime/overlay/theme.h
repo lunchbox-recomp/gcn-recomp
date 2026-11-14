@@ -70,8 +70,8 @@ struct OverlayTheme {
     uint32_t accent = 0x3DD6F5FF;        // what's picked, a mark and the focus ring
     uint32_t accent_light = 0xA6EEFBFF;  // the ring's pulse (F5) and a grab held
     uint32_t accent_dark = 0x177A90FF;   // the selected tab, under its text
-    // Not read yet. A second accent for a theme that wants one (D1), here the accent; success
-    // and warning for no piece so far; danger for the ask's confirm (F4).
+    // A second accent for a theme that wants one (D1), here the accent, and success and warning,
+    // none read yet; danger under the confirm of a question's card, its text the panel's colour.
     uint32_t secondary = 0x3DD6F5FF;
     uint32_t success = 0x4ADE80FF;
     uint32_t warning = 0xFACC15FF;
@@ -96,8 +96,8 @@ struct OverlayTheme {
     float item_radius = 12.0f;
     float item_spacing = 8.0f;
     float section_spacing = 24.0f;    // between the header, the page and the footer
-    // Text sizes, the fonts' roles (F2): the menu's title, the pills, and the body. The items' and
-    // the footer's aren't read yet (F4's footer).
+    // Text sizes, the fonts' roles (F2): the menu's title, the pills, the buttons of a question's
+    // card, the body, and the footer's hints and buttons. A page's own items take the body's.
     float title_size = 36.0f;
     float tab_size = 26.0f;
     float item_text_size = 24.0f;

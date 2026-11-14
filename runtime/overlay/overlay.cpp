@@ -1,10 +1,11 @@
 // The overlay's set-up, opening and closing, and its frames; see overlay.h. What opens and
-// closes it and the input it holds back are overlay_input.cpp, the menu itself overlay_menu.cpp,
-// the Display page overlay_display.cpp, the Controllers page overlay_controllers.cpp and the
-// notices notices.cpp.
+// closes it and the input it holds back are overlay_input.cpp, the menu itself overlay_menu.cpp
+// with its header tabs.cpp and its footer footer.cpp, the Display page overlay_display.cpp, the
+// Controllers page overlay_controllers.cpp and the notices notices.cpp.
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
 #include "overlay/fonts.h"
+#include "overlay/footer.h"
 #include "overlay/review.h"
 #include "overlay/tabs.h"
 #include "gx/render_gl.h"
@@ -31,18 +32,17 @@ void notices_frame();
 void overlay_hold_pads();
 void overlay_latch_pads();
 // overlay_menu.cpp's: the menu set up with its title on its first page, how many pages a game
-// added, the menu opened on a page (-1 for where it was) at a time, any question ended, and its
-// frame.
+// added, the menu opened on a page (-1 for where it was) at a time, and its frame.
 void menu_init(const char* title);
 int menu_added_pages();
 void menu_opened(int page, uint64_t now);
-void menu_end_ask();
 void menu_frame();
 #ifdef GCN_OVERLAY_TEST
 void menu_clear_pages();
 #endif
-// Below, for overlay_input.cpp and overlay_menu.cpp too: whether overlay_init has run, the
-// window the menu is over, null in tests, which draw nothing, and the menu opened or closed.
+// Below, for overlay_input.cpp, overlay_menu.cpp and footer.cpp too: whether overlay_init has
+// run, the window the menu is over, null in tests, which draw nothing, and the menu opened or
+// closed.
 bool overlay_ready();
 SDL_Window* overlay_window();
 void overlay_set_open(bool on);
@@ -78,7 +78,7 @@ bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the
 // and the Buttons view with any press-to-bind.
 void end_view() {
     g_view_left = false;
-    menu_end_ask();
+    footer_end_ask();
     controllers_stop();
     bindings_stop();
 }
