@@ -3,11 +3,12 @@
 // runtime/ready_file.cpp writes GCN_READY_FILE's lines through a temporary file that then
 // replaces it, so a launcher watching it sees each version whole. These check the lines and
 // their order, that each word goes in once, that one that can't be written says so once, is
-// tried again at each mark for 250 ms and then a second later and no sooner, and keeps its
-// first mark's time, that a line that can't replace the file says so unless asked not to,
-// that a reader polling the file meanwhile never sees a line cut short, that no line waits
-// for a sync, that a run starts the file afresh, what a console reset leaves for the run
-// after, and that the times count from the process's start. It prints what a line costs.
+// tried again at each mark for the 250 ms after that failure and then a second later and no
+// sooner, and keeps its first mark's time, that a line that can't replace the file says so
+// unless asked not to, that a reader polling the file meanwhile never sees a line cut short,
+// that no line waits for a sync, that a run starts the file afresh, what a console reset leaves
+// for the run after, and that the times count from the process's start. It prints what a line
+// costs.
 //
 // usage: test_ready_file WORKDIR
 // Exits 0 only if every check passes.
@@ -143,8 +144,10 @@ int main(int argc, char** argv) {
     // GCN_READY_FILE: each word once, with the time of its first mark since the process
     // started. The directory comes only after window's first marks, so those fail, each mark
     // tried for 250 ms and then once a second; by then it holds an earlier run's lines, which
-    // window's line replaces. Then a directory where the file's .tmp goes keeps frame's first
-    // try out, as it would for any user, root too, and the next mark, inside the 250 ms, writes it.
+    // window's line replaces. frame's first mark, at the clock, waits for window, and its first
+    // try comes two seconds after it: a directory where the file's .tmp goes keeps that try out,
+    // as it would for any user, root too, and the next mark, inside the 250 ms after the failure,
+    // writes it.
     const std::string later = dir + "/later", e = later + "/e.txt";
     setenv("GCN_READY_FILE", e.c_str(), 1);
     const double before = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t_main).count();
@@ -161,7 +164,9 @@ int main(int argc, char** argv) {
         fputs("window 1\nframe 2\n", f);
         fclose(f);
     }
+    const long long frame_from = (long long)plat_ms_since_start();
     ready_mark("frame");
+    const long long frame_to = (long long)plat_ms_since_start();
     check(slurp(e) == "window 1\nframe 2\n", "frame waits until window is in, so the lines stay in order");
     ready_mark_at("window", ago + 1249);
     check(slurp(e) == "window 1\nframe 2\n", "a word still failing 250 ms after its first try isn't tried again for a second");
@@ -171,12 +176,12 @@ int main(int argc, char** argv) {
     ready_relaunching();
     check(getenv("GCN_READY_FILE"), "a console reset before the frame line leaves the variable for the run after");
     mkdir((e + ".tmp").c_str(), 0755);
-    const int frame_said = lines_said(dir + "/frame-said.txt", [&] { ready_mark_at("frame", ago + 2000); });
+    const int frame_said = lines_said(dir + "/frame-said.txt", [&] { ready_mark_at("frame", frame_to + 2000); });
     rmdir((e + ".tmp").c_str());
     const bool held = slurp(e) == "window " + std::to_string(ago) + "\n";
-    ready_mark_at("frame", ago + 2249);
+    ready_mark_at("frame", frame_to + 2249);
     check(held && frame_said == 1 && slurp(e).find("\nframe ") != std::string::npos,
-          "a word whose write failed is tried again at each mark for 250 ms");
+          "a word whose write failed is tried again at each mark for 250 ms from that failure, not from its first mark");
     ready_mark("window");
     ready_mark("frame");
     const std::string got = slurp(e);
@@ -186,9 +191,9 @@ int main(int argc, char** argv) {
     for (char c : got) lines += c == '\n';
     check(parsed && lines == 2 && w == ago, "GCN_READY_FILE gets window once, then frame, each once");
     check(parsed && w <= fr, "the frame's time is no earlier than the window's");
-    // frame's first mark was at plat_ms_since_start, and its line keeps that time. The process
-    // started before main did, and this run is well under a minute.
-    check(parsed && (double)fr + 1.0 >= before && fr < 60000,
+    // frame's first mark was at plat_ms_since_start, and its line keeps that time, not its
+    // first try's. The process started before main did, and this run is well under a minute.
+    check(parsed && fr >= frame_from && fr <= frame_to && (double)fr + 1.0 >= before && fr < 60000,
           "frame's line keeps its first mark's time, which counts from the process's start");
     check(plat_ms_since_start() >= before, "plat_ms_since_start counts from before main");
 
