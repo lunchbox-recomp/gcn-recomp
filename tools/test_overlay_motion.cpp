@@ -118,9 +118,15 @@ void opens_and_closes() {
               near(appear_backdrop(gone), 0.0f) && appear_closing(gone - kMs),
           "it's gone at the theme's close time and not before");
     appear_close(th, t1);
+    const float shrunk = appear_scale(t1 + 60 * kMs);
     appear_open(th, t1 + 60 * kMs);
-    check(near(appear_panel_alpha(t1 + 60 * kMs), half) && !appear_closing(t1 + 60 * kMs),
-          "opened again mid-way through a close, it starts from where it was");
+    check(near(appear_panel_alpha(t1 + 60 * kMs), half) && near(appear_scale(t1 + 60 * kMs), shrunk) &&
+              !appear_closing(t1 + 60 * kMs),
+          "opened again mid-way through a close, it starts from where it was, its size too");
+    appear_close(th, t1 + 1000 * kMs);
+    appear_open(th, t1 + 2000 * kMs);
+    check(near(appear_scale(t1 + 2000 * kMs), th.open_scale),
+          "opened again once a close is over, it grows from the theme's open scale, not the close's");
 
     OverlayTheme backwards = th;
     backwards.open_ms = -50.0f;

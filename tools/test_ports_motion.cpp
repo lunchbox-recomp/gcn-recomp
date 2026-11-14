@@ -2,10 +2,11 @@
 // hand (g_host_ns): opening still asks for the pause at once, the paused wait is 8 ms while it
 // moves and 16 ms once it's still, and an `[overlay] shown after N ms` line comes once it's
 // whole, while the backdrop dims the game from clear. As it closes the guest goes on at once
-// while the menu fades with no input of its own, from a key or a gamepad, and once it's gone
-// 600 closed frames lay out no menu frame and no notice. With menu_motion off, and under
-// --dump-output, nothing moves. Keys queued in the pump of the F1 that closes it press nothing
-// in its fade or at its next open. Quit?, the press-A order and the Buttons view stay drawn as
+// while the menu fades with no input of its own, from a key, the mouse or a gamepad, and once
+// it's gone 600 closed frames lay out no menu frame and no notice. With menu_motion off, and
+// under --dump-output, nothing moves, and it says it's shown at the frame that first draws it.
+// Keys queued in the pump of the F1 that closes it press nothing in its fade or at its next
+// open. Quit?, the press-A order and the Buttons view stay drawn as
 // they were through the fade and end after it. Read in by tools/test_ports.cpp after the
 // frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -60,6 +61,49 @@ Still still_with(SDL_Window* window, const std::string& dir, bool motion, bool d
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     s.closed_due = overlay_menu_due();
     return s;
+}
+
+// The mouse moved to (x, y) over the window and its left button pressed or let go there, then a
+// host frame.
+void mouse(Guest& guest, float x, float y, bool down) {
+    SDL_Event e{};
+    e.type = SDL_EVENT_MOUSE_MOTION;
+    e.motion.windowID = g_window_id;
+    e.motion.x = x;
+    e.motion.y = y;
+    SDL_PushEvent(&e);
+    e = SDL_Event{};
+    e.type = down ? SDL_EVENT_MOUSE_BUTTON_DOWN : SDL_EVENT_MOUSE_BUTTON_UP;
+    e.button.windowID = g_window_id;
+    e.button.button = SDL_BUTTON_LEFT;
+    e.button.down = down;
+    e.button.clicks = 1;
+    e.button.x = x;
+    e.button.y = y;
+    SDL_PushEvent(&e);
+    host_frame(guest);
+}
+
+// With menu_motion off the menu is whole as it opens, but Dear ImGui lays out a new window once
+// before it draws it. Whether `[overlay] shown` waited for the frame that drew it.
+bool shown_when_drawn(SDL_Window* window, const std::string& dir) {
+    overlay_test_reset_pages();
+    OverlayPicture picture;
+    picture.path = dir + "/shown-settings.txt";
+    picture.apply = record_apply;
+    picture.now.menu_motion = false;
+    overlay_init(window, "Test title", picture);
+    Guest guest;
+    const std::string said = dir + "/shown-stderr.txt";
+    bool quiet = false;
+    capture(said, [&] {
+        key(guest, SDL_SCANCODE_F1, SDLK_F1, true);
+        quiet = panel_alpha() < 0 && lines_with(said, "shown after") == 0;
+        key(guest, SDL_SCANCODE_F1, SDLK_F1, false);
+    });
+    const bool once = panel_alpha() > 0 && lines_with(said, "[overlay] shown after 0 ms\n") == 1;
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    return quiet && once;
 }
 
 // Down, then Space, then F1, all in one host frame's pump, then each let go.
@@ -270,16 +314,21 @@ void overlay_motion(const std::string& dir) {
           "the backdrop dims the game from clear to the theme's alpha as it opens");
 
     const long menu_frames = overlay_menu_frames();
+    const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
+    mouse(guest, panel->Pos.x + 8.0f, panel->Pos.y + 8.0f, true);  // held on the title bar
     key(guest, SDL_SCANCODE_DOWN, SDLK_DOWN, true);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     const bool held_down = ImGui::IsKeyDown(ImGuiKey_DownArrow);
+    const bool held_mouse = ImGui::IsMouseDown(ImGuiMouseButton_Left);
     key(guest, SDL_SCANCODE_DOWN, SDLK_DOWN, false);
+    mouse(guest, panel->Pos.x + 8.0f, panel->Pos.y + 8.0f, false);
     const uint64_t closed = g_host_ns;
     set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, true);
     host_frame(guest);
     const bool pad_down = ImGui::IsKeyDown(ImGuiKey_GamepadDpadDown);
     set_button(pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN, false);
-    check(!held_down, "a key held as it closes is let go for the menu, so nothing moves its focus as it fades");
+    check(!held_down && !held_mouse,
+          "a key or a mouse button held as it closes is let go for the menu, so nothing moves its focus as it fades");
     check(!pad_down, "a gamepad's press as it fades doesn't reach the menu");
     check(!overlay_open() && !pause_requested() && !paused() && guest.passed == guest.asked,
           "F1 closes it and the guest goes on at once, the menu still fading");
@@ -309,6 +358,8 @@ void overlay_motion(const std::string& dir) {
     check(nothing_queued(window, dir, false),
           "with menu_motion off they press nothing as it opens again, and none ahead of an F1 that opens it do");
     views_kept(window, dir);
+    check(shown_when_drawn(window, dir),
+          "with menu_motion off it says it's shown at the frame that first draws it, not before");
     close_window(window);
 }
 

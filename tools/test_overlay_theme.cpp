@@ -3,11 +3,12 @@
 //
 // The default theme (runtime/overlay/theme.h) must be readable from a couch over any game:
 // every text colour of the style built from it at least 4.5:1 against every fill text sits on,
-// and the focus ring and its pulse at least 3:1 against the panel, by WCAG 2's contrast ratio. The panel is translucent, so
-// it's taken over the backdrop over black and over white, whichever is worse. At 1080 lines the
-// body text is at least 22 px and nothing to press is under 48 px. The style built from it
+// and the focus ring and its pulse, an item's edge, a check mark and a slider's grab at least
+// 3:1 against what's around them, by WCAG 2's contrast ratio. The panel is translucent, so it's
+// taken over the backdrop over black and over white, whichever is worse. At 1080 lines the body
+// text is at least 22 px and nothing to press is under 48 px. The style built from it
 // (runtime/overlay/theme.cpp) carries its colours, has its sizes at 1080 lines, and is built
-// afresh at another height rather than scaled again.
+// afresh at another height rather than scaled again, so a height and back gives the same sizes.
 //
 // usage: test_overlay_theme
 // Exits 0 only if every check passes.
@@ -21,6 +22,7 @@
 
 void theme_style(const OverlayTheme& theme, float scale);
 float theme_scale(int height);
+void theme_fit(int height);
 
 namespace {
 
@@ -165,6 +167,17 @@ void edges(const OverlayTheme& t) {
     ImGui::DestroyContext();
 }
 
+// Whether `a` and `b` have exactly the same sizes, of those the theme sets and some it doesn't.
+bool same_sizes(const ImGuiStyle& a, const ImGuiStyle& b) {
+    const auto eq = [](ImVec2 x, ImVec2 y) { return x.x == y.x && x.y == y.y; };
+    return eq(a.WindowPadding, b.WindowPadding) && eq(a.FramePadding, b.FramePadding) &&
+           eq(a.ItemSpacing, b.ItemSpacing) && eq(a.ItemInnerSpacing, b.ItemInnerSpacing) &&
+           a.WindowRounding == b.WindowRounding && a.FrameRounding == b.FrameRounding &&
+           a.WindowBorderSize == b.WindowBorderSize && a.FrameBorderSize == b.FrameBorderSize &&
+           a.IndentSpacing == b.IndentSpacing && a.ScrollbarSize == b.ScrollbarSize && a.GrabMinSize == b.GrabMinSize &&
+           a.FontScaleMain == b.FontScaleMain;
+}
+
 void couch(const OverlayTheme& t) {
     check(t.body_size >= 22.0f, "body text is at least 22 px at 1080 lines");
     check(t.item_min_height >= 48.0f && t.item_height >= t.item_min_height,
@@ -199,6 +212,16 @@ void style(const OverlayTheme& t) {
               near(s.FrameRounding, 2.0f * t.item_radius) && near(s.IndentSpacing, 2.0f * indent),
           "built again at 2160 lines, twice, the sizes are twice the 1080 ones, from Dear ImGui's own style each time");
     check(near(s.FontSizeBase, t.body_size), "the base font size stays the theme's at 1080 lines, for a page's own sizes");
+    // Fitted from 1080 lines to 1000 and back, as a window resized and resized back, each size
+    // is what a build at that height has, not one rounded again from the last.
+    theme_style(t, theme_scale(1000));
+    const ImGuiStyle at1000 = s;
+    theme_style(t, theme_scale(1080));
+    const ImGuiStyle at1080 = s;
+    theme_fit(1000);
+    const bool down = same_sizes(s, at1000);
+    theme_fit(1080);
+    check(down && same_sizes(s, at1080), "fitted to 1000 lines and back to 1080, the sizes are a fresh build's at each");
     check(near(theme_scale(720), 720.0f / 1080.0f) && near(theme_scale(0), 1.0f),
           "the scale is the window's height over 1080, and 1 with no height");
     OverlayTheme pink = t;

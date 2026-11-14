@@ -147,6 +147,7 @@ void render_set_output_fbo(unsigned) {}
 #include "test_ports_bindings_page.cpp"   // the Buttons view and its press-to-bind
 #include "test_ports_menu_window.cpp"     // the menu over a window, then the Controllers checks
 #include "test_ports_motion.cpp"          // the menu fading and growing in and out on the host clock
+#include "test_ports_theme.cpp"           // the menu's theme and its style at a new window height
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
@@ -247,6 +248,7 @@ int run_ports(const std::string& dir) {
     overlay(dir);
     overlay_buttons(dir);
     overlay_motion(dir);
+    overlay_theme_fit(dir);
 #endif
     return finish("ports");
 }
