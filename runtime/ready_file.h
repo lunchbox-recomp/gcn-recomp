@@ -20,8 +20,10 @@
 // Writes the word's line to GCN_READY_FILE the first time it's called with that word, after
 // the lines before it or, for the run's first, in place of what the file held, and
 // does nothing after or without the variable. A line that can't be written (on Windows, a
-// launcher holding the file open) says so on stderr the first time, and is tried again at the
-// word's first call a second or more after, quietly. Main thread only.
+// launcher holding the file open) says so on stderr the first time, and is tried again quietly
+// at each call for the 250 ms after, then at the first call a second or more after each try.
+// It gives the time of the word's first call however late it goes in, so frame's is the
+// game's first presented frame. Main thread only.
 void ready_mark(const char* word);
 // ready_mark at `ms`, for the checks: ready_mark is this at plat_ms_since_start().
 void ready_mark_at(const char* word, long long ms);

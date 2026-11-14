@@ -12,11 +12,16 @@ namespace {
 
 // A word ready_mark has been called with.
 struct Word {
-    bool in = false;             // its line is in
-    bool said = false;           // a write of it has failed and said so
-    long long next = LLONG_MIN;  // after a failed write, the time it's tried again from
+    bool in = false;               // its line is in
+    long long first = LLONG_MIN;   // its first call, the time its line gives
+    long long failed = LLONG_MIN;  // its first failed write, which said so
+    long long next = LLONG_MIN;    // after a failed write, the time it's tried again from
 };
 std::map<std::string, Word> g_words;
+
+// After a word's first failed write, how long each call tries it again before it waits a
+// second between tries.
+constexpr long long kEveryCallMs = 250;
 
 // `text` and then the word's line, through `path`.tmp.
 bool write_line(const char* path, std::string text, const char* word, long long ms, bool say) {
@@ -49,20 +54,26 @@ void ready_mark_at(const char* word, long long ms) {
     const char* path = getenv_nonempty("GCN_READY_FILE");
     if (!path) return;
     Word& w = g_words[word];
-    // A path that never works costs a try a second, not two a frame.
-    if (w.in || ms < w.next) return;
+    if (w.in) return;
+    // However late its line goes in, it gives this time: frame's is the first frame presented.
+    if (w.first == LLONG_MIN) w.first = ms;
+    if (ms < w.next) return;
     // frame waits for window, so a window that failed once doesn't come after it.
     if (std::string(word) == "frame" && !g_words["window"].in) return;
     bool first = true;
     for (const auto& [name, other] : g_words) first = first && !other.in;
+    const bool say = w.failed == LLONG_MIN;
     // The run's first line replaces what an earlier run left.
-    const bool wrote = first ? ready_file_start(path, word, ms, !w.said) : ready_file_append(path, word, ms, !w.said);
+    const bool wrote =
+        first ? ready_file_start(path, word, w.first, say) : ready_file_append(path, word, w.first, say);
     if (wrote) {
         w.in = true;
-    } else {
-        w.said = true;
-        w.next = ms + 1000;
+        return;
     }
+    if (say) w.failed = ms;
+    // A write that fails once goes in a frame or so late; a path that never works costs a try
+    // a second, not two a frame.
+    w.next = ms - w.failed < kEveryCallMs ? ms : ms + 1000;
 }
 
 void ready_relaunching() {

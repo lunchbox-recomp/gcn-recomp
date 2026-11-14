@@ -848,17 +848,18 @@ sees the last run's pair. The run's first line replaces whatever the file held, 
 guards a launcher that forgets.
 
 A path that can't be written gets one line on stderr for each word, and the run goes on. The
-word is tried again at a frame shown a second or more later, quietly, so a write that fails
-once (on Windows, while the launcher has the file open) still goes in, and a path that never
-works costs a try a second. `--headless` and `--vr` write nothing.
+word is tried again quietly at each frame shown for the 250 ms after, then at a frame a
+second or more after each try. So a write that fails once (on Windows, while the launcher has
+the file open) goes in a frame or so later, and a path that never works costs a try a
+second. A line that goes in late still gives the time of its word's first frame, so `frame`
+is the first frame the game presents. `--headless` and `--vr` write nothing.
 
 `ninja test_ready_file` builds `tools/test_ready_file.cpp`, which checks the lines, their
 order, that a reader polling the file never sees part of one, that no line waits for a sync,
-that a line whose write failed says so once and goes in at a try a second later, that a
-run's first line replaces an
-earlier run's, and that the times count from
-before `main`. It prints a line's cost on the machine's disk (`[ready] a line takes a median
-of <ms> ms`).
+that a line whose write failed says so once, goes in at the next try within 250 ms or else a
+second after the last, and keeps its word's first time, that a run's first line replaces an
+earlier run's, and that the times count from before `main`. It prints a line's cost on the
+machine's disk (`[ready] a line takes a median of <ms> ms`).
 
 The boot splash (docs/graphics.md, "The boot splash") is the window's first frame unless
 `gcn_add_game(... SPLASH OFF)` or `GCN_SPLASH=0` leaves it out, or the run is `--hidden`.
