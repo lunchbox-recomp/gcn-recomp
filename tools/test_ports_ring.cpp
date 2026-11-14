@@ -3,9 +3,10 @@
 // accent and focus_gap outside it. A move a row down eases it, 1 - exp(-dt / focus_ms) of the way
 // a frame later, and once it's there nothing moves and the paused wait is 16 ms again. A move
 // over half the panel, a page change from the footer and the menu opening put it there at once,
-// as menu_motion off and --dump-output do for every move. Around the footer's first item, or a
-// question's, it doesn't slide in with a page. Closed after all that, 600 frames lay
-// out no menu frame. Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+// as menu_motion off, --dump-output and a focus_ms that takes no time do for every move. It
+// slides and fades in with a page, but not around the footer's first item or a question's, and a
+// click hides it. Closed after all that, 600 frames lay out no menu frame. Read in by
+// tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/ring.h"
 #include "overlay/tabs.h"  // how far the page's contents are across as they come in
@@ -87,12 +88,13 @@ void stroke(Guest& g, SDL_Scancode sc, SDL_Keycode kc, int down_ms = kFrameMs, i
 // Long enough for anything moving to have settled.
 void ring_settle(Guest& g) { frame_after(g, 1000); }
 
-// The menu set up with Right, Right too, Rows and Text after its own pages, `motion` on or off, under
-// --dump-output or not, then opened over the held game, on the page titled `open_on` if one is
-// given, as the first open of a session.
+// The menu set up with `theme` and Right, Right too, Rows and Text after its own pages, `motion`
+// on or off, under --dump-output or not, then opened over the held game, on the page titled
+// `open_on` if one is given, as the first open of a session.
 void ring_menu(SDL_Window* window, const std::string& dir, Guest& guest, bool motion = true, bool dump_output = false,
-               const char* open_on = nullptr) {
+               const char* open_on = nullptr, const OverlayTheme& theme = overlay_theme_default()) {
     overlay_test_reset_pages();
+    overlay_set_theme(theme);
     overlay_add_page("Right", corner_page, nullptr);
     overlay_add_page("Right too", corner_page, nullptr);
     overlay_add_page("Rows", rows_page, nullptr);
@@ -116,16 +118,19 @@ void turn_to(Guest& g, const char* title) {
     for (int i = 0; i < 8 && overlay_page() != page_at(title); i++) stroke(g, SDL_SCANCODE_E, SDLK_E);
 }
 
-// With `motion` off or under --dump-output: a row down puts the ring there at the next frame,
-// and nothing moves.
-bool still_ring(SDL_Window* window, const std::string& dir, bool motion, bool dump_output) {
+// With `motion` off, under --dump-output or with a focus_ms of `ms` that takes no time: a row
+// down puts the ring there at the next frame, and nothing moves.
+bool still_ring(SDL_Window* window, const std::string& dir, bool motion, bool dump_output,
+                float ms = overlay_theme_default().focus_ms) {
+    OverlayTheme theme = overlay_theme_default();
+    theme.focus_ms = ms;
     Guest guest;
-    ring_menu(window, dir, guest, motion, dump_output);
+    ring_menu(window, dir, guest, motion, dump_output, nullptr, theme);
     turn_to(guest, "Rows");
     ring_settle(guest);
     const bool first = ring_on(ring_now(), g_rows[0]);
     stroke(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
-    const bool there = ring_on(ring_now(), g_rows[1]) && !overlay_animating();
+    const bool there = ring_on(ring_now(), g_rows[1]) && !overlay_animating() && batch_wait_ms() == 16;
     stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
     ring_settle(guest);
     return first && there;
@@ -178,11 +183,18 @@ void ring_opens(SDL_Window* window, const std::string& dir) {
     {
         Guest guest;
         ring_menu(window, dir, guest, true, false, "Rows");
-        g_pressed[0] = 0;
+        g_pressed[0] = g_pressed[1] = 0;
         const bool first = overlay_page() == page_at("Rows") && ring_on(ring_now(), g_rows[0]);
         tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
         check(first && g_pressed[0] == 1,
               "at the session's first open the ring is on the page's first item, and A presses it at once");
+
+        // A click on Two presses it and hides the ring.
+        const ImVec2 two = g_rows[1].GetCenter();
+        mouse(guest, two.x, two.y, true);
+        mouse(guest, two.x, two.y, false);
+        ring_settle(guest);
+        check(g_pressed[1] == 1 && !ring_now().shown, "a click on an item presses it and hides the ring");
 
         // A click on a pill turns the page and hides the ring, and one on Rows' puts the focus back
         // on One with the ring still hidden.
@@ -277,9 +289,11 @@ void ring_moves(const std::string& dir) {
         tabs_contents_moved(g_host_ns, dx, alpha);
         ImRect slid = expect;
         slid.Translate(ImVec2(dx, 0.0f));
-        const bool sliding = dx > 1.0f && same_rect(drawn_in(theme.accent >> 8), slid, 1.0f);
+        const int faded = (int)std::lround((float)(theme.accent & 0xFF) * alpha);
+        const bool sliding = dx > 1.0f && alpha < 1.0f && same_rect(drawn_in(theme.accent >> 8), slid, 1.0f) &&
+                             std::abs(drawn_alpha(theme.accent >> 8) - faded) <= 1;
         ring_settle(guest);
-        check(sliding, "as a page change slides the page's contents in, the ring slides in with them");
+        check(sliding, "as a page change slides the page's contents in, the ring slides and fades in with them");
         const ImRect drawn = drawn_in(theme.accent >> 8);
         check(same_rect(drawn, expect, 1.0f) && ImGui::GetStyle().Colors[ImGuiCol_NavCursor].w == 0.0f,
               "it's drawn in the accent, focus_gap outside its item and focus_width wide, and Dear ImGui's own "
@@ -356,6 +370,10 @@ void ring_moves(const std::string& dir) {
     ring_opens(window, dir);
     ring_asks(window, dir);
     check(still_ring(window, dir, true, true), "under --dump-output it doesn't move either");
+    check(still_ring(window, dir, true, false, INFINITY) && still_ring(window, dir, true, false, NAN) &&
+              still_ring(window, dir, true, false, -1.0f),
+          "a theme's focus_ms that's infinite, not a number or negative puts the ring on its item at once, and "
+          "nothing moves");
     close_window(window);
 }
 
