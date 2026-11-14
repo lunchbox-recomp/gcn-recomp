@@ -1,16 +1,21 @@
 // The menu's footer, Restart game and Quit game, and what they ask (footer.h).
 #include "overlay/footer.h"
 #include "overlay/fonts.h"
+#include "overlay/glyph.h"
 #include "overlay/overlay.h"
 #include "overlay/state.h"
 #include "overlay/theme.h"
 #include "frontend.h"
+#include "gamepads.h"
 #include "input_log.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
+
+SDL_Gamepad* overlay_last_pad();
 
 namespace {
 
@@ -35,9 +40,8 @@ void quit() {
     SDL_PushEvent(&e);
 }
 
-// A key's name and what it does there. The names are plain text until F6's glyphs draw each key
-// as the device last pressed labels it, the pad's names for now. Drafts for the user. On a page
-// B closes the menu; in a view or a question in its place B goes back to the page.
+// The action named by each footer glyph. On a page B closes the menu; in a view or a question
+// B goes back to the page.
 struct Hint {
     const char* key;
     const char* does;
@@ -53,6 +57,7 @@ constexpr Hint kListeningNoButton[] = {{"Esc", "Cancel"}, {"Wait", "Cancel"}};
 
 #ifdef GCN_OVERLAY_TEST
 std::string g_hints;  // the hints last drawn, each key and what it does, for the tests
+std::vector<OverlayGlyph> g_glyphs;
 #endif
 
 // The hints from `at`, centred in a row `height` tall, and how wide they are.
@@ -65,14 +70,67 @@ float hints(const Hint (&list)[N], ImVec2 at, float height) {
     float x = at.x;
 #ifdef GCN_OVERLAY_TEST
     g_hints.clear();
-    for (const Hint& h : list) g_hints += std::string(g_hints.empty() ? "" : ", ") + h.key + " " + h.does;
+    g_glyphs.clear();
 #endif
+    SDL_Gamepad* pad = overlay_last_pad();
+    PadFamily family = PadFamily::other;
+    if (pad) family = pad_family(SDL_GetGamepadType(pad),
+        SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) || SDL_GamepadHasAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER),
+        SDL_GamepadHasButton(pad, SDL_GAMEPAD_BUTTON_MISC1));
     for (const Hint& h : list) {
         if (x > at.x) x += 3.0f * gap;
-        dl->AddText(ImVec2(x, y), theme_colour(t.text), h.key);
-        x += ImGui::CalcTextSize(h.key).x + gap;
+        const bool wait = !strcmp(h.key, "Wait");
+        const bool escape = !strcmp(h.key, "Esc");
+        const bool cancel_pad = !strcmp(h.key, "Back") || !strcmp(h.key, "Guide");
+        const bool keyboard = !pad || escape || wait;
+        const char* key = h.key;
+        if (!pad && !wait) {
+            if (!strcmp(key, "A")) key = "Enter";
+            else if (!strcmp(key, "B")) key = "Esc";
+            else if (!strcmp(key, "L R")) key = "Q E";
+        }
+        if (wait) {
+            dl->AddText(ImVec2(x, y), theme_colour(t.text), key);
+            x += ImGui::CalcTextSize(key).x + gap;
+        } else {
+            auto draw_one = [&](const OverlayGlyph& glyph) {
+                const float size = ImGui::GetFontSize() * 1.3f;
+                overlay_draw_glyph(dl, ImVec2(x, at.y + (height - size) * 0.5f), size, glyph);
+                x += overlay_glyph_width(glyph, size) + gap;
+#ifdef GCN_OVERLAY_TEST
+                g_hints += (g_hints.empty() || g_hints.back() == ' ' ? "" : " ") + glyph.label;
+                g_glyphs.push_back(glyph);
+#endif
+            };
+            if (keyboard) {
+                if (!strcmp(key, "Q E")) { draw_one(overlay_key_glyph(t, "Q")); draw_one(overlay_key_glyph(t, "E")); }
+                else draw_one(overlay_key_glyph(t, key));
+            } else if (!strcmp(key, "L R")) {
+                if (family == PadFamily::gamecube) {
+                    draw_one(overlay_pad_glyph(t, family, {true, kPadLeftTrigger}, 0));
+                    draw_one(overlay_pad_glyph(t, family, {true, kPadRightTrigger}, 0));
+                } else {
+                    OverlayGlyph left = overlay_pad_glyph(t, family, {false, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER}, 0);
+                    OverlayGlyph right = overlay_pad_glyph(t, family, {false, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER}, 0);
+                    if (family == PadFamily::other) { left.label = "L"; right.label = "R"; }
+                    draw_one(left);
+                    draw_one(right);
+                }
+            } else if (cancel_pad) {
+                draw_one(overlay_pad_glyph(t, family, {false, !strcmp(key, "Back") ? SDL_GAMEPAD_BUTTON_BACK : SDL_GAMEPAD_BUTTON_GUIDE}, 0));
+            } else {
+                const int face = !strcmp(key, "A") ? 0 : 1;
+                const int button = gamepads_faces(pad)[face];
+                draw_one(overlay_pad_glyph(t, family, {false, button}, SDL_GetGamepadButtonLabel(pad, (SDL_GamepadButton)button)));
+            }
+        }
         dl->AddText(ImVec2(x, y), theme_colour(t.dim), h.does);
         x += ImGui::CalcTextSize(h.does).x;
+#ifdef GCN_OVERLAY_TEST
+        if (wait) g_hints += (g_hints.empty() ? "" : " ") + std::string(key);
+        g_hints += " " + std::string(h.does);
+        if (&h != &list[N - 1]) g_hints += ",";
+#endif
     }
     return x - at.x;
 }
@@ -181,4 +239,5 @@ OverlayAsk overlay_asking() { return g_ask; }
 
 #ifdef GCN_OVERLAY_TEST
 const std::string& footer_test_hints() { return g_hints; }
+const std::vector<OverlayGlyph>& footer_test_glyphs() { return g_glyphs; }
 #endif

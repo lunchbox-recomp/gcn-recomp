@@ -2,6 +2,9 @@
 // (pad_bindings.h), changed by press-to-bind, with its dead zones, its trigger click, a rumble
 // test and a way back to the map (overlay.h).
 #include "overlay/overlay.h"
+#include "overlay/glyph.h"
+#include "overlay/fonts.h"
+#include "overlay/theme.h"
 #include "gamepads.h"
 #include "input_map.h"
 #include "pad_glyph.h"
@@ -156,7 +159,28 @@ void rows(SDL_Gamepad* g, PadBinding& b) {
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(kRows[c]);
         ImGui::SameLine(column);
-        if (ImGui::Button(glyph(g, (PadControl)c, b.source[c]).c_str())) overlay_bindings_listen((PadControl)c);
+        const PadSource& source = b.source[c];
+        const bool button = !source.axis || source.index == kPadLeftTrigger || source.index == kPadRightTrigger;
+        if (button) {
+            const PadFamily family = pad_family(SDL_GetGamepadType(g),
+                SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) || SDL_GamepadHasAxis(g, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER),
+                SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_MISC1));
+            const int face_label = source.index <= kPadNorth ? SDL_GetGamepadButtonLabel(g, (SDL_GamepadButton)source.index) : 0;
+            const OverlayTheme& theme = theme_now();
+            ImGui::PushFont(fonts_role(FontRole::footer), theme.footer_size);
+            const OverlayGlyph mark = overlay_pad_glyph(theme, family, source, face_label);
+            const float height = ImGui::GetFontSize() * 1.3f;
+            const float width = overlay_glyph_width(mark, height);
+            const float visual_height = mark.shape == OverlayGlyphShape::circle ? width : height;
+            ImGui::PopFont();
+            if (ImGui::Button("##source", ImVec2(width + 12.0f, std::max(visual_height + 8.0f, ImGui::GetFrameHeight()))))
+                overlay_bindings_listen((PadControl)c);
+            ImGui::PushFont(fonts_role(FontRole::footer), theme.footer_size);
+            const ImVec2 lo = ImGui::GetItemRectMin(), hi = ImGui::GetItemRectMax();
+            overlay_draw_glyph(ImGui::GetWindowDrawList(), ImVec2(lo.x + (hi.x - lo.x - width) * 0.5f,
+                lo.y + (hi.y - lo.y - height) * 0.5f), height, mark);
+            ImGui::PopFont();
+        } else if (ImGui::Button(glyph(g, (PadControl)c, source).c_str())) overlay_bindings_listen((PadControl)c);
         if (g_focus == c && overlay_open()) ImGui::FocusItem();  // the fade moves no focus
         ImGui::PopID();
     }
