@@ -179,8 +179,13 @@ void west_on_a() {
     PadBinding c = pad_binding_default(kXbox);
     pad_binding_set(c, PadControl::A, axis(kPadRightTrigger));
     check(merged(c, pushing(kPadRightTrigger, 16385)).buttons == PAD_A &&
-              merged(c, pushing(kPadRightTrigger, 16384)).buttons == 0 && c.source[(int)PadControl::R] == axis(kPadRightTrigger),
-          "the right trigger bound to A is A past half its travel, and R keeps it too, since a trigger isn't a button");
+              merged(c, pushing(kPadRightTrigger, 16384)).buttons == 0 && c.source[(int)PadControl::R] == button(kPadSouth) &&
+              merged(c, pressing(kPadSouth)).trig_r == 255,
+          "the right trigger bound to A is A past half its travel, and R takes south, what A had");
+    PadBinding z = pad_binding_default(kXbox);
+    pad_binding_set(z, PadControl::L, button(kPadRightShoulder));
+    check(z.source[(int)PadControl::Z] == axis(kPadLeftTrigger) && merged(z, pressing(kPadRightShoulder)).buttons == PAD_L,
+          "the right shoulder bound to L: Z takes the left trigger, and the shoulder is L alone");
     PadBinding d = pad_binding_default(kXbox);
     pad_binding_set(d, PadControl::DUp, axis(kPadLeftY, -1));
     const PadState up = merged(d, pushing(kPadLeftY, -20000));
@@ -193,9 +198,38 @@ void sticks_and_triggers() {
     pad_binding_set(b, PadControl::StickX, axis(kPadRightX));
     pad_binding_set(b, PadControl::StickY, axis(kPadRightY, 0, true));
     const PadState p = merged(b, pushing(kPadRightX, 32767));
-    check(p.stick_x == 228 && p.cstick_x == 228,
-          "the right stick's x on stick_x moves the main stick to full, and the C-stick still has it too");
-    check(merged(b, pushing(kPadLeftX, 32767)).stick_x == 0x80, "the left stick's x, no longer bound, leaves the main stick");
+    check(p.stick_x == 228 && p.cstick_x == 0x80 && b.source[(int)PadControl::CStickX] == axis(kPadLeftX) &&
+              b.source[(int)PadControl::CStickY] == axis(kPadLeftY, 0, true),
+          "the right stick on the main stick moves it to full, and the C-stick takes the left stick, which the main "
+          "stick had");
+    const PadState lx = merged(b, pushing(kPadLeftX, 32767));
+    check(lx.stick_x == 0x80 && lx.cstick_x == 228, "the left stick's x moves the C-stick, and not the main stick");
+    PadBinding xy = pad_binding_default(kXbox);
+    pad_binding_set(xy, PadControl::StickX, axis(kPadLeftY));
+    check(xy.source[(int)PadControl::StickY] == axis(kPadLeftX) && merged(xy, pushing(kPadLeftY, 32767)).stick_y == 0x80,
+          "the left stick's y on stick_x: stick_y takes its x, so neither axis is on both");
+
+    // However a binding is changed, no gamepad input is on two controls: a stick's axes among
+    // the stick controls, and the buttons and triggers among the others.
+    PadBinding any = pad_binding_default(kNintendo);
+    const PadSource kTries[] = {axis(kPadRightY), button(kPadLeftShoulder), axis(kPadLeftTrigger), axis(kPadLeftX, -1),
+                                button(kPadSouth), axis(kPadLeftX), axis(kPadRightX, 0, true), button(kPadRightShoulder)};
+    auto inputs = [](const PadBinding& k, bool sticks) {
+        std::vector<std::array<int, 3>> in;
+        for (int d = 0; d < kPadControls; d++)
+            if (pad_control_is_stick((PadControl)d) == sticks) in.push_back({k.source[d].axis, k.source[d].index, k.source[d].half});
+        std::sort(in.begin(), in.end());
+        return in;
+    };
+    auto once = [](const std::vector<std::array<int, 3>>& in) { return std::adjacent_find(in.begin(), in.end()) == in.end(); };
+    bool kept = true;
+    for (int c = 0; c < kPadControls; c++)
+        for (const PadSource& s : kTries) {
+            if ((s.axis && s.half == 0 && s.index != kPadLeftTrigger) != pad_control_is_stick((PadControl)c)) continue;
+            pad_binding_set(any, (PadControl)c, s);
+            kept = kept && any.source[c] == s && once(inputs(any, true)) && once(inputs(any, false));
+        }
+    check(kept, "binding any control to any input it takes leaves no input on two controls");
 
     PadBinding t = pad_binding_default(kXbox);
     t.trigger_click = 20000;

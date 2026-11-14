@@ -102,8 +102,10 @@ struct PadReading {
 // taken over only while it's pushed past its dead zone. `p.connected` is left as it is.
 void pad_binding_merge(const PadBinding& b, const PadReading& r, PadState& p);
 
-// `c` given `s`. Another digital control (A to dpad_right) that had `s` takes what `c` had,
-// so no button is left with nothing.
+// `c` given `s`. Another control that had the same input takes what `c` had, a stick axis
+// among the four stick controls and a button, a trigger or one way of a stick axis among the
+// others, so no control is left with nothing and no input drives two. One way of a stick axis
+// on a button may also be all of that axis on a stick control.
 void pad_binding_set(PadBinding& b, PadControl c, const PadSource& s);
 
 // ---- Press-to-bind

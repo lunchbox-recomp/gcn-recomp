@@ -23,7 +23,6 @@ const char* const kButtonNames[kPadButtons] = {
 const char* const kAxisNames[kPadAxes] = {"leftx", "lefty", "rightx", "righty", "lefttrigger", "righttrigger"};
 
 bool is_trigger(int axis) { return axis == kPadLeftTrigger || axis == kPadRightTrigger; }
-bool digital(PadControl c) { return c < PadControl::L; }
 bool trigger(PadControl c) { return c == PadControl::L || c == PadControl::R; }
 
 // What a source gives a one-way control, 0 to 32767: a button all or nothing, one way of an
@@ -225,9 +224,12 @@ void pad_binding_merge(const PadBinding& b, const PadReading& r, PadState& p) {
 
 void pad_binding_set(PadBinding& b, PadControl c, const PadSource& s) {
     const PadSource was = b.source[(int)c];
-    if (digital(c))
-        for (int d = 0; d < (int)PadControl::L; d++)
-            if (d != (int)c && b.source[d] == s) b.source[d] = was;
+    // The same input, whichever way round. Only a stick control takes all of a stick's axis,
+    // and only the others a button, a trigger or one way of an axis (fits), so a control that
+    // matches takes the same kind of input `c` had.
+    auto same_input = [&](const PadSource& t) { return t.axis == s.axis && t.index == s.index && t.half == s.half; };
+    for (int d = 0; d < kPadControls; d++)
+        if (d != (int)c && same_input(b.source[d])) b.source[d] = was;
     b.source[(int)c] = s;
 }
 
