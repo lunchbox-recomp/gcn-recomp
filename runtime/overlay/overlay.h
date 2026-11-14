@@ -70,9 +70,11 @@
 //
 // GCN_OVERLAY_AT=<frame>:<host frames> opens it once <frame> frames have been presented and
 // closes it after it's been drawn over the held frame <host frames> times, for a run nobody is
-// at. With --dump-output the first draw over the held frame that shows the menu goes to
-// overlay_NNNNN.png in the dump directory too, drawn again into a target of the window's size as
-// output dumps are.
+// at. GCN_OVERLAY_PAGE=<n> opens it on page n, 0 for Display, 1 for Controllers and 2 on for the
+// pages added. With --dump-output the first draw over the held frame that looks as the two
+// before it did goes to overlay_NNNNN.png in the dump directory too, or overlay_page<n>.png with
+// GCN_OVERLAY_PAGE, drawn again into a target of the window's size as output dumps are, and over
+// plain grey instead of the held frame with GCN_OVERLAY_PLAIN set.
 #pragma once
 #include "hw/pad.h"
 #include "pad_bindings.h"

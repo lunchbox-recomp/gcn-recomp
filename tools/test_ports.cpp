@@ -55,6 +55,9 @@
 //        test_ports --quit <empty work dir>   the same with a quit
 //        test_ports --restart-replay <empty work dir>   the menu, then a restart asked for,
 //                                                       in a replay past its log's end
+//        test_ports --pages <empty work dir>   each page of the menu dumped over a hidden GL
+//                                              window, with its frame time; exit 77 with no
+//                                              GL window
 // Files are written into the work dir and left there.
 //
 // SDL's virtual joysticks stand in for controllers. Before anything starts SDL, main() turns
@@ -119,6 +122,14 @@ bool g_fast_disc = true;
 uint64_t audio_frames_out() { return 0; }
 void exi_card_held(uint64_t) {}
 void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display page's picture
+// The menu's dumps (--pages). No frame is kept here, so a dump has only GCN_OVERLAY_PLAIN's grey
+// to draw the menu over.
+namespace gx {
+const char* g_dump_dir;
+bool g_dump_output;
+bool render_present_last() { return false; }
+void render_set_output_fbo(unsigned) {}
+}
 #endif
 
 #include "test_ports_support.cpp"
@@ -135,6 +146,7 @@ void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display
 #include "test_ports_controllers.cpp"     // the Controllers page and its notices
 #include "test_ports_bindings_page.cpp"   // the Buttons view and its press-to-bind
 #include "test_ports_menu_window.cpp"     // the menu over a window, then the Controllers checks
+#include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
 #include "test_ports_exit.cpp"    // how a run ends: RunEnd, GCN_QUIT_AT and the modes that end it
@@ -258,7 +270,10 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--restart")) return run_restart(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--quit")) return run_quit(argv[2]);
     if (argc == 3 && !strcmp(argv[1], "--restart-replay")) return run_restart_replay(argv[2]);
+#ifdef GCN_OVERLAY
+    if (argc == 3 && !strcmp(argv[1], "--pages")) return run_pages(argv[2]);
+#endif
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay|--pages] <work dir>\n");
     return 2;
 }

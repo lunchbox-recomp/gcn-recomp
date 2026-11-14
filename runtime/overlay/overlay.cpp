@@ -6,7 +6,6 @@
 #include "gamepads.h"
 #include "input_log.h"
 #include "input_map.h"
-#include "gx/gl.h"
 #include "gx/render_gl.h"
 #include "pause.h"
 #include "runtime.h"  // host_ns
@@ -22,7 +21,10 @@
 #include "imgui_impl_sdl3.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
 
-bool write_png(const char* path, const uint8_t* rgba, int w, int h);
+// dump.cpp's: the watch on the menu's frame as it settles, and its dump.
+void dump_watch_reset();
+bool dump_settled(const ImDrawData* d);
+void dump_menu(SDL_Window* window, ImDrawData* d, int page, bool plain);
 // overlay_display.cpp's.
 void display_init(const OverlayPicture& picture);
 void display_page(SDL_Window* window);
@@ -72,6 +74,9 @@ bool g_focus;             // the menu takes the keyboard's and the gamepads' foc
 bool g_dumped;            // since it opened, under --dump-output
 long long g_at_frame = -1;  // GCN_OVERLAY_AT's, -1 for none or once it's opened the overlay
 long g_at_left;             // draws over the held frame left before GCN_OVERLAY_AT's closes it
+int g_page = -1;            // GCN_OVERLAY_PAGE's, 0 for Display, -1 for none
+int g_select = -1;          // the page the next draw selects, as the menu opens on g_page
+bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the held frame
 
 // A gamepad held for the menu (hold_pads), and its buttons held as the menu opened, kept from
 // the menu until each is let go, a bit for each SDL_GamepadButton.
@@ -108,6 +113,8 @@ void set_open(bool on) {
     overlay_latch_pads();
     g_focus = true;
     g_dumped = false;
+    g_select = g_page;
+    dump_watch_reset();
 }
 
 // Every gamepad SDL has, held open, so that the menu reads each one and each one's Back opens
@@ -282,37 +289,21 @@ void parse_at(const char* e) {
 // GCN_OVERLAY_AT's frame has been presented, so overlay_draw opens the menu.
 bool at_frame_due() { return g_at_frame >= 0 && gx::present_count() >= g_at_frame; }
 
-// --dump-output: the menu over the held frame in a target of the window's size, read back from
-// there, since a hidden window's own framebuffer has nothing to read.
-void dump() {
-    int w = 0, h = 0;
-    SDL_GetWindowSizeInPixels(g_window, &w, &h);
-    if (w <= 0 || h <= 0) return;
-    GLuint tex, fbo;
-    glGenTextures(1, &tex);
-    glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-    glGenFramebuffers(1, &fbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
-    gx::render_set_output_fbo(fbo);
-    const bool drawn = gx::render_present_last();
-    gx::render_set_output_fbo(0);
-    if (drawn) {
-        glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        std::vector<uint8_t> px((size_t)w * h * 4), rows(px.size());
-        glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
-        const size_t stride = (size_t)w * 4;
-        for (int y = 0; y < h; y++) memcpy(&rows[y * stride], &px[(size_t)(h - 1 - y) * stride], stride);
-        for (size_t i = 3; i < rows.size(); i += 4) rows[i] = 255;
-        char path[512];
-        snprintf(path, sizeof(path), "%s/overlay_%05u.png", gx::g_dump_dir, gx::present_count());
-        write_png(path, rows.data(), w, h);
+// GCN_OVERLAY_PAGE=<n>, a page from 0 (Display) to the last one added.
+void parse_page(const char* e) {
+    const int last = 1 + (int)g_pages.size();
+    char* end = nullptr;
+    const long n = strtol(e, &end, 10);
+    if (end != e && !*end && n >= 0 && n <= last) {
+        g_page = (int)n;
+        return;
     }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glDeleteFramebuffers(1, &fbo);
-    glDeleteTextures(1, &tex);
+    fprintf(stderr, "[overlay] GCN_OVERLAY_PAGE=%s isn't a page from 0 to %d, so it opens where it was\n", e, last);
+}
+
+// A page's tab, selected by the draw after the menu opens where GCN_OVERLAY_PAGE gave it.
+bool page_tab(const char* title, int index) {
+    return ImGui::BeginTabItem(title, nullptr, g_select == index ? ImGuiTabItemFlags_SetSelected : 0);
 }
 
 // The menu asks before it restarts or quits, with Cancel focused, and goes back to the button
@@ -381,21 +372,22 @@ void draw_menu() {
         bindings_page();
     } else {
         if (ImGui::BeginTabBar("pages")) {
-            if (ImGui::BeginTabItem("Display")) {
+            if (page_tab("Display", 0)) {
                 display_page(g_window);
                 ImGui::EndTabItem();
             }
-            if (ImGui::BeginTabItem("Controllers")) {
+            if (page_tab("Controllers", 1)) {
                 controllers_page();
                 ImGui::EndTabItem();
             }
-            for (const AddedPage& page : g_pages) {
-                if (ImGui::BeginTabItem(page.title.c_str())) {
-                    page.draw(page.user);
+            for (size_t i = 0; i < g_pages.size(); i++) {
+                if (page_tab(g_pages[i].title.c_str(), 2 + (int)i)) {
+                    g_pages[i].draw(g_pages[i].user);
                     ImGui::EndTabItem();
                 }
             }
             ImGui::EndTabBar();
+            g_select = -1;
         }
         actions();
     }
@@ -439,6 +431,9 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_title = title;
     display_init(picture);
     if (const char* e = getenv_nonempty("GCN_OVERLAY_AT")) parse_at(e);
+    g_page = -1;
+    if (const char* e = getenv_nonempty("GCN_OVERLAY_PAGE")) parse_page(e);
+    g_plain = getenv_nonempty("GCN_OVERLAY_PLAIN") != nullptr;
     if (!window) return;
     g_gl = SDL_GL_GetCurrentContext() != nullptr;
     notices_init(window, g_gl);
@@ -563,10 +558,14 @@ void overlay_draw() {
     }
     notices_frame();
     if (!g_open || !paused()) return;
-    // A menu's first frame only lays it out and draws nothing, so the dump waits for one that drew.
-    if (!g_dumped && gx::g_dump_output && gx::g_dump_dir && ImGui::GetDrawData()->TotalVtxCount > 0) {
+    // The dump waits for a frame that looks as the ones before it did (dump.cpp).
+    const bool dumps = gx::g_dump_output && gx::g_dump_dir;
+    if (!g_dumped && dumps && dump_settled(ImGui::GetDrawData())) {
         g_dumped = true;
-        dump();
+        dump_menu(g_window, ImGui::GetDrawData(), g_page, g_plain);
     }
-    if (g_at_left > 0 && --g_at_left == 0) set_open(false);
+    if (g_at_left > 0 && --g_at_left == 0) {
+        if (dumps && !g_dumped) fprintf(stderr, "[overlay] the menu closed before its frame settled, so there's no dump\n");
+        set_open(false);
+    }
 }

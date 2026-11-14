@@ -142,6 +142,8 @@ struct Guest {
 // One host frame, the menu's included where there's a window, then the guest on past its next
 // boundary, or held there. pump_events' answer.
 bool host_frame(Guest& g);
+// The guest on past its next boundary, or held there: host_frame's end.
+void guest_on(Guest& g);
 // SDL's gamepad button `button` on `v`, which a virtual gamepad numbers among the buttons it
 // has, in SDL's order.
 void set_button(const Virtual& v, int button, bool down);

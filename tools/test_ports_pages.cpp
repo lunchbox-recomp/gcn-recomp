@@ -1,0 +1,216 @@
+// ---- The menu's review dumps over a hidden window with a GL context, at 16:9 and at 4:3:
+// GCN_OVERLAY_PAGE opens it on each page in turn, and --dump-output writes each page once its
+// frame has settled, over GCN_OVERLAY_PLAIN's grey, since no game frame is kept here. Each
+// page's menu frame time, overlay_draw's on the CPU, is printed. The PNGs are for a person to
+// look at, never goldens. With no GL window, as on a machine with no display, the mode is
+// skipped (exit 77). Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+#include "test_ports_support.h"
+#include <cstdio>
+
+namespace {
+
+constexpr int kSkipped = 77;  // ctest's SKIP_RETURN_CODE for this mode
+constexpr int kHeldFrames = 40;  // GCN_OVERLAY_AT's host frames for each page
+const char* const kTitles[] = {"Display", "Controllers", "Sample"};
+constexpr uint8_t kPlainGrey = 128;  // GCN_OVERLAY_PLAIN's background, each channel
+
+// A page as a game might add one, with the kinds of widget the menu's own pages use and a
+// slider, so the dumps show each kind.
+void sample_page(void*) {
+    static bool on = true;
+    static int pick = 1;
+    static float level = 0.6f;
+    ImGui::SeparatorText("Options");
+    ImGui::Checkbox("A switch", &on);
+    ImGui::RadioButton("First", &pick, 0);
+    ImGui::SameLine();
+    ImGui::RadioButton("Second", &pick, 1);
+    ImGui::SliderFloat("Level", &level, 0.0f, 1.0f);
+    ImGui::TextDisabled("A dimmed note.");
+    ImGui::Button("A button");
+}
+
+// A hidden window of `w` by `h` pixels, whatever the display's pixel density, with a GL context
+// current. Null, having said why, if SDL can't make one.
+SDL_Window* gl_window(int w, int h) {
+    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
+        printf("no video: %s\n", SDL_GetError());
+        return nullptr;
+    }
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, GCN_GL_MAJOR);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, GCN_GL_MINOR);
+    SDL_Window* window =
+        SDL_CreateWindow("test_ports pages", w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    const float density = window ? SDL_GetWindowPixelDensity(window) : 1.0f;
+    if (density > 1.0f) SDL_SetWindowSize(window, (int)(w / density), (int)(h / density));
+    SDL_GLContext ctx = window ? SDL_GL_CreateContext(window) : nullptr;
+    if (!ctx) {
+        printf("no GL window: %s\n", SDL_GetError());
+        if (window) SDL_DestroyWindow(window);
+        return nullptr;
+    }
+    SDL_GL_MakeCurrent(window, ctx);
+#ifndef __APPLE__
+    gl_load_with((GLLoadProc)SDL_GL_GetProcAddress);
+#endif
+    return window;
+}
+
+void gl_window_close(SDL_Window* window) {
+    SDL_GL_DestroyContext(SDL_GL_GetCurrentContext());
+    SDL_DestroyWindow(window);
+}
+
+// What png.cpp wrote at `path`: IHDR's width and height, and the first pixel, which follows the
+// IDAT's length and type, the zlib header, the first stored block's header and the first row's
+// filter byte. All 0 for no file.
+struct Png {
+    int w = 0, h = 0;
+    uint8_t first[3] = {};
+};
+Png png_at(const std::string& path) {
+    Png p;
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) return p;
+    uint8_t b[53] = {};
+    if (fread(b, 1, sizeof(b), f) == sizeof(b)) {
+        p.w = b[16] << 24 | b[17] << 16 | b[18] << 8 | b[19];
+        p.h = b[20] << 24 | b[21] << 16 | b[22] << 8 | b[23];
+        memcpy(p.first, b + 49, 3);
+    }
+    fclose(f);
+    return p;
+}
+
+struct PageRun {
+    int first_drawn = -1;    // the first frame whose menu had anything to draw
+    int dumped_at = -1;      // the frame whose draw wrote the dump
+    bool on_page = false;    // the page asked for was selected as the menu first drew
+    bool let_go = false;     // Display, picked after the dump, was still selected near the end
+    double first_ms = 0;     // overlay_draw on the CPU as it first drew, making its GL objects
+    std::vector<double> ms;  // the same for each frame after that but the dump's
+};
+
+// The menu opened by GCN_OVERLAY_AT=0:<held> with GCN_OVERLAY_PAGE=`page`, over the plain
+// background or not, dumping to `out`, for as long as it stays open and a few frames more.
+// `expect` is the page it should open on.
+PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, const std::string& out, int held = kHeldFrames) {
+    static std::string dump_dir;
+    dump_dir = out;
+    gx::g_dump_dir = dump_dir.c_str();
+    setenv("GCN_OVERLAY_PAGE", page, 1);
+    if (plain) setenv("GCN_OVERLAY_PLAIN", "1", 1);
+    setenv("GCN_OVERLAY_AT", ("0:" + std::to_string(held)).c_str(), 1);
+    overlay_test_reset_pages();
+    overlay_add_page("Sample", sample_page, nullptr);
+    OverlayPicture picture;
+    picture.path = out + "/settings.txt";
+    picture.apply = record_apply;
+    overlay_init(window, "Test title", picture);
+    unsetenv("GCN_OVERLAY_PAGE");
+    unsetenv("GCN_OVERLAY_PLAIN");
+    unsetenv("GCN_OVERLAY_AT");
+    const std::string png = out + "/overlay_page" + std::to_string(expect) + ".png";
+    PageRun run;
+    Guest guest;
+    for (int f = 0; f < held + 5; f++) {
+        pump_events();
+        update_pads(0);
+        const bool was_open = overlay_open() || overlay_menu_due();
+        const auto t0 = std::chrono::steady_clock::now();
+        overlay_draw();
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        SDL_GL_SwapWindow(window);
+        const bool drew = was_open && ImGui::GetDrawData() && ImGui::GetDrawData()->TotalVtxCount > 0;
+        if (drew && run.first_drawn < 0) {
+            run.first_drawn = f;
+            run.first_ms = ms;
+            const TabAt tab = find_tab(kTitles[expect]);
+            run.on_page = tab.bar && tab.bar->SelectedTabId == tab.bar->Tabs[tab.index].ID;
+        }
+        if (run.dumped_at < 0 && exists_path(png)) run.dumped_at = f;
+        else if (drew && f > run.first_drawn) run.ms.push_back(ms);
+        // A frame after the dump Display is picked, as a click would pick it, and the page the menu
+        // opened on doesn't take it back.
+        const TabAt display = find_tab(kTitles[0]);
+        if (display.bar && run.dumped_at >= 0 && f == run.dumped_at + 1)
+            display.bar->NextSelectedTabId = display.bar->Tabs[display.index].ID;
+        if (display.bar && f == held - 2) run.let_go = display.bar->SelectedTabId == display.bar->Tabs[display.index].ID;
+        guest_on(guest);
+    }
+    return run;
+}
+
+double percentile(std::vector<double> v, double p) {
+    if (v.empty()) return 0.0;
+    std::sort(v.begin(), v.end());
+    return v[std::min(v.size() - 1, (size_t)(p * (v.size() - 1) + 0.5))];
+}
+
+int run_pages(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    no_controls(dir);
+    power_on(1);
+    gamepads_init();
+    gx::g_dump_output = true;
+    static const struct {
+        int w, h;
+    } kSizes[] = {{1920, 1080}, {1440, 1080}};
+    for (const auto& size : kSizes) {
+        SDL_Window* window = gl_window(size.w, size.h);
+        if (!window) {
+            printf("test_ports pages: skipped\n");
+            return kSkipped;
+        }
+        int pw = 0, ph = 0;
+        SDL_GetWindowSizeInPixels(window, &pw, &ph);
+        const std::string out = dir + "/" + std::to_string(pw) + "x" + std::to_string(ph);
+        plat_make_dirs(out);
+        for (int page = 0; page < 3; page++) {
+            const std::string said = out + "/page" + std::to_string(page) + "-stderr.txt";
+            PageRun run;
+            capture(said, [&] { run = open_on(window, std::to_string(page).c_str(), page, true, out); });
+            const Png png = png_at(out + "/overlay_page" + std::to_string(page) + ".png");
+            const std::string at = std::to_string(pw) + "x" + std::to_string(ph) + " " + kTitles[page];
+            const std::string opens = "GCN_OVERLAY_PAGE=" + std::to_string(page) + " opens the menu on " + at;
+            check(run.on_page && run.let_go, (opens + ", and another can be picked").c_str());
+            check(png.w == pw && png.h == ph && png.first[0] == kPlainGrey && png.first[1] == kPlainGrey &&
+                      png.first[2] == kPlainGrey,
+                  (at + " is dumped at the window's size over GCN_OVERLAY_PLAIN's grey").c_str());
+            check(run.first_drawn >= 0 && run.dumped_at > run.first_drawn + 1 && lines_with(said, "settled") == 0,
+                  (at + " is dumped once its frame has settled, not at its first drawn frame").c_str());
+            printf("[pages] %s: menu frame first %.3f ms, then p50 %.3f ms, p99 %.3f ms, max %.3f ms over %zu frames\n",
+                   at.c_str(), run.first_ms, percentile(run.ms, 0.5), percentile(run.ms, 0.99), percentile(run.ms, 1.0),
+                   run.ms.size());
+        }
+        if (size.w == kSizes[0].w) {
+            // No game frame is kept here, so without the plain background there's nothing to dump.
+            const std::string bare = out + "/bare";
+            plat_make_dirs(bare);
+            open_on(window, "0", 0, false, bare);
+            check(!exists_path(bare + "/overlay_page0.png"), "with no held frame and no GCN_OVERLAY_PLAIN, nothing is dumped");
+            const std::string brief = out + "/brief", said = dir + "/brief-stderr.txt";
+            plat_make_dirs(brief);
+            capture(said, [&] { open_on(window, "0", 0, true, brief, 2); });
+            check(!exists_path(brief + "/overlay_page0.png") &&
+                      lines_with(said, "[overlay] the menu closed before its frame settled, so there's no dump\n") == 1,
+                  "a menu closed before its frame settles writes no dump and says so once");
+            const std::string bad = dir + "/bad-page-stderr.txt";
+            PageRun past, word;
+            capture(bad, [&] {
+                past = open_on(window, "3", 0, true, out + "/bare");
+                word = open_on(window, "Display", 0, true, out + "/bare");
+            });
+            check(lines_with(bad, "[overlay] GCN_OVERLAY_PAGE=3 isn't a page from 0 to 2, so it opens where it was\n") == 1 &&
+                      lines_with(bad, "[overlay] GCN_OVERLAY_PAGE=Display isn't a page from 0 to 2, so it opens where it was\n") == 1 &&
+                      past.on_page && word.on_page,
+                  "a GCN_OVERLAY_PAGE past the last page or not a number says so once and opens on the first page");
+        }
+        gl_window_close(window);
+    }
+    return finish("pages");
+}
+
+}  // namespace

@@ -785,10 +785,20 @@ frame N after T ms, output frame F`, where F is how far a `GCN_WAV` recording ha
 
 `GCN_OVERLAY_AT=<frame>:<host frames>` opens the menu over the game (`runtime/overlay/overlay.h`)
 once `<frame>` frames have been presented, and closes it after it's been drawn over the held
-frame `<host frames>` times. With `--dump-output` the first draw over the held frame that shows
-the menu goes to `overlay_NNNNN.png` too, which is how a hidden run shows it. Frame and output
-dumps never include it or the notices about controllers, so a run that opened it writes the
-same frame dumps as one that didn't.
+frame `<host frames>` times. With `--dump-output` the first draw over the held frame whose menu
+looks as it did the two draws before goes to `overlay_NNNNN.png` too, which is how a hidden run
+shows it. A menu that closes before then has no dump and says so in an `[overlay]` line.
+`GCN_OVERLAY_PAGE=<n>` opens it on page n (0 is Display, 1 Controllers, then the game's pages
+in the order it added them), and its dump is `overlay_page<n>.png`. A value that isn't one of
+the pages is refused with an `[overlay]` line. `GCN_OVERLAY_PLAIN=1` draws the dump over plain
+grey (128, 128, 128) instead of the held frame, so the PNG holds nothing of the game. Frame and
+output dumps never include it or the notices about controllers, so a run that opened it writes
+the same frame dumps as one that didn't.
+
+`test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`) dumps each page that
+way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in
+`<build>/unit/test_overlay_pages` for a person to look at. It prints each page's menu frame time
+on the CPU too. Where SDL can make no GL window it's skipped.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under

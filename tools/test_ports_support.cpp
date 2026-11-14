@@ -259,6 +259,11 @@ bool host_frame(Guest& g) {
     const bool running = pump_events();
     update_pads(0);
     overlay_menu_frame();
+    guest_on(g);
+    return running;
+}
+
+void guest_on(Guest& g) {
     uint32_t want;
     {
         std::lock_guard<std::mutex> lk(g.m);
@@ -267,7 +272,6 @@ bool host_frame(Guest& g) {
     g.cv.notify_all();
     for (int i = 0; i < 2000 && g.passed < want && !(pause_requested() && paused()); i++)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    return running;
 }
 
 void set_button(const Virtual& v, int button, bool down) {
