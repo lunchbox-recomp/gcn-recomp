@@ -4,11 +4,13 @@
 // Everything here is portable. The device that pulls on it is not, so opening it lives
 // in a backend beside this file -- audio_sdl.cpp on the desktop, audio_aaudio.cpp on
 // Android -- each of which supplies audio_open() and calls audio_render() from whatever
-// callback its API hands it.
+// callback its API hands it. The menu's sounds (ui_sound.h) go in last, after GCN_WAV's
+// capture and before the movie tap.
 #include "runtime.h"
 #include "audio_stats.h"
 #include "hw/dtk.h"
 #include "pause.h"
+#include "ui_sound.h"
 #include <algorithm>
 #include <mutex>
 #include <numeric>
@@ -296,6 +298,9 @@ void audio_render(int16_t* out, int frames) {
         g_dtk_gain = paused() ? 0 : kDtkOne;
     }
     audio_wav_capture(out, frames);
+    // After the capture, so a GCN_WAV recording and the audio hashes taken from one never hold
+    // a menu sound, and before the tap, so a movie does, as the device does.
+    ui_sound_mix(out, frames);
     if (g_audio_tap) g_audio_tap(out, frames);
 }
 
@@ -317,8 +322,8 @@ void audio_wav_capture(const int16_t* s, int frames) {
     wav_header(g_wav, g_wav_bytes);
 }
 
-// GCN_WAV=<path> records exactly what went to the device. Opened here rather than in a
-// backend because it is the mix that is being captured, not the device.
+// GCN_WAV=<path> records exactly what went to the device, less the menu's sounds. Opened here
+// rather than in a backend because it is the mix that is being captured, not the device.
 void audio_open_wav() {
     if (const char* p = getenv_nonempty("GCN_WAV")) { g_wav = fopen(p, "wb"); if (g_wav) wav_header(g_wav, 0); }
 }

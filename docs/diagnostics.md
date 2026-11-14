@@ -804,6 +804,11 @@ While it moves the paused frontend waits 8 ms for a batch, not 16, so it's drawn
 `menu_motion off` and `--dump-output` show and close it at once, and put the ring on its item at
 once, so a dump never catches it moving.
 
+With `menu_sounds on` in `settings.txt`, or Menu sounds checked on the Display page, the menu's
+sounds play. They're made in `runtime/ui_sound.cpp` and mixed after `GCN_WAV`'s capture and
+before the movie tap, so a `GCN_WAV` recording never holds one and a `--record` movie does. Off
+by default.
+
 `test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`, its one runner) dumps
 each page that way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in
 `<build>/unit/test_overlay_pages` for a person to look at, the menu's backdrop dimming the grey.
@@ -1131,7 +1136,8 @@ which pulls the ring couldn't fill.
   `GCN_WAV` recording can be found in the `GCN_AIDWAV` one to within about 1.3 ms. A frame
   that came out in a pull the ring couldn't fill was made from nothing.
 
-`GCN_WAV=<file>` writes what went to the device, the DVD music mixed in, as a 16-bit stereo
+`GCN_WAV=<file>` writes what went to the device, the DVD music mixed in and the menu's sounds
+(`menu_sounds on`, `runtime/ui_sound.h`) left out, as a 16-bit stereo
 WAV file at 48 kHz. Its header is rewritten after every write, so a run that's stopped from
 outside still leaves a file that reads. A playtest session sets it when it's unset.
 

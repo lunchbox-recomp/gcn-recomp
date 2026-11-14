@@ -186,8 +186,8 @@ void overlay_buttons(const std::string& dir) {
           "confirming Quit closes the overlay, and the frontend's loop stops as for a quit, not a restart");
     check(g_applies == applies, "no press on the way to either button changed the picture");
 
-    // Up from Restart game past the scale and Fullscreen is the aspect's row, and the second in
-    // it is 16:9. With the aspect held, as --eye and GCN_THEATER_STEREO hold it, the row is
+    // Up from Restart game past the scale, Menu sounds and Fullscreen is the aspect's row, and the
+    // second in it is 16:9. With the aspect held, as --eye and GCN_THEATER_STEREO hold it, the row is
     // there but can't be picked, so the same keys pick nothing.
     const auto pick_16_9 = [&](bool held) {
         OverlayPicture p;
@@ -198,14 +198,14 @@ void overlay_buttons(const std::string& dir) {
         const int before = g_applies;
         tap(guest, SDL_SCANCODE_F1, SDLK_F1);
         bottom_row(guest);
-        for (int i = 0; i < 3; i++) tap(guest, SDL_SCANCODE_UP, SDLK_UP);
+        for (int i = 0; i < 4; i++) tap(guest, SDL_SCANCODE_UP, SDLK_UP);
         for (int i = 0; i < 5; i++) tap(guest, SDL_SCANCODE_LEFT, SDLK_LEFT);
         tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
         tap(guest, SDL_SCANCODE_SPACE, SDLK_SPACE);
         tap(guest, SDL_SCANCODE_F1, SDLK_F1);
         return g_applies == before + 1 && g_applied.aspect == "16:9";
     };
-    check(pick_16_9(false), "up from Restart game past the scale and Fullscreen, the keys pick the Display page's 16:9");
+    check(pick_16_9(false), "up from Restart game past the scale, Menu sounds and Fullscreen, the keys pick the Display page's 16:9");
     check(!pick_16_9(true), "with the aspect held, the same keys pick nothing");
 
     // The frontend's apply_picture, as the page calls it: the aspect and the scale reach the

@@ -172,26 +172,26 @@ void byte_order_mark() {
     Settings w;
     w.aspect = "21:9";
     w.scale = 3;
-    check(settings_save(p, w) && read_file(p) == mark + "aspect 21:9\nscale 3\nfullscreen 0\ndisc fast\n",
+    check(settings_save(p, w) && read_file(p) == mark + "aspect 21:9\nscale 3\nfullscreen 0\ndisc fast\nmenu_sounds off\n",
           "and a save rewrites that line and writes the mark back, rather than adding a second line");
 
     // Without the mark an editor shows a UTF-8 comment as mojibake.
     const std::string q = path_of("bom_comment.txt");
     write_file(q, mark + "# caf\xC3\xA9\naspect 16:9\n");
     check(settings_save(q, w) &&
-              read_file(q) == mark + "# caf\xC3\xA9\naspect 21:9\nfullscreen 0\nscale 3\ndisc fast\n",
+              read_file(q) == mark + "# caf\xC3\xA9\naspect 21:9\nfullscreen 0\nscale 3\ndisc fast\nmenu_sounds off\n",
           "a save keeps the mark and the UTF-8 comment under it byte for byte");
 
     // A file of the mark alone has no lines, and a save still writes the mark first.
     const std::string r = path_of("bom_only.txt");
     write_file(r, mark);
-    check(settings_save(r, w) && read_file(r) == mark + "aspect 21:9\nfullscreen 0\nscale 3\ndisc fast\n",
-          "a save over a file of the mark alone writes the mark and then the four keys");
+    check(settings_save(r, w) && read_file(r) == mark + "aspect 21:9\nfullscreen 0\nscale 3\ndisc fast\nmenu_sounds off\n",
+          "a save over a file of the mark alone writes the mark and then the five keys");
 
     // A file without the mark doesn't get one.
     const std::string t = path_of("no_bom.txt");
     write_file(t, "aspect 16:9\n");
-    check(settings_save(t, w) && read_file(t) == "aspect 21:9\nfullscreen 0\nscale 3\ndisc fast\n",
+    check(settings_save(t, w) && read_file(t) == "aspect 21:9\nfullscreen 0\nscale 3\ndisc fast\nmenu_sounds off\n",
           "and a file without the mark doesn't get one");
 }
 
@@ -275,7 +275,7 @@ void discs() {
     write_file(q, "disc fast\nvsync on\n");
     Settings w;
     w.fast_disc = false;
-    check(settings_save(q, w) && read_file(q) == "disc console\nvsync on\naspect 4:3\nfullscreen 0\nscale 2\n",
+    check(settings_save(q, w) && read_file(q) == "disc console\nvsync on\naspect 4:3\nfullscreen 0\nscale 2\nmenu_sounds off\n",
           "a save rewrites the disc line in place");
     check(!settings_load(q).fast_disc, "and a load gives back disc console");
 }
@@ -296,8 +296,30 @@ void menu_motion() {
     const std::string q = path_of("motion_save.txt");
     write_file(q, "menu_motion off\n");
     Settings w;
-    check(settings_save(q, w) && read_file(q) == "menu_motion off\naspect 4:3\nfullscreen 0\nscale 2\ndisc fast\n",
+    check(settings_save(q, w) && read_file(q) == "menu_motion off\naspect 4:3\nfullscreen 0\nscale 2\ndisc fast\nmenu_sounds off\n",
           "a save leaves the menu_motion line as it was and adds none");
+}
+
+void menu_sounds() {
+    check(!Settings{}.menu_sounds, "the menu makes no sound by default");
+    const std::string p = path_of("sounds.txt");
+    write_file(p, "menu_sounds on\n");
+    check(settings_load(p).menu_sounds, "menu_sounds on is read from the file");
+    // Off comes after on here, so a bad value read as on would show.
+    write_file(p, "menu_sounds on\nmenu_sounds off\nmenu_sounds On\nmenu_sounds 1\n");
+    Settings s;
+    const std::string said = stderr_during([&] { s = settings_load(p); });
+    check(!s.menu_sounds && said.find(p + ":3: menu_sounds takes on or off, not \"On\", so the line is skipped\n") !=
+                                std::string::npos &&
+              said.find(p + ":4: menu_sounds takes on or off, not \"1\", so the line is skipped\n") != std::string::npos,
+          "a bad menu_sounds leaves the one before it and is named on stderr by its line");
+    const std::string q = path_of("sounds_save.txt");
+    write_file(q, "menu_sounds off\nvsync on\n");
+    Settings w;
+    w.menu_sounds = true;
+    check(settings_save(q, w) && read_file(q) == "menu_sounds on\nvsync on\naspect 4:3\nfullscreen 0\nscale 2\ndisc fast\n",
+          "a save rewrites the menu_sounds line in place");
+    check(settings_load(q).menu_sounds, "and a load gives back menu_sounds on");
 }
 
 void bad_values() {
@@ -338,7 +360,7 @@ void save_keeps_lines() {
               "scale 3\r\n"
               "scale 3\n"
               "fullscreen 1\n"
-              "disc fast\n",
+              "disc fast\nmenu_sounds off\n",
           "it rewrites each owned line in place, keeps every other line and adds the missing keys");
     const Settings back = settings_load(p);
     check(back.aspect == "16:9" && back.fullscreen && back.scale == 3 && back.fast_disc, "a load gives back what was saved");
@@ -388,20 +410,20 @@ void save_adds_keys_in_the_line_ending() {
     Settings s;
     s.aspect = "16:9";
     check(settings_save(p, s) &&
-              read_file(p) == "vsync on\r\naspect 16:9\r\nfullscreen 0\r\nscale 2\r\ndisc fast\r\n",
+              read_file(p) == "vsync on\r\naspect 16:9\r\nfullscreen 0\r\nscale 2\r\ndisc fast\r\nmenu_sounds off\r\n",
           "a key added to a file whose last line ends in CR LF ends in CR LF too");
 
     const std::string mark = "\xEF\xBB\xBF";
     const std::string q = path_of("bom_crlf.txt");
     write_file(q, mark + "aspect 16:9\r\nscale 3\r\n");
     s.scale = 3;
-    check(settings_save(q, s) && read_file(q) == mark + "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\ndisc fast\r\n",
+    check(settings_save(q, s) && read_file(q) == mark + "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\ndisc fast\r\nmenu_sounds off\r\n",
           "and so is one added to a file with the mark");
 
     // Windows Notepad ends no file with a newline, so its last line has no CR.
     const std::string r = path_of("crlf_open.txt");
     write_file(r, "aspect 16:9\r\nscale 3");
-    check(settings_save(r, s) && read_file(r) == "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\ndisc fast\r\n",
+    check(settings_save(r, s) && read_file(r) == "aspect 16:9\r\nscale 3\r\nfullscreen 0\r\ndisc fast\r\nmenu_sounds off\r\n",
           "a CR LF file with no newline after its last line gets CR LF there and on the keys added");
 }
 
@@ -409,7 +431,7 @@ void save_after_unterminated_line() {
     const std::string p = path_of("unterminated.txt");
     write_file(p, "vsync on");
     check(settings_save(p, Settings{}) &&
-              read_file(p) == "vsync on\naspect 4:3\nfullscreen 0\nscale 2\ndisc fast\n",
+              read_file(p) == "vsync on\naspect 4:3\nfullscreen 0\nscale 2\ndisc fast\nmenu_sounds off\n",
           "a key added after a last line with no newline goes on a line of its own");
 }
 
@@ -417,8 +439,8 @@ void save_creates() {
     const std::string p = path_of("new.txt");
     Settings s;
     s.scale = 4;
-    check(settings_save(p, s) && read_file(p) == "aspect 4:3\nfullscreen 0\nscale 4\ndisc fast\n",
-          "a save with no file writes the four owned keys");
+    check(settings_save(p, s) && read_file(p) == "aspect 4:3\nfullscreen 0\nscale 4\ndisc fast\nmenu_sounds off\n",
+          "a save with no file writes the five owned keys");
 }
 
 void failed_save_no_temp() {
@@ -518,6 +540,7 @@ int main(int argc, char** argv) {
     aspects_match_the_flag();
     discs();
     menu_motion();
+    menu_sounds();
     bad_values();
     save_keeps_lines();
     save_refuses_bad_values();

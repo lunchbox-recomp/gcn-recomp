@@ -1,6 +1,8 @@
-// The overlay's Display page: the aspect, fullscreen and the internal scale (overlay.h).
+// The overlay's Display page: the aspect, fullscreen, the menu's sounds and the internal scale
+// (overlay.h).
 #include "overlay/overlay.h"
 #include "gx/render_gl.h"
+#include "ui_sound.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <cstdio>
@@ -10,15 +12,22 @@ namespace {
 OverlayPicture g_picture;
 }
 
-void display_init(const OverlayPicture& picture) { g_picture = picture; }
+void display_init(const OverlayPicture& picture) {
+    g_picture = picture;
+    ui_sound_enable(picture.now.menu_sounds);
+}
 
 void overlay_display_change(const Settings& next) {
     Settings& now = g_picture.now;
     Settings& saved = g_picture.saved;
-    if (next.aspect == now.aspect && next.fullscreen == now.fullscreen && next.scale == now.scale) return;
+    if (next.aspect == now.aspect && next.fullscreen == now.fullscreen && next.scale == now.scale &&
+        next.menu_sounds == now.menu_sounds)
+        return;
     if (next.aspect != now.aspect) saved.aspect = next.aspect;
     if (next.fullscreen != now.fullscreen) saved.fullscreen = next.fullscreen;
     if (next.scale != now.scale) saved.scale = next.scale;
+    if (next.menu_sounds != now.menu_sounds) saved.menu_sounds = next.menu_sounds;
+    ui_sound_enable(next.menu_sounds);
     now = next;
     if (g_picture.apply) g_picture.apply(now);
     settings_save(g_picture.path, saved);
@@ -41,6 +50,7 @@ void display_page(SDL_Window* window) {
     if (g_picture.aspect_held) ImGui::TextDisabled("A headset's view stays 4:3.");
     ImGui::Separator();
     ImGui::Checkbox("Fullscreen", &next.fullscreen);
+    ImGui::Checkbox("Menu sounds", &next.menu_sounds);
     ImGui::SeparatorText("Scale");
     for (int s = 1; s <= gx::kMaxInternalScale; s++) {
         char label[8];

@@ -1,8 +1,10 @@
 // ---- The overlay (overlay/overlay.h) with no window, so no menu is drawn: GCN_OVERLAY_AT,
 // what opens and closes it on each kind of gamepad and the keyboard, what the game gets while
-// it's open and as it closes, and the Display page's saves. Read in by tools/test_ports.cpp
+// it's open and as it closes, and the Display page's saves and its Menu sounds turning the
+// sounds on and off (ui_sound.h). Read in by tools/test_ports.cpp
 // after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
+#include "ui_sound.h"
 
 namespace {
 
@@ -348,20 +350,31 @@ void overlay(const std::string& dir) {
     Settings next = picture.now;
     next.aspect = "16:9";
     overlay_display_change(next);
-    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 0\n\nscale 2\ndisc console\n# the end\n" &&
+    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 0\n\nscale 2\ndisc console\n# the end\nmenu_sounds off\n" &&
               g_applied.aspect == "16:9" && g_applied.scale == 3,
           "the Display page's aspect applies at once and is saved, every other line as it was and the flag's scale left out");
     next.fullscreen = true;
     overlay_display_change(next);
-    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 1\n\nscale 2\ndisc console\n# the end\n" &&
+    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 1\n\nscale 2\ndisc console\n# the end\nmenu_sounds off\n" &&
               g_applied.fullscreen,
           "its fullscreen applies at once and is saved, every other line as it was");
     next.scale = 5;
     overlay_display_change(next);
     overlay_display_change(next);
-    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 1\n\nscale 5\ndisc console\n# the end\n" &&
+    check(read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 1\n\nscale 5\ndisc console\n# the end\nmenu_sounds off\n" &&
               g_applied.scale == 5 && g_applies == 3,
           "its scale applies at once and is saved, every other line as it was, and a picture with no change does nothing");
+    check(!ui_sound_enabled(), "the menu's sounds are off, as settings.txt left them");
+    next.menu_sounds = true;
+    overlay_display_change(next);
+    const bool sounds_on = ui_sound_enabled();
+    check(sounds_on && read_file(path) == "# The picture\naspect 16:9\nvsync on\nfullscreen 1\n\nscale 5\ndisc console\n# "
+                                          "the end\nmenu_sounds on\n",
+          "its Menu sounds turns them on at once and is saved, every other line as it was");
+    next.menu_sounds = false;
+    overlay_display_change(next);
+    check(!ui_sound_enabled() && read_file(path).find("menu_sounds off\n") != std::string::npos,
+          "and turned off again, they're off and saved so");
     unplug({&pad});
     gamepads_shutdown();
 }
