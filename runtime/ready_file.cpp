@@ -51,6 +51,8 @@ void ready_mark_at(const char* word, long long ms) {
     Word& w = g_words[word];
     // A path that never works costs a try a second, not two a frame.
     if (w.in || ms < w.next) return;
+    // frame waits for window, so a window that failed once doesn't come after it.
+    if (std::string(word) == "frame" && !g_words["window"].in) return;
     bool first = true;
     for (const auto& [name, other] : g_words) first = first && !other.in;
     // The run's first line replaces what an earlier run left.

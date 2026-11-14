@@ -150,6 +150,8 @@ int main(int argc, char** argv) {
     }
     ready_mark_at("window", ago + 1999);
     check(slurp(e) == "window 1\nframe 2\n", "a word whose write failed isn't tried again for a second");
+    ready_mark_at("frame", ago + 1999);
+    check(slurp(e) == "window 1\nframe 2\n", "and frame waits until window is in, so the lines stay in order");
     ready_mark("window");
     ready_mark("window");
     ready_relaunching();

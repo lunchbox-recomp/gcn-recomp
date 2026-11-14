@@ -828,7 +828,8 @@ launcher can keep its own window up until the game's has something on it
 `frame <ms>` at the first frame the game presents, each once, in milliseconds since the
 process started. With no boot splash (below), both go in at the game's first frame. A
 `--hidden` run shows nothing and still writes `window`, with `frame`, so a launcher that
-waits for both isn't left waiting.
+waits for both isn't left waiting. `frame` waits until `window` is in, so a `window` whose
+write failed once still comes first.
 
 That's one pair a launch. A console reset starts the game again with `GCN_READY_FILE` taken
 out of its environment, so it writes no second pair for a launcher still watching. A reset

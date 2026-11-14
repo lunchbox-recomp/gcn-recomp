@@ -8,9 +8,9 @@
 // A --hidden run shows nothing, and still writes window, with frame, at the game's first frame,
 // so a launcher that waits for both isn't left waiting.
 //
-// Each line goes in once. The file is rewritten through PATH.tmp, which then replaces it, so a
-// reader sees it whole, with every line complete; a watcher of the file itself sees it renamed
-// over, so watch its directory or open it again at each change. Nothing waits for the disk
+// Each line goes in once, frame never before window. The file is rewritten through PATH.tmp,
+// which then replaces it, so a reader sees it whole, with every line complete; a watcher of the
+// file itself sees it renamed over, so watch its directory or open it again at each change. Nothing waits for the disk
 // (plat_replace_whole_file), so a line costs the main thread no sync. A launcher removes the
 // path before it starts the game: an earlier run's file stays there until this run's first
 // line, often hundreds of milliseconds in. That first line replaces whatever the file held,
