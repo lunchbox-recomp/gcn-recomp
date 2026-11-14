@@ -10,6 +10,7 @@
 #include "ui_sound.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -49,6 +50,9 @@ bool g_on_page;             // its last frame showed a page, not a question or a
 // pixels at the theme's scale then (panel_place). A view or a question is left out, so backing
 // out of one puts the page back in a panel its pages' size.
 float g_tallest, g_tallest_scale;
+float g_most;   // the panel's greatest height at this frame, in pixels (panel_place)
+float g_below;  // the height laid out under the page or the view at the last frame: the gap and the footer
+float g_view = -1.0f;  // the Buttons view's height at the frame laid out last, -1 with no view then
 
 // The page showing, drawn by its own callback.
 void page() {
@@ -84,8 +88,39 @@ void panel_place() {
     const ImVec2 v = vp->Size;
     const float w = std::max(1.0f, std::min({t.panel_width * v.x, t.panel_max_width * s, v.x - 2.0f * t.margin * s}));
     const float h = std::max(1.0f, std::min(t.panel_max_height * v.y, v.y - 2.0f * t.margin * s));
+    g_most = h;
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSizeConstraints(ImVec2(w, std::min(g_tallest, h)), ImVec2(w, h));
+}
+
+// The Buttons view in place of a page, in a region of its own that scrolls: as tall as the view
+// was at the last frame, or at its first the most it can be, up to the room the panel at its
+// tallest leaves under the header once the footer has its own (g_below), so the footer stays on
+// the panel's bottom, past the region. That first frame sizes the panel at the next as a page's
+// does; a region Dear ImGui sized to its contents would show nothing at its first. Dear ImGui
+// scrolls the region to keep the item with the focus in it, however the focus got there, as it
+// scrolls the panel itself for a page taller than the panel. The region is the panel's width,
+// with its padding across and its items' width, so the view is laid out across as it would be on
+// the panel, its scroll bar where the panel's would be, and widens nothing the panel could
+// scroll across to.
+void view(float last) {
+    ImGuiWindow* w = ImGui::GetCurrentWindow();
+    const ImVec2 at = ImGui::GetCursorScreenPos();
+    const ImVec2 pad = ImGui::GetStyle().WindowPadding;
+    const float room = std::floor(g_most - 2.0f * pad.y - (at.y - w->DC.CursorStartPos.y) - g_below);
+    const float tall = last < 0.0f ? room : std::min(room, std::ceil(last));
+    ImGui::SetCursorScreenPos(ImVec2(w->Pos.x, at.y));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(pad.x, 0.0f));
+    ImGui::BeginChild("view", ImVec2(w->Size.x, std::max(tall, 1.0f)),
+                      ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
+    ImGui::PopStyleVar();
+    ImGui::PushItemWidth(w->DC.ItemWidth);  // the panel's, which a region its width wouldn't take
+    bindings_page();
+    ImGui::PopItemWidth();
+    const ImGuiWindow* region = ImGui::GetCurrentWindow();
+    g_view = region->DC.CursorMaxPos.y - region->DC.CursorStartPos.y;
+    ImGui::EndChild();
+    w->DC.CursorMaxPos.x = std::min(w->DC.CursorMaxPos.x, w->WorkRect.Max.x);
 }
 
 void draw_menu(uint64_t now) {
@@ -107,6 +142,13 @@ void draw_menu(uint64_t now) {
     // Dear ImGui sizes the panel by what the frame before laid out in it, so its height is a
     // page's only if that frame showed one.
     if (g_on_page) g_tallest = std::max(g_tallest, ImGui::GetWindowHeight());
+    // The panel keeps the item with the focus in the Buttons view's region (view) as its own, as
+    // it would with the view on it. Once the region goes, Dear ImGui hands the focus back to the
+    // panel's, which would otherwise be the button that put the view up, and a close's fade would
+    // move it there.
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    ImGuiWindow* panel = ImGui::GetCurrentWindow();
+    if (g.NavWindow && g.NavWindow->ParentWindow == panel) panel->NavLastIds[ImGuiNavLayer_Main] = g.NavId;
     g_panel_list = ImGui::GetWindowDrawList();
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
     const bool asking = overlay_asking() != OverlayAsk::none;
@@ -114,20 +156,24 @@ void draw_menu(uint64_t now) {
     tabs_header(g_title, g_titles, g_on_page, now);
     tabs_no_contents();
     section_gap();
+    const float view_was = g_view;
+    g_view = -1.0f;
     if (asking) {
         footer_card();
     } else if (overlay_controllers_asking() >= 0) {
         controllers_page();  // the press-A order alone, with nothing to focus
     } else if (overlay_bindings_shown()) {
-        bindings_page();
+        view(view_was);
     } else {
         tabs_focus(overlay_open());
         tabs_contents_begin();
         page();
         tabs_contents_end();
     }
+    const float above = ImGui::GetCurrentWindow()->DC.CursorMaxPos.y;
     section_gap();
     footer(g_on_page);
+    g_below = ImGui::GetCurrentWindow()->DC.CursorMaxPos.y - above;
     ring_draw(now);
     ImGui::End();
 }

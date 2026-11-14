@@ -98,6 +98,8 @@
 // every other key and gamepad event while it waits is its own. It ends saying what changed. The
 // view also sets the dead zones and the trigger click, saved as each slider is let go, and has
 // Test rumble (1 s), Reset to default and Done. B or Escape goes back to the Controllers page.
+// The view scrolls in a region of its own between the header and the footer, which stay on the
+// panel, and the item with the focus is scrolled into the region however the focus got there.
 // The view opens with its first gamepad focused, and the page comes back with Change buttons
 // focused, after the menu closed from the view too. The menu's own A and B stay the faces labeled so, whatever the game's binding says.
 //
@@ -248,6 +250,9 @@ struct OverlayGlyph;
 const std::vector<OverlayGlyph>& overlay_bindings_test_glyphs();
 // How tall the last of them was drawn.
 float overlay_bindings_test_glyph_height();
+// Where the view's last row, the C-stick's up and down, last drew its button, in the window's
+// pixels: its left, top, right and bottom.
+void overlay_bindings_test_last_row(float rect[4]);
 #endif
 #else
 inline void overlay_pads_notice(const std::string&, const std::string&) {}

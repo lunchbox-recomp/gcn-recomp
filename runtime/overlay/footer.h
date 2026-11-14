@@ -22,4 +22,6 @@ void footer_end_ask();
 const std::string& footer_test_hints();
 // The glyphs those hints drew, in order: a Q E or L R hint draws two, and the wait none.
 const std::vector<OverlayGlyph>& footer_test_glyphs();
+// The row those hints were drawn in, in the window's pixels: its left, top, right and bottom.
+void footer_test_hints_rect(float rect[4]);
 #endif

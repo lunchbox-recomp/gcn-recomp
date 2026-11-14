@@ -4,6 +4,7 @@
 // frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/footer.h"  // the hints the footer drew
+#include "overlay/tabs.h"    // where the header laid out its first pill
 
 namespace {
 
@@ -20,6 +21,91 @@ std::string first_pad() {
             return (d.port >= 0 ? "Player " + std::to_string(d.port + 1) + ": " + d.name : d.name + " (no player)") +
                    "##" + std::to_string(d.id);
     return "";
+}
+
+// Whether the footer's hints and the item with the focus are whole on the menu's panel, as its
+// last frame laid them out, the item inside the region it's in too, which the Buttons view
+// scrolls. False with no item laid out with the focus.
+bool on_panel() {
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
+    if (!panel || !g.NavWindow || !g.NavIdIsAlive) return false;
+    float f[4];
+    footer_test_hints_rect(f);
+    const ImRect item = ImGui::WindowRectRelToAbs(g.NavWindow, g.NavWindow->NavRectRel[g.NavLayer]);
+    return panel->InnerClipRect.Contains(ImRect(f[0], f[1], f[2], f[3])) && panel->InnerClipRect.Contains(item) &&
+           g.NavWindow->InnerClipRect.Contains(item);
+}
+
+// The focus moved by `move` until it stays on one item, at most 60 times, on_panel after each.
+// How many moves went to another item, or -1 for one after which it wasn't on_panel.
+int walk(const std::function<void()>& move) {
+    for (int n = 0; n < 60; n++) {
+        const ImGuiID was = ImGui::GetCurrentContext()->NavId;
+        move();
+        if (!on_panel()) return -1;
+        if (ImGui::GetCurrentContext()->NavId == was) return n;
+    }
+    return -1;
+}
+
+// Down the Buttons view from its first gamepad to Done and back up, a press at a time, on the
+// D-pad and on the keyboard's arrows, the focus and the footer's hints on the panel at each
+// (on_panel). The view has no wrap: down at Done, or up at the top, stays there. The left stick
+// moves no focus, as Dear ImGui has it: it scrolls the window with the focus, here the region the
+// view's rows scroll in, under a header and a footer that stay where they are, and the D-pad's
+// next press puts the focus on a row in view. Then a press-to-bind on the last row, put up and
+// cancelled from the top, takes the focus back to that row, scrolled into view.
+void view_scrolls(Guest& guest, const Virtual& pad) {
+    const struct {
+        const char* by;
+        std::function<void()> down, up;
+    } kWays[] = {
+        {"the D-pad", [&] { tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN); },
+         [&] { tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP); }},
+        {"the arrows", [&] { tap(guest, SDL_SCANCODE_DOWN, SDLK_DOWN); }, [&] { tap(guest, SDL_SCANCODE_UP, SDLK_UP); }},
+    };
+    for (const auto& way : kWays) {
+        const int down = walk(way.down);
+        const bool done = focused("Done");
+        const int up = walk(way.up);
+        check(down > 20 && done && up > 20 && focused(first_pad()),
+              (std::string("down the Buttons view to Done and back up on ") + way.by +
+               ", the item with the focus and the footer's hints stay whole on the panel at each move")
+                  .c_str());
+    }
+    // The stick held down until the region the focus is in has scrolled to its foot. Dear ImGui
+    // scrolls it by the frame's time, so it's held for as many frames as that takes.
+    const ImGuiWindow* region = ImGui::GetCurrentContext()->NavWindow;
+    float x = 0.0f, header = 0.0f, still = -1.0f;
+    tabs_test_pill(0, x, header);
+    set_axis(pad, SDL_GAMEPAD_AXIS_LEFTY, 32767);
+    for (int f = 0; f < 2000 && region && (region->ScrollMax.y <= 0.0f || region->Scroll.y < region->ScrollMax.y); f++)
+        host_frame(guest);
+    set_axis(pad, SDL_GAMEPAD_AXIS_LEFTY, 0);
+    host_frame(guest);
+    float hints[4];
+    footer_test_hints_rect(hints);
+    const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
+    const bool scrolled = region && region->Scroll.y > 0.0f && focused(first_pad()) && panel &&
+                          panel->InnerClipRect.Contains(ImRect(hints[0], hints[1], hints[2], hints[3]));
+    tabs_test_pill(0, x, still);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    check(scrolled && still == header && on_panel() && !focused(first_pad()),
+          "the left stick scrolls the Buttons view's rows under a still header and footer, and the D-pad then puts "
+          "the focus on a row in view");
+    for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    overlay_bindings_listen(PadControl::CStickY);
+    host_frame(guest);
+    tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+    host_frame(guest);
+    float last[4];
+    overlay_bindings_test_last_row(last);
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    const ImRect item = g.NavWindow ? ImGui::WindowRectRelToAbs(g.NavWindow, g.NavWindow->NavRectRel[g.NavLayer]) : ImRect();
+    check(on_panel() && item.Min.y == last[1] && item.Max.y == last[3],
+          "press-to-bind on the last row cancelled from the top of the view takes the focus to that row, in view");
+    for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
 }
 
 void bindings_page_checks(Guest& guest, const std::string& dir) {
@@ -40,6 +126,7 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     const std::string view_hints = footer_test_hints();
     host_frame(guest);
     check(focused(first_pad()), "the view opens with its first gamepad focused");
+    view_scrolls(guest, pad);
 
     // Down past the two gamepads at the view's top is A's row. The A that starts press-to-bind
     // starts it as the A goes down, so it's still down as it starts, and passed over.
