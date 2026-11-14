@@ -386,6 +386,10 @@ void file_text() {
           "a block taken out leaves the gamepad with what it's given instead");
     const PortDevice serialed{xbox().guid, "1234", 0, 0};
     check(bindings_find(back, serialed, m) == m, "the same GUID with another serial is another gamepad");
+    const PortDevice other_ids{xbox().guid, "", 0x1234, 0x5678};
+    check(bindings_same_block(xbox(), other_ids) && !bindings_same_block(xbox(), serialed) &&
+              !bindings_same_block(xbox(), pro),
+          "one block is the same GUID and serial, whatever the USB IDs");
 
     // Each of the words controls.txt's tokenizer stops at, in a serial and in a name.
     bool marks = true;

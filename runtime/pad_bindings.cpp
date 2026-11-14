@@ -144,7 +144,7 @@ bool parse_control(const std::vector<std::string>& w, SavedBinding& b, std::stri
     return true;
 }
 
-bool same_gamepad(const SavedBinding& b, const PortDevice& id) { return b.id.guid == id.guid && b.id.serial == id.serial; }
+bool same_gamepad(const SavedBinding& b, const PortDevice& id) { return bindings_same_block(b.id, id); }
 
 }  // namespace
 
@@ -273,6 +273,8 @@ BindHeard bind_hear(BindListen& l, const PadReading& r, uint64_t now, PadSource&
 }
 
 // ---- saves/pads.txt
+
+bool bindings_same_block(const PortDevice& a, const PortDevice& b) { return a.guid == b.guid && a.serial == b.serial; }
 
 PadBinding bindings_find(const SavedBindings& saved, const PortDevice& id, const PadBinding& fallback) {
     const auto it = std::find_if(saved.begin(), saved.end(), [&](const SavedBinding& b) { return same_gamepad(b, id); });

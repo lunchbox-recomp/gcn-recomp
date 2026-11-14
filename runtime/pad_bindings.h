@@ -155,6 +155,8 @@ using SavedBindings = std::vector<SavedBinding>;
 // and PadBinding's own value for each setting it leaves out, or `fallback` itself if none is
 // saved. A line gives a dead zone only to a stick or a trigger and a threshold only to L or R.
 PadBinding bindings_find(const SavedBindings& saved, const PortDevice& id, const PadBinding& fallback);
+// Whether `a` and `b` share a block: the same GUID and serial, whatever their USB IDs.
+bool bindings_same_block(const PortDevice& a, const PortDevice& b);
 // `id`'s block replaced by `b`, every control given, or put last if it had none.
 void bindings_put(SavedBindings& saved, const PortDevice& id, const std::string& name, const PadBinding& b);
 // `id`'s block taken out. True if it had one.

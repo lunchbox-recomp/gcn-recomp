@@ -493,14 +493,11 @@ template <typename F> bool with_gamepad(uint32_t device, F f) {
     return true;
 }
 
-// Whether pads.txt can't tell the two apart.
-bool same_block(const PortDevice& a, const PortDevice& b) { return a.guid == b.guid && a.serial == b.serial; }
-
 // After a change to the bindings: each gamepad on a port that pads.txt can't tell from `id`
 // takes its binding again, and the file is saved if it may be.
 Bound rebind(const PortDevice& id) {
     for (Port& p : g_ports)
-        if (p.pad && same_block(device_of(p.pad), id)) p.bind = binding_of(p.pad);
+        if (p.pad && bindings_same_block(device_of(p.pad), id)) p.bind = binding_of(p.pad);
     const bool saved = !g_bindings_path.empty() && g_bindings_may_save && bindings_save(g_bindings_path, g_bindings);
     return saved ? Bound::saved : Bound::unsaved;
 }
@@ -547,7 +544,7 @@ std::vector<int> gamepads_sharing(uint32_t device) {
     with_gamepad(device, [&](SDL_Gamepad* g) {
         const PortDevice id = device_of(g);
         for (int i = 0; i < 4; i++)
-            if (g_ports[i].pad && same_block(device_of(g_ports[i].pad), id)) ports.push_back(i);
+            if (g_ports[i].pad && bindings_same_block(device_of(g_ports[i].pad), id)) ports.push_back(i);
     });
     return ports;
 }
