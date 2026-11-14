@@ -27,7 +27,7 @@ bool ui_sound_enabled();
 // are queued or, at the pull, once 8 voices are playing, so no voice is ever cut short.
 void ui_sound_play(UiSound id);
 // From the audio thread: what's queued started, and every voice playing added into `out`,
-// `frames` of stereo, each sum held to 16 bits.
+// `frames` of stereo, what was there and every voice summed in 32 bits, then held to 16 once.
 void ui_sound_mix(int16_t* out, int frames);
 
 // For the checks (tools/test_ui_sound.cpp): how many ids are queued, and how many voices play,

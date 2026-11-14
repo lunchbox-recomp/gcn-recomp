@@ -351,6 +351,20 @@ void queue(const UiSoundTheme& made) {
     check(summed && peak_of(over) == 32767, "it's summed with what's there and held to 16 bits");
     drain();
 
+    ui_sound_play(UiSound::move);
+    ui_sound_play(UiSound::confirm);
+    const std::vector<int16_t> both = mix(kPull, 30000);
+    const std::vector<int16_t> chime = ui_sound_render(made, UiSound::confirm);
+    bool once = true, twice_differs = false;
+    for (int i = 0; i < 2 * kPull; i++) {
+        once = once && both[i] == std::clamp(30000 + tick[i] + chime[i], -32768, 32767);
+        const int twice = std::clamp(std::clamp(30000 + tick[i], -32768, 32767) + chime[i], -32768, 32767);
+        twice_differs = twice_differs || both[i] != twice;
+    }
+    check(once && twice_differs,
+          "two voices and what's there are summed first and held to 16 bits once, not after each voice");
+    drain();
+
     for (int i = 0; i < 20; i++) ui_sound_play(UiSound::move);
     const size_t waiting = ui_sound_queued();
     mix(kPull);
