@@ -230,7 +230,8 @@ void transform() {
 // A notice as a toast (runtime/overlay/toasts.h) at 0, 100, 200, 1820, 1910 and 2000 ms of its
 // life: with motion, 16 px below its place and clear, then rising out-cubic and whole at 200 ms,
 // whole until 1820 ms, fading in-quad to nothing at 2000 ms; without, whole in its place until
-// 2000 ms. A theme's times that aren't finite or are negative take none, and a long one is cut to
+// 2000 ms. One queued over another rises from no further than the gap between them. A theme's
+// times that aren't finite or are negative take none, and a long one is cut to
 // the toast's 2 s. A toast above one that goes moves down into its place over 160 ms, out-cubic,
 // or at once without motion.
 void toasts() {
@@ -253,6 +254,12 @@ void toasts() {
     check(kToastNs == 2000 * kMs && last.alpha > 0.0f && last.alpha < 0.02f &&
               near(toast_look(th, kToastNs - 1, false).alpha, 1.0f),
           "a toast lasts exactly 2 s: a millisecond before it's faint with motion, and a nanosecond before whole without");
+    OverlayTheme low = th;
+    low.toast_rise = 4.0f;
+    check(th.item_spacing == 8.0f && near(toast_look(th, 0, true, true).below, 8.0f) &&
+              near(toast_look(th, 100 * kMs, true, true).below, 1.0f) && near(toast_look(low, 0, true, true).below, 4.0f) &&
+              near(toast_look(th, 0, false, true).below, 0.0f),
+          "one queued over another rises from no further than the 8 px gap, out-cubic, and a lower rise is kept");
 
     OverlayTheme odd = th;
     odd.toast_in_ms = NAN;
