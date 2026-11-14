@@ -4,7 +4,8 @@
 // page's menu frame time, overlay_draw's on the CPU, is printed. The PNGs are for a person to
 // look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
 // a view the menu closed from once the fade is over. With no GL window, as on a machine with no
-// display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+// display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend,
+// with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/fonts.h"  // the atlas the menu and the notices share
 #include <cstdio>
@@ -177,7 +178,6 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
     OverlayPicture picture;
     picture.path = out + "/order-settings.txt";
     gx::g_dump_output = false;  // dumping turns the menu's motion off, and with it the fade
-    gx::g_dump_output = false;  // which turns the menu's motion off, and with it the fade
     overlay_init(window, "Test title", picture);
     Guest guest;
     const auto frame = [&] {
