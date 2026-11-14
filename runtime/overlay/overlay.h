@@ -36,7 +36,8 @@
 // in each press goes by its own pad. X and Y are the faces labeled so too, and a pad whose
 // faces carry no letters has all four by Xbox position.
 //
-// The footer, below every page, has hints on the left, each a key's name and what it does, and
+// The footer, below every page, has hints on the left, each a key's name and what it does, only
+// the way out while the Buttons view listens for a press to bind, and
 // Restart game and Quit game, small, on the right. Each asks first, in a card centred in place of
 // the page with its confirm on the theme's danger, with Cancel focused, and Cancel, B or Escape
 // goes back to the page with nothing done. Quit closes the overlay and quits the way an Escape

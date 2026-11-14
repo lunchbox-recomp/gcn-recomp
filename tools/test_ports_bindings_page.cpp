@@ -3,6 +3,7 @@
 // ports as the game reads them and in pads.txt. Read in by tools/test_ports.cpp after the
 // frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
+#include "overlay/footer.h"  // the hints the footer drew
 
 namespace {
 
@@ -20,6 +21,7 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
     check(overlay_bindings_shown() && overlay_open() && !overlay_bindings_listening(),
           "Change buttons, right of Set player order, puts up the Buttons view");
+    const std::string view_hints = footer_test_hints();
 
     // Down past the two gamepads at the view's top is A's row. The A that starts press-to-bind
     // starts it as the A goes down, so it's still down as it starts, and passed over.
@@ -31,6 +33,9 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     set_button(pad, SDL_GAMEPAD_BUTTON_SOUTH, false);
     host_frame(guest);
     const bool passed_over = on_press && overlay_bindings_listening();
+    const std::string listening_hints = footer_test_hints();
+    check(view_hints == "A Select, B Back, F1 Close" && listening_hints == "Back Cancel, Esc Cancel",
+          "while press-to-bind listens the footer hints only its way out, Back or Escape, and no page turn");
     tap(guest, other, SDL_GAMEPAD_BUTTON_NORTH);
     const bool other_pad = overlay_bindings_listening();
     tap(guest, pad, SDL_GAMEPAD_BUTTON_WEST);

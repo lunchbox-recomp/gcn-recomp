@@ -43,6 +43,14 @@ struct Hint {
 };
 constexpr Hint kOnPage[] = {{"A", "Select"}, {"B", "Back"}, {"L R", "Page"}, {"F1", "Close"}};
 constexpr Hint kInView[] = {{"A", "Select"}, {"B", "Back"}, {"F1", "Close"}};
+// While the Buttons view listens for a press to bind, every button on its gamepad is the
+// binding's, A and B and the shoulders too, so only its way out: Back on any gamepad, Guide too
+// (overlay_bindings.cpp), or Escape.
+constexpr Hint kListening[] = {{"Back", "Cancel"}, {"Esc", "Cancel"}};
+
+#ifdef GCN_OVERLAY_TEST
+std::string g_hints;  // the hints last drawn, each key and what it does, for the tests
+#endif
 
 // The hints from `at`, centred in a row `height` tall, and how wide they are.
 template <size_t N>
@@ -52,6 +60,10 @@ float hints(const Hint (&list)[N], ImVec2 at, float height) {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const float y = at.y + (height - ImGui::GetFontSize()) / 2.0f;
     float x = at.x;
+#ifdef GCN_OVERLAY_TEST
+    g_hints.clear();
+    for (const Hint& h : list) g_hints += std::string(g_hints.empty() ? "" : ", ") + h.key + " " + h.does;
+#endif
     for (const Hint& h : list) {
         if (x > at.x) x += 3.0f * gap;
         dl->AddText(ImVec2(x, y), theme_colour(t.text), h.key);
@@ -72,7 +84,9 @@ void footer(bool on_page) {
     ImGui::PushFont(fonts_role(FontRole::footer), t.footer_size);
     const ImVec2 at = ImGui::GetCursorScreenPos();
     const float room = ImGui::GetContentRegionAvail().x;
-    const float wide = on_page ? hints(kOnPage, at, height) : hints(kInView, at, height);
+    const float wide = overlay_bindings_listening() ? hints(kListening, at, height)
+                       : on_page                    ? hints(kOnPage, at, height)
+                                                    : hints(kInView, at, height);
     if (!on_page) {
         ImGui::Dummy(ImVec2(wide, height));
         ImGui::PopFont();
@@ -158,3 +172,7 @@ void footer_back() {
 void footer_end_ask() { g_ask = g_asked = OverlayAsk::none; }
 
 OverlayAsk overlay_asking() { return g_ask; }
+
+#ifdef GCN_OVERLAY_TEST
+const std::string& footer_test_hints() { return g_hints; }
+#endif
