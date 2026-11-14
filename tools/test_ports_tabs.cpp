@@ -2,7 +2,7 @@
 // L1, either trigger and E and Q each move exactly one page, and no further than the first or
 // the last. A shoulder, a trigger or a key held as the menu opens moves nothing, and nothing
 // moves while a slider is active, while the menu asks or during the press-A order. A trigger
-// turns a page past the gamepad's own trigger click, lowered too. After a
+// turns a page past the gamepad's own trigger click, lowered too, and not short of it. After a
 // change the page's first item has the focus, so A presses it. Read in by tools/test_ports.cpp
 // after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -68,6 +68,16 @@ void tabs_turn(const std::string& dir) {
     set_axis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, 0);
     host_frame(guest);
     check(overlay_page() == 1, "R1 and the right trigger pressed together move one page, not two");
+    // Each trigger in to just short of the gamepad's own click, 29000 at the default, and back
+    // turns nothing, and in all the way it turns one page.
+    PadBinding own;
+    const bool has_own = gamepads_binding(pad.id, own) && own.trigger_click == kGamepadTriggerClick;
+    pull(guest, pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER, own.trigger_click - 1000);
+    pull(guest, pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER, own.trigger_click - 1000);
+    const bool nothing_short = overlay_page() == 1;
+    pull(guest, pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+    check(has_own && nothing_short && overlay_page() == 2,
+          "a trigger 29000 in and back, short of its click, turns nothing, and 32767 in turns one page");
 
     tap(guest, pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
