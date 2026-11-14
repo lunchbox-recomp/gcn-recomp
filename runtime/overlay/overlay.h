@@ -161,9 +161,10 @@ void overlay_test_end();
 // The notices' context, null with none.
 struct ImGuiContext* overlay_test_notices_context();
 // Each notice's pill as the notices' last frame laid it out, oldest first, none if there was no
-// frame: its top in the window's pixels, its height, and its alpha from 0 to 1.
+// frame: its top in the window's pixels, its height, its alpha from 0 to 1, its left and right
+// edges, and the leftmost and rightmost x of the glyphs its text drew, none if clear.
 struct OverlayTestToast {
-    float top, height, alpha;
+    float top, height, alpha, left, right, ink_left, ink_right;
 };
 const std::vector<OverlayTestToast>& overlay_test_toasts();
 // Every page's title in the header's order, and the page `page` shown as a click on its pill

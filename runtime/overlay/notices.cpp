@@ -11,10 +11,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cfloat>
 #include <cstdio>
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
+#include "imgui_internal.h"  // ImTextCharFromUtf8
 
 void overlay_imgui_context(SDL_Window* window, bool gl);  // overlay.cpp's
 void overlay_style_fit(SDL_Window* window);              // overlay.cpp's
@@ -56,6 +58,31 @@ ImU32 faded(uint32_t c, float a) {
     return theme_colour((c & ~0xFFu) | (uint32_t)std::lround(std::clamp((float)(c & 0xFF) * a, 0.0f, 255.0f)));
 }
 
+// How far `text` to `end` advances in the current font, not rounded.
+float advance(const char* text, const char* end) {
+    return ImGui::GetFont()->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, 0.0f, text, end).x;
+}
+
+// Where the ink of `text` to `end`, which isn't empty, starts and ends past where it's drawn
+// from, its glyphs `width` across by their advances: its first glyph's left edge, and its
+// last's right edge, short of that one's advance.
+struct Ink {
+    float left, right;
+};
+Ink ink_of(const char* text, const char* end, float width) {
+    ImFontBaked* baked = ImGui::GetFontBaked();
+    const float scale = ImGui::GetFontSize() / baked->Size;
+    const char* last = end - 1;
+    while (last > text && ((unsigned char)*last & 0xC0) == 0x80) last--;
+    unsigned int first_c = 0, last_c = 0;
+    ImTextCharFromUtf8(&first_c, text, end);
+    ImTextCharFromUtf8(&last_c, last, end);
+    // Read before the next FindGlyph, which may load a glyph and move the others.
+    const float left = baked->FindGlyph((ImWchar)first_c)->X0 * scale;
+    const ImFontGlyph* g = baked->FindGlyph((ImWchar)last_c);
+    return {left, width - (g->AdvanceX - g->X1) * scale};
+}
+
 // Each notice a pill in the window's draw list: the panel's colour with its edge, the body text
 // in it, the controller's name in the text's colour and what happened in the dimmed one. The
 // oldest sits lowest, the theme's margin above the window's bottom edge, each newer one above
@@ -73,17 +100,30 @@ void pills(uint64_t now) {
         const ToastLook look = toast_look(t, now - n.since, g_motion, n.over);
         const char* text = n.text.c_str();
         const char* split = text + n.lead;
-        const float lead_w = ImGui::CalcTextSize(text, split).x;
-        const float w = lead_w + ImGui::CalcTextSize(split).x + 2.0f * pad;
-        const ImVec2 lo(vp->GetCenter().x - w / 2.0f, bottom - n.slot.at(now) * (h + gap) - h + look.below * s);
-        const ImVec2 hi(lo.x + w, lo.y + h);
+        const char* end = text + n.text.size();
+        // The pill fits the text's ink, not the advance and rounding past its last glyph, so its
+        // padding is even. AddText starts each run on a whole pixel, so the text starts on one
+        // and what happened a whole pixel on.
+        const float on = std::floor(advance(text, split));
+        const Ink ink = ink_of(text, end, on + advance(split, end));
+        const float x = std::round(vp->GetCenter().x - (ink.left + ink.right) / 2.0f);
+        const ImVec2 lo(x + ink.left - pad, bottom - n.slot.at(now) * (h + gap) - h + look.below * s);
+        const ImVec2 hi(x + ink.right + pad, lo.y + h);
         dl->AddRectFilled(lo, hi, faded(t.panel, look.alpha), h / 2.0f);
         if (edge > 0.0f) dl->AddRect(lo, hi, faded(t.panel_edge, look.alpha), h / 2.0f, 0, edge);
         const float y = lo.y + (h - ImGui::GetFontSize()) / 2.0f;
-        dl->AddText(ImVec2(lo.x + pad, y), faded(t.text, look.alpha), text, split);
-        dl->AddText(ImVec2(lo.x + pad + lead_w, y), faded(t.dim, look.alpha), split);
 #ifdef GCN_OVERLAY_TEST
-        g_laid.push_back({lo.y, h, look.alpha});
+        const int glyphs = dl->VtxBuffer.Size;
+#endif
+        dl->AddText(ImVec2(x, y), faded(t.text, look.alpha), text, split);
+        dl->AddText(ImVec2(x + on, y), faded(t.dim, look.alpha), split, end);
+#ifdef GCN_OVERLAY_TEST
+        float ink_lo = hi.x, ink_hi = lo.x;
+        for (int v = glyphs; v < dl->VtxBuffer.Size; v++) {
+            ink_lo = std::min(ink_lo, dl->VtxBuffer[v].pos.x);
+            ink_hi = std::max(ink_hi, dl->VtxBuffer[v].pos.x);
+        }
+        g_laid.push_back({lo.y, h, look.alpha, lo.x, hi.x, ink_lo, ink_hi});
 #endif
     }
 }
