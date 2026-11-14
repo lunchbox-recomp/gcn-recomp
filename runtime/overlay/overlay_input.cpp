@@ -42,7 +42,17 @@ struct HeldPad {
     uint32_t chord_down, spoiled, turns;
 };
 std::vector<HeldPad> g_pads;
-SDL_JoystickID g_last_pad;
+SDL_JoystickID g_last_pad;  // the held gamepad last pressed or pushed, 0 with a key pressed since
+
+// How far past the backend's dead zone a stick at `value` is pushed, 0 to 1, and how far the
+// menu takes as a push: its navigation, and the gamepad the footer's glyphs are for.
+constexpr int kDeadZone = 8000;
+constexpr float kPushed = 0.1f;
+float pushed(int value) { return std::clamp((value - kDeadZone) / float(32767 - kDeadZone), 0.0f, 1.0f); }
+
+bool held(SDL_JoystickID id) {
+    return std::any_of(g_pads.begin(), g_pads.end(), [&](const HeldPad& h) { return h.id == id; });
+}
 
 // The triggers, as the menu takes them: buttons past SDL's own, each down while it's clicked in
 // (clicked).
@@ -245,8 +255,7 @@ void overlay_read_pads() {
         for (const HeldPad& h : g_pads) held = held || down(h, b.button);
         io.AddKeyEvent(b.key, held);
     }
-    // How far past the backend's dead zone the left stick is pushed each way, 0 to 1.
-    constexpr int kDeadZone = 8000;
+    // The left stick each way.
     static constexpr struct {
         ImGuiKey key;
         SDL_GamepadAxis axis;
@@ -259,19 +268,17 @@ void overlay_read_pads() {
     };
     for (const auto& s : kStick) {
         float v = 0.0f;
-        for (const HeldPad& h : g_pads)
-            v = std::max(v, std::clamp((s.sign * SDL_GetGamepadAxis(h.pad, s.axis) - kDeadZone) / float(32767 - kDeadZone),
-                                       0.0f, 1.0f));
-        io.AddKeyAnalogEvent(s.key, v > 0.1f, v);
+        for (const HeldPad& h : g_pads) v = std::max(v, pushed(s.sign * SDL_GetGamepadAxis(h.pad, s.axis)));
+        io.AddKeyAnalogEvent(s.key, v > kPushed, v);
     }
 }
 
 bool overlay_event(const SDL_Event& e) {
     if (!overlay_ready()) return false;
     if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) g_last_pad = 0;
-    else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN) g_last_pad = e.gbutton.which;
-    else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION &&
-             std::abs(e.gaxis.value) > 16000) g_last_pad = e.gaxis.which;
+    else if (e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN && held(e.gbutton.which)) g_last_pad = e.gbutton.which;
+    else if (e.type == SDL_EVENT_GAMEPAD_AXIS_MOTION && held(e.gaxis.which) && pushed(std::abs(e.gaxis.value)) > kPushed)
+        g_last_pad = e.gaxis.which;
     if (overlay_open() && (controllers_event(e) || bindings_event(e))) return true;
     const SDL_Scancode key = e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat ? e.key.scancode : SDL_SCANCODE_UNKNOWN;
     const bool pressed = e.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
@@ -291,7 +298,15 @@ bool overlay_event(const SDL_Event& e) {
     return overlay_open() && is_input(e);
 }
 
-SDL_Gamepad* overlay_last_pad() { return g_last_pad ? SDL_GetGamepadFromID(g_last_pad) : nullptr; }
+// footer.cpp's: the gamepad whose glyphs the footer draws, the held one last pressed or pushed
+// past kPushed, or with that one gone the first still held. Null, for keycaps, with a key
+// pressed since or with no gamepad held.
+SDL_Gamepad* overlay_last_pad() {
+    if (!g_last_pad) return nullptr;
+    for (const HeldPad& h : g_pads)
+        if (h.id == g_last_pad) return h.pad;
+    return g_pads.empty() ? nullptr : g_pads.front().pad;
+}
 
 void overlay_poll() {
     if (!overlay_ready()) return;

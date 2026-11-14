@@ -97,12 +97,46 @@ void overlay_buttons(const std::string& dir) {
         detach(v);
         host_frame(guest);
     }
+    // With gamepads in, a key takes the footer to keycaps, a button to its gamepad's glyphs, and
+    // a stick to its gamepad's once pushed as far as the menu's navigation takes as a push, 10%
+    // past the dead zone of 8000, about 10477. The right stick moves no focus. Q on the first
+    // page turns none.
+    Virtual xbox{"footer xbox in"}, ps{"footer playstation in"};
+    xbox.vendor = 0x045e;
+    xbox.product = 0x02ea;
+    ps.vendor = 0x054c;
+    ps.product = 0x0ce6;
+    attach(xbox);
+    attach(ps);
+    host_frame(guest);
+    const auto first = [] { return footer_test_glyphs().empty() ? std::string() : footer_test_glyphs()[0].label; };
+    const auto stick = [&](const Virtual& v, int value) {
+        SDL_SetJoystickVirtualAxis(SDL_GetJoystickFromID(v.id), SDL_GAMEPAD_AXIS_RIGHTX, (Sint16)value);
+        host_frame(guest);
+    };
     tap(guest, SDL_SCANCODE_Q, SDLK_Q);
     const auto& key_marks = footer_test_glyphs();
     check(key_marks.size() == 4 && key_marks[0].label == "Enter" && key_marks[1].label == "Esc" &&
           key_marks[2].label == "Q" && key_marks[3].label == "E" &&
           key_marks[0].shape == OverlayGlyphShape::keycap,
-          "the keyboard last used draws Enter, Escape, Q and E keycaps in the footer");
+          "the keyboard last used draws Enter, Escape, Q and E keycaps in the footer, with gamepads in");
+    tap(guest, xbox, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    const std::string pressed = first();
+    stick(ps, 10000);
+    const std::string short_push = first();
+    stick(ps, 11000);
+    const std::string pushed = first();
+    stick(ps, 0);
+    tap(guest, xbox, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    check(pressed == "A" && short_push == "A" && pushed == "Cross" && first() == "A",
+          "a button takes the footer to its gamepad's glyphs, a stick at 10000 doesn't, one at 11000 does, "
+          "and another family's button takes it back");
+    detach(xbox);
+    host_frame(guest);
+    check(footer_test_glyphs().size() == 4 && footer_test_glyphs()[0].shape == OverlayGlyphShape::circle,
+          "the gamepad last used unplugged, the footer draws another gamepad still in, not keycaps");
+    detach(ps);
+    host_frame(guest);
     tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
 
     // A face or a key held as the menu opens stays out of it until it's let go, though the
