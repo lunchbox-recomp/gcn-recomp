@@ -150,8 +150,11 @@ void controllers_page() {
         return;
     }
     if (ImGui::Button("Set player order")) overlay_controllers_order();
-    if (g_focus_order) ImGui::FocusItem();
-    g_focus_order = false;
+    // One picked as the menu closes waits for it to open again, as the fade moves no focus.
+    if (g_focus_order && overlay_open()) {
+        ImGui::FocusItem();
+        g_focus_order = false;
+    }
     // The Buttons view (overlay_bindings.cpp), on the first gamepad listed, off while there's none.
     const auto pad = std::find_if(list.devices.begin(), list.devices.end(), [](const PadDevice& d) { return d.id != kKeyboard; });
     ImGui::SameLine();

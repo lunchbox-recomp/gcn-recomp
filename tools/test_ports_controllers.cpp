@@ -192,6 +192,29 @@ void controllers_order(Guest& guest, const std::string& dir) {
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     check(f1_asked && f1_closed && overlay_open() && overlay_controllers_asking() == -1 && tabs_shown(),
           "F1 during the order closes the menu and ends the order, and opened again the menu shows its tabs, not the prompt");
+
+    // Escape ends the order and F1 closes the menu in one pump, with player 1's Swap focused. The
+    // fade draws the page, and Set player order takes the focus when the menu opens again, not as
+    // it fades.
+    tap(guest, c, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    const ImGuiID swap = ImGui::GetCurrentContext()->NavId;
+    overlay_controllers_order();
+    host_frame(guest);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, true);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+    host_frame(guest);
+    push_key(SDL_SCANCODE_ESCAPE, SDLK_ESCAPE, false);
+    push_key(SDL_SCANCODE_F1, SDLK_F1, false);
+    host_frame(guest);
+    const bool fading = !overlay_open() && overlay_animating() && overlay_controllers_asking() == -1;
+    const ImGuiID faded = ImGui::GetCurrentContext()->NavId;
+    g_host_ns += 1000000000;
+    host_frame(guest);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    tap(guest, c, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(fading && swap != 0 && faded == swap && overlay_controllers_asking() == 0,
+          "an order ended as the menu closes moves no focus in the fade, and Set player order has it when the menu opens");
+    tap(guest, c, SDL_GAMEPAD_BUTTON_EAST);
     tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
     check(!overlay_open() && port(c) == 1 && port(b) == 3 && port(a) == 4,
           "with the menu closed the game reads each gamepad on its new port, and each player light shows it");

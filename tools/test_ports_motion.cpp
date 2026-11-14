@@ -293,6 +293,29 @@ void views_kept(SDL_Window* window, const std::string& dir) {
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns += 1000 * kMs;
     host_frame(guest);
+
+    // F1 after the press that asks Quit? and before Quit? is drawn: the fade draws it first, and
+    // its Cancel doesn't take the focus there, so Quit game still has it when the menu opens again.
+    open();
+    bottom_row(guest);
+    tap(guest, SDL_SCANCODE_RIGHT, SDLK_RIGHT);
+    key(guest, SDL_SCANCODE_RETURN, SDLK_RETURN, true);
+    const bool quit_pressed = overlay_asking() == OverlayAsk::quit;
+    key(guest, SDL_SCANCODE_F1, SDLK_F1, true);
+    push_key(SDL_SCANCODE_RETURN, SDLK_RETURN, false);
+    key(guest, SDL_SCANCODE_F1, SDLK_F1, false);
+    const bool quit_closed = !overlay_open();
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
+    open();
+    tap(guest, SDL_SCANCODE_SPACE, SDLK_SPACE);
+    host_frame(guest);
+    check(quit_pressed && quit_closed && waiting(OverlayAsk::quit),
+          "Cancel on a Quit? first drawn by the fade isn't focused, and Quit game is when the menu opens again");
+    tap(guest, SDL_SCANCODE_ESCAPE, SDLK_ESCAPE);
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000 * kMs;
+    host_frame(guest);
     unplug({&pad});
     gamepads_shutdown();
 
