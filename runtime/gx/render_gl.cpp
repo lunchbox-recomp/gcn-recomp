@@ -15,6 +15,8 @@ GLuint g_copy_prog, g_copy_vao;
 GLint g_copy_u_src, g_copy_u_rect, g_copy_u_mode, g_copy_u_depth, g_copy_u_alpha;
 GLuint g_blit_prog;
 GLint g_blit_u_src, g_blit_u_rect;
+GLuint g_blur_prog;
+GLint g_blur_u_src, g_blur_u_rect, g_blur_u_step, g_blur_u_alpha;
 GLuint g_copy_fbo;
 // The morph's background: see draw_morph_background.
 GLuint g_bg_prog;
@@ -139,6 +141,25 @@ in vec2 v_uv;
 uniform sampler2D u_src;
 out vec4 o;
 void main() { o = vec4(texture(u_src, vec2(v_uv.x, 1.0 - v_uv.y)).rgb, 1.0); }
+)";
+
+// The menu's blurred backdrop (render_overlay_blur): a Kawase pass, the mean of four taps
+// u_step out on the diagonals, or with a step of 0 the texture as it is, drawn at u_alpha.
+static const char* kBlurFS = GCN_GLSL_VERSION R"(
+in vec2 v_uv;
+uniform sampler2D u_src;
+uniform vec2 u_step;
+uniform float u_alpha;
+out vec4 o;
+void main() {
+    vec3 c;
+    if (u_step == vec2(0.0)) c = texture(u_src, v_uv).rgb;
+    else c = (texture(u_src, v_uv + u_step).rgb +
+              texture(u_src, v_uv + vec2(-u_step.x, u_step.y)).rgb +
+              texture(u_src, v_uv - u_step).rgb +
+              texture(u_src, v_uv + vec2(u_step.x, -u_step.y)).rgb) * 0.25;
+    o = vec4(c, u_alpha);
+}
 )";
 
 void render_init(int internal_scale) {
@@ -266,6 +287,11 @@ void render_init(int internal_scale) {
     g_blit_prog = link(cvs, compile(GL_FRAGMENT_SHADER, kBlitFS));
     g_blit_u_src = glGetUniformLocation(g_blit_prog, "u_src");
     g_blit_u_rect = glGetUniformLocation(g_blit_prog, "u_rect");
+    g_blur_prog = link(cvs, compile(GL_FRAGMENT_SHADER, kBlurFS));
+    g_blur_u_src = glGetUniformLocation(g_blur_prog, "u_src");
+    g_blur_u_rect = glGetUniformLocation(g_blur_prog, "u_rect");
+    g_blur_u_step = glGetUniformLocation(g_blur_prog, "u_step");
+    g_blur_u_alpha = glGetUniformLocation(g_blur_prog, "u_alpha");
     glGenVertexArrays(1, &g_copy_vao);
     glGenFramebuffers(1, &g_copy_fbo);
     {

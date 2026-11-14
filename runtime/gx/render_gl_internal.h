@@ -142,6 +142,8 @@ extern GLuint g_copy_prog, g_copy_vao;
 extern GLint g_copy_u_src, g_copy_u_rect, g_copy_u_mode, g_copy_u_depth, g_copy_u_alpha;
 extern GLuint g_blit_prog;
 extern GLint g_blit_u_src, g_blit_u_rect;
+extern GLuint g_blur_prog;
+extern GLint g_blur_u_src, g_blur_u_rect, g_blur_u_step, g_blur_u_alpha;
 extern GLuint g_copy_fbo;
 extern GLuint g_bg_prog;
 extern GLint g_bg_u_mvp, g_bg_u_crop, g_bg_u_quad, g_bg_u_col;
