@@ -6,6 +6,7 @@
 // Exits 0 only if every check passes.
 #include "pad_glyph.h"
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 namespace {
@@ -116,6 +117,10 @@ int main() {
     bool families = true;
     for (int t = 0; t < (int)std::size(kFamilies); t++) families = families && pad_family(t) == kFamilies[t];
     check(families, "each of SDL's gamepad types has its family, a Joy-Con pair Nintendo's, and an unknown type other");
+    check(!strcmp(pad_type_name(3), "Xbox One") && !strcmp(pad_type_name(8), "Joy-Con (L)") &&
+              !strcmp(pad_type_name(11), "GameCube") && !strcmp(pad_type_name(12), "gamepad") &&
+              !strcmp(pad_type_name(-1), "gamepad") && !strcmp(pad_type_name(13), "gamepad"),
+          "each of SDL's types has the name the Controllers page gives it, and one with none is a gamepad");
     printf("test_pad_glyph: %d of %d checks passed\n", g_checks - g_failed, g_checks);
     return g_failed ? 1 : 0;
 }

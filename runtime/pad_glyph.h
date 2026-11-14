@@ -17,3 +17,7 @@ PadFamily pad_family(int sdl_type);
 // SDL gives `s` when it's a face button (south, east, west or north), 0 for none, in which case
 // the face is named by where it is. A whole stick axis is named by its stick alone.
 std::string pad_glyph(PadFamily f, const PadSource& s, int face_label);
+
+// What the Controllers page calls a gamepad of SDL's type `sdl_type`: "Xbox One", "Joy-Con (L)",
+// or "gamepad" for a type with no name of its own.
+const char* pad_type_name(int sdl_type);

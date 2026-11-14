@@ -3,6 +3,7 @@
 #include "input_map.h"
 #include "overlay/overlay.h"  // the notices
 #include "platform.h"
+#include "pad_glyph.h"  // pad_type_name
 #include "port_memory.h"
 #include <algorithm>
 #include <array>
@@ -246,22 +247,6 @@ bool may_rumble(SDL_Gamepad* g) {
 
 bool changeable(int port) { return port >= 0 && port < 4 && !input_map_pins(port); }
 
-const char* type_name(SDL_GamepadType t) {
-    switch (t) {
-    case SDL_GAMEPAD_TYPE_XBOX360: return "Xbox 360";
-    case SDL_GAMEPAD_TYPE_XBOXONE: return "Xbox One";
-    case SDL_GAMEPAD_TYPE_PS3: return "PS3";
-    case SDL_GAMEPAD_TYPE_PS4: return "PS4";
-    case SDL_GAMEPAD_TYPE_PS5: return "PS5";
-    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO: return "Switch Pro";
-    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT: return "Joy-Con (L)";
-    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT: return "Joy-Con (R)";
-    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR: return "Joy-Con pair";
-    case SDL_GAMEPAD_TYPE_GAMECUBE: return "GameCube";
-    default: return "gamepad";
-    }
-}
-
 // Whether a button of `g` is down, or a stick or trigger is pushed past a quarter of its travel.
 bool pushed(SDL_Gamepad* g) {
     for (int k = 0; k < SDL_GAMEPAD_BUTTON_COUNT; k++)
@@ -280,8 +265,8 @@ PadDevice entry(SDL_JoystickID which, int port) {
     const char* n = SDL_GetJoystickNameForID(which);
     d.name = n ? n : "?";
     const SDL_GamepadType type = SDL_GetGamepadTypeForID(which), real = SDL_GetRealGamepadTypeForID(which);
-    d.type = type_name(type);
-    if (real != type) d.type = type_name(real) + std::string(", mapped as ") + d.type;
+    d.type = pad_type_name(type);
+    if (real != type) d.type = pad_type_name(real) + std::string(", mapped as ") + d.type;
     if (SDL_Gamepad* g = SDL_GetGamepadFromID(which)) d.active = pushed(g);
     return d;
 }
@@ -508,15 +493,16 @@ template <typename F> bool with_gamepad(uint32_t device, F f) {
     return true;
 }
 
+// Whether pads.txt can't tell the two apart.
+bool same_block(const PortDevice& a, const PortDevice& b) { return a.guid == b.guid && a.serial == b.serial; }
+
 // After a change to the bindings: each gamepad on a port that pads.txt can't tell from `id`
-// takes its binding again, and the file is saved.
-void rebind(const PortDevice& id) {
-    for (Port& p : g_ports) {
-        if (!p.pad) continue;
-        const PortDevice d = device_of(p.pad);
-        if (d.guid == id.guid && d.serial == id.serial) p.bind = binding_of(p.pad);
-    }
-    if (!g_bindings_path.empty() && g_bindings_may_save) bindings_save(g_bindings_path, g_bindings);
+// takes its binding again, and the file is saved if it may be.
+Bound rebind(const PortDevice& id) {
+    for (Port& p : g_ports)
+        if (p.pad && same_block(device_of(p.pad), id)) p.bind = binding_of(p.pad);
+    const bool saved = !g_bindings_path.empty() && g_bindings_may_save && bindings_save(g_bindings_path, g_bindings);
+    return saved ? Bound::saved : Bound::unsaved;
 }
 
 }  // namespace
@@ -532,17 +518,38 @@ bool gamepads_binding(uint32_t device, PadBinding& out) {
     return with_gamepad(device, [&](SDL_Gamepad* g) { out = binding_of(g); });
 }
 
-bool gamepads_bind(uint32_t device, const PadBinding& b) {
-    return with_gamepad(device, [&](SDL_Gamepad* g) {
-        load_bindings();
+// A binding the gamepad already has isn't saved, so that its block isn't written with a map
+// that only stands for its labels as they are now.
+Bound gamepads_bind(uint32_t device, const PadBinding& b) {
+    Bound did = Bound::refused;
+    with_gamepad(device, [&](SDL_Gamepad* g) {
+        if (binding_of(g) == b) {
+            did = Bound::unchanged;
+            return;
+        }
         bindings_put(g_bindings, device_of(g), pad_name(g), b);
-        rebind(device_of(g));
+        did = rebind(device_of(g));
     });
+    return did;
 }
 
-bool gamepads_reset_binding(uint32_t device) {
-    return with_gamepad(device, [&](SDL_Gamepad* g) {
+Bound gamepads_reset_binding(uint32_t device) {
+    Bound did = Bound::refused;
+    with_gamepad(device, [&](SDL_Gamepad* g) {
         load_bindings();
-        if (bindings_forget(g_bindings, device_of(g))) rebind(device_of(g));
+        did = bindings_forget(g_bindings, device_of(g)) ? rebind(device_of(g)) : Bound::unchanged;
     });
+    return did;
 }
+
+std::vector<int> gamepads_sharing(uint32_t device) {
+    std::vector<int> ports;
+    with_gamepad(device, [&](SDL_Gamepad* g) {
+        const PortDevice id = device_of(g);
+        for (int i = 0; i < 4; i++)
+            if (g_ports[i].pad && same_block(device_of(g_ports[i].pad), id)) ports.push_back(i);
+    });
+    return ports;
+}
+
+bool gamepads_may_rumble(SDL_Gamepad* g) { return may_rumble(g); }

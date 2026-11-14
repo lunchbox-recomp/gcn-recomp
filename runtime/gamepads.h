@@ -145,10 +145,19 @@ void gamepads_bindings_file(const char* path);
 // The binding gamepad `device` has, on a port or not, into `out`. False for the keyboard, a
 // device that isn't a gamepad here, and one controls.txt binds.
 bool gamepads_binding(uint32_t device, PadBinding& out);
+// What a change below did: refused as gamepads_binding is, nothing to change and nothing
+// written, saved to the file, or kept for this session alone with the file as it was (no file
+// set, one that exists and couldn't be read, or a save that failed, said on stderr).
+enum class Bound { refused, unchanged, saved, unsaved };
 // `device` given `b`, saved at once, and on a port at once. Every gamepad on a port that pads.txt
-// can't tell from it, the same GUID and serial, has it too. Refused as gamepads_binding is.
-bool gamepads_bind(uint32_t device, const PadBinding& b);
-// `device` back to the map, its block taken out of the file. Refused as gamepads_binding is.
-bool gamepads_reset_binding(uint32_t device);
+// can't tell from it, the same GUID and serial, has it too.
+Bound gamepads_bind(uint32_t device, const PadBinding& b);
+// `device` back to the map, its block taken out of the file.
+Bound gamepads_reset_binding(uint32_t device);
+// The ports, lowest first, whose gamepads pads.txt can't tell from `device`, its own included.
+std::vector<int> gamepads_sharing(uint32_t device);
+// Whether the open gamepad `g` is asked for rumble, as gamepads_rumble asks it: one SDL says
+// has rumble, or one SDL types as GameCube, whose flag can be stale.
+bool gamepads_may_rumble(SDL_Gamepad* g);
 // What the open gamepad `g` holds now, as its binding reads it.
 PadReading gamepads_read(SDL_Gamepad* g);

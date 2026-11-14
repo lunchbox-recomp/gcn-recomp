@@ -109,3 +109,10 @@ std::string pad_glyph(PadFamily f, const PadSource& s, int face_label) {
     // SDL's y is down from the centre.
     return name + (x ? (s.half > 0 ? " right" : " left") : (s.half > 0 ? " down" : " up"));
 }
+
+const char* pad_type_name(int sdl_type) {
+    // By SDL_GamepadType's values, as pad_family has them.
+    static const char* const kNames[] = {"gamepad", "gamepad", "Xbox 360", "Xbox One", "PS3", "PS4", "PS5", "Switch Pro",
+                                         "Joy-Con (L)", "Joy-Con (R)", "Joy-Con pair", "GameCube", "gamepad"};
+    return sdl_type >= 0 && sdl_type < (int)std::size(kNames) ? kNames[sdl_type] : "gamepad";
+}
