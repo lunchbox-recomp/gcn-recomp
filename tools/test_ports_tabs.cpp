@@ -288,6 +288,17 @@ void tabs_chord(const std::string& dir) {
     over(cube, SDL_GAMEPAD_BUTTON_MISC4, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
     check(z_outer && overlay_page() == 1, "Z and a click pressed over each other turn no page, either inside the other");
 
+    // Z down as the menu closes and let go while it's closed turns nothing as it opens again.
+    set_button(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, true);
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    set_button(cube, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, false);
+    host_frame(guest);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_BACK);
+    host_frame(guest);
+    check(overlay_open() && overlay_page() == 1,
+          "Z down as the menu closes and let go while it's closed turns no page as the menu opens again");
+
     // The chord pressed in a button at a time, as a hand does, and held its second.
     const int showing = overlay_page();
     set_button(cube, SDL_GAMEPAD_BUTTON_MISC3, true);
