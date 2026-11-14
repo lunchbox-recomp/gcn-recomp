@@ -249,6 +249,7 @@ int run_ports(const std::string& dir) {
     overlay_buttons(dir);
     overlay_motion(dir);
     overlay_theme_fit(dir);
+    overlay_panel_edge(dir);
 #endif
     return finish("ports");
 }

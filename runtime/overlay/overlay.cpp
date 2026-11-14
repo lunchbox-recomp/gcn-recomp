@@ -393,9 +393,14 @@ void draw_menu() {
     ImGui::SetNextWindowPos(vp->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
     if (g_focus) ImGui::SetNextWindowFocus();
     g_focus = false;
+    // Begin draws the panel's edge, and the rule under its title that a frame border turns on, in
+    // the Border colour, an item's edge. They take the theme's fainter panel edge instead.
+    const uint32_t e = theme_now().panel_edge;
+    ImGui::PushStyleColor(ImGuiCol_Border, IM_COL32(e >> 24, e >> 16 & 0xFF, e >> 8 & 0xFF, e & 0xFF));
     ImGui::Begin(g_title.c_str(), nullptr,
                  ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::PopStyleColor();
     g_panel_list = ImGui::GetWindowDrawList();
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
     if (g_ask != OverlayAsk::none) {

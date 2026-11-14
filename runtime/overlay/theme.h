@@ -25,7 +25,10 @@ struct OverlayTheme {
     uint32_t item = 0x1E2533FF;          // a button, box or tab at rest
     uint32_t focused = 0x2A3346FF;       // the same with the focus on it
     uint32_t pressed = 0x344059FF;       // the same held down
-    uint32_t border = 0xFFFFFF66;        // the edge of the panel and of each item, white at 40%
+    uint32_t border = 0xFFFFFF66;        // the edge of each item, white at 40%
+    // The panel's own edge and the rule under its title, white at 15%: fainter than an item's
+    // edge, so the rule, as wide as the panel, isn't its strongest line.
+    uint32_t panel_edge = 0xFFFFFF26;
     uint32_t divider = 0xFFFFFF0F;       // a line between sections, white at 6%
     uint32_t text = 0xF2F4F8FF;
     uint32_t dim = 0xA9B1C2FF;           // text that says less, as a note does

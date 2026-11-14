@@ -53,4 +53,37 @@ void overlay_theme_fit(const std::string& dir) {
     close_window(window);
 }
 
+// The panel's own edge and the rule Dear ImGui draws under its title take the Border colour as
+// Begin draws them, which the menu gives the theme's panel edge there, under an item's edge. So
+// the panel, open and still, has the panel edge's colour among its own vertices and never the
+// item edge's, which its items draw after it.
+void overlay_panel_edge(const std::string& dir) {
+    SDL_Window* window = open_window();
+    if (!window) return;
+    overlay_test_reset_pages();
+    OverlayPicture picture;
+    picture.path = dir + "/edge-settings.txt";
+    picture.apply = record_apply;
+    overlay_init(window, "Test title", picture);
+    const OverlayTheme t = overlay_theme_default();
+    const auto u32 = [](uint32_t c) { return IM_COL32(c >> 24, c >> 16 & 0xFF, c >> 8 & 0xFF, c & 0xFF); };
+    Guest guest;
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000000000;  // past the open's motion
+    host_frame(guest);
+    const ImGuiWindow* panel = ImGui::FindWindowByName("Test title");
+    int last_edge = -1, first_item = -1;
+    for (int i = 0; panel && i < panel->DrawList->VtxBuffer.Size; i++) {
+        const ImU32 col = panel->DrawList->VtxBuffer[i].col;
+        if (col == u32(t.panel_edge)) last_edge = i;
+        if (col == u32(t.border) && first_item < 0) first_item = i;
+    }
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    g_host_ns += 1000000000;
+    host_frame(guest);
+    check(last_edge >= 0 && first_item > last_edge && (t.panel_edge & 0xFF) < (t.border & 0xFF),
+          "the panel's edge and its title's rule are drawn in the panel edge, fainter than an item's edge");
+    close_window(window);
+}
+
 }  // namespace
