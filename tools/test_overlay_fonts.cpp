@@ -471,6 +471,15 @@ void shared(const OverlayFonts& f, const char* which, float most_at_two) {
     for (ImGuiContext* c : {notices, menu}) ImGui::DestroyContext(c);
 }
 
+// Whether each kind of text took the first face of its chain in `f`, by its exact name as Dear
+// ImGui keeps it, 39 characters at most.
+bool took_firsts(const OverlayFonts& f) {
+    const std::vector<OverlayFace>* chains[] = {&f.title, &f.tabs, &f.items, &f.body, &f.footer};
+    bool all = true;
+    for (size_t i = 0; i < 5; i++) all = all && took(kRoles[i]) == (*chains[i])[0].name.substr(0, 39);
+    return all;
+}
+
 // The Mac's own fonts, where they're installed, read in place.
 void system_fonts(const std::string& dir) {
     const OverlayFonts f = overlay_fonts_default();
@@ -479,21 +488,14 @@ void system_fonts(const std::string& dir) {
         return;
     }
     const auto lines = said(dir + "/system-stderr.txt", [&] { fonts_build(f); });
-    bool first = true;
-    const std::vector<OverlayFace>* chains[] = {&f.title, &f.tabs, &f.items, &f.body, &f.footer};
-    for (size_t i = 0; i < 5; i++) {
-        first = first && took(kRoles[i]) == (*chains[i])[0].name.substr(0, 39);
-        printf("  %s\n", took(kRoles[i]).c_str());
-    }
-    check(first && lines.empty(), "the default chains load the Mac's Avenir Next faces with no step down");
+    for (FontRole r : kRoles) printf("  %s\n", took(r).c_str());
+    check(took_firsts(f) && lines.empty(), "the default chains load the Mac's Avenir Next faces with no step down");
     // The second choice of each, as on a Mac without Avenir Next.
     OverlayFonts neue = f;
     for (auto* chain : {&neue.title, &neue.tabs, &neue.items, &neue.body, &neue.footer}) chain->erase(chain->begin());
     if (std::filesystem::exists(neue.body[0].path)) {
         const auto said_neue = said(dir + "/neue-stderr.txt", [&] { fonts_build(neue); });
-        bool second = true;
-        for (FontRole r : kRoles) second = second && took(r).starts_with("Helvetica Neue");
-        check(second && said_neue.empty(), "each Helvetica Neue face the chains fall to is there too");
+        check(took_firsts(neue) && said_neue.empty(), "each Helvetica Neue face the chains fall to is there too");
     }
     // The third, as on a Mac without either.
     OverlayFonts helvetica = neue;
@@ -501,9 +503,7 @@ void system_fonts(const std::string& dir) {
         chain->erase(chain->begin());
     if (std::filesystem::exists(helvetica.body[0].path)) {
         const auto said_helvetica = said(dir + "/helvetica-stderr.txt", [&] { fonts_build(helvetica); });
-        bool third = true;
-        for (FontRole r : kRoles) third = third && took(r).starts_with("Helvetica") && !took(r).starts_with("Helvetica Neue");
-        check(third && said_helvetica.empty(), "and each Helvetica face after them");
+        check(took_firsts(helvetica) && said_helvetica.empty(), "and each Helvetica face after them");
     }
     shared(f, "the Mac's fonts", 2160.0f);
 }

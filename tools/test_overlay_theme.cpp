@@ -195,19 +195,21 @@ void fonts(const OverlayTheme& t) {
     const struct {
         const char* role;
         const std::vector<OverlayFace>& chain;
-        const char* avenir;
-    } roles[] = {{"title", t.fonts.title, "Avenir Next Heavy"},   {"tabs", t.fonts.tabs, "Avenir Next Demi Bold"},
-                 {"items", t.fonts.items, "Avenir Next Medium"}, {"body", t.fonts.body, "Avenir Next Medium"},
-                 {"footer", t.fonts.footer, "Avenir Next Demi Bold"}};
+        const char *avenir, *neue, *helvetica;
+    } roles[] = {{"title", t.fonts.title, "Avenir Next Heavy", "Helvetica Neue Bold", "Helvetica Bold"},
+                 {"tabs", t.fonts.tabs, "Avenir Next Demi Bold", "Helvetica Neue Medium", "Helvetica Bold"},
+                 {"items", t.fonts.items, "Avenir Next Medium", "Helvetica Neue Medium", "Helvetica"},
+                 {"body", t.fonts.body, "Avenir Next Medium", "Helvetica Neue", "Helvetica"},
+                 {"footer", t.fonts.footer, "Avenir Next Demi Bold", "Helvetica Neue Medium", "Helvetica Bold"}};
     for (const auto& r : roles) {
         char what[160];
 #ifdef __APPLE__
         const bool ok = r.chain.size() == 3 && r.chain[0].path == "/System/Library/Fonts/Avenir Next.ttc" &&
                         r.chain[0].name == r.avenir && r.chain[1].path == "/System/Library/Fonts/HelveticaNeue.ttc" &&
-                        r.chain[1].name.starts_with("Helvetica Neue") && r.chain[2].path == "/System/Library/Fonts/Helvetica.ttc" &&
-                        r.chain[2].name.starts_with("Helvetica") && !r.chain[2].name.starts_with("Helvetica Neue");
-        snprintf(what, sizeof(what), "on macOS the text of the %s takes %s, then a Helvetica Neue face, then a Helvetica one",
-                 r.role, r.avenir);
+                        r.chain[1].name == r.neue && r.chain[2].path == "/System/Library/Fonts/Helvetica.ttc" &&
+                        r.chain[2].name == r.helvetica;
+        snprintf(what, sizeof(what), "on macOS the text of the %s takes %s, then %s, then %s", r.role, r.avenir, r.neue,
+                 r.helvetica);
 #else
         const bool ok = r.chain.empty();
         snprintf(what, sizeof(what), "off macOS the text of the %s lists no font, for Dear ImGui's own", r.role);
