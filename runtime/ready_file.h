@@ -7,8 +7,9 @@
 //
 // Each line goes in once. The file is rewritten through PATH.tmp, which then replaces it, so a
 // reader sees it whole, with every line complete; a watcher of the file itself sees it renamed
-// over, so watch its directory or open it again at each change. What the file held before is
-// kept, so a launcher that wants only this run's lines removes it first.
+// over, so watch its directory or open it again at each change. Nothing waits for the disk
+// (plat_replace_whole_file), so a line costs the main thread no sync. What the file held
+// before is kept, so a launcher that wants only this run's lines removes it first.
 #pragma once
 
 // Appends the word's line to GCN_READY_FILE the first time it's called with that word, and

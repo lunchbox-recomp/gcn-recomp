@@ -17,7 +17,7 @@ bool ready_file_append(const char* path, const char* word, long long ms) {
     char line[64];
     snprintf(line, sizeof(line), "%s %lld\n", word, ms);
     text += line;
-    return plat_save_file(path, text.data(), text.size(), "the ready line");
+    return plat_replace_whole_file(path, text.data(), text.size(), "the ready line");
 }
 
 void ready_mark(const char* word) {

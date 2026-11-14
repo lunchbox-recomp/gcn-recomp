@@ -676,14 +676,16 @@ bool plat_sync_file(FILE* f) {
 #endif
 }
 
-bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved) {
+// plat_save_file, and plat_replace_whole_file with `sync` false.
+static bool write_through_tmp(const std::string& path, const void* data, size_t size, const char* unsaved,
+                              bool sync) {
     const std::string tmp = path + ".tmp";
     FILE* f = fopen(tmp.c_str(), "wb");
     if (!f) {
         fprintf(stderr, "%s: can't write it (%s), so %s isn't saved\n", tmp.c_str(), strerror(errno), unsaved);
         return false;
     }
-    const bool wrote = fwrite(data, 1, size, f) == size && plat_sync_file(f);
+    const bool wrote = fwrite(data, 1, size, f) == size && (!sync || plat_sync_file(f));
     const bool closed = fclose(f) == 0;
     if (!wrote || !closed || !plat_replace_file(tmp.c_str(), path.c_str())) {
 #ifdef _WIN32
@@ -700,6 +702,14 @@ bool plat_save_file(const std::string& path, const void* data, size_t size, cons
         return false;
     }
     return true;
+}
+
+bool plat_save_file(const std::string& path, const void* data, size_t size, const char* unsaved) {
+    return write_through_tmp(path, data, size, unsaved, true);
+}
+
+bool plat_replace_whole_file(const std::string& path, const void* data, size_t size, const char* unsaved) {
+    return write_through_tmp(path, data, size, unsaved, false);
 }
 
 bool plat_save_file_making_dirs(const std::string& path, const void* data, size_t size, const char* unsaved) {

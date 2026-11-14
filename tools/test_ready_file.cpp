@@ -3,16 +3,20 @@
 // runtime/ready_file.cpp writes GCN_READY_FILE's lines through a temporary file that then
 // replaces it, so a launcher watching it sees each version whole. These check the lines and
 // their order, that each word goes in once, that a reader polling the file meanwhile never
-// sees a line cut short, and that the times count from the process's start.
+// sees a line cut short, that no line waits for a sync, and that the times count from the
+// process's start. It prints what a line costs.
 //
 // usage: test_ready_file WORKDIR
 // Exits 0 only if every check passes.
 #include "ready_file.h"
 #include "platform.h"
+#include "test_sync_spy.h"  // seen_sync and g_syncs
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <iterator>
 #include <string>
 #include <thread>
 
@@ -87,6 +91,23 @@ int main(int argc, char** argv) {
     done = true;
     reader.join();
     check(torn == 0 && reads > 0, "a reader never sees part of a line");
+
+    // A line goes in on the main thread, so it waits for no sync.
+    g_synced = dir + "/s.txt";
+    plat_sync_for_tests = seen_sync;
+    ready_file_append(g_synced.c_str(), "window", 1);
+    plat_sync_for_tests = nullptr;
+    check(g_syncs == 0 && slurp(g_synced) == "window 1\n", "a line is written with no sync");
+    // What one costs on this machine's disk, the system's sync left in.
+    const std::string t = dir + "/t.txt";
+    double ms[50];
+    for (double& m : ms) {
+        const auto t0 = std::chrono::steady_clock::now();
+        ready_file_append(t.c_str(), "frame", 2);
+        m = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    }
+    std::sort(std::begin(ms), std::end(ms));
+    printf("[ready] a line takes a median of %.3f ms, at most %.3f, over %zu\n", ms[25], ms[49], std::size(ms));
 
     // GCN_READY_FILE: each word once, with the time since the process started.
     const std::string e = dir + "/e.txt";

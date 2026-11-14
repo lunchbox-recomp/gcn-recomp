@@ -1,7 +1,8 @@
-// The stand-ins for the system's sync that test_sram and test_exi set as plat_sync_for_tests
-// (platform.h), with the file reader they use. seen_sync keeps what the file being saved,
-// g_synced, and its temporary file held when the save called the sync; refused_sync fails it
-// as a full disk would. Each counts its calls in g_syncs, which a card's saver thread may bump.
+// The stand-ins for the system's sync that test_sram, test_exi and test_ready_file set as
+// plat_sync_for_tests (platform.h), with the file reader the first two use. seen_sync keeps
+// what the file being saved, g_synced, and its temporary file held when the save called the
+// sync; refused_sync fails it as a full disk would. Each counts its calls in g_syncs, which a
+// card's saver thread may bump.
 #pragma once
 #include <atomic>
 #include <cerrno>
