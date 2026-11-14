@@ -24,9 +24,9 @@
 // the overlay's chord. reset.cpp is linked, for the game's reset (guest_reset). The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
-// With GCN_OVERLAY, overlay/*.cpp and pause.cpp are linked as well, and the clock they read
-// (host_ns and clock_hold above, and audio_frames_out) is stubbed, as is the memory card's
-// note of a hold (exi_card_held).
+// With GCN_OVERLAY, overlay/*.cpp, pause.cpp and ui_sound.cpp are linked as well, and the clock
+// they read (host_ns and clock_hold above, and audio_frames_out) is stubbed, as is the memory
+// card's note of a hold (exi_card_held).
 //
 // The checks are in a file for each area, read in below after the frontend, as main.cpp is,
 // so that they see its statics: none of them is compiled on its own. What more than one area
@@ -152,6 +152,7 @@ void render_set_output_fbo(unsigned) {}
 #include "test_ports_tabs.cpp"            // the menu's pages turned by shoulders, triggers and keys
 #include "test_ports_header.cpp"          // the panel's height across pages, views and resets
 #include "test_ports_ring.cpp"            // the focus ring around the item with the focus, and its motion
+#include "test_ports_sounds.cpp"          // the menu's sounds as it raises them
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
@@ -268,6 +269,7 @@ int run_ports(const std::string& dir) {
     header_reset(dir);
     header_view(dir);
     ring_moves(dir);
+    menu_sounds(dir);
 #endif
     return finish("ports");
 }

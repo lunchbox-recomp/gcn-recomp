@@ -208,3 +208,12 @@ size_t ui_sound_queued() {
 }
 
 int ui_sound_playing() { return g_count_seen.load(std::memory_order_relaxed); }
+
+std::vector<UiSound> ui_sound_take() {
+    std::vector<UiSound> ids;
+    const uint32_t head = g_head.load(std::memory_order_acquire);
+    uint32_t tail = g_tail.load(std::memory_order_relaxed);
+    for (; tail != head; tail++) ids.push_back((UiSound)g_queue[tail % kQueue]);
+    g_tail.store(tail, std::memory_order_release);
+    return ids;
+}
