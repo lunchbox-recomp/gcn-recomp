@@ -299,8 +299,9 @@ A replay reads at its log's speed (`80e1d38`).
   `frontend_restart` (`frontend.h`) as Restart does. `theme.h` holds the menu's colours, sizes
   and timings, and a game changes them with `overlay_set_theme` before the overlay starts.
   It also lists each kind of text's fonts, which `fonts.cpp` finds by name and loads into one
-  atlas for the menu and the notices. On macOS those are the system's own Avenir Next and
-  then Helvetica Neue, read from `/System/Library/Fonts` at run time and never shipped.
+  atlas for the menu and the notices. On macOS those are the system's own Avenir Next, then
+  Helvetica Neue, then Helvetica, read from `/System/Library/Fonts` at run time and never
+  shipped.
   Elsewhere the text is in Dear ImGui's embedded font.
 - `openxr/`: the OpenXR frontend (the game on a theater panel or in stereo, the headset's
   controllers as the pad). `xr_frontend.cpp` is the core every platform shares;

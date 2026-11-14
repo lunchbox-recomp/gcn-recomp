@@ -186,8 +186,8 @@ void couch(const OverlayTheme& t) {
 }
 
 // Each kind of text has the design's size at 1080 lines. On macOS its chain is the Mac's own Avenir
-// Next and then Helvetica Neue, read from /System/Library/Fonts where they're installed; elsewhere
-// it's empty, for Dear ImGui's own font, until a platform lists its own.
+// Next, then Helvetica Neue, then Helvetica, read from /System/Library/Fonts where they're
+// installed; elsewhere it's empty, for Dear ImGui's own font, until a platform lists its own.
 void fonts(const OverlayTheme& t) {
     check(t.title_size == 36.0f && t.tab_size == 26.0f && t.item_text_size == 24.0f && t.body_size == 22.0f &&
               t.footer_size == 18.0f,
@@ -202,10 +202,12 @@ void fonts(const OverlayTheme& t) {
     for (const auto& r : roles) {
         char what[160];
 #ifdef __APPLE__
-        const bool ok = r.chain.size() == 2 && r.chain[0].path == "/System/Library/Fonts/Avenir Next.ttc" &&
+        const bool ok = r.chain.size() == 3 && r.chain[0].path == "/System/Library/Fonts/Avenir Next.ttc" &&
                         r.chain[0].name == r.avenir && r.chain[1].path == "/System/Library/Fonts/HelveticaNeue.ttc" &&
-                        r.chain[1].name.starts_with("Helvetica Neue");
-        snprintf(what, sizeof(what), "on macOS the text of the %s takes %s, then a Helvetica Neue face", r.role, r.avenir);
+                        r.chain[1].name.starts_with("Helvetica Neue") && r.chain[2].path == "/System/Library/Fonts/Helvetica.ttc" &&
+                        r.chain[2].name.starts_with("Helvetica") && !r.chain[2].name.starts_with("Helvetica Neue");
+        snprintf(what, sizeof(what), "on macOS the text of the %s takes %s, then a Helvetica Neue face, then a Helvetica one",
+                 r.role, r.avenir);
 #else
         const bool ok = r.chain.empty();
         snprintf(what, sizeof(what), "off macOS the text of the %s lists no font, for Dear ImGui's own", r.role);

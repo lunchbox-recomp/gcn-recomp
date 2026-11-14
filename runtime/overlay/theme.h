@@ -27,17 +27,20 @@ struct OverlayFonts {
     std::vector<OverlayFace> title, tabs, items, body, footer;
 };
 
-// The fork's chains: on macOS the Mac's own Avenir Next and then Helvetica Neue, and elsewhere
-// none, so Dear ImGui's own font, until a platform lists its own files.
+// The fork's chains: on macOS the Mac's own Avenir Next, then Helvetica Neue, then Helvetica,
+// which has no medium weight: its Bold for the kinds Avenir Next draws in Demi Bold or heavier,
+// its regular for the rest. Elsewhere none, so Dear ImGui's own font, until a platform lists its
+// own files.
 inline OverlayFonts overlay_fonts_default() {
 #ifdef __APPLE__
     const std::string avenir = "/System/Library/Fonts/Avenir Next.ttc";
     const std::string neue = "/System/Library/Fonts/HelveticaNeue.ttc";
-    return {{{avenir, "Avenir Next Heavy"}, {neue, "Helvetica Neue Bold"}},
-            {{avenir, "Avenir Next Demi Bold"}, {neue, "Helvetica Neue Medium"}},
-            {{avenir, "Avenir Next Medium"}, {neue, "Helvetica Neue Medium"}},
-            {{avenir, "Avenir Next Medium"}, {neue, "Helvetica Neue"}},
-            {{avenir, "Avenir Next Demi Bold"}, {neue, "Helvetica Neue Medium"}}};
+    const std::string helvetica = "/System/Library/Fonts/Helvetica.ttc";
+    return {{{avenir, "Avenir Next Heavy"}, {neue, "Helvetica Neue Bold"}, {helvetica, "Helvetica Bold"}},
+            {{avenir, "Avenir Next Demi Bold"}, {neue, "Helvetica Neue Medium"}, {helvetica, "Helvetica Bold"}},
+            {{avenir, "Avenir Next Medium"}, {neue, "Helvetica Neue Medium"}, {helvetica, "Helvetica"}},
+            {{avenir, "Avenir Next Medium"}, {neue, "Helvetica Neue"}, {helvetica, "Helvetica"}},
+            {{avenir, "Avenir Next Demi Bold"}, {neue, "Helvetica Neue Medium"}, {helvetica, "Helvetica Bold"}}};
 #else
     return {};
 #endif

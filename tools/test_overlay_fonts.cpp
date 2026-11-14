@@ -476,6 +476,16 @@ void system_fonts(const std::string& dir) {
         for (FontRole r : kRoles) second = second && took(r).starts_with("Helvetica Neue");
         check(second && said_neue.empty(), "each Helvetica Neue face the chains fall to is there too");
     }
+    // The third, as on a Mac without either.
+    OverlayFonts helvetica = neue;
+    for (auto* chain : {&helvetica.title, &helvetica.tabs, &helvetica.items, &helvetica.body, &helvetica.footer})
+        chain->erase(chain->begin());
+    if (std::filesystem::exists(helvetica.body[0].path)) {
+        const auto said_helvetica = said(dir + "/helvetica-stderr.txt", [&] { fonts_build(helvetica); });
+        bool third = true;
+        for (FontRole r : kRoles) third = third && took(r).starts_with("Helvetica") && !took(r).starts_with("Helvetica Neue");
+        check(third && said_helvetica.empty(), "and each Helvetica face after them");
+    }
     shared(f, "the Mac's fonts", 2160.0f);
 }
 
