@@ -246,6 +246,18 @@ macro(_gcn_fetch_imgui)
     # line makes Apple's linker warn.
     target_include_directories(gcn_imgui PRIVATE
       $<TARGET_PROPERTY:${GCN_SDL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>)
+    # The same again with its asserts on, for the checks that draw the overlay: IM_ASSERT is
+    # assert, which the build type's NDEBUG turns off. -UNDEBUG is public, so each check's own
+    # sources, and Dear ImGui's headers in them, have their asserts on too. A game links
+    # gcn_imgui alone.
+    add_library(gcn_imgui_asserts STATIC EXCLUDE_FROM_ALL ${_imgui}/imgui.cpp ${_imgui}/imgui_draw.cpp
+      ${_imgui}/imgui_tables.cpp ${_imgui}/imgui_widgets.cpp ${_imgui}/backends/imgui_impl_sdl3.cpp
+      ${_imgui}/backends/imgui_impl_opengl3.cpp)
+    _gcn_set_standards(gcn_imgui_asserts)
+    target_include_directories(gcn_imgui_asserts PUBLIC ${_imgui} ${_imgui}/backends)
+    target_include_directories(gcn_imgui_asserts PRIVATE
+      $<TARGET_PROPERTY:${GCN_SDL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_options(gcn_imgui_asserts PUBLIC -UNDEBUG)
   endif()
 endmacro()
 
@@ -845,7 +857,7 @@ function(gcn_add_game)
         ${RT}/overlay/theme.cpp)
       _gcn_set_standards(test_overlay_theme)
       target_include_directories(test_overlay_theme PRIVATE ${RT})
-      target_link_libraries(test_overlay_theme PRIVATE gcn_imgui)
+      target_link_libraries(test_overlay_theme PRIVATE gcn_imgui_asserts)
       target_compile_options(test_overlay_theme PRIVATE ${GCN_RUNTIME_WARNINGS})
       target_compile_definitions(test_overlay_theme PRIVATE GCN_OVERLAY)
       # The motion's checks (tools/test_overlay_motion.cpp): the easings and tweens, how the
@@ -854,7 +866,7 @@ function(gcn_add_game)
         ${RT}/overlay/motion.cpp ${RT}/overlay/appear.cpp)
       _gcn_set_standards(test_overlay_motion)
       target_include_directories(test_overlay_motion PRIVATE ${RT})
-      target_link_libraries(test_overlay_motion PRIVATE gcn_imgui)
+      target_link_libraries(test_overlay_motion PRIVATE gcn_imgui_asserts)
       target_compile_options(test_overlay_motion PRIVATE ${GCN_RUNTIME_WARNINGS})
       # The standard library checks its preconditions here, std::clamp's bounds among them, so a
       # theme's times that break one stop the checks.
@@ -867,7 +879,7 @@ function(gcn_add_game)
         ${RT}/overlay/fonts.cpp)
       _gcn_set_standards(test_overlay_fonts)
       target_include_directories(test_overlay_fonts PRIVATE ${RT})
-      target_link_libraries(test_overlay_fonts PRIVATE gcn_imgui)
+      target_link_libraries(test_overlay_fonts PRIVATE gcn_imgui_asserts)
       target_compile_options(test_overlay_fonts PRIVATE ${GCN_RUNTIME_WARNINGS})
       target_compile_definitions(test_overlay_fonts PRIVATE GCN_OVERLAY)
       # The address and undefined behaviour sanitizers, where the compiler has them, so a read
@@ -885,13 +897,14 @@ function(gcn_add_game)
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page
     # saves through settings.cpp, which is linked above. --pages draws the menu over a GL window
-    # and writes its PNGs with png.cpp.
+    # and writes its PNGs with png.cpp. Dear ImGui's asserts are on here, and with them every
+    # assert in test_ports.
     if(_gcn_overlay)
       target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp ${RT}/png.cpp)
       if(NOT APPLE)
         target_sources(test_ports PRIVATE ${GLAD_SOURCE} ${RT}/gx/gl_load.cpp)
       endif()
-      target_link_libraries(test_ports PRIVATE gcn_imgui ${GCN_PLATFORM_LIBS})
+      target_link_libraries(test_ports PRIVATE gcn_imgui_asserts ${GCN_PLATFORM_LIBS})
       target_compile_definitions(test_ports PRIVATE GCN_OVERLAY GCN_OVERLAY_TEST)
     endif()
   endif()
