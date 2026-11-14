@@ -60,6 +60,7 @@ float g_tallest, g_tallest_scale;
 float g_most;   // the panel's greatest height at this frame, in pixels (panel_place)
 float g_below;  // the height laid out under the page or the view at the last frame: the gap and the footer
 float g_view = -1.0f;  // the Buttons view's height at the frame laid out last, -1 with no view then
+ImGuiID g_region;      // the window of the region the view scrolls in, once one has been laid out (view)
 
 // The page showing, drawn by its own callback.
 void page() {
@@ -125,7 +126,8 @@ void view(float last) {
     bindings_page();
     ImGui::PopItemWidth();
     const ImGuiWindow* region = ImGui::GetCurrentWindow();
-    g_view = region->DC.CursorMaxPos.y - region->DC.CursorStartPos.y;
+    g_region = region->ID;
+    g_view =region->DC.CursorMaxPos.y - region->DC.CursorStartPos.y;
     ImGui::EndChild();
     w->DC.CursorMaxPos.x = std::min(w->DC.CursorMaxPos.x, w->WorkRect.Max.x);
 }
@@ -152,10 +154,10 @@ void draw_menu(uint64_t now) {
     // The panel keeps the item with the focus in the Buttons view's region (view) as its own, as
     // it would with the view on it. Once the region goes, Dear ImGui hands the focus back to the
     // panel's, which would otherwise be the button that put the view up, and a close's fade would
-    // move it there.
+    // move it there. Only the region's: a popup a page opens, a combo's list, is the panel's too,
+    // and its item is gone once it closes.
     const ImGuiContext& g = *ImGui::GetCurrentContext();
-    ImGuiWindow* panel = ImGui::GetCurrentWindow();
-    if (g.NavWindow && g.NavWindow->ParentWindow == panel) panel->NavLastIds[ImGuiNavLayer_Main] = g.NavId;
+    if (g.NavWindow && g.NavWindow->ID == g_region) ImGui::GetCurrentWindow()->NavLastIds[ImGuiNavLayer_Main] = g.NavId;
     g_panel_list = ImGui::GetWindowDrawList();
     g_panel_vtx = g_panel_list->VtxBuffer.Size;  // the panel itself, drawn by Begin
     const bool asking = overlay_asking() != OverlayAsk::none;

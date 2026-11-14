@@ -5,9 +5,9 @@
 // over half the panel, a page change from the footer and the menu opening put it there at once,
 // as menu_motion off, --dump-output and a focus_ms that takes no time do for every move. It
 // slides and fades in with a page, but not around the footer's first item, a question's or the
-// Buttons view's, and a click hides it. Closed after all that, 600 frames lay out no menu frame.
-// Read in by tools/test_ports.cpp after the frontend and test_ports_bindings_page.cpp, with
-// GCN_OVERLAY.
+// Buttons view's, and a click hides it. A pick from a page's combo puts it back on the combo.
+// Closed after all that, 600 frames lay out no menu frame. Read in by tools/test_ports.cpp after
+// the frontend and test_ports_bindings_page.cpp, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/ring.h"
 #include "overlay/tabs.h"  // how far the page's contents are across as they come in
@@ -50,6 +50,18 @@ void text_page(void*) {
     g_text = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 }
 
+// The Combo page, a combo of three to pick from, its first item. Its item and the rect the focus
+// takes on it as it was last laid out, and its pick.
+ImGuiID g_combo_id;
+ImRect g_combo;
+int g_combo_pick;
+void combo_page(void*) {
+    const char* const kItems[] = {"First", "Second", "Third"};
+    ImGui::Combo("Pick", &g_combo_pick, kItems, 3);
+    g_combo_id = ImGui::GetItemID();
+    g_combo = ImGui::GetCurrentContext()->LastItemData.NavRect;
+}
+
 // The ring at the menu's last frame.
 struct Ring {
     bool shown = false;
@@ -89,7 +101,7 @@ void stroke(Guest& g, SDL_Scancode sc, SDL_Keycode kc, int down_ms = kFrameMs, i
 // Long enough for anything moving to have settled.
 void ring_settle(Guest& g) { frame_after(g, 1000); }
 
-// The menu set up with `theme` and Right, Right too, Rows and Text after its own pages, `motion`
+// The menu set up with `theme` and Right, Right too, Rows, Text and Combo after its own pages, `motion`
 // on or off, under --dump-output or not, then opened over the held game, on the page titled
 // `open_on` if one is given, as the first open of a session.
 void ring_menu(SDL_Window* window, const std::string& dir, Guest& guest, bool motion = true, bool dump_output = false,
@@ -100,6 +112,7 @@ void ring_menu(SDL_Window* window, const std::string& dir, Guest& guest, bool mo
     overlay_add_page("Right too", corner_page, nullptr);
     overlay_add_page("Rows", rows_page, nullptr);
     overlay_add_page("Text", text_page, nullptr);
+    overlay_add_page("Combo", combo_page, nullptr);
     OverlayPicture picture;
     picture.path = dir + "/ring-settings.txt";
     picture.apply = record_apply;
@@ -288,6 +301,28 @@ void ring_view(SDL_Window* window, const std::string& dir) {
     gamepads_shutdown();
 }
 
+// On the Combo page, its combo opened with Enter and Second picked with Down and Enter: the focus
+// goes back to the combo, with the ring on it. The combo's list is a popup the panel opened, which
+// keeps none of its items once it closes.
+void ring_combo(SDL_Window* window, const std::string& dir) {
+    Guest guest;
+    ring_menu(window, dir, guest, true, false, "Combo");
+    g_combo_pick = 0;
+    const bool first = ring_on(ring_now(), g_combo);
+    stroke(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    ring_settle(guest);
+    const ImGuiContext& g = *ImGui::GetCurrentContext();
+    const bool listed = g.NavWindow && (g.NavWindow->Flags & ImGuiWindowFlags_Popup) && g.NavId != g_combo_id;
+    stroke(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
+    stroke(guest, SDL_SCANCODE_RETURN, SDLK_RETURN);
+    ring_settle(guest);
+    check(first && listed && g_combo_pick == 1 && g.NavId == g_combo_id && g.NavIdIsAlive &&
+              ring_on(ring_now(), g_combo),
+          "a combo on a page, opened and an item picked, has the focus back on it with the ring");
+    stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
+    ring_settle(guest);
+}
+
 void ring_moves(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
@@ -402,6 +437,7 @@ void ring_moves(const std::string& dir) {
     ring_opens(window, dir);
     ring_asks(window, dir);
     ring_view(window, dir);
+    ring_combo(window, dir);
     check(still_ring(window, dir, true, true), "under --dump-output it doesn't move either");
     check(still_ring(window, dir, true, false, INFINITY) && still_ring(window, dir, true, false, NAN) &&
               still_ring(window, dir, true, false, -1.0f),
