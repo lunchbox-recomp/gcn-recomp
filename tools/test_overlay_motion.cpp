@@ -230,9 +230,9 @@ void transform() {
 // A notice as a toast (runtime/overlay/toasts.h) at 0, 100, 200, 1820, 1910 and 2000 ms of its
 // life: with motion, 16 px below its place and clear, then rising out-cubic and whole at 200 ms,
 // whole until 1820 ms, fading in-quad to nothing at 2000 ms; without, whole in its place until
-// 2000 ms, and moving only as it fades. One queued over another rises from no further than the
-// gap between them. A theme's
-// times that aren't finite or are negative take none, and a long one is cut to
+// 2000 ms. It moves only as it fades in or out, and never without motion. One queued over another
+// rises from no further than the gap between them. A theme's times that aren't finite or are
+// negative take none, a rise that isn't finite or is negative none, and a long time is cut to
 // the toast's 2 s. A toast above one that goes moves down into its place over 160 ms, out-cubic,
 // or at once without motion.
 void toasts() {
@@ -278,6 +278,11 @@ void toasts() {
     check(near(first.alpha, 1.0f) && near(first.below, 0.0f) && near(late.alpha, 1.0f) && near(slow.alpha, 0.875f),
           "a theme's time that isn't a number or is negative takes none, and a rise that isn't finite none; "
           "one longer than 2 s takes 2 s");
+    OverlayTheme sunk = th;
+    sunk.toast_rise = -5.0f;
+    check(near(toast_look(sunk, 0, true).below, 0.0f) && near(toast_look(sunk, 100 * kMs, true).below, 0.0f) &&
+              near(toast_look(sunk, 0, true, true).below, 0.0f) && near(toast_look(sunk, 100 * kMs, true).alpha, 0.875f),
+          "a rise of -5 px takes none, alone or over another, and the toast still fades in");
 
     Tween slot;
     slot.from = slot.to = 1.0f;
