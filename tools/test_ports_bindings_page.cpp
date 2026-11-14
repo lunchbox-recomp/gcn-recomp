@@ -175,6 +175,12 @@ void bindings_page_checks(Guest& guest, const std::string& dir) {
     tap(guest, pad, SDL_GAMEPAD_BUTTON_NORTH);
     check(has(overlay_bindings_said(), "Start is now ") && has(overlay_bindings_said(), "until the game quits"),
           "a change pads.txt couldn't take says it lasts until the game quits");
+    for (int i = 0; i < 40; i++) tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+    tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+    check(overlay_bindings_said() == "virtual pad buttons view has its default buttons, dead zones and trigger click "
+                                     "again. pads.txt couldn't be written, so this lasts until the game quits.",
+          "Reset to default, right of Test rumble, says what it put back, and that pads.txt couldn't take it");
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     std::remove((dir + "/not-a-folder").c_str());
 
