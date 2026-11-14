@@ -2,9 +2,11 @@
 // hand (g_host_ns): opening still asks for the pause at once, the paused wait is 8 ms while it
 // moves and 16 ms once it's still, and an `[overlay] shown after N ms` line comes once it's
 // whole, while the backdrop dims the game from clear. As it closes the guest goes on at once
-// while the menu fades with no input of its own, from a key or a gamepad, and once it's gone 600 closed frames lay out no menu frame and no notice. With menu_motion off,
-// and under --dump-output, nothing moves. Read in by tools/test_ports.cpp after the frontend,
-// with GCN_OVERLAY.
+// while the menu fades with no input of its own, from a key or a gamepad, and once it's gone
+// 600 closed frames lay out no menu frame and no notice. With menu_motion off, and under
+// --dump-output, nothing moves. Keys queued in the pump of the F1 that closes it press nothing
+// in its fade or at its next open. Read in by tools/test_ports.cpp after the frontend, with
+// GCN_OVERLAY.
 #include "test_ports_support.h"
 
 namespace {
@@ -57,6 +59,53 @@ Still still_with(SDL_Window* window, const std::string& dir, bool motion, bool d
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     s.closed_due = overlay_menu_due();
     return s;
+}
+
+// Down, then Space, then F1, all in one host frame's pump, then each let go.
+void down_space_f1(Guest& guest) {
+    for (bool down : {true, false}) {
+        push_key(SDL_SCANCODE_DOWN, SDLK_DOWN, down);
+        push_key(SDL_SCANCODE_SPACE, SDLK_SPACE, down);
+        push_key(SDL_SCANCODE_F1, SDLK_F1, down);
+        host_frame(guest);
+    }
+}
+
+// The Display page open on 16:9, so that Down then Space on its first choice, 4:3, would change
+// it: Down, Space and F1 in one pump close the menu, with `motion` or not, and it fades out and
+// opens again. Then they open it from closed, and it closes again. Whether no setting was
+// applied or saved: the presses ahead of F1 in its pump reach neither the menu's fade nor its
+// next open's first frame, and none reach the menu while it's closed.
+bool nothing_queued(SDL_Window* window, const std::string& dir, bool motion) {
+    overlay_test_reset_pages();
+    OverlayPicture picture;
+    picture.path = dir + "/queued-settings-" + (motion ? "motion" : "still") + ".txt";
+    picture.apply = record_apply;
+    picture.now.aspect = picture.saved.aspect = "16:9";
+    picture.now.menu_motion = motion;
+    overlay_init(window, "Test title", picture);
+    const int applies = g_applies;
+    Guest guest;
+    const auto settle = [&] {
+        g_host_ns += 1000 * kMs;
+        host_frame(guest);
+        host_frame(guest);
+    };
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
+    tap(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);  // the focus onto the page's first choice
+    down_space_f1(guest);  // closes it
+    host_frame(guest);
+    settle();
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
+    down_space_f1(guest);  // opens it
+    settle();
+    tap(guest, SDL_SCANCODE_F1, SDLK_F1);
+    settle();
+    return g_applies == applies && !exists_path(picture.path);
 }
 
 void overlay_motion(const std::string& dir) {
@@ -146,6 +195,10 @@ void overlay_motion(const std::string& dir) {
     check(!off.opened_moving && !off.closed_due, "with menu_motion off it opens whole and closes at once");
     const Still dumping = still_with(window, dir, true, true);
     check(!dumping.opened_moving && !dumping.closed_due, "under --dump-output it doesn't move either");
+    check(nothing_queued(window, dir, true),
+          "Down and Space ahead of the F1 that closes it, in one pump, press nothing as it fades or as it opens again");
+    check(nothing_queued(window, dir, false),
+          "with menu_motion off they press nothing as it opens again, and none ahead of an F1 that opens it do");
     close_window(window);
 }
 

@@ -132,7 +132,10 @@ void set_open(bool on) {
     if (!on) {
         // As it fades out the menu is laid out with no input fed to it (overlay_event, menu_frame),
         // and with none held, so nothing moves its focus, which Dear ImGui keeps for the next
-        // open. Its NoInputs window flag would lose that focus.
+        // open. Its NoInputs window flag would lose that focus. A key queued ahead of this close
+        // in the same pump is dropped too, or the fade's first frame, or with no fade the next
+        // open's, would press it. Nothing is queued while it's closed (overlay_event).
+        ImGui::GetIO().ClearEventsQueue();
         ImGui::GetIO().ClearInputKeys();
         ImGui::GetIO().ClearInputMouse();
         return;
