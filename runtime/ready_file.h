@@ -5,6 +5,9 @@
 //   window <ms>   the first frame the window shows, the boot splash's or else the game's
 //   frame <ms>    the first frame the game presents
 //
+// A --hidden run shows nothing, and still writes window, with frame, at the game's first frame,
+// so a launcher that waits for both isn't left waiting.
+//
 // Each line goes in once. The file is rewritten through PATH.tmp, which then replaces it, so a
 // reader sees it whole, with every line complete; a watcher of the file itself sees it renamed
 // over, so watch its directory or open it again at each change. Nothing waits for the disk

@@ -943,7 +943,8 @@ int main(int argc, char** argv) {
         }
         if (presented) {
             show_frame(win);
-            // GCN_READY_FILE (ready_file.h): with no splash, the first frame shown is the game's.
+            // GCN_READY_FILE (ready_file.h): with no splash, the first frame shown is the game's, and
+            // a --hidden run, which shows none, writes window here too.
             ready_mark("window");
             ready_mark("frame");
             frames++;

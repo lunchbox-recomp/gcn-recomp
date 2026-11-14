@@ -826,7 +826,9 @@ asked for but not yet held leaves it playing.
 launcher can keep its own window up until the game's has something on it
 (`runtime/ready_file.h`). `window <ms>` goes in at the first frame the window shows and
 `frame <ms>` at the first frame the game presents, each once, in milliseconds since the
-process started. With no boot splash (below), both go in at the game's first frame.
+process started. With no boot splash (below), both go in at the game's first frame. A
+`--hidden` run shows nothing and still writes `window`, with `frame`, so a launcher that
+waits for both isn't left waiting.
 
 That's one pair a launch. A console reset starts the game again with `GCN_READY_FILE` taken
 out of its environment, so it writes no second pair for a launcher still watching. A reset
