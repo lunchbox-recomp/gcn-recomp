@@ -7,7 +7,7 @@
 // builds its style again from the theme whenever that changes.
 //
 // Some fields are read by nothing yet. Each says so, and which later piece of the look reads
-// it: F7 the notices as toasts and D1 a game's own theme.
+// it: F5 the focus ring, F7 the notices as toasts and D1 a game's own theme.
 #pragma once
 #include <cstdint>
 #include <string>
