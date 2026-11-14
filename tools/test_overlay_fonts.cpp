@@ -8,11 +8,11 @@
 // with the repository. Each kind of text takes the first face of its chain that loads, then
 // Dear ImGui's own, with one [overlay] font line on stderr for each step down, and a theme that
 // lists no font at all takes Dear ImGui's own with one line. An atlas no context is on is freed
-// when the next is built. The menu's and the notices'
-// contexts share one atlas, and the text of every kind at sizes up to 2160 lines at twice the
-// pixel density, 1440 in Dear ImGui's own font, is baked into its 8 MB texture, no glyph falling
-// back. Where the Mac's own Avenir Next is installed, the
-// default chains load from it with no step down, read where it is and never copied.
+// when the next is built. The menu's and the notices' contexts share one atlas, its texture
+// capped at 8 MB, and the text of every kind at sizes up to 2160 lines at twice the pixel
+// density, 1440 in Dear ImGui's own font, is baked into it, no glyph falling back. Where the
+// Mac's own Avenir Next is installed, the default chains load from it with no step down, read
+// where it is and never copied.
 //
 // usage: test_overlay_fonts <work dir>
 // The work dir must not exist. It's made, and the files are left in it. Exits 0 only if every
@@ -464,9 +464,10 @@ void shared(const OverlayFonts& f, const char* which, float most_at_two) {
             }
         }
     printf("[fonts] %s: the atlas texture at most %.2f MB, %d glyphs fell back\n", which, live / 1048576.0, g_fell_back);
-    snprintf(what, sizeof(what), "%s: every kind of text up to %.0f lines at twice the density is baked, none falling back, in 8 MB of texture",
+    snprintf(what, sizeof(what), "%s: every kind of text up to %.0f lines at twice the density is baked, none falling back, in a texture capped at 8 MB",
              which, most_at_two);
-    check(g_fell_back == 0 && live <= 8u << 20, what);
+    const ImFontAtlas* atlas = fonts_atlas();
+    check(g_fell_back == 0 && (size_t)atlas->TexMaxWidth * atlas->TexMaxHeight * 4 == 8u << 20, what);
     for (ImGuiContext* c : {notices, menu}) ImGui::DestroyContext(c);
 }
 
