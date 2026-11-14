@@ -215,8 +215,12 @@ bool overlay_bindings_open(uint32_t device) {
 bool overlay_bindings_shown() { return g_shown; }
 bool overlay_bindings_listening() { return g_listen.has_value(); }
 
+// footer.cpp's: the gamepad press-to-bind listens to, whose own Back or Guide the footer draws,
+// null while it isn't listening or with that gamepad gone.
+SDL_Gamepad* bindings_pad() { return g_listen ? SDL_GetGamepadFromID(g_device) : nullptr; }
+
 const char* overlay_bindings_cancel() {
-    SDL_Gamepad* g = g_listen ? SDL_GetGamepadFromID(g_device) : nullptr;
+    SDL_Gamepad* g = bindings_pad();
     if (!g) return nullptr;
     if (SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_BACK)) return "Back";
     return SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_GUIDE) ? "Guide" : nullptr;
