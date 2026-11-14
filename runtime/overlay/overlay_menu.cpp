@@ -172,9 +172,9 @@ void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
     g_titles.push_back(title);
 }
 
+#ifdef GCN_OVERLAY_TEST
 int overlay_page() { return tabs_page(); }
 
-#ifdef GCN_OVERLAY_TEST
 void menu_clear_pages() {
     g_pages.clear();
     g_titles = kOwnPages;

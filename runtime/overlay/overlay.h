@@ -149,9 +149,9 @@ const std::vector<std::string>& overlay_test_pages();
 void overlay_test_pick_page(int page);
 // Whether the menu's last frame showed a page, not a question or a view in its place.
 bool overlay_test_page_shown();
-#endif
-// The page showing, 0 for Display, 1 for Controllers and 2 on for the pages added. For the tests.
+// The page showing, 0 for Display, 1 for Controllers and 2 on for the pages added.
 int overlay_page();
+#endif
 // Each of the window's events, before the frontend's own. True for one the overlay takes, which
 // nothing else should see: F1, Back (Guide on a gamepad with no Back, and ZL on a Switch 2
 // GameCube controller), B or Escape opening or closing it or going back from a question, and
