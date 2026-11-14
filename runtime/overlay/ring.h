@@ -1,8 +1,8 @@
 // The focus ring (overlay.h), in place of Dear ImGui's own nav highlight: a rounded rect in the
 // theme's accent around the item with the focus, focus_width wide and focus_gap outside the item
 // at 1080 lines, its corners the item's own rounded out that far. It shows when Dear ImGui would
-// show its own, after a key or a gamepad moves the focus and not after the mouse, and only on the
-// menu's own window.
+// show its own, as the menu opens (draw_menu) and after a key or a gamepad moves the focus, not
+// after the mouse, and only on the menu's own window.
 //
 // When the focus moves the ring follows on the host clock (motion.h): each frame it goes
 // 1 - exp(-dt / focus_ms) of the way left, dt the host time since the frame before, so it eases

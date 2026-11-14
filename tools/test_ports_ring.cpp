@@ -16,13 +16,14 @@ namespace {
 constexpr int kFrameMs = 16;  // a host frame over the held game, once nothing moves (batch_wait_ms)
 
 // The Rows page: One and Two a row apart, then Far under a gap of 45% of the window's height,
-// over half the panel's. Each one's rect as it was last laid out.
+// over half the panel's. Each one's rect as it was last laid out, and its presses.
 ImRect g_rows[3];
+int g_pressed[3];
 void rows_page(void*) {
     const char* const kNames[] = {"One", "Two", "Far"};
     for (int i = 0; i < 3; i++) {
         if (i == 2) ImGui::Dummy(ImVec2(1.0f, 0.45f * ImGui::GetMainViewport()->Size.y));
-        ImGui::Button(kNames[i]);
+        if (ImGui::Button(kNames[i])) g_pressed[i]++;
         g_rows[i] = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
     }
 }
@@ -78,8 +79,10 @@ void stroke(Guest& g, SDL_Scancode sc, SDL_Keycode kc, int down_ms = kFrameMs, i
 void ring_settle(Guest& g) { frame_after(g, 1000); }
 
 // The menu set up with Right, Right too and Rows after its own pages, `motion` on or off, under
-// --dump-output or not, then opened over the held game.
-void ring_menu(SDL_Window* window, const std::string& dir, bool motion, bool dump_output, Guest& guest) {
+// --dump-output or not, then opened over the held game, on the page titled `open_on` if one is
+// given, as the first open of a session.
+void ring_menu(SDL_Window* window, const std::string& dir, Guest& guest, bool motion = true, bool dump_output = false,
+               const char* open_on = nullptr) {
     overlay_test_reset_pages();
     overlay_add_page("Right", corner_page, nullptr);
     overlay_add_page("Right too", corner_page, nullptr);
@@ -91,6 +94,7 @@ void ring_menu(SDL_Window* window, const std::string& dir, bool motion, bool dum
     gx::g_dump_output = dump_output;
     overlay_init(window, "Test title", picture);
     gx::g_dump_output = false;
+    if (open_on) overlay_test_pick_page(page_at(open_on));
     host_frame(guest);
     ring_settle(guest);
     stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
@@ -106,7 +110,7 @@ void turn_to(Guest& g, const char* title) {
 // and nothing moves.
 bool still_ring(SDL_Window* window, const std::string& dir, bool motion, bool dump_output) {
     Guest guest;
-    ring_menu(window, dir, motion, dump_output, guest);
+    ring_menu(window, dir, guest, motion, dump_output);
     turn_to(guest, "Rows");
     ring_settle(guest);
     const bool first = ring_on(ring_now(), g_rows[0]);
@@ -128,13 +132,57 @@ ImRect drawn_in(uint32_t rgb) {
     return r;
 }
 
+// A left click at the middle of page `title`'s pill, a host frame each for its press and its let go.
+void click_pill(Guest& g, const char* title) {
+    float x = 0.0f, y = 0.0f;
+    tabs_test_pill(page_at(title), x, y);
+    mouse(g, x, y, true);
+    mouse(g, x, y, false);
+}
+
+// The menu shows the ring as it opens: at a session's first open on Rows it's on One, which a
+// gamepad's A presses at once, and the same once the mouse has hidden it and the menu has closed.
+void ring_opens(SDL_Window* window, const std::string& dir) {
+    gamepads_init();
+    Virtual pad{"virtual pad ring"};
+    attach(pad);
+    {
+        Guest guest;
+        ring_menu(window, dir, guest, true, false, "Rows");
+        g_pressed[0] = 0;
+        const bool first = overlay_page() == page_at("Rows") && ring_on(ring_now(), g_rows[0]);
+        tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+        check(first && g_pressed[0] == 1,
+              "at the session's first open the ring is on the page's first item, and A presses it at once");
+
+        // A click on a pill turns the page and hides the ring, and one on Rows' puts the focus back
+        // on One with the ring still hidden.
+        click_pill(guest, "Right");
+        click_pill(guest, "Rows");
+        ring_settle(guest);
+        const bool hidden = overlay_page() == page_at("Rows") && !ring_now().shown;
+        stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
+        ring_settle(guest);
+        stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
+        ring_settle(guest);
+        const bool again = ring_on(ring_now(), g_rows[0]);
+        tap(guest, pad, SDL_GAMEPAD_BUTTON_SOUTH);
+        check(hidden && again && g_pressed[0] == 2,
+              "after a click hid it, the menu opened again shows the ring on the first item, and A presses it at once");
+        stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
+        ring_settle(guest);
+    }
+    unplug({&pad});
+    gamepads_shutdown();
+}
+
 void ring_moves(const std::string& dir) {
     SDL_Window* window = open_window();
     if (!window) return;
     const OverlayTheme theme = overlay_theme_default();
     {
         Guest guest;
-        ring_menu(window, dir, true, false, guest);
+        ring_menu(window, dir, guest);
         const long frames_open = overlay_menu_frames();
 
         // A page change from the footer's Quit game to a page whose first item is under half the
@@ -212,6 +260,7 @@ void ring_moves(const std::string& dir) {
               "closed after the ring has moved, 600 frames lay out no menu frame");
     }
     check(still_ring(window, dir, false, false), "with menu_motion off the ring is on its item at the next frame");
+    ring_opens(window, dir);
     check(still_ring(window, dir, true, true), "under --dump-output it doesn't move either");
     close_window(window);
 }

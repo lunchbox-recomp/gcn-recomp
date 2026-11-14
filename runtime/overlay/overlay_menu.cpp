@@ -87,7 +87,12 @@ void panel_place() {
 }
 
 void draw_menu(uint64_t now) {
-    if (g_focus) ImGui::SetNextWindowFocus();
+    // Opening shows where the focus is, so A presses it and a move goes from it, after the mouse
+    // too, which hides it, and at the session's first open, where nothing has shown it yet.
+    if (g_focus) {
+        ImGui::SetNextWindowFocus();
+        ImGui::SetNavCursorVisible(true);
+    }
     g_focus = false;
     panel_place();
     // Begin draws the panel's edge in the Border colour, an item's edge. It takes the theme's
