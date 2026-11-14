@@ -885,6 +885,29 @@ function(gcn_add_game)
     endif()
   endif()
 
+  # The boot splash's benchmark (tools/bench_splash.cpp): a splash frame's cost and the shader
+  # cache's load with and without it, on this machine's GL in a hidden window. Needs no disc
+  # image or game. Not a check: it measures, and `ninja unit` leaves it out.
+  if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID AND NOT WIN32)
+    add_executable(bench_splash EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/bench_splash.cpp
+      ${RT}/splash.cpp ${RT}/gx/splash_look.cpp ${RT}/banner.cpp ${RT}/ready_file.cpp ${RT}/platform.cpp
+      ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp)
+    if(NOT APPLE OR GCN_GL_ES)
+      target_sources(bench_splash PRIVATE ${GLAD_SOURCE})
+    endif()
+    _gcn_set_standards(bench_splash)
+    target_include_directories(bench_splash PRIVATE ${RT} ${GLAD_INCLUDE_DIR})
+    target_link_libraries(bench_splash PRIVATE ${GCN_SDL_TARGET} ${GCN_PLATFORM_LIBS} Threads::Threads)
+    target_compile_options(bench_splash PRIVATE ${GCN_RUNTIME_WARNINGS})
+    target_compile_definitions(bench_splash PRIVATE ${GCN_GAME_DEFS} ${GCN_GL_DEFS})
+    if(APPLE)
+      target_link_options(bench_splash PRIVATE -Wl,-dead_strip)
+    else()
+      target_compile_options(bench_splash PRIVATE -ffunction-sections)
+      target_link_options(bench_splash PRIVATE -Wl,--gc-sections)
+    endif()
+  endif()
+
   # The audio ring checks (tools/test_audio_ring.cpp): audio.cpp's mix against a device
   # that keeps exact time, and its music held by pause.cpp's gate on a thread for the
   # guest's. Needs no disc image, no device and no SDL.

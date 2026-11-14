@@ -211,6 +211,14 @@ movie are as they were. The last frame stays up while the disc boots.
 `gcn_add_game(... SPLASH OFF)` builds a game without it, `GCN_SPLASH=0` or `1` overrides
 that for a run, and a `--hidden` run never shows it.
 
+`bench_splash` (`tools/bench_splash.cpp`, a desktop build's target, no disc) measures it on
+the machine's GL in a hidden window. On an M4 Max under macOS 26.6, a frame at 2560 x 1920
+drawn offscreen and finished took a median of 0.83 ms for a shaded shape of 1,037 runs, at
+most 1.9 ms, and 1.6 ms for a banner of 3,072 runs (every pixel a run of its own, the most
+there can be), at most 2.4 ms. A made-up cache of 334 programs loaded in a median of 501 ms
+at once, 525 ms in steps with nothing drawn and 539 ms in steps under the splash, so the
+splash adds about 40 ms to the `[shaders]` line, about 25 of them the steps.
+
 ## Stereo scaffolding
 
 `gx/render_gl_eye.cpp`, `gx/render_gl_view.cpp` and `gx/shadergen.cpp` carry the stereo

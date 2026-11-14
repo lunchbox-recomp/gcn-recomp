@@ -849,7 +849,9 @@ tables the test makes up. It covers every pixel mode and alpha, the tile order a
 banner kinds, and the tables and banners to refuse. `ninja test_splash_look` builds
 `tools/test_splash_look.cpp`, which checks the colour flag, `GCN_SPLASH`, the 300 ms rule,
 the banner's runs and where they and the bar go. `ninja test_clear_draw` checks the
-clear-drawn font and rects on a fake GL.
+clear-drawn font and rects on a fake GL. `ninja bench_splash` measures a splash frame and the
+cache's load with and without the splash, and saves a frame as a PNG
+(`tools/bench_splash.cpp`). It isn't a check, so `ninja unit` leaves it out.
 
 ## Ending a run
 
