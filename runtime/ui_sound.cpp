@@ -92,6 +92,7 @@ size_t ui_sound_queued() {
 
 int ui_sound_playing() { return g_count_seen.load(std::memory_order_relaxed); }
 
+#ifdef GCN_OVERLAY_TEST
 std::vector<UiSound> ui_sound_take() {
     std::vector<UiSound> ids;
     const uint32_t head = g_head.load(std::memory_order_acquire);
@@ -100,3 +101,4 @@ std::vector<UiSound> ui_sound_take() {
     g_tail.store(tail, std::memory_order_release);
     return ids;
 }
+#endif
