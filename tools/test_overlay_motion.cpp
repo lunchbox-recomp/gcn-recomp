@@ -8,7 +8,8 @@
 // behind the panel and the backdrop last, and is whole when the panel and the contents are,
 // within 200 ms, or at once with an open time that's negative, infinite or not a number. It
 // closes over the theme's close time, at once with one of those, and can open again from
-// wherever it was. With motion off each change is whole at once. Its transform of a frame's draw
+// wherever it was. The held frame's blur crossfades over 150 ms each way and keeps no menu up
+// past the close. With motion off each change is whole at once. Its transform of a frame's draw
 // data scales every list but the backdrop's about the centre, clip rects too, and fades the
 // panel's vertices and the contents' each by their own alpha. runtime/overlay/toasts.h fades a
 // notice in and out and rises it into its place at the theme's times, in exactly 2 s, and moves
@@ -99,6 +100,9 @@ void opens_and_closes() {
     const uint64_t t0 = 5000 * kMs;
     appear_motion(true);
     appear_open(th, t0);
+    check(th.blur_ms == 150.0f && near(appear_blur(t0), 0.0f) && near(appear_blur(t0 + 75 * kMs), 0.75f) &&
+              appear_blur(t0 + 149 * kMs) < 1.0f && near(appear_blur(t0 + 150 * kMs), 1.0f),
+          "the held frame's blur crossfades in from the sharp frame, 75% at 75 ms out-quad and whole at 150 ms");
     check(near(appear_panel_alpha(t0), 0.0f) && near(appear_scale(t0), th.open_scale) &&
               near(appear_backdrop(t0), 0.0f) && appear_moving(t0) && !appear_shown(t0) && !appear_closing(t0),
           "as it opens the panel is clear at the theme's open scale and the backdrop clear");
@@ -123,6 +127,9 @@ void opens_and_closes() {
     check(!appear_closing(gone) && !appear_moving(gone) && near(appear_panel_alpha(gone), 0.0f) &&
               near(appear_backdrop(gone), 0.0f) && appear_closing(gone - kMs),
           "it's gone at the theme's close time and not before");
+    check(near(appear_blur(t1), 1.0f) && near(appear_blur(t1 + 75 * kMs), 0.75f) && appear_blur(gone) > 0.0f &&
+              near(appear_blur(t1 + 150 * kMs), 0.0f),
+          "the blur crossfades back to the sharp frame over 150 ms, in-quad, past the close it keeps no menu up for");
     appear_close(th, t1);
     const float shrunk = appear_scale(t1 + 60 * kMs);
     appear_open(th, t1 + 60 * kMs);
@@ -159,11 +166,12 @@ void opens_and_closes() {
     const uint64_t t2 = 20000 * kMs;
     appear_open(th, t2);
     check(near(appear_panel_alpha(t2), 1.0f) && near(appear_contents_alpha(t2), 1.0f) && near(appear_scale(t2), 1.0f) &&
-              near(appear_backdrop(t2), 1.0f) && appear_shown(t2) && !appear_moving(t2),
-          "with motion off it's whole as it opens");
+              near(appear_backdrop(t2), 1.0f) && near(appear_blur(t2), 1.0f) && appear_shown(t2) && !appear_moving(t2),
+          "with motion off it's whole as it opens, the blur too");
     appear_close(th, t2 + kMs);
-    check(!appear_closing(t2 + kMs) && !appear_moving(t2 + kMs) && near(appear_panel_alpha(t2 + kMs), 0.0f),
-          "and gone as it closes");
+    check(!appear_closing(t2 + kMs) && !appear_moving(t2 + kMs) && near(appear_panel_alpha(t2 + kMs), 0.0f) &&
+              near(appear_blur(t2 + kMs), 0.0f),
+          "and gone as it closes, back to the sharp frame at once");
 }
 
 struct Vtx {

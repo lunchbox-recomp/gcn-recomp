@@ -1,10 +1,13 @@
 // ---- The menu's motion over a window from SDL's dummy video driver, on a host clock moved by
 // hand (g_host_ns): opening still asks for the pause at once, the paused wait is 8 ms while it
 // moves and 16 ms once it's still, and an `[overlay] shown after N ms` line comes once it's
-// whole, while the backdrop dims the game from clear. As it closes the guest goes on at once
-// while the menu fades with no input of its own, from a key, the mouse or a gamepad, and once
-// it's gone 600 closed frames lay out no menu frame and no notice. With menu_motion off, and
-// under --dump-output, nothing moves, and it says it's shown at the frame that first draws it.
+// whole, while the backdrop dims the game from clear and the held frame's blur is asked for,
+// crossfading in over 150 ms. As it closes the guest goes on at once while the menu fades with no
+// input of its own, from a key, the mouse or a gamepad, the blur fading out 30 ms after it, and
+// once both are gone 600 closed frames lay out no menu frame and no notice and ask for no blur.
+// With menu_motion off the blur snaps in and out, and under --dump-output, or with the theme's
+// blur_backdrop off, there's none. With menu_motion off, and under --dump-output, nothing moves,
+// and it says it's shown at the frame that first draws it.
 // Keys queued in the pump of the F1 that closes it press nothing in its fade or at its next
 // open. Quit?, the press-A order and the Buttons view stay drawn as
 // they were through the fade and end after it. Read in by tools/test_ports.cpp after the
@@ -40,13 +43,19 @@ int panel_alpha() {
     return (int)(w->DrawList->VtxBuffer[0].col >> IM_COL32_A_SHIFT & 0xFF);
 }
 
-// The menu opened with F1 and closed again, with `motion` and under --dump-output or not: whether
-// it moved as it opened and whether its menu was still due as it closed.
+// The menu opened with F1 and closed again, with `motion`, under --dump-output or not and with the
+// theme's blur_backdrop `blur`: whether it moved as it opened and whether its menu was still due
+// as it closed, and the blur's hold and alpha once it had opened and once it had closed.
 struct Still {
     bool opened_moving, closed_due;
+    bool blur_held, blur_held_closed;
+    float blur_opened, blur_closed;
 };
-Still still_with(SDL_Window* window, const std::string& dir, bool motion, bool dump_output) {
+Still still_with(SDL_Window* window, const std::string& dir, bool motion, bool dump_output, bool blur = true) {
     overlay_test_reset_pages();
+    OverlayTheme theme = overlay_theme_default();
+    theme.blur_backdrop = blur;
+    overlay_set_theme(theme);
     OverlayPicture picture;
     picture.path = dir + "/motion-settings.txt";
     picture.apply = record_apply;
@@ -58,8 +67,12 @@ Still still_with(SDL_Window* window, const std::string& dir, bool motion, bool d
     Still s{};
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     s.opened_moving = overlay_animating();
+    s.blur_held = overlay_blur_hold();
+    s.blur_opened = overlay_blur_alpha();
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     s.closed_due = overlay_menu_due();
+    s.blur_held_closed = overlay_blur_hold();
+    s.blur_closed = overlay_blur_alpha();
     return s;
 }
 
@@ -348,16 +361,26 @@ void overlay_motion(const std::string& dir) {
     const std::string said = dir + "/motion-stderr.txt";
     bool asked = false, moving = false, fast = false, early = false;
     int dim_first = -1, panel_early = -1, panel_whole = -1;
+    bool blur_held = false;
+    float blur_first = -1, blur_mid = -1, blur_whole = -1;
     capture(said, [&] {
         key(guest, SDL_SCANCODE_F1, SDLK_F1, true);
         asked = overlay_open() && pause_requested();
         host_frame(guest);
         moving = overlay_animating() && paused();
+        blur_held = overlay_blur_hold();
+        blur_first = overlay_blur_alpha();
         dim_first = backdrop_alpha();
         g_host_ns = opened + 20 * kMs;
         host_frame(guest);
         panel_early = panel_alpha();
         fast = batch_wait_ms() == 8;
+        g_host_ns = opened + 75 * kMs;
+        host_frame(guest);
+        blur_mid = overlay_blur_alpha();
+        g_host_ns = opened + 150 * kMs;
+        host_frame(guest);
+        blur_whole = overlay_blur_alpha();
         g_host_ns = opened + (uint64_t)theme.open_ms * kMs - kMs;
         host_frame(guest);
         early = lines_with(said, "shown after") == 0;
@@ -369,6 +392,9 @@ void overlay_motion(const std::string& dir) {
     key(guest, SDL_SCANCODE_F1, SDLK_F1, false);
     check(asked, "with the menu moving, F1 opens it and asks for the pause at once");
     check(moving && fast, "while it moves over the held game, the paused wait is 8 ms");
+    check(blur_held && blur_first == 0.0f && std::fabs(blur_mid - 0.75f) < 1e-4f && blur_whole == 1.0f,
+          "once the guest is held the blur is asked for, crossfading in from the sharp frame on the host clock: "
+          "0 at the open, 0.75 at 75 ms and whole at 150 ms");
     char line[96];
     snprintf(line, sizeof(line), "[overlay] shown after %d ms\n", (int)theme.open_ms);
     check(panel_early > 0 && panel_early < panel_whole && panel_whole == (int)(theme.panel & 0xFF),
@@ -406,20 +432,35 @@ void overlay_motion(const std::string& dir) {
     const bool fading = overlay_menu_due();
     g_host_ns = closed + (uint64_t)theme.close_ms * kMs;
     check(fading && !overlay_menu_due() && !overlay_animating(), "it's gone at the theme's close time and not before");
+    const float blur_left = overlay_blur_alpha();
+    g_host_ns = closed + (uint64_t)theme.blur_ms * kMs;
+    check(!overlay_blur_hold() && blur_left > 0.0f && overlay_blur_alpha() == 0.0f,
+          "the blur, no longer held, fades out past the close and is gone at 150 ms");
     const long gone = overlay_menu_frames(), notices = overlay_notice_frames();
     const std::string closed_said = dir + "/motion-closed-stderr.txt";
+    bool no_blur = true;
     capture(closed_said, [&] {
-        for (int i = 0; i < 600; i++) host_frame(guest);
+        for (int i = 0; i < 600; i++) {
+            host_frame(guest);
+            no_blur = no_blur && !overlay_blur_hold() && overlay_blur_alpha() == 0.0f;
+        }
     });
-    check(overlay_menu_frames() == gone && overlay_notice_frames() == notices && read_file(closed_said).empty(),
-          "600 frames with it closed and no notice lay out no menu frame and no notice, and say nothing");
+    check(overlay_menu_frames() == gone && overlay_notice_frames() == notices && read_file(closed_said).empty() && no_blur,
+          "600 frames with it closed and no notice lay out no menu frame and no notice, ask for no blur, and say "
+          "nothing");
     unplug({&pad});
     gamepads_shutdown();
 
     const Still off = still_with(window, dir, false, false);
     check(!off.opened_moving && !off.closed_due, "with menu_motion off it opens whole and closes at once");
+    check(off.blur_held && off.blur_opened == 1.0f && !off.blur_held_closed && off.blur_closed == 0.0f,
+          "and the blur snaps in as it opens and out as it closes");
     const Still dumping = still_with(window, dir, true, true);
     check(!dumping.opened_moving && !dumping.closed_due, "under --dump-output it doesn't move either");
+    check(!dumping.blur_held && dumping.blur_opened == 0.0f,
+          "and there's no blur, so a dump of the held frame is as it was without one");
+    const Still unblurred = still_with(window, dir, true, false, false);
+    check(!unblurred.blur_held && unblurred.blur_opened == 0.0f, "a theme with blur_backdrop off has no blur either");
     check(nothing_queued(window, dir, true),
           "Down and Space ahead of the F1 that closes it, in one pump, press nothing as it fades or as it opens again");
     check(nothing_queued(window, dir, false),

@@ -1,13 +1,14 @@
 // The paused redraw's checks, which tools/test_pause.cpp runs: render_gl_present.cpp's
-// present() and render_present_last() over a fake GL, and render_set_internal_scale(), which
-// the overlay's Display page calls while the game is paused.
+// present(), render_present_last() and the menu's blurred backdrop over a fake GL, and
+// render_set_internal_scale(), which the overlay's Display page calls while the game is paused.
 //
 // The renderer's files are compiled into this one as their GL ES build, whose entry points are
 // glad's pointers, and the ones those functions reach are pointed at fakes. The fake keeps
 // one number per texture for what it holds, a frame's id, and the size it was given, and
 // the window has its own number. A blit copies the number, a clear makes it 0, and a draw
 // with the blit program copies the bound texture's number to the target, with the rect and
-// viewport recorded. The XFB and the EFB hold the same number once a frame is assembled, so
+// viewport recorded, and so does one with the blur program, counted as a pass into a target or a
+// draw to the window. The XFB and the EFB hold the same number once a frame is assembled, so
 // a blit into the kept copy also records the framebuffer it read. The linker drops the rest
 // of the renderer, which nothing here reaches.
 #define GCN_GL_ES
@@ -38,7 +39,8 @@ void fatal(const char* fmt, ...) {  // render_set_internal_scale's, for an incom
     exit(1);
 }
 namespace gx {
-float output_aspect() { return 4.0f / 3.0f; }
+float g_fake_aspect = 4.0f / 3.0f;  // render_set_output_aspect's, which a blur check changes
+float output_aspect() { return g_fake_aspect; }
 }
 
 namespace {
@@ -49,6 +51,7 @@ std::map<GLuint, GLuint> g_attach;  // each framebuffer's texture
 int g_window;                       // what the window holds
 GLuint g_next = 1, g_read, g_draw, g_bound_tex, g_program;
 GLuint g_kept_from;                 // the framebuffer the last blit into the kept copy read
+int g_blur_passes, g_blur_draws;     // draws with the blur program into a target, and to the window
 std::set<GLuint> g_deleted;         // textures and framebuffers deleted (gen numbers both)
 float g_rect[4];
 GLint g_view[4];
@@ -89,6 +92,10 @@ void GLAD_API_PTR viewport(GLint x, GLint y, GLsizei w, GLsizei h) {
 }
 void GLAD_API_PTR draw_arrays(GLenum, GLint, GLsizei) {
     if (g_program == gx::g_blit_prog) holds(g_draw) = g_tex[g_bound_tex];
+    if (g_program == gx::g_blur_prog) {
+        (g_draw ? g_blur_passes : g_blur_draws)++;
+        holds(g_draw) = g_tex[g_bound_tex];
+    }
 }
 void GLAD_API_PTR nothing_e(GLenum) {}
 void GLAD_API_PTR nothing_eei(GLenum, GLenum, GLint) {}
@@ -96,6 +103,9 @@ void GLAD_API_PTR nothing_uu(GLuint, GLuint) {}
 void GLAD_API_PTR nothing_u(GLuint) {}
 void GLAD_API_PTR nothing_ii(GLint, GLint) {}
 void GLAD_API_PTR nothing_ffff(GLfloat, GLfloat, GLfloat, GLfloat) {}
+void GLAD_API_PTR nothing_eeee(GLenum, GLenum, GLenum, GLenum) {}
+void GLAD_API_PTR nothing_f(GLint, GLfloat) {}
+void GLAD_API_PTR nothing_if(GLint, GLfloat, GLfloat) {}
 void GLAD_API_PTR nothing_bbbb(GLboolean, GLboolean, GLboolean, GLboolean) {}
 void GLAD_API_PTR nothing_b(GLboolean) {}
 GLenum GLAD_API_PTR complete(GLenum) { return GL_FRAMEBUFFER_COMPLETE; }
@@ -112,6 +122,8 @@ void install() {
     glad_glBlitFramebuffer = blit;
     glad_glClear = clear;
     glad_glUseProgram = use_program;
+    glad_glEnable = nothing_e;
+    glad_glBlendFuncSeparate = nothing_eeee;
     glad_glUniform4fv = uniform4fv;
     glad_glViewport = viewport;
     glad_glDrawArrays = draw_arrays;
@@ -121,6 +133,8 @@ void install() {
     glad_glBindSampler = nothing_uu;
     glad_glBindVertexArray = nothing_u;
     glad_glUniform1i = nothing_ii;
+    glad_glUniform1f = nothing_f;
+    glad_glUniform2f = nothing_if;
     glad_glClearColor = nothing_ffff;
     glad_glColorMask = nothing_bbbb;
     glad_glDepthMask = nothing_b;
@@ -153,6 +167,58 @@ void present_frame(int id, const gx::EfbCopyCmd& c) {
     holds(gx::g_efb_fbo) = 0;
 }
 
+// The menu's blurred backdrop over frame 22, kept and held, at 1280x960 to start with: made once
+// per hold and again at a resize or a new output aspect, blended over the window while its alpha
+// is above 0, and freed once the menu's closed and it's faded out.
+constexpr int kMake = 3;  // draws with the blur program to make it: the frame fitted, two passes
+void blur_checks() {
+    const GLuint gens = g_next;
+    gx::render_overlay_blur(false, 0.0f);
+    check(g_blur_passes == 0 && g_blur_draws == 0 && g_next == gens && !gx::g_blur_ready,
+          "with the menu closed the blur makes nothing and draws nothing");
+    g_window = -1;
+    gx::render_overlay_blur(true, 0.0f);
+    check(g_blur_passes == kMake && g_blur_draws == 0 && g_window == -1 &&
+              g_size[gx::g_blur_tex[0]] == std::make_pair(320, 240) && g_tex[gx::g_blur_tex[0]] == 22,
+          "the hold's first frame fits the held one into a quarter of the window's size and blurs it in two "
+          "passes, and at 0 draws none of it");
+    for (const float alpha : {0.5f, 0.75f, 1.0f, 1.0f}) gx::render_overlay_blur(true, alpha);
+    check(g_blur_passes == kMake && g_blur_draws == 4 && g_window == 22,
+          "each later held frame draws that blur over the window, and makes it again for none of them");
+    gx::render_set_window_size(1920, 1080);
+    gx::render_overlay_blur(true, 1.0f);
+    gx::render_overlay_blur(true, 1.0f);
+    check(g_blur_passes == 2 * kMake && g_size[gx::g_blur_tex[0]] == std::make_pair(480, 270),
+          "a resize makes it again once, at the new quarter size");
+    gx::render_set_window_size(1921, 1080);
+    gx::render_overlay_blur(true, 1.0f);
+    gx::render_set_window_size(1922, 1080);
+    gx::render_overlay_blur(true, 1.0f);
+    check(g_blur_passes == 4 * kMake && g_size[gx::g_blur_tex[0]] == std::make_pair(481, 270),
+          "so does each resize that leaves the quarter size as it was");
+    gx::g_fake_aspect = 16.0f / 9.0f;
+    gx::render_overlay_blur(true, 1.0f);
+    gx::render_overlay_blur(true, 1.0f);
+    gx::g_fake_aspect = 4.0f / 3.0f;
+    gx::render_overlay_blur(true, 1.0f);
+    check(g_blur_passes == 6 * kMake, "and each new output aspect, which fits the frame in the window again");
+    const GLuint tex = gx::g_blur_tex[0], fbo = gx::g_blur_fbo[1];
+    const int draws = g_blur_draws;
+    gx::render_overlay_blur(false, 0.5f);
+    gx::render_overlay_blur(false, 0.25f);
+    check(g_blur_passes == 6 * kMake && g_blur_draws == draws + 2 && gx::g_blur_ready,
+          "once the menu closes, the blur fades out over the frames the guest draws, made again for none");
+    gx::render_overlay_blur(true, 0.4f);
+    check(g_blur_passes == 7 * kMake, "opened again as it fades, the new hold blurs its own frame");
+    gx::render_overlay_blur(false, 0.0f);
+    check(!gx::g_blur_ready && !gx::g_blur_tex[0] && g_deleted.count(tex) && g_deleted.count(fbo),
+          "faded out with the menu closed, its targets are freed");
+    gx::render_overlay_blur(true, 0.0f);
+    gx::render_overlay_blur(true, 1.0f);
+    check(g_blur_passes == 8 * kMake, "and the next hold makes it once more");
+    gx::render_overlay_blur(false, 0.0f);
+}
+
 }  // namespace
 
 // The checks; returns how many failed.
@@ -163,6 +229,7 @@ int present_last_checks() {
     glBindFramebuffer(GL_FRAMEBUFFER, gx::g_efb_fbo);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gx::g_efb_color, 0);
     gx::g_blit_prog = 1000;
+    gx::g_blur_prog = 1001;
     gx::render_set_window_size(1280, 960);
     const gx::EfbCopyCmd whole = display_copy(0x00400000, 480);
     const gx::EfbCopyCmd top = display_copy(0x00400000, 240), bottom = display_copy(0x00400000 + 240 * 1280, 240);
@@ -187,6 +254,8 @@ int present_last_checks() {
     present_frame(22, whole);
     g_window = -1;
     check(gx::render_present_last() && g_window == 22, "it draws the newest presented frame, not an older one");
+    blur_checks();
+    gx::render_set_window_size(1280, 960);
 
     present_frame(31, top);
     present_frame(32, bottom);
