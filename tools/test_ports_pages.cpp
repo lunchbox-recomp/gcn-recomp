@@ -110,6 +110,7 @@ struct PageRun {
     bool ended = false;      // its Dear ImGui contexts were destroyed once it was done
     bool atlas_made = false;  // the shared font atlas had its GL texture before they were (fonts.h)
     bool notices_on_atlas = false;  // the notices' context was on it and last drew with its texture
+    bool atlas_each_draw = true;  // the atlas's own update came once at each overlay_draw (fonts_new_frame)
     bool let_go = false;     // Display, picked after the dump, was still selected near the end
     double first_ms = -1;    // overlay_draw on the CPU as it first drew, making its GL objects
     std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
@@ -157,9 +158,13 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         pump_events();
         update_pads(0);
         const bool was_open = overlay_open() || overlay_menu_due();
+        const int atlas_frame = fonts_atlas()->Builder->FrameCount;
         const auto t0 = std::chrono::steady_clock::now();
         overlay_draw();
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        // A new atlas's count starts from fonts_new_frame's, which rises across atlases.
+        const int counted = fonts_atlas()->Builder->FrameCount;
+        run.atlas_each_draw = run.atlas_each_draw && (f == 0 ? counted > atlas_frame : counted == atlas_frame + 1);
         SDL_GL_SwapWindow(window);
         const bool any = was_open && ImGui::GetDrawData() && ImGui::GetDrawData()->TotalVtxCount > 0;
         const bool drew = any && menu_drawn();
@@ -251,10 +256,12 @@ int run_pages(const std::string& dir) {
         SDL_GetWindowSizeInPixels(window, &pw, &ph);
         const std::string out = dir + "/" + std::to_string(pw) + "x" + std::to_string(ph);
         plat_make_dirs(out);
+        bool each_draw = true;
         for (int page = 0; page < 3; page++) {
             const std::string said = out + "/page" + std::to_string(page) + "-stderr.txt";
             PageRun run;
             capture(said, [&] { run = open_on(window, std::to_string(page).c_str(), page, true, out); });
+            each_draw = each_draw && run.atlas_each_draw;
             const Png png = png_at(out + "/overlay_page" + std::to_string(page) + ".png");
             const std::string at = std::to_string(pw) + "x" + std::to_string(ph) + " " + kTitles[page];
             const std::string opens = "GCN_OVERLAY_PAGE=" + std::to_string(page) + " opens the menu on " + at;
@@ -271,6 +278,9 @@ int run_pages(const std::string& dir) {
                    at.c_str(), run.first_ms, percentile(run.ms, 0.5), percentile(run.ms, 0.99), percentile(run.ms, 1.0),
                    run.ms.size());
         }
+        check(each_draw, (std::to_string(pw) + "x" + std::to_string(ph) +
+                          ": the shared atlas has its own update once at each overlay_draw, which no context makes")
+                             .c_str());
         if (size.w == kSizes[0].w) {
             // No game frame is kept here, so without the plain background there's nothing to dump.
             const std::string bare = out + "/bare";
