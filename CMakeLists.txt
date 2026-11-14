@@ -1043,6 +1043,15 @@ function(gcn_add_game)
     target_include_directories(test_settings PRIVATE ${RT})
     target_compile_options(test_settings PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The menu's sounds checks (tools/test_ui_sound.cpp): each voice as it's made, the queue and
+    # the mix, and audio.cpp's GCN_WAV recording left without them, in a work dir. Needs no disc
+    # image, device or SDL. macOS and Linux.
+    add_executable(test_ui_sound EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ui_sound.cpp ${RT}/ui_sound.cpp)
+    _gcn_set_standards(test_ui_sound)
+    target_include_directories(test_ui_sound PRIVATE ${RT})
+    target_link_libraries(test_ui_sound PRIVATE Threads::Threads)
+    target_compile_options(test_ui_sound PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The port memory checks (tools/test_port_memory.cpp): which port each gamepad gets from
     # what ports.txt remembers, and loading and saving that file in a work dir. Needs no
     # disc image, device or SDL.
@@ -1257,7 +1266,7 @@ function(gcn_add_game)
     file(MAKE_DIRECTORY ${_unit_work})
     set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
-    set(_unit_in_dir test_settings test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
+    set(_unit_in_dir test_settings test_ui_sound test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_ready_file test_code_table test_code_watch test_aid)
     if(TARGET test_ports)
       list(APPEND _unit_in_dir test_ports)
