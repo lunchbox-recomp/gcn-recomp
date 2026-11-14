@@ -8,7 +8,6 @@
 namespace {
 
 bool g_motion = true;
-bool g_open;  // opened last, not closed
 // From 0, gone, to 1, whole: the panel's alpha, its contents' and the backdrop's share of the
 // theme's. And the panel's scale.
 Tween g_panel, g_contents, g_backdrop, g_scale;
@@ -16,13 +15,15 @@ Tween g_panel, g_contents, g_backdrop, g_scale;
 // A change's length, none with motion off.
 float span(float ms) { return g_motion ? std::max(ms, 0.0f) : 0.0f; }
 
+// Opened last, not closed: the panel is on its way to whole, or there.
+bool opened() { return g_panel.to > 0.0f; }
+
 }  // namespace
 
 void appear_motion(bool on) { g_motion = on; }
 
 void appear_open(const OverlayTheme& t, uint64_t now) {
     const bool gone = g_panel.at(now) <= 0.0f;
-    g_open = true;
     // A game's theme may give a negative time, which opens at once, as none does.
     const float open = std::max(t.open_ms, 0.0f);
     const float delay = std::clamp(t.contents_delay_ms, 0.0f, open);
@@ -34,7 +35,6 @@ void appear_open(const OverlayTheme& t, uint64_t now) {
 }
 
 void appear_close(const OverlayTheme& t, uint64_t now) {
-    g_open = false;
     const float ms = span(t.close_ms);
     g_panel = tween_to(g_panel, now, 0.0f, ms, Ease::in_quad);
     g_scale = tween_to(g_scale, now, t.close_scale, ms, Ease::in_quad);
@@ -42,22 +42,22 @@ void appear_close(const OverlayTheme& t, uint64_t now) {
     g_backdrop = tween_to(g_backdrop, now, 0.0f, ms, Ease::in_quad);
 }
 
-bool appear_closing(uint64_t now) { return !g_open && appear_moving(now); }
+bool appear_closing(uint64_t now) { return !opened() && appear_moving(now); }
 
+// The scale moves with the panel, over the same time, so the panel says when both are done.
 bool appear_moving(uint64_t now) {
-    return !g_panel.done(now) || !g_scale.done(now) || !g_contents.done(now) || !g_backdrop.done(now);
+    return !g_panel.done(now) || !g_contents.done(now) || !g_backdrop.done(now);
 }
 
-bool appear_shown(uint64_t now) { return g_open && g_panel.done(now) && g_scale.done(now) && g_contents.done(now); }
+bool appear_shown(uint64_t now) { return opened() && g_panel.done(now) && g_contents.done(now); }
 
 float appear_backdrop(uint64_t now) { return std::clamp(g_backdrop.at(now), 0.0f, 1.0f); }
 
 float appear_panel_alpha(uint64_t now) { return std::clamp(g_panel.at(now), 0.0f, 1.0f); }
 
-// Never more than the panel under them.
-float appear_contents_alpha(uint64_t now) {
-    return std::min(std::clamp(g_contents.at(now), 0.0f, 1.0f), appear_panel_alpha(now));
-}
+// Never ahead of the panel: they start behind it and ease out-quad, which out-back never trails
+// at an overshoot of -1 or more.
+float appear_contents_alpha(uint64_t now) { return std::clamp(g_contents.at(now), 0.0f, 1.0f); }
 
 float appear_scale(uint64_t now) { return g_scale.at(now); }
 
