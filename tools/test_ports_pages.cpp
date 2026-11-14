@@ -101,6 +101,7 @@ struct PageRun {
     int first_drawn = -1;    // the first frame that drew the menu's window
     int dumped_at = -1;      // the frame whose draw wrote the dump
     bool on_page = false;    // the page asked for was selected as the menu first drew
+    bool ended = false;      // its Dear ImGui contexts were destroyed once it was done
     bool let_go = false;     // Display, picked after the dump, was still selected near the end
     double first_ms = -1;    // overlay_draw on the CPU as it first drew, making its GL objects
     std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
@@ -155,6 +156,8 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         if (display.bar && f == held - 2) run.let_go = display.bar->SelectedTabId == display.bar->Tabs[display.index].ID;
         guest_on(guest);
     }
+    overlay_test_end();
+    run.ended = !ImGui::GetCurrentContext() && !overlay_test_notices_context();
     return run;
 }
 
@@ -190,7 +193,8 @@ int run_pages(const std::string& dir) {
             const Png png = png_at(out + "/overlay_page" + std::to_string(page) + ".png");
             const std::string at = std::to_string(pw) + "x" + std::to_string(ph) + " " + kTitles[page];
             const std::string opens = "GCN_OVERLAY_PAGE=" + std::to_string(page) + " opens the menu on " + at;
-            check(run.on_page && run.let_go, (opens + ", and another can be picked").c_str());
+            check(run.on_page && run.let_go && run.ended,
+                  (opens + ", another can be picked, and its contexts are destroyed after").c_str());
             const uint32_t dim = overlay_theme_default().backdrop;
             bool grey = true;
             for (int i = 0; i < 3; i++) grey = grey && std::abs(png.first[i] - over_grey(dim, 24 - 8 * i)) <= 1;

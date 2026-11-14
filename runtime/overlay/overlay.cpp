@@ -54,6 +54,12 @@ void overlay_latch_pads();
 // itself. The menu and the notices each have one, so a frame of notices with the menu closed
 // leaves the menu's focus as it was. Its style is the theme's at the window's height.
 void overlay_imgui_context(SDL_Window* window, bool gl);
+#ifdef GCN_OVERLAY_TEST
+// Below, for the notices too: the current context's backends, GL's where `gl` says it has one,
+// shut down and the context destroyed. And notices.cpp's, which does that to theirs.
+void overlay_imgui_context_end(bool gl);
+void notices_test_end();
+#endif
 // Below, for the notices too: the current context's style built again from the theme if the
 // window's height has changed since it was last built, before a frame.
 void overlay_style_fit(SDL_Window* window);
@@ -493,6 +499,13 @@ void overlay_test_reset_pages() {
     theme_set(overlay_theme_default());
     g_ready = false;
 }
+
+void overlay_test_end() {
+    if (!g_window) return;
+    notices_test_end();
+    overlay_imgui_context_end(g_gl);
+    g_window = nullptr;
+}
 #endif
 
 void overlay_style_fit(SDL_Window* window) {
@@ -542,6 +555,14 @@ void overlay_imgui_context(SDL_Window* window, bool gl) {
     // The backend reads no gamepad, so read_pads can read them all by their labels.
     ImGui_ImplSDL3_SetGamepadMode(ImGui_ImplSDL3_GamepadMode_Manual, nullptr, 0);
 }
+
+#ifdef GCN_OVERLAY_TEST
+void overlay_imgui_context_end(bool gl) {
+    if (gl) ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+}
+#endif
 
 bool overlay_open() { return g_open; }
 

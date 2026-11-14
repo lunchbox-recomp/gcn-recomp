@@ -124,6 +124,11 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
 #ifdef GCN_OVERLAY_TEST
 // Clear prior registrations so another test can register before its overlay_init.
 void overlay_test_reset_pages();
+// The menu's and the notices' Dear ImGui contexts shut down with their backends and destroyed,
+// with the window's GL context still current, so a test can init again without leaking them.
+void overlay_test_end();
+// The notices' context, null with none.
+struct ImGuiContext* overlay_test_notices_context();
 #endif
 // Each of the window's events, before the frontend's own. True for one the overlay takes, which
 // nothing else should see: F1, Back (Guide on a gamepad with no Back, and ZL on a Switch 2

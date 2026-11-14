@@ -83,3 +83,19 @@ void notices_frame() {
     g_frames++;
     ImGui::SetCurrentContext(menu);
 }
+
+#ifdef GCN_OVERLAY_TEST
+void overlay_imgui_context_end(bool gl);  // overlay.cpp's
+
+// overlay.cpp's, for overlay_test_end.
+void notices_test_end() {
+    if (!g_context) return;
+    ImGuiContext* menu = ImGui::GetCurrentContext();
+    ImGui::SetCurrentContext(g_context);
+    overlay_imgui_context_end(g_gl);
+    g_context = nullptr;
+    ImGui::SetCurrentContext(menu);
+}
+
+ImGuiContext* overlay_test_notices_context() { return g_context; }
+#endif
