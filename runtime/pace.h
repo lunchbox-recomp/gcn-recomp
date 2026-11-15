@@ -1,6 +1,7 @@
-// How a wait for a time sleeps toward it and spins the rest: the guest's pacer (cpu.cpp) and the
-// frontend's held redraw (gx::take_batch_until). A sleep ends when the scheduler gets back to the
-// thread, which is later than asked, so each wait sleeps toward the time and spins the rest, as
+// How a wait for a time sleeps toward it: the guest's pacer (cpu.cpp), which spins the rest, and
+// the frontend's held redraw (gx::take_batch_until), which waits out the rest. A sleep ends when
+// the scheduler gets back to the thread, which is later than asked, so the pacer sleeps toward
+// the time and spins the rest, as
 // Dolphin's PrecisionTimer::SleepUntil does (Common/Timer.cpp, which spins the last 1 ms and
 // 20 us). The spin doesn't yield, since a yield on a busy core hands it to whatever else is
 // queued there.

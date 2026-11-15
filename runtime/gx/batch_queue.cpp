@@ -62,9 +62,9 @@ std::unique_ptr<Batch> take_batch(int timeout_ms) {
 }
 
 // One wait until `until` ends late where timers coalesce: 2 to 3 ms for a held frame's on macOS,
-// as much at 16.7 ms as at 8.3. So this one sleeps toward it in steps and spins the rest, as the
-// guest's pacer does (pace.h). Each step is a wait on the queue, which a batch ends at once, and
-// the spin lets the lock go and looks again each time round.
+// as much at 16.7 ms as at 8.3. So this one sleeps toward it in the guest pacer's steps (pace.h),
+// and where the pacer would spin it waits until `until` once more, which ends late by tens of us
+// rather than ms. Each wait is on the queue, which a batch ends at once.
 std::unique_ptr<Batch> take_batch_until(std::chrono::steady_clock::time_point until) {
     const auto ns = [](std::chrono::steady_clock::time_point t) {
         return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();
@@ -74,12 +74,10 @@ std::unique_ptr<Batch> take_batch_until(std::chrono::steady_clock::time_point un
         if (!g_queue.empty()) return take_front();
         const uint64_t now = ns(std::chrono::steady_clock::now());
         if (now >= ns(until)) return nullptr;
-        if (const uint64_t sleep = pace_sleep_ns(now, ns(until))) {
+        if (const uint64_t sleep = pace_sleep_ns(now, ns(until)))
             g_q_cv.wait_for(lk, std::chrono::nanoseconds(sleep));
-        } else {
-            lk.unlock();
-            lk.lock();
-        }
+        else
+            g_q_cv.wait_until(lk, until);
     }
 }
 
