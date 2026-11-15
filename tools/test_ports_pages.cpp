@@ -322,6 +322,11 @@ bool reopen_starts_fresh(SDL_Window* window, const std::string& out) {
         const auto frame = [&] {
             pump_events();
             update_pads(0);
+            // A close only wakes the held guest, whose thread lets the hold go, so the frame waits
+            // for that, bounded as guest_on is, and its line's held is known. An open's hold lands
+            // only at the boundary guest_on lets it reach, after the draw.
+            for (int i = 0; i < 2000 && paused() && !pause_requested(); i++)
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             g_host_ns += 16000000;
             overlay_draw();
             SDL_GL_SwapWindow(window);
