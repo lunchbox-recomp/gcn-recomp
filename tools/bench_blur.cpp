@@ -1,10 +1,12 @@
 // The menu's blurred backdrop's benchmark: the `bench_blur` target of a desktop build, on this
 // machine's GL in a hidden window, with no disc or game.
 //
-//   bench_blur W H    a frame presented and kept, then the frontend's held draws before the menu's
-//                     (render_present_last, then render_overlay_blur) for two holds of 30 frames
-//                     each, with a close between them that fades the blur out, the window W by H
-//                     pixels
+//   bench_blur W H        a frame presented and kept, then the frontend's held draws before the
+//                         menu's (render_present_last, then render_overlay_blur) for two holds of
+//                         30 frames each, with a close between them that fades the blur out, the
+//                         window W by H pixels
+//   bench_blur W H warm   the same with the blur warmed first, as overlay_init does
+//                         (render_overlay_blur_warm), and its own time printed
 //
 // Each draw's CPU time to the call's return is printed, which is what the held loop's interval
 // carries (main.cpp's show_frame stamps the menu's frame after it), and the time to glFinish
@@ -20,6 +22,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 // What the renderer reaches of the rest of the runtime, which this links none of.
 void fatal(const char* fmt, ...) {
@@ -91,8 +94,9 @@ void steady(const char* what, int n) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 3 || atoi(argv[1]) <= 0 || atoi(argv[2]) <= 0) {
-        fprintf(stderr, "usage: bench_blur W H\n");
+    const bool warm = argc == 4 && !strcmp(argv[3], "warm");
+    if ((argc != 3 && !warm) || atoi(argv[1]) <= 0 || atoi(argv[2]) <= 0) {
+        fprintf(stderr, "usage: bench_blur W H [warm]\n");
         return 2;
     }
     SDL_Window* win = open_window();
@@ -112,6 +116,15 @@ int main(int argc, char** argv) {
     gx::present(c);
     glFinish();
     printf("bench_blur at %dx%d, the blur's targets %dx%d\n", w, h, (w + 3) / 4, (h + 3) / 4);
+    // After the present, so it isn't timed with the context's first draws.
+    if (warm) {
+        const auto t0 = std::chrono::steady_clock::now();
+        gx::render_overlay_blur_warm(w, h);
+        const auto t1 = std::chrono::steady_clock::now();
+        glFinish();
+        printf("the warm-up                              %6.3f ms  to glFinish %6.3f ms\n", ms(t0, t1),
+               ms(t1, std::chrono::steady_clock::now()));
+    }
     for (int hold = 1; hold <= 2; hold++) {
         char what[64];
         snprintf(what, sizeof(what), "hold %d, its first frame", hold);

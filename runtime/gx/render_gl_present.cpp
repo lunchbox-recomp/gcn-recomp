@@ -250,8 +250,11 @@ void present(const EfbCopyCmd& c) {
 
 // The menu's blurred backdrop (render_overlay_blur): two targets a quarter of the window's size,
 // the blur ending in the first, and what it was made at, so a new hold, a resize, a new output
-// aspect or a frame presented after the hold began makes it again. 4 MB of targets at 3840x2160.
+// aspect or a frame presented after the hold began makes it again. 4 MB of targets at 3840x2160,
+// made at the warm-up (render_overlay_blur_warm) and kept until render_keep_last(false), so a
+// hold's first frame allocates none. g_blur_tex_w by g_blur_tex_h is the size they were given.
 static GLuint g_blur_tex[2], g_blur_fbo[2];
+static int g_blur_tex_w, g_blur_tex_h;
 static int g_blur_win_w, g_blur_win_h;
 static float g_blur_aspect;
 // The presented count it was made at. A frame the front end had queued still presents after the
@@ -263,14 +266,35 @@ static void blur_free() {
     if (g_blur_fbo[0]) glDeleteFramebuffers(2, g_blur_fbo);
     if (g_blur_tex[0]) glDeleteTextures(2, g_blur_tex);
     g_blur_fbo[0] = g_blur_fbo[1] = g_blur_tex[0] = g_blur_tex[1] = 0;
+    g_blur_tex_w = g_blur_tex_h = 0;
     g_blur_ready = g_blur_holding = false;
 }
 
-// The held frame into the first target, w by h, fitted as the output is, each pixel the mean of
-// four bilinear taps spread over the frame's texels it stands for, so a thin line can't fall
-// between samples. Leaves the blur program in use and the copy VAO bound.
-static void blur_fit_frame(int w, int h) {
-    glBindFramebuffer(GL_FRAMEBUFFER, g_blur_fbo[0]);
+// The two targets, made if there are none, and sized w by h if they aren't.
+static void blur_targets(int w, int h) {
+    if (!g_blur_tex[0]) {
+        glGenTextures(2, g_blur_tex);
+        glGenFramebuffers(2, g_blur_fbo);
+    }
+    if (w == g_blur_tex_w && h == g_blur_tex_h) return;
+    for (int i = 0; i < 2; i++) {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, g_blur_tex[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, g_blur_fbo[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_blur_tex[i], 0);
+    }
+    g_blur_tex_w = w;
+    g_blur_tex_h = h;
+}
+
+// A draw into one of the targets, `fbo`, w by h, with no blend, as the fit and the passes draw.
+static void blur_target_state(GLuint fbo, int w, int h) {
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_BLEND);
     set_logic_op_off();
@@ -279,6 +303,13 @@ static void blur_fit_frame(int w, int h) {
     g_gl_cull = 0;
     glColorMask(1, 1, 1, 1);
     glViewport(0, 0, w, h);
+}
+
+// The held frame into the first target, w by h, fitted as the output is, each pixel the mean of
+// four bilinear taps spread over the frame's texels it stands for, so a thin line can't fall
+// between samples. Leaves the blur program in use and the copy VAO bound.
+static void blur_fit_frame(int w, int h) {
+    blur_target_state(g_blur_fbo[0], w, h);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
     const OutputRect fit = fit_aspect(w, h, output_aspect());
@@ -309,21 +340,7 @@ static void blur_fit_frame(int w, int h) {
 // then 1.5 texels out, ending in the first. Wider steps leave gaps that ring around an edge.
 static void blur_make() {
     const int w = std::max(1, (g_win_w + 3) / 4), h = std::max(1, (g_win_h + 3) / 4);
-    if (!g_blur_tex[0]) {
-        glGenTextures(2, g_blur_tex);
-        glGenFramebuffers(2, g_blur_fbo);
-    }
-    for (int i = 0; i < 2; i++) {
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, g_blur_tex[i]);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glBindFramebuffer(GL_FRAMEBUFFER, g_blur_fbo[i]);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_blur_tex[i], 0);
-    }
+    blur_targets(w, h);
     blur_fit_frame(w, h);
     const float whole[] = {0, 0, 1, 1};
     glViewport(0, 0, w, h);
@@ -343,11 +360,12 @@ static void blur_make() {
     g_blur_ready = true;
 }
 
-// The blur stretched over the whole output, bars too, at `alpha` over what's there.
-static void blur_draw(float alpha) {
+// The blur stretched over the output's first w by h pixels, the whole of it, bars too, as the
+// held frames draw it, at `alpha` over what's there.
+static void blur_draw(float alpha, int w, int h) {
     const float whole[] = {0, 0, 1, 1};
     glBindFramebuffer(GL_FRAMEBUFFER, g_output_fbo);
-    glViewport(0, 0, g_win_w, g_win_h);
+    glViewport(0, 0, w, h);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
@@ -371,9 +389,29 @@ static void blur_draw(float alpha) {
     glBindVertexArray(g_vao);
 }
 
+void render_overlay_blur_warm(int win_w, int win_h) {
+    blur_targets(std::max(1, (win_w + 3) / 4), std::max(1, (win_h + 3) / 4));
+    // A pass's draw, blend off, from the first target into the second's corner pixel.
+    const float whole[] = {0, 0, 1, 1};
+    blur_target_state(g_blur_fbo[1], 1, 1);
+    glUseProgram(g_blur_prog);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, g_blur_tex[0]);
+    glBindSampler(0, 0);
+    glUniform1i(g_blur_u_src, 0);
+    glUniform1f(g_blur_u_alpha, 1.0f);
+    glUniform4fv(g_blur_u_rect, 1, whole);
+    glUniform2f(g_blur_u_step, 0.5f, 0.5f);
+    glBindVertexArray(g_copy_vao);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    // The draw over the output, blend on, at alpha 0 over its corner pixel, which leaves it as it was.
+    blur_draw(0.0f, 1, 1);
+    gl_state_invalidate();
+}
+
 void render_overlay_blur(bool hold, float alpha) {
     if (!hold && alpha <= 0.0f) {
-        if (g_blur_tex[0]) blur_free();
+        g_blur_ready = g_blur_holding = false;  // the targets are kept for the next hold
         return;
     }
     if (hold && !g_blur_holding) g_blur_ready = false;  // each hold blurs its own frame
@@ -382,7 +420,7 @@ void render_overlay_blur(bool hold, float alpha) {
     const bool remake = hold && (!g_blur_ready || g_blur_win_w != g_win_w || g_blur_win_h != g_win_h ||
                                  g_blur_aspect != output_aspect() || g_blur_present != g_present_count);
     if (remake) blur_make();
-    if (g_blur_ready && alpha > 0.0f) blur_draw(alpha);
+    if (g_blur_ready && alpha > 0.0f) blur_draw(alpha, g_win_w, g_win_h);
     if (remake || (g_blur_ready && alpha > 0.0f)) gl_state_invalidate();
 }
 

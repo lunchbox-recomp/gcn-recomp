@@ -55,6 +55,8 @@ GLuint g_next = 1, g_read, g_draw, g_bound_tex, g_program;
 GLuint g_kept_from;                 // the framebuffer the last blit into the kept copy read
 int g_blur_passes, g_blur_draws;     // draws with the blur program into a target, and to the window
 GLenum g_blend_eq, g_blur_draw_eq;  // the blend equation set, and the last blur draw to the window's
+bool g_blend, g_pass_blend = true, g_blur_draw_blend;  // GL_BLEND, and as the last of each blur draw had it
+int g_images;                       // glTexImage2D calls
 // The blur program's u_alpha and u_step as set, each draw into a target's step, and the last draw
 // to the window's alpha and step.
 float g_alpha = -1, g_blur_draw_alpha = -1;
@@ -81,6 +83,7 @@ void GLAD_API_PTR bind_texture(GLenum, GLuint tex) { g_bound_tex = tex; }
 void GLAD_API_PTR tex_image(GLenum, GLint, GLint, GLsizei w, GLsizei h, GLint, GLenum, GLenum, const void*) {
     g_tex[g_bound_tex] = 0;
     g_size[g_bound_tex] = {w, h};
+    g_images++;
 }
 void GLAD_API_PTR attach(GLenum, GLenum, GLenum, GLuint tex, GLint) { g_attach[g_draw] = tex; }
 void GLAD_API_PTR blit(GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLint, GLbitfield, GLenum) {
@@ -102,8 +105,11 @@ void GLAD_API_PTR draw_arrays(GLenum, GLint, GLsizei) {
     if (g_program == gx::g_blit_prog) holds(g_draw) = g_tex[g_bound_tex];
     if (g_program == gx::g_blur_prog) {
         (g_draw ? g_blur_passes : g_blur_draws)++;
-        if (g_draw) g_pass_steps.push_back(g_step);
-        else {
+        if (g_draw) {
+            g_pass_steps.push_back(g_step);
+            g_pass_blend = g_blend;
+        } else {
+            g_blur_draw_blend = g_blend;
             g_blur_draw_eq = g_blend_eq;
             g_blur_draw_alpha = g_alpha;
             g_blur_draw_step = g_step;
@@ -112,6 +118,12 @@ void GLAD_API_PTR draw_arrays(GLenum, GLint, GLsizei) {
     }
 }
 void GLAD_API_PTR nothing_e(GLenum) {}
+void GLAD_API_PTR enable(GLenum e) {
+    if (e == GL_BLEND) g_blend = true;
+}
+void GLAD_API_PTR disable(GLenum e) {
+    if (e == GL_BLEND) g_blend = false;
+}
 void GLAD_API_PTR nothing_eei(GLenum, GLenum, GLint) {}
 void GLAD_API_PTR nothing_uu(GLuint, GLuint) {}
 void GLAD_API_PTR nothing_u(GLuint) {}
@@ -141,13 +153,13 @@ void install() {
     glad_glBlitFramebuffer = blit;
     glad_glClear = clear;
     glad_glUseProgram = use_program;
-    glad_glEnable = nothing_e;
+    glad_glEnable = enable;
     glad_glBlendFuncSeparate = nothing_eeee;
     glad_glBlendEquation = blend_equation;
     glad_glUniform4fv = uniform4fv;
     glad_glViewport = viewport;
     glad_glDrawArrays = draw_arrays;
-    glad_glDisable = nothing_e;
+    glad_glDisable = disable;
     glad_glActiveTexture = nothing_e;
     glad_glTexParameteri = nothing_eei;
     glad_glBindSampler = nothing_uu;
@@ -189,9 +201,22 @@ void present_frame(int id, const gx::EfbCopyCmd& c) {
 
 // The menu's blurred backdrop over frame 22, kept and held, at 1280x960 to start with: made once
 // per hold and again at a resize or a new output aspect, blended over the window while its alpha
-// is above 0, and freed once the menu's closed and it's faded out.
+// is above 0, and kept once the menu's closed and it's faded out, for the next hold. The warm-up
+// at overlay_init makes its targets and draws with its program first.
 constexpr int kMake = 3;  // draws with the blur program to make it: the frame fitted, two passes
 void blur_checks() {
+    gx::render_overlay_blur_warm(1280, 960);
+    const GLuint warm_tex = gx::g_blur_tex[0], warm_tex2 = gx::g_blur_tex[1];
+    check(warm_tex && warm_tex2 && g_size[warm_tex] == std::make_pair(320, 240) &&
+              g_size[warm_tex2] == std::make_pair(320, 240) && !gx::g_blur_ready,
+          "the blur's warm-up makes its two targets at a quarter of the window's size, and no blur");
+    check(g_blur_passes == 1 && !g_pass_blend && g_blur_draws == 1 && g_blur_draw_blend && g_blur_draw_alpha == 0.0f &&
+              g_view[0] == 0 && g_view[1] == 0 && g_view[2] == 1 && g_view[3] == 1,
+          "it draws with the blur program once into a target with the blend off, and once over the window with "
+          "it on, at alpha 0 over one pixel");
+    g_blur_passes = g_blur_draws = 0;
+    g_pass_steps.clear();
+    const int images = g_images;
     const GLuint gens = g_next;
     gx::render_overlay_blur(false, 0.0f);
     check(g_blur_passes == 0 && g_blur_draws == 0 && g_next == gens && !gx::g_blur_ready,
@@ -202,6 +227,8 @@ void blur_checks() {
               g_size[gx::g_blur_tex[0]] == std::make_pair(320, 240) && g_tex[gx::g_blur_tex[0]] == 22,
           "the hold's first frame fits the held one into a quarter of the window's size and blurs it in two "
           "passes, and at 0 draws none of it");
+    check(g_next == gens && g_images == images && gx::g_blur_tex[0] == warm_tex,
+          "it makes the blur in the warm-up's targets, and makes and sizes no texture");
     const auto at = [](std::pair<float, float> s, float x, float y) {
         return std::fabs(s.first - x) < 1e-6f && std::fabs(s.second - y) < 1e-6f;
     };
@@ -243,11 +270,13 @@ void blur_checks() {
     gx::render_overlay_blur(true, 0.4f);
     check(g_blur_passes == 7 * kMake, "opened again as it fades, the new hold blurs its own frame");
     gx::render_overlay_blur(false, 0.0f);
-    check(!gx::g_blur_ready && !gx::g_blur_tex[0] && g_deleted.count(tex) && g_deleted.count(fbo),
-          "faded out with the menu closed, its targets are freed");
+    check(!gx::g_blur_ready && gx::g_blur_tex[0] == tex && gx::g_blur_fbo[1] == fbo && !g_deleted.count(tex) &&
+              !g_deleted.count(fbo),
+          "faded out with the menu closed, its targets are kept");
+    const int closed_images = g_images;
     gx::render_overlay_blur(true, 0.0f);
     gx::render_overlay_blur(true, 1.0f);
-    check(g_blur_passes == 8 * kMake, "and the next hold makes it once more");
+    check(g_blur_passes == 8 * kMake && g_images == closed_images, "and the next hold makes it once more, in them");
     present_frame(23, display_copy(0x00400000, 480));
     gx::render_overlay_blur(true, 1.0f);
     gx::render_overlay_blur(true, 1.0f);

@@ -31,7 +31,8 @@
 // audio_frames_out) is stubbed, as is the memory card's note of a hold (exi_card_held), the
 // queue's stall timer (gx::StallTimer) and a batch's hand-back to xf.cpp's pool (gx::Batch's
 // destructor). The held frame's redraw (gx::render_present_last) draws nothing, and says it
-// drew once g_kept is set, noting the host time it was asked in g_kept_at.
+// drew once g_kept is set, noting the host time it was asked in g_kept_at. The blur draws nothing,
+// and its warm-up (gx::render_overlay_blur_warm) counts its calls.
 //
 // The checks are in a file for each area, read in below after the frontend, as main.cpp is,
 // so that they see its statics: none of them is compiled on its own. What more than one area
@@ -154,6 +155,8 @@ void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display
 // loop (test_ports_held.cpp), and g_kept_at is the host time it was last asked.
 static bool g_kept;
 static uint64_t g_kept_at;
+// The blur's warm-up (overlay_init): how many times it was asked, and the size it was last given.
+static int g_blur_warms, g_blur_warm_w, g_blur_warm_h;
 namespace gx {
 const char* g_dump_dir;
 bool g_dump_output;
@@ -162,6 +165,11 @@ bool render_present_last() {
     return g_kept;
 }
 void render_overlay_blur(bool, float) {}
+void render_overlay_blur_warm(int w, int h) {
+    g_blur_warms++;
+    g_blur_warm_w = w;
+    g_blur_warm_h = h;
+}
 void render_set_output_fbo(unsigned) {}
 StallTimer::StallTimer(Stall st) : s(st), t0(0) {}
 StallTimer::~StallTimer() {}

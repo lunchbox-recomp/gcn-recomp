@@ -262,6 +262,12 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     fonts_build(theme_now().fonts);  // the atlas both contexts are made on
     notices_init(window, g_gl);
     overlay_imgui_context(window, g_gl);  // the menu's, current from here on
+    // The blurred backdrop's program and targets, which a hold's first frame would otherwise make.
+    if (g_gl && g_blur_allowed) {
+        int pw = 0, ph = 0;
+        SDL_GetWindowSizeInPixels(window, &pw, &ph);
+        gx::render_overlay_blur_warm(pw, ph);
+    }
     ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
     overlay_hold_pads();
 }

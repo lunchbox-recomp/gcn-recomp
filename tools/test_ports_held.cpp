@@ -21,7 +21,8 @@
 // one of three rounds of ten at most, so a batch has to end the wait, not the next 1 ms step.
 // Where it's set, a runner may start the submitting thread late, so those waits' deadline is 30 s
 // ahead, each must end before it with that batch and draw nothing, and the times are printed.
-// Before any window, the display rates that give a 60 Hz frame (frame_at_hz) are checked.
+// Before any window, the display rates that give a 60 Hz frame (frame_at_hz) are checked, and
+// over it, that overlay_init warms the blur once at the window's pixel size (render_overlay_blur_warm).
 // Exit 77 with no GL window. Read in by tools/test_ports.cpp after tools/test_ports_pages.cpp,
 // with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -48,6 +49,7 @@ struct HeldRun {
     std::vector<double> settled;  // the same for the frames whose wait began with nothing moving
     size_t frames = 0;            // the frames the menu drew
     double cpu_ms = 0;            // the loop's thread CPU time over its waits, the draws' with it
+    bool warmed = false;          // overlay_init warmed the blur once, at the window's pixel size
     HeldWaits waits;
 };
 
@@ -133,13 +135,15 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
     std::vector<bool> moving;   // for each frame the menu drew, whether it was moving as the wait began
     HeldRun run;
     capture(said, [&] {
+        int pw = 0, ph = 0;
+        SDL_GetWindowSizeInPixels(window, &pw, &ph);
+        const int warms = g_blur_warms;
         setenv("GCN_FRAMETIME", "1", 1);
         overlay_init(window, "Test title", picture);
         unsetenv("GCN_FRAMETIME");
+        run.warmed = g_blur_warms == warms + 1 && g_blur_warm_w == pw && g_blur_warm_h == ph;
         g_kept = true;
         g_host_steady_at = steady_ns();
-        int pw = 0, ph = 0;
-        SDL_GetWindowSizeInPixels(window, &pw, &ph);
         Guest guest;
         push_key(SDL_SCANCODE_F1, SDLK_F1, true);
         push_key(SDL_SCANCODE_F1, SDLK_F1, false);
@@ -204,10 +208,13 @@ int run_held(const std::string& dir) {
            frame_ms, bar_ms);
     const bool ci = getenv_nonempty("CI") != nullptr;
     HeldWaits waits;
-    bool in_bar = false;
+    bool in_bar = false, warmed = false;
     for (int r = 0; r < kBarRuns && !in_bar; r++) {
         const HeldRun run = held_run(window, out, out + "/held-stderr-" + std::to_string(r) + ".txt", r == 0, ci);
-        if (r == 0) waits = run.waits;
+        if (r == 0) {
+            waits = run.waits;
+            warmed = run.warmed;
+        }
         print_intervals("the held redraw's interval", run.held);
         print_intervals("the same once nothing moves", run.settled);
         const double frames = run.frames ? (double)run.frames : 1.0;
@@ -223,6 +230,7 @@ int run_held(const std::string& dir) {
         check(in_bar, "the held redraw's interval, over a run of the loop's waits with the menu open, has a p99 of a "
                       "display frame and a third of a ms or less, in one of three runs at most");
     }
+    check(warmed, "overlay_init over a GL window warms the blurred backdrop once, at the window's size in pixels");
     check(waits.late, "with the loop's last wait ended 300 ms ahead, the held wait asks for the held frame's redraw "
                       "once, no sooner than that and a period after");
     check(waits.queued, "with it ended 300 ms ahead, a batch queued before the held wait ends it within 150 ms with "

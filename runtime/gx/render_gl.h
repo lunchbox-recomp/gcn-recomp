@@ -71,10 +71,17 @@ bool render_present_last();
 // window's size and blurred by two Kawase passes, and again only when a new hold starts, a frame
 // presents during the hold, or the window's size or the output aspect changes. Each call blends
 // that blur over the output at `alpha`, so a close can fade it out over the frames the guest
-// draws again. With `hold` false and `alpha` 0 it draws nothing and frees the blur. Dumps never
+// draws again. With `hold` false and `alpha` 0 it draws nothing, and the next hold makes the blur
+// again in the targets it keeps. Dumps never
 // come through here. GL only. A Metal present path would need its own beside its redraw of the
 // held frame, and the --eye path, which draws the window from its own target, goes without.
 void render_overlay_blur(bool hold, float alpha);
+// The blur made ready for a hold's first frame, for a window `win_w` by `win_h` pixels: its targets
+// made at a quarter of that, kept from here until render_keep_last(false), and a draw with its
+// program as each of its draws is made, with the blend off into a target and on over the output,
+// since macOS's GL compiles a program for each as it first draws with it. The draw over the output
+// is at alpha 0 over one pixel, which leaves it as it was. The overlay calls it at overlay_init.
+void render_overlay_blur_warm(int win_w, int win_h);
 
 // Frames presented so far, for tracing what a display frame is actually showing.
 uint32_t present_count();
