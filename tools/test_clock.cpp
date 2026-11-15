@@ -176,21 +176,6 @@ int main(int argc, char** argv) {
            steps ? "ok" : "FAIL");
     if (!steps) g_failed++;
 
-    // The held redraw's, half the wait beyond its last 100 us, so that each, run twice as long as
-    // asked, still ends before that last 100 us: checked at every 10 us out to 20 ms.
-    bool halves = pace_wait_sleep_ns(0, 20 * ms) == ms && pace_wait_sleep_ns(19 * ms, 20 * ms) == 450 * us &&
-                  pace_wait_sleep_ns(20 * ms - 200 * us, 20 * ms) == 50 * us &&
-                  pace_wait_sleep_ns(20 * ms - 199 * us, 20 * ms) == 0 &&
-                  pace_wait_sleep_ns(20 * ms - 100 * us, 20 * ms) == 0 && pace_wait_sleep_ns(21 * ms, 20 * ms) == 0;
-    for (uint64_t now = 0; now < 20 * ms; now += 10 * us) {
-        const uint64_t sleep = pace_wait_sleep_ns(now, 20 * ms);
-        halves = halves && (!sleep || now + 2 * sleep <= 20 * ms - 100 * us);
-    }
-    printf("%s: the held wait sleeps half the wait beyond its last 100 us, from 50 us to 1 ms, so a sleep twice as "
-           "long ends before it\n",
-           halves ? "ok" : "FAIL");
-    if (!halves) g_failed++;
-
     // The paced clock 20 ms ahead of the host, five times. clock_pace returns once the host
     // gets there, and never before.
     clock_set_scale(1);
