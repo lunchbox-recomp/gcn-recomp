@@ -21,8 +21,10 @@
 // one of three rounds of ten at most, so a batch has to end the wait, not the next 1 ms step.
 // Where it's set, a runner may start the submitting thread late, so those waits' deadline is 30 s
 // ahead, each must end before it with that batch and draw nothing, and the times are printed.
-// Before any window, the display rates that give a 60 Hz frame (frame_at_hz) are checked, and
-// over it, that overlay_init warms the blur once at the window's pixel size (render_overlay_blur_warm).
+// Before any window, the display rates that give a 60 Hz frame (frame_at_hz) are checked, and that
+// the loop's wait for a batch with the guest running ends as the guest holds, which no batch would
+// end (wake_batch_wait, from pause_gate). Over the window, overlay_init is checked to warm the blur
+// once at the window's pixel size (render_overlay_blur_warm).
 // Exit 77 with no GL window. Read in by tools/test_ports.cpp after tools/test_ports_pages.cpp,
 // with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -55,6 +57,34 @@ struct HeldRun {
 
 std::chrono::steady_clock::time_point steady_at(int64_t ns) {
     return std::chrono::steady_clock::time_point(std::chrono::nanoseconds(ns));
+}
+
+// Whether the loop's wait for a batch with the guest running (take_batch, kRunWaitMs in main.cpp)
+// ends as the guest holds, 20 ms into it, with no batch, rather than at its timeout, here 2 s, or
+// 30 s where CI is set. Half that is the bar, a bound a stall can only bring closer.
+bool hold_ends_wait(bool ci) {
+    while (gx::take_batch_until(std::chrono::steady_clock::now())) {
+    }  // nothing queued, and no wake left from a hold before
+    const int timeout_ms = ci ? 30000 : 2000;
+    Guest guest;
+    pause_request(true);
+    std::thread boundary([&guest] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        {
+            std::lock_guard<std::mutex> lk(guest.m);
+            guest.asked = 1;
+        }
+        guest.cv.notify_all();
+    });
+    const bool held_before = paused();
+    const int64_t t0 = steady_ns();
+    const std::unique_ptr<gx::Batch> b = gx::take_batch(timeout_ms);
+    const double took = (double)(steady_ns() - t0) / 1e6;
+    const bool held = paused();
+    boundary.join();
+    printf("[held] the wait for a batch with the guest running ended %.3f ms in, %s held\n", took,
+           held ? "with the guest" : "without the guest");
+    return !held_before && !b && held && took < timeout_ms / 2;
 }
 
 // The loop's waits with the guest held, the window `pw` by `ph` pixels, as the head of the file says.
@@ -195,6 +225,9 @@ int run_held(const std::string& dir) {
     check(frame_is(0, k60) && frame_is(1, k60) && frame_is(22.9, k60) && frame_is(60, k60) && frame_is(120, k60) &&
               frame_is(23, 1000.0 / 23.0) && frame_is(50, 20.0) && frame_is(59.94, 1000.0 / 59.94),
           "a display at 23 Hz up to 60 gets a frame of its own, and one faster, under 23 Hz or of no rate a 60 Hz one");
+    const bool ci = getenv_nonempty("CI") != nullptr;
+    check(hold_ends_wait(ci), "with the guest running, the loop's wait for a batch ends as the guest holds, with no "
+                              "batch, well before its timeout");
     SDL_Window* window = gl_window(1920, 1080);
     if (!window) {
         printf("test_ports held: skipped\n");
@@ -206,7 +239,6 @@ int run_held(const std::string& dir) {
     const double bar_ms = frame_ms + kBarOverMs;
     printf("[held] the display says %.2f Hz, so a display frame is %.2f ms and the bar %.2f ms\n", display_hz(window),
            frame_ms, bar_ms);
-    const bool ci = getenv_nonempty("CI") != nullptr;
     HeldWaits waits;
     bool in_bar = false, warmed = false;
     for (int r = 0; r < kBarRuns && !in_bar; r++) {

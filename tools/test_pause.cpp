@@ -48,6 +48,8 @@ void renderer_efb_copy(uint32_t, bool ends_frame) {
     g_ends.push_back(ends_frame);
     if (!g_fe_threaded) g_frames_submitted++;
 }
+std::atomic<int> g_wakes{0};  // wake_batch_wait's calls
+void wake_batch_wait() { g_wakes++; }
 }  // namespace gx
 
 namespace {
@@ -242,9 +244,12 @@ int main() {
     setenv("GCN_PAUSE_AT", "50:3", 1);
 
     pause_request(true);
+    const int wakes = gx::g_wakes;
     Guest* g = at_boundary(1);
     check(held_soon(), "a pause asked for holds the guest at its next frame boundary");
     check(stays_held(*g), "the guest stays held while the pause is asked for");
+    check(soon([&] { return gx::g_wakes == wakes + 1; }) && gx::g_wakes == wakes + 1,
+          "the hold wakes the frontend's wait for a batch, once");
     g_host += 40000000;
     pause_request(false);
     check(g->finish(), "lifting the pause lets the guest go on");

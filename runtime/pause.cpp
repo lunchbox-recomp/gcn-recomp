@@ -1,5 +1,6 @@
 // Pausing the guest at a frame boundary; see pause.h.
 #include "pause.h"
+#include "gx/render.h"
 #include "runtime.h"
 #include <atomic>
 #include <cerrno>
@@ -76,6 +77,9 @@ void pause_gate(uint32_t frame) {
     const uint64_t t0 = host_ns();
     g_held_at = std::chrono::steady_clock::now().time_since_epoch().count();
     g_held = true;
+    // The frontend's loop may be in its wait of up to kRunWaitMs for a batch (main.cpp), which
+    // only a frame queued before the hold would end. It's woken, so it sees the hold at once.
+    gx::wake_batch_wait();
     fprintf(stderr, "[pause] held at frame %u, output frame %llu\n", frame,
             (unsigned long long)audio_frames_out());
     g_lifted.wait(lk, [] { return !g_asked.load(); });

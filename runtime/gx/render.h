@@ -258,10 +258,14 @@ struct Batch {
 
 // Submission queue (guest thread -> render thread, batch_queue.cpp)
 void submit_batch(std::unique_ptr<Batch> b);
-// The oldest batch, waiting up to timeout_ms for one, or null if none came.
+// The oldest batch, waiting up to timeout_ms for one, or null if none came. A hold of the guest
+// beginning (wake_batch_wait) ends the wait too, so the frontend can draw the held frame at once.
 std::unique_ptr<Batch> take_batch(int timeout_ms);
 // The same, waiting until `until`. A batch that comes ends the wait at once.
 std::unique_ptr<Batch> take_batch_until(std::chrono::steady_clock::time_point until);
+// pause_gate's, as it holds the guest: ends a take_batch under way, or the next one to start
+// before a take_batch_until does, with what's queued.
+void wake_batch_wait();
 
 // A game that turns its own camera after the viewer's head -- so that what the head looks
 // at is on the game's screen, where its targeting and its 2D overlays work -- says by how

@@ -55,10 +55,22 @@ static std::unique_ptr<Batch> take_front() {
     return b;
 }
 
+// A hold began since the last wait for a batch returned (wake_batch_wait).
+static bool g_woken;
+
+void wake_batch_wait() {
+    {
+        std::lock_guard<std::mutex> lk(g_q_mutex);
+        g_woken = true;
+    }
+    g_q_cv.notify_all();
+}
+
 std::unique_ptr<Batch> take_batch(int timeout_ms) {
     std::unique_lock<std::mutex> lk(g_q_mutex);
-    if (!g_q_cv.wait_for(lk, std::chrono::milliseconds(timeout_ms), [] { return !g_queue.empty(); })) return nullptr;
-    return take_front();
+    g_q_cv.wait_for(lk, std::chrono::milliseconds(timeout_ms), [] { return !g_queue.empty() || g_woken; });
+    g_woken = false;
+    return g_queue.empty() ? nullptr : take_front();
 }
 
 // One wait until `until` ends late where timers coalesce: 2 to 3 ms for a held frame's on macOS,
@@ -70,6 +82,7 @@ std::unique_ptr<Batch> take_batch_until(std::chrono::steady_clock::time_point un
         return (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();
     };
     std::unique_lock<std::mutex> lk(g_q_mutex);
+    g_woken = false;  // the hold it would end has begun
     for (;;) {
         if (!g_queue.empty()) return take_front();
         const uint64_t now = ns(std::chrono::steady_clock::now());
