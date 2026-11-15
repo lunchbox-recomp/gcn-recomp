@@ -1,5 +1,6 @@
 // How a wait for a time sleeps toward it: the guest's pacer (cpu.cpp), which spins the rest, and
-// the frontend's held redraw (gx::take_batch_until), which waits out the rest. A sleep ends when
+// the frontend's held redraw (gx::take_batch_until), which waits out the rest
+// (pace_wait_sleep_ns, below). A sleep ends when
 // the scheduler gets back to the thread, which is later than asked, so the pacer sleeps toward
 // the time and spins the rest, as
 // Dolphin's PrecisionTimer::SleepUntil does (Common/Timer.cpp, which spins the last 1 ms and
@@ -20,14 +21,27 @@
 
 // How long the wait for `until` sleeps next at time `now`, both in ns, or 0 when the spin takes
 // over.
+//
+// The held redraw's wait has no spin to take up a sleep's lateness. In a game its held intervals
+// over 17 ms but the first of each open's ran 17.01 to 17.07 ms against a 16.67 ms frame, within
+// the 0.40 ms by which a 1 ms step taken 1.6 ms out ends late if it runs its whole length late. So
+// its steps are half the wait left beyond kSpinNs, at most kStepNs, which end before the last
+// kSpinNs even at twice their length.
 #ifdef __ANDROID__
 inline uint64_t pace_sleep_ns(uint64_t now, uint64_t until) { return until > now ? until - now : 0; }
+inline uint64_t pace_wait_sleep_ns(uint64_t now, uint64_t until) { return pace_sleep_ns(now, until); }
 #else
 inline constexpr uint64_t kSpinNs = 100000, kStepNs = 1000000, kMinSleepNs = 50000;
 
 inline uint64_t pace_sleep_ns(uint64_t now, uint64_t until) {
     if (until <= now + kSpinNs) return 0;
     const uint64_t ns = std::min((until - now - kSpinNs) * 2 / 3, kStepNs);
+    return ns >= kMinSleepNs ? ns : 0;
+}
+
+inline uint64_t pace_wait_sleep_ns(uint64_t now, uint64_t until) {
+    if (until <= now + kSpinNs) return 0;
+    const uint64_t ns = std::min((until - now - kSpinNs) / 2, kStepNs);
     return ns >= kMinSleepNs ? ns : 0;
 }
 #endif
