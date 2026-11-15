@@ -366,6 +366,7 @@ bool reopen_starts_fresh(SDL_Window* window, const std::string& out) {
 // The GL state the warm-up's draw at overlay_init (overlay.cpp) must leave as it found it.
 struct GlState {
     GLint draw = 0, read = 0, program = 0, active = 0, viewport[4] = {}, scissor[4] = {};
+    GLint tex0 = 0, tex_active = 0;  // the 2D texture bound on unit 0 and on the active unit
     GLboolean blend = GL_FALSE;
     bool operator==(const GlState&) const = default;
 };
@@ -375,6 +376,10 @@ GlState gl_state() {
     glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &s.read);
     glGetIntegerv(GL_CURRENT_PROGRAM, &s.program);
     glGetIntegerv(GL_ACTIVE_TEXTURE, &s.active);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &s.tex_active);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &s.tex0);
+    glActiveTexture((GLenum)s.active);
     glGetIntegerv(GL_VIEWPORT, s.viewport);
     glGetIntegerv(GL_SCISSOR_BOX, s.scissor);
     s.blend = glIsEnabled(GL_BLEND);
@@ -384,16 +389,21 @@ GlState gl_state() {
 // overlay_init over a GL state as a game's renderer might leave it: render_init leaves the EFB's
 // framebuffer bound, so here the draw and read framebuffers are two of the test's own, apart, and
 // the viewport, scissor box, blend and active texture unit are away from what the overlay's
-// renderer sets. Whether all of it, and the program, is as it was after.
+// renderer sets, with a texture of the test's own bound on unit 0 and another on the active unit.
+// Whether all of it, and the program, is as it was after.
 bool init_keeps_gl_state(SDL_Window* window, const std::string& out) {
-    GLuint fbos[2];
+    GLuint fbos[2], texs[2];
     glGenFramebuffers(2, fbos);
+    glGenTextures(2, texs);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbos[0]);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos[1]);
     glViewport(3, 4, 50, 60);
     glScissor(5, 6, 70, 80);
     glDisable(GL_BLEND);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texs[0]);
     glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, texs[1]);
     const GlState before = gl_state();
     overlay_test_reset_pages();
     OverlayPicture picture;
@@ -401,10 +411,12 @@ bool init_keeps_gl_state(SDL_Window* window, const std::string& out) {
     capture(out + "/state-stderr.txt", [&] { overlay_init(window, "Test title", picture); });
     const GlState after = gl_state();
     overlay_test_end();
+    glDeleteTextures(2, texs);
     glActiveTexture(GL_TEXTURE0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteFramebuffers(2, fbos);
-    return before.draw == (GLint)fbos[0] && before.read == (GLint)fbos[1] && after == before;
+    return before.draw == (GLint)fbos[0] && before.read == (GLint)fbos[1] && before.tex0 == (GLint)texs[0] &&
+           before.tex_active == (GLint)texs[1] && after == before;
 }
 
 // tools/test_ports_pages_toasts.cpp's: the notices' review dump at a size, and their cost with the
@@ -665,7 +677,7 @@ int run_pages(const std::string& dir) {
                   "with no interval, and each line says held 1 only once the guest's hold has landed and until the close");
             check(init_keeps_gl_state(window, out + "/bare"),
                   "overlay_init's warm-up draw leaves the draw and read framebuffers, viewport, scissor box, program, "
-                  "blend and active texture unit as it found them");
+                  "blend, active texture unit and the textures bound on unit 0 and on it as it found them");
         }
         gl_window_close(window);
     }
