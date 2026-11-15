@@ -796,7 +796,7 @@ The wait sleeps toward its time in the pacer's steps ("The clock", above) and wa
 last of it, since a single timed wait ended 2 to 3 ms late on an M4 Max, as late at 16 ms as at 8.
 When the frontend waited 16 ms at a time, 300 held frames took 5.6 s in a hidden run, 18.7 ms
 each, and in a game the held interval had a p50 of 18.58 ms and a p99 of 19.87 ms.
-`test_ports --held`, which draws the menu over no frame and no blur, gave 18.60 ms and
+The held run in `test_ports --pages` at 90e840e, over no frame and no blur, gave 18.60 ms and
 19.69 ms with those waits, and 18.67 ms and 18.70 ms with one wait until the time.
 
 With the steps it gives a p50 of 16.70 ms and a p99 of 16.72 to 16.73 ms. They cost the loop's

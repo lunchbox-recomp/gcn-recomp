@@ -1303,7 +1303,7 @@ function(gcn_add_game)
     if(TARGET test_ports AND _gcn_overlay)
       add_test(NAME test_overlay_pages COMMAND test_ports --pages ${_unit_work}/test_overlay_pages)
       set_tests_properties(test_overlay_pages PROPERTIES FIXTURES_REQUIRED unit_dirs SKIP_RETURN_CODE 77
-                           TIMEOUT 60 ENVIRONMENT SDL_AUDIO_DRIVER=dummy)
+                           TIMEOUT 120 ENVIRONMENT SDL_AUDIO_DRIVER=dummy)
       list(APPEND _unit_dirs ${_unit_work}/test_overlay_pages)
       # The frontend's held redraw over the menu, its interval and its waits, on the real clock.
       # Up to three 5 s runs here, and one on a CI runner, whose software GL draws it slower.
