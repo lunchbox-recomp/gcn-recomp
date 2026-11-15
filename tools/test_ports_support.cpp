@@ -369,6 +369,9 @@ bool pick_page(Guest& g, const char* title) {
     host_frame(g);
     return true;
 }
+
+bool held_wait_half() { return paused() && held_period(nullptr) == display_frame(nullptr) / 2; }
+bool held_wait_whole() { return paused() && held_period(nullptr) == display_frame(nullptr); }
 #endif
 
 }  // namespace

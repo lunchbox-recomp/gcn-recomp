@@ -1,6 +1,7 @@
 // Data passed from the GX front end (guest thread) to the render back end (main thread).
 #pragma once
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -257,7 +258,10 @@ struct Batch {
 
 // Submission queue (guest thread -> render thread, batch_queue.cpp)
 void submit_batch(std::unique_ptr<Batch> b);
+// The oldest batch, waiting up to timeout_ms for one, or null if none came.
 std::unique_ptr<Batch> take_batch(int timeout_ms);
+// The same, waiting until `until`. A batch that comes ends the wait at once.
+std::unique_ptr<Batch> take_batch_until(std::chrono::steady_clock::time_point until);
 
 // A game that turns its own camera after the viewer's head -- so that what the head looks
 // at is on the game's screen, where its targeting and its 2D overlays work -- says by how

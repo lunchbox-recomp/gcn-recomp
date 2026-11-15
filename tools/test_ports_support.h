@@ -193,6 +193,10 @@ int page_at(const char* title);
 // The menu's page titled `title` picked, as a click on its pill would, then drawn. False if
 // there's none.
 bool pick_page(Guest& g, const char* title);
+// Whether the guest is held and the frontend's held wait (held_period, main.cpp) is half a display
+// frame, as while the menu or a notice moves, or a whole one, as once nothing does.
+bool held_wait_half();
+bool held_wait_whole();
 #endif
 
 }  // namespace

@@ -38,6 +38,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <ctime>
 #include <mutex>
@@ -188,7 +189,8 @@ static void on_fault(const void* fault_addr, int code) {
 
 bool audio_open();
 
-// The refresh rate of the display the window is on, for a session's record, or 0.
+// The refresh rate of the display the window is on, for a session's record and the held frame's
+// redraw (display_frame), or 0.
 static double display_hz(SDL_Window* win) {
     const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(win));
     return mode ? mode->refresh_rate : 0;
@@ -328,10 +330,25 @@ static void open_controllers(const char* controls) {
     gamepads_init();
 }
 
-// How long the loop waits for the guest's next batch, in ms. While the guest is held none comes,
-// and the held frame is drawn again each 16 ms, about 60 Hz, or each 8 ms while the overlay's
-// menu or a notice is moving, so its motion is smooth.
-static int batch_wait_ms() { return !paused() ? 4 : overlay_animating() ? 8 : 16; }
+// How long the loop waits for the guest's next batch while it runs, in ms.
+static constexpr int kRunWaitMs = 4;
+
+// A frame of the display the window is on, or of a 60 Hz one where SDL doesn't know the display's
+// rate or it's faster: the guest's frames come at 60 Hz, so a held one drawn again more often
+// shows nothing new.
+static std::chrono::nanoseconds display_frame(SDL_Window* win) {
+    const double hz = display_hz(win);
+    return std::chrono::nanoseconds(std::llround(1e9 / (hz > 0.0 && hz < 60.0 ? hz : 60.0)));
+}
+
+// While the guest is held (pause.h) no batch comes, and the held frame is drawn again a display
+// frame after the loop's last wait ended, or half of one while the overlay's menu or a notice is
+// moving, so its motion is smooth.
+static std::chrono::nanoseconds held_period(SDL_Window* win) {
+    const std::chrono::nanoseconds frame = display_frame(win);
+    return overlay_animating() ? frame / 2 : frame;
+}
+static std::chrono::steady_clock::time_point g_waited;  // when the loop's last wait for a batch ended
 
 // What has been drawn to the window, with the overlay over it, goes to it, and to the movie if
 // one is being made. Frame and output dumps were written before the overlay was drawn.
@@ -357,11 +374,14 @@ static void show_frame(SDL_Window* win) {
 }
 
 // The loop's wait for the guest's next batch, which it returns, the window being dw by dh pixels.
-// While the guest is held (pause.h) no batch comes, so each wait that ends with nothing draws the
-// newest frame again (batch_wait_ms), and each one drawn is a host frame to the pause. Before any
-// frame there's nothing to draw, and no host frame.
+// While the guest is held the wait lasts until held_period has passed since the last one ended,
+// so the held frame's redraws keep that pace whatever drawing one took, and a batch, as the
+// resume brings, ends it at once. Each wait that ends with nothing then draws the newest frame
+// again, and each one drawn is a host frame to the pause. Before any frame there's nothing to
+// draw, and no host frame.
 static std::unique_ptr<gx::Batch> next_batch(SDL_Window* win, int dw, int dh) {
-    auto b = gx::take_batch(batch_wait_ms());
+    auto b = paused() ? gx::take_batch_until(g_waited + held_period(win)) : gx::take_batch(kRunWaitMs);
+    g_waited = std::chrono::steady_clock::now();
     if (!b && paused() && (g_eye_mode ? eye_to_window(dw, dh) : gx::render_present_last())) {
         show_frame(win);
         pause_host_frame();

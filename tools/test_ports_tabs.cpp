@@ -386,8 +386,8 @@ void chord_slider(const std::string& dir) {
 }
 
 // A page change with `motion` or not, on a host clock moved by hand: whether E changed the page,
-// whether it was moving then, with the paused wait at 8 ms, and a millisecond short of the
-// theme's page_ms, and whether it was still with the wait back at 16 ms at page_ms.
+// whether it was moving then, with the paused wait at half a frame, and a millisecond short of the
+// theme's page_ms, and whether it was still with the wait back at a frame at page_ms.
 struct Turned {
     bool changed, moving, before_end, still_at_end;
 };
@@ -409,13 +409,13 @@ Turned page_change(SDL_Window* window, const std::string& dir, bool motion) {
     const uint64_t at = g_host_ns;
     key(guest, SDL_SCANCODE_E, SDLK_E, true);
     t.changed = overlay_page() == 1;
-    t.moving = overlay_animating() && batch_wait_ms() == 8;
+    t.moving = overlay_animating() && held_wait_half();
     g_host_ns = at + ms - kMs;
     host_frame(guest);
     t.before_end = overlay_animating();
     g_host_ns = at + ms;
     host_frame(guest);
-    t.still_at_end = !overlay_animating() && batch_wait_ms() == 16;
+    t.still_at_end = !overlay_animating() && held_wait_whole();
     key(guest, SDL_SCANCODE_E, SDLK_E, false);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns += 1000 * kMs;  // past the close's fade
@@ -428,7 +428,7 @@ void page_motion(const std::string& dir) {
     if (!window) return;
     const Turned on = page_change(window, dir, true);
     check(on.changed && on.moving && on.before_end && on.still_at_end,
-          "a page change moves on the host clock for the theme's page_ms, the paused wait 8 ms meanwhile, then 16");
+          "a page change moves on the host clock for the theme's page_ms, the paused wait half a frame meanwhile, then a frame");
     const Turned off = page_change(window, dir, false);
     check(off.changed && !off.moving && !off.before_end && off.still_at_end,
           "with menu_motion off a page change is whole at once");

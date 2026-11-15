@@ -1,7 +1,7 @@
 // ---- The focus ring over a window from SDL's dummy video driver, on a host clock moved by hand
 // (g_host_ns): it goes around the item with the focus, as the page laid that item out, in the
 // accent and focus_gap outside it. A move a row down eases it, 1 - exp(-dt / focus_ms) of the way
-// a frame later, and once it's there nothing moves and the paused wait is 16 ms again. A move
+// a frame later, and once it's there nothing moves and the paused wait is a frame again. A move
 // over half the panel, a page change from the footer and the menu opening put it there at once,
 // as menu_motion off, --dump-output and a focus_ms that takes no time do for every move. It
 // slides and fades in with a page, but not around the footer's first item, a question's or the
@@ -17,7 +17,7 @@
 
 namespace {
 
-constexpr int kFrameMs = 16;  // a host frame over the held game, once nothing moves (batch_wait_ms)
+constexpr int kFrameMs = 16;  // a host frame over the held game, once nothing moves (about held_period's)
 
 // The Rows page: One and Two a row apart, then Far under a gap of 45% of the window's height,
 // over half the panel's. Each one's rect as it was last laid out, and its presses.
@@ -145,7 +145,7 @@ bool still_ring(SDL_Window* window, const std::string& dir, bool motion, bool du
     ring_settle(guest);
     const bool first = ring_on(ring_now(), g_rows[0]);
     stroke(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
-    const bool there = ring_on(ring_now(), g_rows[1]) && !overlay_animating() && batch_wait_ms() == 16;
+    const bool there = ring_on(ring_now(), g_rows[1]) && !overlay_animating() && held_wait_whole();
     stroke(guest, SDL_SCANCODE_F1, SDLK_F1);
     ring_settle(guest);
     return first && there;
@@ -393,18 +393,18 @@ void ring_moves(const std::string& dir) {
         const Ring part = ring_now();
         const float k = 1.0f - std::exp(-(float)kFrameMs / theme.focus_ms);
         const float y = g_rows[0].Min.y + k * (g_rows[1].Min.y - g_rows[0].Min.y);
-        const bool fast = batch_wait_ms() == 8;
+        const bool fast = held_wait_half();
         check(one && part.shown && same_rect(part.item, g_rows[1]) && std::fabs(part.at.Min.y - y) < 0.05f &&
                   part.at.Min.y < g_rows[1].Min.y && fast,
-              "a row down, a frame later the ring is 1 - exp(-dt / focus_ms) of the way there, the wait 8 ms");
+              "a row down, a frame later the ring is 1 - exp(-dt / focus_ms) of the way there, the wait half a frame");
         int frames = 1;
         for (; frames < 60 && overlay_animating(); frames++) frame_after(guest);
         // 0.5 px left of a row's move, at 16 ms frames.
         const int expect_frames = (int)std::ceil(std::log(0.5 / (g_rows[1].Min.y - g_rows[0].Min.y)) /
                                                  std::log(1.0 - k));
-        check(ring_on(ring_now(), g_rows[1]) && !overlay_animating() && batch_wait_ms() == 16 &&
+        check(ring_on(ring_now(), g_rows[1]) && !overlay_animating() && held_wait_whole() &&
                   std::abs(frames - expect_frames) <= 1,
-              "it settles on the item within half a pixel, then nothing moves and the wait is 16 ms again");
+              "it settles on the item within half a pixel, then nothing moves and the wait is a frame again");
 
         stroke(guest, SDL_SCANCODE_DOWN, SDLK_DOWN);
         const bool far_down = ring_on(ring_now(), g_rows[2]) && !overlay_animating();

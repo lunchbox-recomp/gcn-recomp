@@ -5,7 +5,7 @@
 // Either way it goes at exactly 2 s, and as it goes the one above moves down into its place, over
 // 160 ms with motion and at once without. Each host frame with one showing lays out one frame of
 // notices and none of the menu, and once the last has gone none is laid out. Three queued as the
-// stack reflows never overlap, the paused wait with the menu open is 8 ms only while one moves,
+// stack reflows never overlap, the paused wait with the menu open is half a frame only while one moves,
 // and a pill's padding is even either side of its text's ink at any height. With the menu closed
 // the checks step the frontend alone (frontend_frame): the guest plays no part in the notices,
 // and host_frame's wait for it takes a millisecond or more of the wall clock a frame, which their
@@ -198,15 +198,15 @@ void toast_stack(SDL_Window* window, const std::string& dir, bool motion, bool d
 }
 
 // With the menu open over the held game and `motion` as `what` says, the paused wait at each
-// moment of two toasts' lives, A and B 500 ms after it: 8 ms while either rises, fades or moves
-// down into A's place, and 16 ms while both rest. Without motion it's 16 ms throughout.
+// moment of two toasts' lives, A and B 500 ms after it: half a frame while either rises, fades or
+// moves down into A's place, and a frame while both rest. Without motion it's a frame throughout.
 void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const char* what) {
     Guest guest;
     toasts_init(window, dir, motion, false);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns += 1000 * kToastMsNs;  // past the open's motion
     host_frame(guest);
-    const bool still = overlay_open() && paused() && batch_wait_ms() == 16;
+    const bool still = overlay_open() && held_wait_whole();
     const uint64_t a = g_host_ns;
     overlay_pads_notice("Pad one", " connected as player 1");
     const uint64_t kAt[] = {0, 100, 200, 500, 700, 1900, 2000, 2080, 2160};
@@ -216,12 +216,12 @@ void toast_wait(SDL_Window* window, const std::string& dir, bool motion, const c
         g_host_ns = a + kAt[i] * kToastMsNs;
         if (kAt[i] == 500) overlay_pads_notice("Pad two", " connected as player 2");
         host_frame(guest);
-        waits = waits && paused() && batch_wait_ms() == (motion && kMoving[i] ? 8 : 16);
+        waits = waits && (motion && kMoving[i] ? held_wait_half() : held_wait_whole());
     }
     char said[256];
     snprintf(said, sizeof(said), "%s: with the menu open the paused wait is %s", what,
-             motion ? "8 ms while a toast rises, fades or moves down, and 16 ms while they rest"
-                    : "16 ms throughout two toasts' lives");
+             motion ? "half a frame while a toast rises, fades or moves down, and a frame while they rest"
+                    : "a frame throughout two toasts' lives");
     check(still && waits, said);
     tap(guest, SDL_SCANCODE_F1, SDLK_F1);
     g_host_ns = a + 5000 * kToastMsNs;

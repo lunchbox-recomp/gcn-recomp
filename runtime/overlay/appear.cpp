@@ -52,7 +52,7 @@ bool appear_closing(uint64_t now) { return !opened() && appear_moving(now); }
 
 // The scale moves with the panel, over the same time, so the panel says when both are done. The
 // blur isn't counted: it ends with the panel as it closes, and as it opens it's drawn over held
-// frames, which are drawn again each 16 ms regardless.
+// frames, which are drawn again each display frame regardless.
 bool appear_moving(uint64_t now) {
     return !g_panel.done(now) || !g_contents.done(now) || !g_backdrop.done(now);
 }

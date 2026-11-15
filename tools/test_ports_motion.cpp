@@ -1,6 +1,6 @@
 // ---- The menu's motion over a window from SDL's dummy video driver, on a host clock moved by
-// hand (g_host_ns): opening still asks for the pause at once, the paused wait is 8 ms while it
-// moves and 16 ms once it's still, and an `[overlay] shown after N ms` line comes once it's
+// hand (g_host_ns): opening still asks for the pause at once, the paused wait is half a frame while
+// it moves and a frame once it's still, and an `[overlay] shown after N ms` line comes once it's
 // whole, while the backdrop dims the game from clear and the held frame's blur is asked for,
 // crossfading in over 150 ms. As it closes the guest goes on at once while the menu fades with no
 // input of its own, from a key, the mouse or a gamepad, the blur dropping away first, and
@@ -380,7 +380,7 @@ void overlay_motion(const std::string& dir) {
         g_host_ns = opened + 20 * kMs;
         host_frame(guest);
         panel_early = panel_alpha();
-        fast = batch_wait_ms() == 8;
+        fast = held_wait_half();
         g_host_ns = opened + 75 * kMs;
         host_frame(guest);
         blur_mid = overlay_blur_alpha();
@@ -397,7 +397,7 @@ void overlay_motion(const std::string& dir) {
     });
     key(guest, SDL_SCANCODE_F1, SDLK_F1, false);
     check(asked, "with the menu moving, F1 opens it and asks for the pause at once");
-    check(moving && fast, "while it moves over the held game, the paused wait is 8 ms");
+    check(moving && fast, "while it moves over the held game, the paused wait is half a frame");
     check(blur_held && blur_first == 0.0f && std::fabs(blur_mid - 0.75f) < 1e-4f && blur_whole == 1.0f,
           "once the guest is held the blur is asked for, crossfading in from the sharp frame on the host clock: "
           "0 at the open, 0.75 at 75 ms and whole at 150 ms");
@@ -410,7 +410,7 @@ void overlay_motion(const std::string& dir) {
     check(early && lines_with(said, line) == 1, "it says once that it's shown when the panel is whole, not a ms before");
     g_host_ns = opened + (uint64_t)theme.backdrop_ms * kMs;
     host_frame(guest);
-    check(!overlay_animating() && batch_wait_ms() == 16, "once the backdrop has settled nothing moves, and the wait is 16 ms");
+    check(!overlay_animating() && held_wait_whole(), "once the backdrop has settled nothing moves, and the wait is a frame");
     check(dim_first == 0 && backdrop_alpha() == (int)(theme.backdrop & 0xFF),
           "the backdrop dims the game from clear to the theme's alpha as it opens");
 
