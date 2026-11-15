@@ -5,6 +5,7 @@
 #include "mmu.h"
 #include "modules.h"
 #include "input_log.h"
+#include "pace.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -540,35 +541,8 @@ static void clock_jump(uint64_t edges) {
 
 uint64_t clock_jumped_ticks() { return g_jumped_ticks; }
 
-// The pacer's wait. A sleep ends when the scheduler gets back to the thread, which is later
-// than asked, and the guest's next frame starts that much late. So it sleeps toward the time
-// and spins the rest, as Dolphin's PrecisionTimer::SleepUntil does (Common/Timer.cpp, which
-// spins the last 1 ms and 20 us). The spin doesn't yield, since a yield on a busy core hands
-// it to whatever else is queued there.
-//
-// Apple platforms coalesce timers, letting a sleep end late by a share of its length that
-// the process's latency tier sets (the kern.timer_coalesce_tier* sysctls), up to half at
-// tier 2. In a hidden run the guest thread's 1 ms sleeps ended 0.26 ms late. So each sleep
-// is two thirds of the wait left beyond kSpinNs, at most kStepNs, and even if it runs half
-// again as long, it ends before the last kSpinNs. The pacer waits at every event poll, about
-// six times a frame, so the spin is kept to kSpinNs and a sleep under kMinSleepNs is skipped.
-// Android sleeps the whole way in one go, as Dolphin does there by default, since a headset's
-// cores and battery are the tighter limit.
-//
-// pace_sleep_ns is how long the wait for `until` sleeps next at host time `now`, or 0 when
-// the spin takes over.
-#ifdef __ANDROID__
-static uint64_t pace_sleep_ns(uint64_t now, uint64_t until) { return until > now ? until - now : 0; }
-#else
-static constexpr uint64_t kSpinNs = 100000, kStepNs = 1000000, kMinSleepNs = 50000;
-
-static uint64_t pace_sleep_ns(uint64_t now, uint64_t until) {
-    if (until <= now + kSpinNs) return 0;
-    const uint64_t ns = std::min((until - now - kSpinNs) * 2 / 3, kStepNs);
-    return ns >= kMinSleepNs ? ns : 0;
-}
-#endif
-
+// The pacer's wait, on the host clock: it sleeps toward the time and spins the rest (pace.h),
+// since a sleep that ends late starts the guest's next frame that much late.
 static void wait_until_host(uint64_t until) {
     while (const uint64_t ns = pace_sleep_ns(host_ns(), until))
         std::this_thread::sleep_for(std::chrono::nanoseconds(ns));
