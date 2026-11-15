@@ -45,3 +45,6 @@ void pause_host_frame();
 // When the last pause ended, or the clock's epoch if none has. For timing the guest's
 // frames, which shouldn't count the time it was held.
 std::chrono::steady_clock::time_point pause_resumed_at();
+// When the guest was last held, or the clock's epoch if it hasn't been. For timing how soon the
+// frontend's loop saw the hold.
+std::chrono::steady_clock::time_point pause_held_at();

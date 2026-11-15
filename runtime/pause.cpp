@@ -13,7 +13,7 @@ uint64_t audio_frames_out();
 static std::mutex g_mutex;
 static std::condition_variable g_lifted;
 static std::atomic<bool> g_asked{false}, g_held{false};
-static std::atomic<std::chrono::steady_clock::rep> g_resumed_at{0};
+static std::atomic<std::chrono::steady_clock::rep> g_resumed_at{0}, g_held_at{0};
 static std::atomic<long> g_test_left{0};  // host frames left of GCN_PAUSE_AT's pause
 
 void pause_request(bool on) {
@@ -29,6 +29,10 @@ bool paused() { return g_held.load(); }
 
 std::chrono::steady_clock::time_point pause_resumed_at() {
     return std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(g_resumed_at.load()));
+}
+
+std::chrono::steady_clock::time_point pause_held_at() {
+    return std::chrono::steady_clock::time_point(std::chrono::steady_clock::duration(g_held_at.load()));
 }
 
 // GCN_PAUSE_AT=<frame>:<host frames>, both whole numbers that fit, the first at most
@@ -70,6 +74,7 @@ void pause_gate(uint32_t frame) {
     std::unique_lock<std::mutex> lk(g_mutex);
     if (!g_asked) return;
     const uint64_t t0 = host_ns();
+    g_held_at = std::chrono::steady_clock::now().time_since_epoch().count();
     g_held = true;
     fprintf(stderr, "[pause] held at frame %u, output frame %llu\n", frame,
             (unsigned long long)audio_frames_out());

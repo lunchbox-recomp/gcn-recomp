@@ -85,6 +85,7 @@ ReviewWatch g_watch;        // the menu's frame settling for its dump, from each
 bool g_frametime;
 bool g_had_frame;       // the draw before laid out the menu
 uint64_t g_last_frame;  // and started at this host_ns
+OverlayFramePre g_pre;  // what the frontend did ahead of this draw (overlay_frame_pre)
 
 // What showed in place of a page ends with nothing done: Restart? or Quit?, the press-A order,
 // and the Buttons view with any press-to-bind.
@@ -305,6 +306,8 @@ float overlay_blur_alpha() { return g_blur_allowed ? appear_blur(host_ns()) : 0.
 
 bool overlay_menu_due() { return menu_showing() || at_frame_due(); }
 
+void overlay_frame_pre(const OverlayFramePre& pre) { g_pre = pre; }
+
 bool overlay_animating() {
     const uint64_t now = host_ns();
     return g_window &&
@@ -372,7 +375,9 @@ void overlay_draw() {
     const double cpu = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     // The first frame the menu shows in, as it opens, has no interval.
     const double interval = g_had_frame ? (double)(at - g_last_frame) / 1e6 : 0.0;
-    fprintf(stderr, "[overlay] frame f%ld held %d interval %6.2fms  cpu %6.3fms\n", frame, held ? 1 : 0, interval, cpu);
+    fprintf(stderr, "[overlay] frame f%ld held %d interval %6.2fms  cpu %6.3fms  late %6.3fms  present %6.3fms  blur %6.3fms\n",
+            frame, held ? 1 : 0, interval, cpu, g_pre.late_ms, g_pre.present_ms, g_pre.blur_ms);
+    g_pre = {};
     g_had_frame = true;
     g_last_frame = at;
 }
