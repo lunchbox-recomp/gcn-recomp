@@ -30,9 +30,13 @@ struct Notice {
     Tween slot;      // its place in the stack, 0 the lowest (toasts.h)
     bool over;       // queued over another, so it rises no further than the gap (toasts.h)
 };
-// A notice may be queued from a static initializer before this file's, and expire() reads
-// g_motion, so both are constinit: a dynamic initializer here won't compile.
-constinit std::vector<Notice> g_notices;
+// A notice may be queued from a static initializer before this file's, so the notices are
+// function-local, as overlay_menu.cpp's pages are, and g_motion, which expire() reads, is
+// constinit: a dynamic initializer for it won't compile.
+std::vector<Notice>& queued() {
+    static std::vector<Notice> n;
+    return n;
+}
 ImGuiContext* g_context;  // their own, null with no window
 SDL_Window* g_window;     // the one they show over
 bool g_gl;                // drawn, not only laid out
@@ -48,9 +52,9 @@ std::vector<OverlayTestToast> g_laid;  // each pill as the last frame laid it ou
 // Each one gone at exactly kToastNs, motion or not, and the ones above it moving down into its
 // place.
 void expire(uint64_t now) {
-    std::erase_if(g_notices, [&](const Notice& n) { return now - n.since >= kToastNs; });
-    for (size_t i = 0; i < g_notices.size(); i++) {
-        Tween& slot = g_notices[i].slot;
+    std::erase_if(queued(), [&](const Notice& n) { return now - n.since >= kToastNs; });
+    for (size_t i = 0; i < queued().size(); i++) {
+        Tween& slot = queued()[i].slot;
         if (slot.to != (float)i) slot = toast_reflow(theme_now(), slot, now, (float)i, g_motion);
     }
 }
@@ -98,7 +102,7 @@ void pills(uint64_t now) {
     const float h = t.item_min_height * s, pad = t.padding * s, gap = t.item_spacing * s;
     const float edge = ImGui::GetStyle().FrameBorderSize;
     const float bottom = vp->Pos.y + vp->Size.y - t.margin * s;
-    for (const Notice& n : g_notices) {
+    for (const Notice& n : queued()) {
         const ToastLook look = toast_look(t, now - n.since, g_motion, n.over);
         const char* text = n.text.c_str();
         const char* split = text + n.lead;
@@ -135,7 +139,7 @@ void pills(uint64_t now) {
 // the watch again.
 void dump() {
     if (!g_review || !g_gl || !gx::g_dump_output || !gx::g_dump_dir) return;
-    if (g_notices.size() < (size_t)g_review) {
+    if (queued().size() < (size_t)g_review) {
         g_watch = {};
         return;
     }
@@ -153,14 +157,14 @@ void overlay_pads_notice(const std::string& name, const std::string& what) {
     fprintf(stderr, "[pads] %s\n", text.c_str());
     // Its place moves as the one under it does, a place above it, so the two never close up as
     // the stack reflows.
-    const bool over = !g_notices.empty();
+    const bool over = !queued().empty();
     Tween slot;
     if (over) {
-        slot = g_notices.back().slot;
+        slot = queued().back().slot;
         slot.from += 1.0f;
         slot.to += 1.0f;
     }
-    g_notices.push_back({text, name.size(), now, slot, over});
+    queued().push_back({text, name.size(), now, slot, over});
 }
 
 void notices_motion(bool on) { g_motion = on; }
@@ -170,7 +174,7 @@ void notices_motion(bool on) { g_motion = on; }
 bool notices_moving(uint64_t now) {
     expire(now);
     const OverlayTheme& t = theme_now();
-    return std::any_of(g_notices.begin(), g_notices.end(), [&](const Notice& n) {
+    return std::any_of(queued().begin(), queued().end(), [&](const Notice& n) {
         return toast_moving(t, now - n.since, g_motion) || !n.slot.done(now);
     });
 }
@@ -178,7 +182,7 @@ bool notices_moving(uint64_t now) {
 std::vector<std::string> overlay_notices() {
     expire(host_ns());
     std::vector<std::string> out;
-    for (const Notice& n : g_notices) out.push_back(n.text);
+    for (const Notice& n : queued()) out.push_back(n.text);
     return out;
 }
 
@@ -209,7 +213,7 @@ void notices_frame() {
 #ifdef GCN_OVERLAY_TEST
     g_laid.clear();
 #endif
-    if (!g_context || g_notices.empty()) return;
+    if (!g_context || queued().empty()) return;
     ImGuiContext* menu = ImGui::GetCurrentContext();
     ImGui::SetCurrentContext(g_context);
     overlay_style_fit(g_window);

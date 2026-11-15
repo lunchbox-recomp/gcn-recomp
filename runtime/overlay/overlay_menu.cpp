@@ -37,10 +37,14 @@ struct AddedPage {
     void* user;
 };
 // A game adds its pages from a static initializer in its SOURCES, which may run before this
-// file's. So the added pages are constinit, and every page's title, in order, is
-// function-local: built at namespace scope, it would be built again over the game's titles
-// (vr_config.cpp's hooks()).
-constinit std::vector<AddedPage> g_pages;
+// file's. So the added pages and every page's title, in order, are function-local: built at
+// namespace scope, they would be built again over the game's (vr_config.cpp's hooks()). An
+// empty vector is constant only where the STL's default constructor allocates nothing, which
+// not every one promises.
+std::vector<AddedPage>& added() {
+    static std::vector<AddedPage> p;
+    return p;
+}
 constexpr const char* kOwnPages[] = {"Display", "Controllers"};
 std::vector<std::string>& titles() {
     static std::vector<std::string> t(std::begin(kOwnPages), std::end(kOwnPages));
@@ -69,7 +73,7 @@ void page() {
     const int p = tabs_page();
     if (p == 0) display_page(overlay_window());
     else if (p == 1) controllers_page();
-    else g_pages[p - 2].draw(g_pages[p - 2].user);
+    else added()[p - 2].draw(added()[p - 2].user);
 }
 
 // The room between the header, the page and the footer, past an item's own spacing.
@@ -225,7 +229,7 @@ void menu_init(const char* title) {
     tabs_reset();
 }
 
-int menu_added_pages() { return (int)g_pages.size(); }
+int menu_added_pages() { return (int)added().size(); }
 
 void menu_opened(int page, uint64_t now) {
     g_focus = true;
@@ -269,12 +273,12 @@ void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
     if (overlay_ready()) { fprintf(stderr, "[overlay] page registration is closed after init\n"); return; }
     if (!title || !*title) { fprintf(stderr, "[overlay] page title is empty\n"); return; }
     if (!strcmp(title, "Display") || !strcmp(title, "Controllers") ||
-        std::any_of(g_pages.begin(), g_pages.end(), [&](const AddedPage& page) { return page.title == title; })) {
+        std::any_of(added().begin(), added().end(), [&](const AddedPage& page) { return page.title == title; })) {
         fprintf(stderr, "[overlay] page title %s is already in use\n", title);
         return;
     }
     if (!draw) { fprintf(stderr, "[overlay] page %s has no callback\n", title); return; }
-    g_pages.push_back({title, draw, user});
+    added().push_back({title, draw, user});
     titles().push_back(title);
 }
 
@@ -282,7 +286,7 @@ void overlay_add_page(const char* title, void (*draw)(void* user), void* user) {
 int overlay_page() { return tabs_page(); }
 
 void menu_clear_pages() {
-    g_pages.clear();
+    added().clear();
     titles().assign(std::begin(kOwnPages), std::end(kOwnPages));
 }
 
