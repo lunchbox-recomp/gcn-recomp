@@ -951,7 +951,10 @@ whether each was within and doesn't fail.
 
 Before the window it checks that the loop's wait for a frame with the guest running, given 2 s
 (30 s where `CI` is set), ends with no frame as the guest holds 20 ms into it, within half that.
-Over the window it checks that `overlay_init` warms the blur once at the window's size in pixels.
+With the hold lifted, the next such wait, given 50 ms with nothing queued, must run 45 ms or
+more, so the hold's wake is spent. Over the window it checks that `overlay_init` warms the blur
+once at the window's size in pixels. Its first run's `held 1` lines must have a `late` of 0 or
+more, and the first over 0. These hold where `CI` is set too.
 
 It checks too that the redraw is asked for no sooner than a period after the last wait's end,
 a bound a stall can only help. A frame queued before the wait, or sent into it, ends it within

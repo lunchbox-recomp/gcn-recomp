@@ -26,11 +26,16 @@
 // ahead, each must end before it with that batch and draw nothing, and the times are printed.
 // Before any window, the display rates that give a 60 Hz frame (frame_at_hz) are checked, and that
 // the loop's wait for a batch with the guest running ends as the guest holds, which no batch would
-// end (wake_batch_wait, from pause_gate). Over the window, overlay_init is checked to warm the blur
-// once at the window's pixel size (render_overlay_blur_warm).
+// end (wake_batch_wait, from pause_gate), and that with the hold lifted the next such wait runs to
+// its timeout, the wake spent. Over the window, overlay_init is checked to warm the blur once at
+// the window's pixel size (render_overlay_blur_warm), and the first run's lines their lateness: the
+// first held line's over 0, as no wait ends the instant it could, and every held line's 0 or more.
+// Those checks hold where CI is set too.
 // Exit 77 with no GL window. Read in by tools/test_ports.cpp after tools/test_ports_pages.cpp,
 // with GCN_OVERLAY.
 #include "test_ports_support.h"
+
+#include <algorithm>
 
 namespace {
 
@@ -68,7 +73,8 @@ std::chrono::steady_clock::time_point steady_at(int64_t ns) {
 
 // Whether the loop's wait for a batch with the guest running (take_batch, kRunWaitMs in main.cpp)
 // ends as the guest holds, 20 ms into it, with no batch, rather than at its timeout, here 2 s, or
-// 30 s where CI is set. Half that is the bar, a bound a stall can only bring closer.
+// 30 s where CI is set. It must end before half that, which a stall can only make it miss by
+// ending the wait later, not pass.
 bool hold_ends_wait(bool ci) {
     while (gx::take_batch_until(std::chrono::steady_clock::now())) {
     }  // nothing queued, and no wake left from a hold before
@@ -92,6 +98,18 @@ bool hold_ends_wait(bool ci) {
     printf("[held] the wait for a batch with the guest running ended %.3f ms in, %s held\n", took,
            held ? "with the guest" : "without the guest");
     return !held_before && !b && held && took < timeout_ms / 2;
+}
+
+// How long the loop's wait for a batch runs with nothing queued once the hold that ended the last
+// one is lifted, in ms, or -1 if a batch ended it. That wait spent the hold's wake, so this one
+// runs to its timeout, kLiftedWaitMs. A stall can only make it longer.
+constexpr int kLiftedWaitMs = 50;
+double lifted_wait_ms() {
+    const int64_t t0 = steady_ns();
+    const std::unique_ptr<gx::Batch> b = gx::take_batch(kLiftedWaitMs);
+    const double took = (double)(steady_ns() - t0) / 1e6;
+    printf("[held] with the hold lifted, the wait for a batch with nothing queued ended %.3f ms in\n", took);
+    return b ? -1 : took;
 }
 
 // The loop's waits with the guest held, the window `pw` by `ph` pixels, as the head of the file says.
@@ -247,6 +265,8 @@ int run_held(const std::string& dir) {
     const bool ci = getenv_nonempty("CI") != nullptr;
     check(hold_ends_wait(ci), "with the guest running, the loop's wait for a batch ends as the guest holds, with no "
                               "batch, well before its timeout");
+    check(lifted_wait_ms() >= kLiftedWaitMs - 5, "with that hold lifted, the next wait for a batch with nothing "
+                                                 "queued runs to its 50 ms timeout, the hold's wake spent");
     SDL_Window* window = gl_window(1920, 1080);
     if (!window) {
         printf("test_ports held: skipped\n");
@@ -259,7 +279,7 @@ int run_held(const std::string& dir) {
     printf("[held] the display says %.2f Hz, so a display frame is %.2f ms and the bar %.2f ms\n", display_hz(window),
            frame_ms, bar_ms);
     HeldWaits waits;
-    bool in_bar = false, half = false, whole = false, warmed = false;
+    bool in_bar = false, half = false, whole = false, warmed = false, late_read = false;
     const auto near = [](const std::vector<double>& v, double ms) {
         return !v.empty() && std::fabs(percentile(v, 0.5) - ms) <= kNearMs;
     };
@@ -268,6 +288,8 @@ int run_held(const std::string& dir) {
         if (r == 0) {
             waits = run.waits;
             warmed = run.warmed;
+            late_read = !run.late.empty() && run.first.late > 0 &&
+                        std::all_of(run.late.begin(), run.late.end(), [](double ms) { return ms >= 0; });
         }
         print_intervals("the held redraw's interval", run.held);
         print_intervals("the same while something moves", run.moving);
@@ -299,6 +321,8 @@ int run_held(const std::string& dir) {
         check(whole, "once nothing moves, its p50 is within 0.5 ms of a whole display frame, in one of three runs at "
                      "most");
     }
+    check(late_read, "the first held interval's line says its wait ended late, and every held line's "
+                     "lateness is 0 or more");
     check(warmed, "overlay_init over a GL window warms the blurred backdrop once, at the window's size in pixels");
     check(waits.late, "with the loop's last wait ended 300 ms ahead, the held wait asks for the held frame's redraw "
                       "once, no sooner than that and a period after");
