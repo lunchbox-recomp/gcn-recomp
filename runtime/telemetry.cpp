@@ -30,15 +30,24 @@ namespace {
 
 sock_t g_sock = kNoSocket;
 sockaddr_in g_dest{};
-std::map<std::string, float> g_keys;
-std::map<std::string, float> g_defaults;   // the game's own (set_default)
 bool g_log = false;
 
+// Function-local, as input_defaults.cpp's are: a game sets its defaults from a static
+// initializer in its SOURCES, which may run before this file's.
+std::map<std::string, float>& keys() {   // telemetry.txt's
+    static std::map<std::string, float> k;
+    return k;
+}
+std::map<std::string, float>& defaults() {   // the game's own (set_default)
+    static std::map<std::string, float> d;
+    return d;
+}
+
 float key(const char* k, float fallback) {
-    auto it = g_keys.find(k);
-    if (it != g_keys.end()) return it->second;
-    it = g_defaults.find(k);
-    return it == g_defaults.end() ? fallback : it->second;
+    auto it = keys().find(k);
+    if (it != keys().end()) return it->second;
+    it = defaults().find(k);
+    return it == defaults().end() ? fallback : it->second;
 }
 
 void read_file() {
@@ -49,7 +58,7 @@ void read_file() {
         char k[64];
         double v;
         if (line[0] == '#' || sscanf(line, "%63s %lf", k, &v) != 2) continue;
-        g_keys[k] = (float)v;
+        keys()[k] = (float)v;
     }
     fclose(f);
 }
@@ -130,7 +139,7 @@ bool enabled() { return g_sock != kNoSocket || g_listener; }
 
 float get(const char* k, float fallback) { return key(k, fallback); }
 
-void set_default(const char* k, float value) { g_defaults[k] = value; }
+void set_default(const char* k, float value) { defaults()[k] = value; }
 
 // What goes to the platform is built in three stages, each of which on its own would stop a
 // class of jerk, so that no single mistake upstream reaches the rider:
