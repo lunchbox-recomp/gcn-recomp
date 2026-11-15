@@ -62,6 +62,9 @@ void ai_stream_advance(uint32_t) {}
 uint64_t host_ns() { return 0; }
 void clock_hold(uint64_t) {}
 void exi_card_held(uint64_t) {}
+namespace gx {
+void wake_batch_wait() {}  // the frontend's, which pause_gate wakes
+}
 bool iso_read(uint64_t, void*, uint32_t) { return false; }
 
 namespace {
