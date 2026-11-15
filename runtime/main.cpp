@@ -355,6 +355,8 @@ static std::chrono::steady_clock::time_point g_waited;  // when the loop's last 
 // How late that wait ended, in ms: past its deadline while held, or past the hold where one began
 // in a wait that ended with nothing, and 0 for a wait a batch ended or one with no hold.
 static double g_late_ms;
+static double g_waited_cpu_ms;  // the loop's thread CPU time as that wait ended (plat_thread_cpu_ms)
+static double g_swap_ms;        // how long the last SDL_GL_SwapWindow took on the steady clock, in ms
 
 static double ms_between(std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
@@ -374,7 +376,9 @@ static void show_frame(SDL_Window* win) {
         // target, which the blur doesn't read, so it goes without (render_gl.h).
         const auto blur_at = std::chrono::steady_clock::now();
         if (!g_eye_mode) gx::render_overlay_blur(overlay_blur_hold(), overlay_blur_alpha());
-        overlay_frame_pre({g_late_ms, ms_between(g_waited, blur_at), ms_between(blur_at, std::chrono::steady_clock::now())});
+        const auto blurred = std::chrono::steady_clock::now();
+        overlay_frame_pre({g_late_ms, ms_between(g_waited, blur_at), ms_between(blur_at, blurred),
+                           plat_thread_cpu_ms() - g_waited_cpu_ms, g_swap_ms});
         overlay_draw();
     }
     if (record::active()) {
@@ -382,7 +386,9 @@ static void show_frame(SDL_Window* win) {
         SDL_GetWindowSizeInPixels(win, &rw, &rh);
         record::frame(0, rw, rh);
     }
+    const auto swap_at = std::chrono::steady_clock::now();
     SDL_GL_SwapWindow(win);
+    g_swap_ms = ms_between(swap_at, std::chrono::steady_clock::now());
 }
 
 // The loop's wait for the guest's next batch, which it returns, the window being dw by dh pixels.
@@ -397,6 +403,7 @@ static std::unique_ptr<gx::Batch> next_batch(SDL_Window* win, int dw, int dh) {
     const auto until = held ? g_waited + held_period(win) : began;
     auto b = held ? gx::take_batch_until(until) : gx::take_batch(kRunWaitMs);
     g_waited = std::chrono::steady_clock::now();
+    g_waited_cpu_ms = plat_thread_cpu_ms();
     const auto could_end = held ? until : std::max(began, pause_held_at());
     g_late_ms = !b && paused() ? std::max(0.0, ms_between(could_end, g_waited)) : 0.0;
     if (!b && paused() && (g_eye_mode ? eye_to_window(dw, dh) : gx::render_present_last())) {

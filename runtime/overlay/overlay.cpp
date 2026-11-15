@@ -381,8 +381,11 @@ void overlay_draw() {
     const double cpu = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     // The first frame the menu shows in, as it opens, has no interval.
     const double interval = g_had_frame ? (double)(at - g_last_frame) / 1e6 : 0.0;
-    fprintf(stderr, "[overlay] frame f%ld held %d interval %6.2fms  cpu %6.3fms  late %6.3fms  present %6.3fms  blur %6.3fms\n",
-            frame, held ? 1 : 0, interval, cpu, g_pre.late_ms, g_pre.present_ms, g_pre.blur_ms);
+    fprintf(stderr,
+            "[overlay] frame f%ld held %d interval %6.2fms  cpu %6.3fms  late %6.3fms  present %6.3fms  blur %6.3fms"
+            "  thread %6.3fms  swap %6.3fms\n",
+            frame, held ? 1 : 0, interval, cpu, g_pre.late_ms, g_pre.present_ms, g_pre.blur_ms, g_pre.thread_ms,
+            g_pre.swap_ms);
     g_pre = {};
     g_had_frame = true;
     g_last_frame = at;

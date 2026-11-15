@@ -215,10 +215,12 @@ void overlay_draw();
 // What the frontend did ahead of the next overlay_draw, for its `[overlay] frame` line, in ms:
 // how late the loop's last wait ended (main.cpp's next_batch), and the time from the wait's end
 // to the blurred backdrop, the frame's draw in it with the wait for the gamepads' lock the
-// frontend takes while the menu is due, and the backdrop's. The line's interval carries them, as
-// it's stamped as overlay_draw starts. A draw that follows none gets zeros.
+// frontend takes while the menu is due, and the backdrop's. Then the loop's thread CPU time over
+// those two, which falls short of them by the time the thread was blocked or off a core, and how
+// long the last frame's swap took. The line's interval carries them, as it's stamped as
+// overlay_draw starts. A draw that follows none gets zeros.
 struct OverlayFramePre {
-    double late_ms = 0, present_ms = 0, blur_ms = 0;
+    double late_ms = 0, present_ms = 0, blur_ms = 0, thread_ms = 0, swap_ms = 0;
 };
 void overlay_frame_pre(const OverlayFramePre& pre);
 // For gx::render_overlay_blur, ahead of overlay_draw: whether the open menu holds the guest with
@@ -293,7 +295,7 @@ inline void overlay_close() {}
 inline void overlay_gate(int, PadState&) {}
 inline void overlay_draw() {}
 struct OverlayFramePre {
-    double late_ms = 0, present_ms = 0, blur_ms = 0;
+    double late_ms = 0, present_ms = 0, blur_ms = 0, thread_ms = 0, swap_ms = 0;
 };
 inline void overlay_frame_pre(const OverlayFramePre&) {}
 inline bool overlay_blur_hold() { return false; }

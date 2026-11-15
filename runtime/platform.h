@@ -75,6 +75,8 @@ long plat_utc_offset_seconds();
 // Windows keep one), so the time before main and the static constructors is counted too.
 // Where the OS can't say, since the first call.
 double plat_ms_since_start();
+// The calling thread's CPU time in ms, which its time off a core doesn't add to.
+double plat_thread_cpu_ms();
 
 // ---- the host ----
 // The OS and its version ("macOS 26.6 (25G104)", "Linux 6.8.0"), and the CPU's model name,

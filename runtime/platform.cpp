@@ -178,6 +178,13 @@ double plat_ms_since_start() {
     return (double)(int64_t)(ticks(now) - ticks(created)) / 1e4;  // 100 ns ticks
 }
 
+double plat_thread_cpu_ms() {
+    FILETIME created, exited, kernel, user;
+    if (!GetThreadTimes(GetCurrentThread(), &created, &exited, &kernel, &user)) return 0.0;
+    auto ticks = [](const FILETIME& t) { return ((uint64_t)t.dwHighDateTime << 32) | t.dwLowDateTime; };
+    return (double)(ticks(kernel) + ticks(user)) / 1e4;
+}
+
 // ---- files ----
 bool plat_readable(const char* path) { return path && *path && _access(path, 4) == 0; }
 
@@ -424,6 +431,12 @@ double plat_ms_since_start() {
 #endif
     static const auto t0 = std::chrono::steady_clock::now();
     return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+}
+
+double plat_thread_cpu_ms() {
+    timespec ts{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
 }
 
 bool plat_readable(const char* path) { return path && *path && access(path, R_OK) == 0; }

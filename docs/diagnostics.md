@@ -735,7 +735,7 @@ the EFB copies'; in stereo `[eye-rt]` adds, per eye, the flat pass's time and th
 own). A batch whose textures took more than 5 ms also gets an `[rt-tex]` line: how many
 textures were deleted and in what time, and how many were uploaded, their size and time.
 Each frame the overlay draws its menu in, open or fading out, gets an `[overlay] frame` line:
-`[overlay] frame f<n> held <0|1> interval <ms>ms  cpu <ms>ms  late <ms>ms  present <ms>ms  blur <ms>ms`.
+`[overlay] frame f<n> held <0|1> interval <ms>ms  cpu <ms>ms  late <ms>ms  present <ms>ms  blur <ms>ms  thread <ms>ms  swap <ms>ms`.
 n counts the menu's frames in the
 process from 0 (`overlay_menu_frames`), not presented frames, so it doesn't match the n of an
 `[ft]` or `[rt]` line. held is 1 when the guest is held as the frame starts. The interval runs on
@@ -754,7 +754,10 @@ that began after its deadline, as when the frame before took longer than the per
 time too. present is the time from the wait's end to the blurred backdrop, which is the frame's
 draw (`render_execute` for a frame that came, `render_present_last` for the held one drawn
 again) with the wait for the gamepads' lock, which `show_frame` takes while the menu is due, and
-blur is the backdrop's. The paused redraw interval is read
+blur is the backdrop's. thread is the loop's thread CPU time over present and blur
+(`CLOCK_THREAD_CPUTIME_ID`), so a span that grows with thread growing beside it ran slower on the
+CPU, and one that grows without it was blocked or held off a core. swap is how long the frame
+before's `SDL_GL_SwapWindow` took on the steady clock, and the first frame's is 0. The paused redraw interval is read
 from the `held 1` lines alone, since a fade out and the frames before the hold lands are paced
 by the guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
@@ -932,7 +935,8 @@ held guest on a hidden window at 1920x1080 and runs the frontend's own wait and 
 (`next_batch` in `main.cpp`) for 300 waits, with the host clock the real one. It prints the held
 interval's p50, p99 and max from the `[overlay] frame` lines, for all of them, for the frames
 whose wait began with something moving and for those with nothing, and the waits' lateness, with
-the first held interval and its fields and the loop's CPU time a frame. Then it prints the held
+the first held interval and its fields and the loop's CPU time a frame, and for the first run the
+lines' `thread` and `swap`. Then it prints the held
 wait's own CPU time a display frame. Where `CI` is unset it holds the p99 to a display frame and
 a third of a ms, 17 ms at 60 Hz. It holds the p50 while something moves to within 0.5 ms of half
 a display frame, and once nothing does to within 0.5 ms of a whole one. The test's first held
@@ -951,7 +955,11 @@ Before the window it checks that the loop's wait for a frame with the guest runn
 With the hold lifted, the next such wait, given 50 ms with nothing queued, must run 45 ms or
 more, so the hold's wake is spent. Over the window it checks that `overlay_init` warms the blur
 once at the window's size in pixels. Its first run's `held 1` lines must have a `late` of 0 or
-more, and the first over 0. These hold where `CI` is set too.
+more, and the first over 0. Each must have a `thread` of 0 or more and no more than its `present`
+and `blur` with 0.005 ms for the printing, some line's over 0, and a `swap` of 0 or more, their
+sum over 0. Then one redraw waits on the gamepads' lock, which another thread holds for 50 ms
+from before the wait ends: its `present` must take that wait and its `thread` stay under half of
+it. These hold where `CI` is set too.
 
 It checks too that the redraw is asked for no sooner than a period after the last wait's end,
 a bound a stall can only help. A frame queued before the wait, or sent into it, ends it within

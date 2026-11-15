@@ -158,14 +158,17 @@ struct FrameLine {
     int held = -1;
     double interval = 0, cpu = 0;
     double late = 0, present = 0, blur = 0;  // what the frontend did before it (overlay_frame_pre)
+    double thread = 0, swap = 0;
 };
 std::vector<FrameLine> frame_lines(const std::string& said) {
     std::vector<FrameLine> out;
     const std::string text = read_file(said);
     for (size_t at = 0; (at = text.find("[overlay] frame f", at)) != std::string::npos; at++) {
         FrameLine l;
-        if (sscanf(text.c_str() + at, "[overlay] frame f%ld held %d interval %lfms cpu %lfms late %lfms present %lfms blur %lfms",
-                   &l.f, &l.held, &l.interval, &l.cpu, &l.late, &l.present, &l.blur) == 7)
+        if (sscanf(text.c_str() + at,
+                   "[overlay] frame f%ld held %d interval %lfms cpu %lfms late %lfms present %lfms blur %lfms "
+                   "thread %lfms swap %lfms",
+                   &l.f, &l.held, &l.interval, &l.cpu, &l.late, &l.present, &l.blur, &l.thread, &l.swap) == 9)
             out.push_back(l);
     }
     return out;
