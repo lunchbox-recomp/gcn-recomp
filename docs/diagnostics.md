@@ -737,14 +737,19 @@ process from 0 (`overlay_menu_frames`), not presented frames, so it doesn't matc
 the host clock (`host_ns`) from the start of the last frame that drew the menu to the start of this
 one, and is 0 on the first frame after one without the menu. cpu is what `overlay_draw` took on
 the steady clock, the notices and any `--dump-output` dump with it, but not the blurred backdrop
-(`render_overlay_blur`), which the frontend draws before it. The paused redraw interval is read
+(`render_overlay_blur`), which the frontend draws before it. It's on the steady clock rather than
+the thread's CPU clock so that a frame the driver blocks or the system holds off the CPU shows
+the time it really cost. The paused redraw interval is read
 from the `held 1` lines alone, since a fade out and the frames before the hold lands are paced
 by the guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
 or alpha, because macOS's GL compiles a program as it first draws with it. In `test_ports
 --pages` at 1920x1080 that compile put 12 to 15 ms of CPU on the process's first menu frame, and
 now lands in `overlay_init`, before the game's first frame. `test_ports --pages` holds each page's
-first menu frame there to 1.5 ms of CPU where `CI` is unset. Where it's set, as on a CI runner's
+first menu frame there to 1.5 ms where `CI` is unset, read on the calling thread's CPU clock
+(`CLOCK_THREAD_CPUTIME_ID`), so a stall of the whole machine can't fail it. The compile runs on
+the calling thread, so with the warm-up taken out the first frame still reads 12 ms or more on
+that clock. Where `CI` is set, as on a CI runner's
 VM that draws in software at tens of ms a frame, it prints whether they were within it and
 doesn't fail.
 `GCN_XFSTATS=1` prints, per frame over every 64, what the vertex transform was asked

@@ -4,8 +4,9 @@
 // page's menu frame time, overlay_draw's on the CPU, is printed. At 16:9 GCN_FRAMETIME is set, and
 // each page's `[overlay] frame` lines are checked against the host clock, which the test steps by
 // known amounts, against whether the guest was held, and against the test's own timing of overlay_draw,
-// and each page's first menu frame, the process's first too, is held to 1.5 ms of CPU where CI is
-// unset, and printed without failing where it's set; at 4:3 it's unset, and there are none.
+// and each page's first menu frame, the process's first too, is held to 1.5 ms of the calling
+// thread's CPU time where CI is unset, so time off the CPU doesn't count, and printed without
+// failing where it's set; at 4:3 it's unset, and there are none.
 // After every page, the Buttons
 // view is dumped at each size too, as it opens and at its foot. The PNGs are for a person to
 // look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
@@ -20,8 +21,16 @@
 #include "overlay/review.h"  // the Buttons view's dumps
 #include <cmath>
 #include <cstdio>
+#include <ctime>
 
 namespace {
+
+// The calling thread's CPU time in ms. Time the process spends off the CPU doesn't add to it.
+double thread_cpu_ms() {
+    timespec ts{};
+    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
+    return (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
+}
 
 constexpr int kSkipped = 77;  // ctest's SKIP_RETURN_CODE for this mode
 constexpr int kHeldFrames = 40;  // GCN_OVERLAY_AT's host frames for each page
@@ -127,6 +136,7 @@ struct PageRun {
     bool let_go = false;     // Display, picked after the dump, was still selected near the end
     double init_ms = 0;      // overlay_init on the CPU, which makes the GL renderers' objects
     double first_ms = -1;    // overlay_draw on the CPU as it first drew, making the atlas's texture
+    double first_thread_ms = -1;  // the same on the calling thread's CPU clock, which the bar holds
     std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
     // Each overlay_draw that laid out the menu: its frame, the host clock as it started, whether
     // the guest was held then, and its time on the CPU.
@@ -162,6 +172,8 @@ std::vector<FrameLine> frame_lines(const std::string& said) {
 
 // "Smooth while animating"'s bar for the menu's CPU time a frame at 1920x1080, which the first
 // frame of an open is held to too: overlay_init has made the GL renderers' objects (overlay.cpp).
+// The first frame's is read on the thread's CPU clock. macOS's GL compiles the program on the
+// calling thread, so a first frame without the warm-up still reads 12 ms or more there.
 constexpr double kFrameBarMs = 1.5;
 
 // Whether `lines` are one for each frame `run` drew the menu in, numbered on from the first's,
@@ -231,7 +243,9 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         const uint64_t host = g_host_ns;
         const bool held_then = paused();
         const auto t0 = std::chrono::steady_clock::now();
+        const double c0 = thread_cpu_ms();
         overlay_draw();
+        const double thread_ms = thread_cpu_ms() - c0;
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         // A new atlas's count starts from fonts_new_frame's, which rises across atlases.
         const int counted = fonts_atlas()->Builder->FrameCount;
@@ -240,8 +254,10 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         const bool any = was_open && ImGui::GetDrawData() && ImGui::GetDrawData()->TotalVtxCount > 0;
         const bool drew = any && menu_drawn();
         const bool dumping = run.dumped_at < 0 && exists_path(png);
-        if (any && run.first_ms < 0) run.first_ms = ms;
-        else if (any && !dumping) run.ms.push_back(ms);
+        if (any && run.first_ms < 0) {
+            run.first_ms = ms;
+            run.first_thread_ms = thread_ms;
+        } else if (any && !dumping) run.ms.push_back(ms);
         if (was_open) run.drawn.push_back({f, host, held_then, ms});
         if (drew && run.first_drawn < 0) {
             run.first_drawn = f;
@@ -600,7 +616,7 @@ int run_pages(const std::string& dir) {
                             "the menu in, with whether the guest was held, the host clock's interval from the last "
                             "one's start and its CPU time")
                           .c_str());
-                first_in_bar = first_in_bar && run.first_ms >= 0 && run.first_ms <= kFrameBarMs;
+                first_in_bar = first_in_bar && run.first_thread_ms >= 0 && run.first_thread_ms <= kFrameBarMs;
                 std::vector<double> cpu, interval;
                 for (size_t i = 0; i < lines.size() && i < run.drawn.size(); i++) {
                     if (run.drawn[i].f == run.dumped_at) continue;  // a game draws no dump
@@ -624,9 +640,9 @@ int run_pages(const std::string& dir) {
                   (at + " is dumped at the window's size, its backdrop over GCN_OVERLAY_PLAIN's grey").c_str());
             check(run.first_drawn >= 0 && run.dumped_at > run.first_drawn + 1 && lines_with(said, "settled") == 0,
                   (at + " is dumped once its frame has settled, not at its first drawn frame").c_str());
-            printf("[pages] %s: overlay_init %.3f ms; menu frame first %.3f ms, then p50 %.3f ms, p99 %.3f ms, max %.3f ms "
-                   "over %zu frames\n",
-                   at.c_str(), run.init_ms, run.first_ms, percentile(run.ms, 0.5), percentile(run.ms, 0.99),
+            printf("[pages] %s: overlay_init %.3f ms; menu frame first %.3f ms (thread CPU %.3f ms), then p50 %.3f ms, "
+                   "p99 %.3f ms, max %.3f ms over %zu frames\n",
+                   at.c_str(), run.init_ms, run.first_ms, run.first_thread_ms, percentile(run.ms, 0.5), percentile(run.ms, 0.99),
                    percentile(run.ms, 1.0), run.ms.size());
         }
         // A CI runner's VM draws in software, tens of ms a frame, so there the bar is printed, not held.
@@ -636,7 +652,7 @@ int run_pages(const std::string& dir) {
         else if (timed)
             check(first_in_bar, (std::to_string(pw) + "x" + std::to_string(ph) +
                                  ": each page's first menu frame, the process's first open's too, takes 1.5 ms or "
-                                 "less of overlay_draw's CPU")
+                                 "less of overlay_draw's CPU on the calling thread")
                                     .c_str());
         check(each_draw, (std::to_string(pw) + "x" + std::to_string(ph) +
                           ": the shared atlas has its own update once at each overlay_draw, which no context makes")
