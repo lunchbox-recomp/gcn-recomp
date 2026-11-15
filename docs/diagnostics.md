@@ -829,6 +829,23 @@ doesn't show those 19, idle or beside one busy process, as its waits' lateness h
 ms either way. The `late` field of the `[overlay] frame` lines says whether a game's long
 intervals are the wait's.
 
+They weren't. In the same game measure at 882fa56 the intervals had a p50 of 16.65 ms, a p99 of
+17.03 ms and a max of 17.58 ms, 16 over 17 ms. Most came on a frame where `present` stepped from
+about 0.03 ms to 0.3 or 0.4 ms with `late` near 0.04 ms, and `thread` stepped with it. Over the
+639 held lines whose `present` and `blur` came to 0.1 ms or more, `thread` was 0.995 of them at
+the median. So the loop's thread ran slower and wasn't blocked. A scratch build
+that also printed the core each held wait woke on (`pthread_cpu_number_np`) showed why. Of six
+opens' redraws a display frame apart, the 167 that woke on an efficiency core had a `present`
+of 0.251 ms and a menu `cpu` of 0.201 ms at the median, and 11 were over 17 ms. The 86 on a
+performance core had 0.038 ms and 0.061 ms, and none was over 17 ms. The thread was
+user-interactive QoS throughout. Its share on the efficiency cores grew with the time held, a
+fifth of the frames in the first 24 and four fifths from the 41st on, at either held period.
+Keeping the half period after the motion didn't stop the move and cost the loop's thread about
+1.9% more of a core. A time-constraint thread policy put more frames on the efficiency cores.
+A hidden run's task is a background application, and setting its role to a foreground one
+didn't stop the move either. macOS chooses the core and the frontend can't pin one, so the held
+redraw's p99 there rests on the OS. A frontmost window wasn't measured.
+
 The first held interval of an open is mostly the guest's own frame. The guest holds only at its
 next frame boundary, and the frame it finished there was still on its way to the frontend, which
 draws it as the first frame with the guest held. So that interval is the guest's last frame
@@ -955,11 +972,11 @@ Before the window it checks that the loop's wait for a frame with the guest runn
 With the hold lifted, the next such wait, given 50 ms with nothing queued, must run 45 ms or
 more, so the hold's wake is spent. Over the window it checks that `overlay_init` warms the blur
 once at the window's size in pixels. Its first run's `held 1` lines must have a `late` of 0 or
-more, and the first over 0. Each must have a `thread` of 0 or more and no more than its `present`
-and `blur` with 0.005 ms for the printing, some line's over 0, and a `swap` of 0 or more, their
-sum over 0. Then one redraw waits on the gamepads' lock, which another thread holds for 50 ms
-from before the wait ends: its `present` must take that wait and its `thread` stay under half of
-it. These hold where `CI` is set too.
+more, and the first over 0. Each `thread` must lie between 0 and its `present` and `blur`, with
+0.005 ms over for the printing, and some line's must be over 0. Each `swap` must be 0 or more,
+their sum over 0. Then one redraw waits on the gamepads' lock, which another thread holds for 50
+ms from before the wait ends. Its `present` must take that wait and its `thread` stay under half
+of it. These hold where `CI` is set too.
 
 It checks too that the redraw is asked for no sooner than a period after the last wait's end,
 a bound a stall can only help. A frame queued before the wait, or sent into it, ends it within
