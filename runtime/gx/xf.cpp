@@ -1696,7 +1696,7 @@ static uint32_t g_wb_ticket;
 static constexpr uint32_t kWritebackLag = 2;
 
 std::atomic<bool> g_renderer_writes_back{false};
-static CopyWritebackFilter g_copy_writeback;
+static constinit CopyWritebackFilter g_copy_writeback;  // so one set before this file's initializers stays
 void set_copy_writeback(CopyWritebackFilter filter) { g_copy_writeback = filter; }
 
 void copy_writeback_done(uint32_t ticket, std::vector<uint8_t>&& bytes) {

@@ -65,8 +65,10 @@ float g_vr_hud_eff[16];
 float g_world_xform[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
 // First person (render_set_first_person): while on, the game's eye hook is asked per frame
 // where the eye stands, and g_eye_overridden says it answered for the frame being drawn.
-EyeHook g_eye_hook = nullptr;
-WorldPitchHook g_pitch_hook = nullptr;
+// Both constinit, since a game may install them from a static initializer, which may run
+// before this file's.
+constinit EyeHook g_eye_hook = nullptr;
+constinit WorldPitchHook g_pitch_hook = nullptr;
 // Which placement apply_state gave the last state in an eye, for the eye's draw log.
 const char* g_eye_layer_name = "-";
 bool g_fp_on = false;

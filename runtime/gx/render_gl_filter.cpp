@@ -5,7 +5,9 @@
 
 namespace gx {
 
-static EyeFilter g_eye_filter = nullptr;
+// The game's hooks here are constinit, so one set before this file's static initializers run
+// can't be wiped by them.
+static constinit EyeFilter g_eye_filter = nullptr;
 
 // Per command of the batch being drawn: 1 for a draw the game's eye leaves out (the
 // player's own model, say). Empty when nothing is hidden.
@@ -56,7 +58,7 @@ float g_facing_box[4];
 bool g_has_facing_box = false;
 const float* g_cur_late_view = nullptr;
 
-static FrameHook g_frame_hook = nullptr;
+static constinit FrameHook g_frame_hook = nullptr;
 void render_set_frame_hook(FrameHook hook) { g_frame_hook = hook; }
 // The game's look at a batch about to be drawn (render_set_frame_hook). `skip` is the
 // off-screen passes if the caller has them already.

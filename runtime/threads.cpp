@@ -418,7 +418,7 @@ void threads_start_boot(uint32_t entry) {
         fatal("could not start the boot thread");
 }
 
-static GuestCheck g_guest_check;
+static constinit GuestCheck g_guest_check;  // so one set before this file's initializers stays
 void debug_set_guest_check(GuestCheck fn) { g_guest_check = fn; }
 
 uint32_t gx_frames_submitted();

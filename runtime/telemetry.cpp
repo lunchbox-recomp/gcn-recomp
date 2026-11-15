@@ -132,7 +132,7 @@ bool configure(const char* spec) {
     return true;
 }
 
-static void (*g_listener)(const Motion&);
+static constinit void (*g_listener)(const Motion&);  // so one set before this file's initializers stays
 void set_listener(void (*fn)(const Motion&)) { g_listener = fn; }
 
 bool enabled() { return g_sock != kNoSocket || g_listener; }

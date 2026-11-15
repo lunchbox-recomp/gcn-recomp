@@ -12,7 +12,7 @@ static std::atomic<bool> g_end_claimed{false};
 
 bool claim_run_end() { return !g_end_claimed.exchange(true); }
 
-static ResetHandler g_reset_handler;
+static constinit ResetHandler g_reset_handler;  // so one set before this file's initializers stays
 void set_reset_handler(ResetHandler fn) { g_reset_handler = fn; }
 
 void guest_reset(uint32_t kind, uint32_t code) {

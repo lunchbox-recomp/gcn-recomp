@@ -63,7 +63,8 @@ void pe_signal_finish() {
 
 void cp_init() {}
 
-static gx::GuestFrameHook g_guest_frame_hook;
+// constinit, since a game installs it from a static initializer, which may run before this file's.
+static constinit gx::GuestFrameHook g_guest_frame_hook;
 void gx::set_guest_frame_hook(GuestFrameHook hook) { g_guest_frame_hook = hook; }
 
 // GCN_RAM_DUMP_AT=<frame>,... writes the guest RAM at the end of each of those submitted

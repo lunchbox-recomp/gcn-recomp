@@ -207,8 +207,10 @@ struct CacheLoad {
 };
 static CacheLoad g_cache_load;
 static bool g_cache_deferred = false;
-static const uint8_t* g_shipped_keys = nullptr;
-static size_t g_shipped_keys_size = 0;
+// constinit, since render_set_shader_keys runs from a static initializer
+// (tools/embed_shader_keys.cmake), which may run before this file's.
+static constinit const uint8_t* g_shipped_keys = nullptr;
+static constinit size_t g_shipped_keys_size = 0;
 
 void render_set_shader_cache_deferred(bool on) { g_cache_deferred = on; }
 void render_set_shader_keys(const void* data, size_t size) {
