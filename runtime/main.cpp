@@ -357,6 +357,8 @@ static std::chrono::steady_clock::time_point g_waited;  // when the loop's last 
 static double g_late_ms;
 static double g_waited_cpu_ms;  // the loop's thread CPU time as that wait ended (plat_thread_cpu_ms)
 static double g_swap_ms;        // how long the last SDL_GL_SwapWindow took on the steady clock, in ms
+// What show_frame swaps the window with, which tools/test_ports_held.cpp stands in for to slow one.
+static bool (*g_swap_window)(SDL_Window*) = SDL_GL_SwapWindow;
 
 static double ms_between(std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
@@ -376,9 +378,11 @@ static void show_frame(SDL_Window* win) {
         // target, which the blur doesn't read, so it goes without (render_gl.h).
         const auto blur_at = std::chrono::steady_clock::now();
         if (!g_eye_mode) gx::render_overlay_blur(overlay_blur_hold(), overlay_blur_alpha());
+        // The CPU clock is read after the steady one at the wait's end and before it here, so its
+        // span lies inside present and blur's.
+        const double thread_ms = plat_thread_cpu_ms() - g_waited_cpu_ms;
         const auto blurred = std::chrono::steady_clock::now();
-        overlay_frame_pre({g_late_ms, ms_between(g_waited, blur_at), ms_between(blur_at, blurred),
-                           plat_thread_cpu_ms() - g_waited_cpu_ms, g_swap_ms});
+        overlay_frame_pre({g_late_ms, ms_between(g_waited, blur_at), ms_between(blur_at, blurred), thread_ms, g_swap_ms});
         overlay_draw();
     }
     if (record::active()) {
@@ -387,7 +391,7 @@ static void show_frame(SDL_Window* win) {
         record::frame(0, rw, rh);
     }
     const auto swap_at = std::chrono::steady_clock::now();
-    SDL_GL_SwapWindow(win);
+    g_swap_window(win);
     g_swap_ms = ms_between(swap_at, std::chrono::steady_clock::now());
 }
 

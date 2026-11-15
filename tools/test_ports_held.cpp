@@ -30,11 +30,14 @@
 // its timeout, the wake spent. Over the window, overlay_init is checked to warm the blur once at
 // the window's pixel size (render_overlay_blur_warm), and the first run's lines their lateness: the
 // first held line's over 0, as no wait ends the instant it could, and every held line's 0 or more.
-// Each held line's thread CPU is 0 or more and no more than its present and blur, some line's over
-// 0, and its swap 0 or more, summing to over 0. Then a redraw is made to wait on the gamepads' lock,
-// which another thread holds for 50 ms from before the wait ends: its present takes that wait and
-// its thread CPU stays under half of it, as a blocked thread runs nothing. Those checks hold where
-// CI is set too.
+// Each held line's thread CPU is 0 or more and no more than its present and blur (kPrintedMs, or
+// kCiThreadRoomMs where CI is set), some line's over 0, and its swap 0 or more, summing to over 0.
+// Then a redraw is made to wait on the gamepads' lock, which another thread holds for 50 ms from
+// before the wait ends: its present takes that wait and its thread CPU stays under half of it, as a
+// blocked thread runs nothing. A stall that leaves the lock let go under 10 ms after the wait has
+// it tried again, up to three times. Then one redraw's swap is slowed 20 ms (g_swap_window), and
+// the next redraw's line must say a swap of 20 ms or more with a present under that, as its swap is
+// the frame before's and comes ahead of its wait. Those checks hold where CI is set too.
 // Exit 77 with no GL window. Read in by tools/test_ports.cpp after tools/test_ports_pages.cpp,
 // with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -51,9 +54,12 @@ constexpr int kSubmitRounds = 3;          // rounds that may try for the median
 constexpr double kSubmitBarMs = 0.3;      // the median's bar, from a submit to the wait's end
 constexpr double kNearMs = 0.5;           // how near half a frame and a frame the p50s must be
 constexpr int64_t kMsNs = 1000000;
-// The room a line's thread CPU has over its present and blur: they're printed to 0.001 ms, and the
-// CPU clock is read just after the steady one at each end.
+// The room a line's thread CPU has over its present and blur, which show_frame reads inside their
+// span: the three are printed to 0.001 ms. Where CI is set it's 0.1 ms. A runner's VM read 0.025 ms
+// of thread CPU over a span of 0.003 ms with the reads in the older order, which put the last CPU
+// read's own time in it, and its thread clock may be coarser than a Mac's.
 constexpr double kPrintedMs = 0.005;
+constexpr double kCiThreadRoomMs = 0.1;
 
 struct HeldWaits {
     bool late = false;      // the wait 300 ms ahead redrew once, no sooner than that and a period
@@ -74,6 +80,7 @@ struct HeldRun {
     FrameLine first;              // the first of them, the first held interval
     FrameLine blocked;            // with `waits`, the redraw the gamepads' lock held off (blocked_draw)
     double blocked_ms = 0;        // how long after its wait ended the lock was let go
+    FrameLine swapped;            // with `waits`, the redraw after one whose swap was slowed (slow_swap_draws)
     size_t frames = 0;            // the frames the menu drew
     double cpu_ms = 0;            // the loop's thread CPU time over its waits, the draws' with it
     bool warmed = false;          // overlay_init warmed the blur once, at the window's pixel size
@@ -222,9 +229,32 @@ double blocked_draw(SDL_Window* window, int pw, int ph) {
            1e6;
 }
 
+// What show_frame swaps the window with in these runs (g_swap_window): SDL_GL_SwapWindow, after a
+// sleep of g_swap_sleep_ms where that's set, which the swap spends.
+constexpr int kSlowSwapMs = 20;
+int g_swap_sleep_ms = 0;
+bool slowed_swap(SDL_Window* window) {
+    if (g_swap_sleep_ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(g_swap_sleep_ms));
+    g_swap_sleep_ms = 0;
+    return SDL_GL_SwapWindow(window);
+}
+
+// Two held redraws, each with the wait ended at once: the first's swap slowed by kSlowSwapMs, then
+// the one whose line carries that swap. Returns the second's frame number.
+long slow_swap_draws(SDL_Window* window, int pw, int ph) {
+    g_swap_sleep_ms = kSlowSwapMs;
+    g_waited = std::chrono::steady_clock::now() - held_period(window);
+    next_batch(window, pw, ph);
+    const long after = overlay_menu_frames();
+    g_waited = std::chrono::steady_clock::now() - held_period(window);
+    next_batch(window, pw, ph);
+    return after;
+}
+
 // The menu opened with F1 over the guest, held for kHeldWaits of the loop's waits, then with
-// `waits` a redraw held off by the gamepads' lock (blocked_draw) and the waits checked
-// (held_waits), then closed, its lines written to `said`.
+// `waits` a redraw held off by the gamepads' lock (blocked_draw, tried again up to kBarRuns times
+// while a stall leaves the lock let go under kLockHoldMs / 5 after the wait), two with a slowed swap
+// (slow_swap_draws) and the waits checked (held_waits), then closed, its lines written to `said`.
 HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& said, bool waits, bool ci) {
     g_window_id = SDL_GetWindowID(window);
     overlay_test_reset_pages();
@@ -241,6 +271,7 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
         overlay_init(window, "Test title", picture);
         unsetenv("GCN_FRAMETIME");
         run.warmed = g_blur_warms == warms + 1 && g_blur_warm_w == pw && g_blur_warm_h == ph;
+        g_swap_window = slowed_swap;
         g_kept = true;
         g_host_steady_at = steady_ns();
         Guest guest;
@@ -258,14 +289,18 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
         }
         run.cpu_ms = thread_cpu_ms() - cpu0;
         if (waits) {
-            run.blocked.f = overlay_menu_frames();
-            run.blocked_ms = blocked_draw(window, pw, ph);
+            for (int a = 0; a < kBarRuns && run.blocked_ms < kLockHoldMs / 5; a++) {
+                run.blocked.f = overlay_menu_frames();
+                run.blocked_ms = blocked_draw(window, pw, ph);
+            }
+            run.swapped.f = slow_swap_draws(window, pw, ph);
             run.waits = held_waits(window, pw, ph, ci);
         }
         overlay_close();
         g_host_ns += (uint64_t)(steady_ns() - g_host_steady_at);
         g_host_steady_at = 0;
         g_kept = false;
+        g_swap_window = SDL_GL_SwapWindow;
     });
     overlay_test_end();
     gx::g_dump_output = true;
@@ -278,15 +313,18 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
         run.late.push_back(lines[i].late);
         run.thread.push_back(lines[i].thread);
         run.thread_within = run.thread_within && lines[i].thread >= 0 &&
-                            lines[i].thread <= lines[i].present + lines[i].blur + kPrintedMs;
+                            lines[i].thread <= lines[i].present + lines[i].blur + (ci ? kCiThreadRoomMs : kPrintedMs);
         run.swap_read = run.swap_read && lines[i].swap >= 0;
         run.swap_total += lines[i].swap;
         (moving[i] ? run.moving : run.settled).push_back(lines[i].interval);
     }
-    const long blocked_f = run.blocked.f;
+    const long blocked_f = run.blocked.f, swapped_f = run.swapped.f;
     run.blocked = {};
-    for (const FrameLine& l : lines)
+    run.swapped = {};
+    for (const FrameLine& l : lines) {
         if (waits && l.f == blocked_f) run.blocked = l;
+        if (waits && l.f == swapped_f) run.swapped = l;
+    }
     return run;
 }
 
@@ -337,7 +375,7 @@ int run_held(const std::string& dir) {
            frame_ms, bar_ms);
     HeldWaits waits;
     bool in_bar = false, half = false, whole = false, warmed = false, late_read = false;
-    bool thread_read = false, swap_read = false, blocked_read = false;
+    bool thread_read = false, swap_read = false, blocked_read = false, swap_pinned = false;
     const auto near = [](const std::vector<double>& v, double ms) {
         return !v.empty() && std::fabs(percentile(v, 0.5) - ms) <= kNearMs;
     };
@@ -353,6 +391,10 @@ int run_held(const std::string& dir) {
             const FrameLine& b = run.blocked;
             blocked_read = b.held == 1 && run.blocked_ms >= kLockHoldMs / 5 &&
                            b.present >= run.blocked_ms - kPrintedMs && b.thread <= run.blocked_ms / 2;
+            const FrameLine& s = run.swapped;
+            swap_pinned = s.held == 1 && s.swap >= kSlowSwapMs && s.present < kSlowSwapMs;
+            printf("[held] after a swap slowed by %d ms, the next redraw's line has swap %.3f ms and present %.3f ms\n",
+                   kSlowSwapMs, s.swap, s.present);
             printf("[held] the loop's thread CPU over each held line's present and blur: p50 %.3f ms, p99 %.3f ms, "
                    "max %.3f ms; their swaps %.3f ms in all\n",
                    percentile(run.thread, 0.5), percentile(run.thread, 0.99), percentile(run.thread, 1.0),
@@ -396,6 +438,8 @@ int run_held(const std::string& dir) {
     check(thread_read, "each held line's thread CPU is 0 or more and no more than its present and blur, and some "
                        "line's is over 0");
     check(swap_read, "each held line's swap is 0 or more, and over the run they come to more than 0");
+    check(swap_pinned, "a redraw after one whose swap was slowed 20 ms has a swap of 20 ms or more on its line, and "
+                       "a present under that");
     check(blocked_read, "a held redraw that waits on the gamepads' lock another thread holds has that wait in its "
                         "present and not in its thread CPU, which is under half of it");
     check(warmed, "overlay_init over a GL window warms the blurred backdrop once, at the window's size in pixels");
