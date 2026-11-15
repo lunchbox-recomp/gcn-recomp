@@ -834,12 +834,13 @@ They weren't. In the same game measure at 882fa56 the intervals had a p50 of 16.
 about 0.03 ms to 0.3 or 0.4 ms with `late` near 0.04 ms, and `thread` stepped with it. Over the
 639 held lines whose `present` and `blur` came to 0.1 ms or more, `thread` was 0.995 of them at
 the median. So the loop's thread ran slower and wasn't blocked. A scratch build
-that also printed the core each held wait woke on (`pthread_cpu_number_np`) showed why. Of six
+that also printed the core each held wait woke on (`pthread_cpu_number_np`) showed why. Of seven
 opens' redraws a display frame apart, the 167 that woke on an efficiency core had a `present`
 of 0.251 ms and a menu `cpu` of 0.201 ms at the median, and 11 were over 17 ms. The 86 on a
 performance core had 0.038 ms and 0.061 ms, and none was over 17 ms. The thread was
 user-interactive QoS throughout. Its share on the efficiency cores grew with the time held, a
-fifth of the frames in the first 24 and four fifths from the 41st on, at either held period.
+quarter of the frames in the first 24 or less and three quarters from the 41st on, at either
+held period. Each step-up woke on an efficiency core after a frame on a performance one.
 Keeping the half period after the motion didn't stop the move and cost the loop's thread about
 1.9% more of a core. A time-constraint thread policy put more frames on the efficiency cores.
 A hidden run's task is a background application, and setting its role to a foreground one
