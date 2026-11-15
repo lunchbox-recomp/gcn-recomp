@@ -803,14 +803,14 @@ the display the window is on, as SDL gives its rate, or a 60 Hz one where it's f
 the guest's frames come at 60 Hz. A rate SDL doesn't know, or under 23 Hz, is taken for 60 Hz,
 since Windows says 1 Hz for the hardware's default and SDL passes it on.
 
-The wait sleeps toward its time in steps like the pacer's ("The clock", above) and waits out the
+The wait sleeps toward its time in the pacer's steps ("The clock", above) and waits out the
 last of it, since a single timed wait ended 2 to 3 ms late on an M4 Max, as late at 16 ms as at 8.
 When the frontend waited 16 ms at a time, 300 held frames took 5.6 s in a hidden run, 18.7 ms
 each, and in a game the held interval had a p50 of 18.58 ms and a p99 of 19.87 ms.
 The held run in `test_ports --pages` at 90e840e, over no frame and no blur, gave 18.60 ms and
 19.69 ms with those waits, and 18.67 ms and 18.70 ms with one wait until the time.
 
-With the pacer's steps it gave a p50 of 16.70 ms and a p99 of 16.72 to 16.73 ms. They cost the loop's
+With the steps it gives a p50 of 16.70 ms and a p99 of 16.72 to 16.73 ms. They cost the loop's
 thread 0.15 to 0.16 ms of CPU a held frame, against 0.06 ms for the single wait, about 0.9% of a
 core at 60 Hz.
 
@@ -820,16 +820,10 @@ spin, so the wait goes without it.
 
 In a game at 3414x1920, over 21 opens each its process's first, the held redraw's 1,260
 intervals had a p50 of 16.67 ms, a p99 of 19.19 ms and a max of 26.64 ms. Of the 40 over 17 ms,
-21 were each open's first held interval and 19 ran 17.01 to 17.07 ms. Those 19 are within 0.40
-ms of the frame, which is how late the pacer's 1 ms step taken 1.6 ms out ends if it runs its
-whole length late, past the half again its steps allow for. So each step of the held wait
-(`pace_wait_sleep_ns` in `pace.h`) is half the wait left beyond 100 us, up to 1 ms. Even at
-twice its length it ends before the last 100 us. `test_ports --held` doesn't show the cluster,
-idle or beside one busy process. Its waits' lateness has a p99 of 0.05 ms either way. There the halves
-give a p50 of 16.71 to 16.72 ms and a p99 of 16.72 to 16.75 ms, against 16.70 ms and 16.72 ms
-with the pacer's steps, and the held wait alone takes 0.12 to 0.21 ms of the loop's thread CPU a
-frame, against 0.08 to 0.19 ms. The `late` field of the `[overlay] frame` lines says whether a
-game's long intervals are the wait's.
+21 were each open's first held interval and 19 ran 17.01 to 17.07 ms. `test_ports --held`
+doesn't show those 19, idle or beside one busy process, as its waits' lateness has a p99 of 0.05
+ms either way. The `late` field of the `[overlay] frame` lines says whether a game's long
+intervals are the wait's.
 
 The first held interval of an open is mostly the guest's own frame. The guest holds only at its
 next frame boundary, and the frame it finished there was still on its way to the frontend, which
