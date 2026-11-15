@@ -255,7 +255,7 @@ struct Batch {
     bool pooled = false;
 };
 
-// Submission queue (guest thread -> render thread)
+// Submission queue (guest thread -> render thread, batch_queue.cpp)
 void submit_batch(std::unique_ptr<Batch> b);
 std::unique_ptr<Batch> take_batch(int timeout_ms);
 

@@ -594,7 +594,7 @@ function(gcn_add_game)
     ${RT}/gx/render_gl_present.cpp ${RT}/gx/render_gl_programs.cpp ${RT}/gx/render_gl_state.cpp
     ${RT}/gx/render_gl_textures.cpp ${RT}/gx/render_gl_view.cpp ${RT}/gx/clear_draw.cpp)
   # Everything below the renderer and the SDL frontend -- the CPU, OS, hardware and GX
-  # front end, including the batch queue in gx/xf.cpp -- is free of both GL and SDL.
+  # front end, including the batch queue in gx/batch_queue.cpp -- is free of both GL and SDL.
   set(CORE_SOURCES ${RUNTIME_SOURCES})
   list(REMOVE_ITEM CORE_SOURCES
     ${RT}/main.cpp ${RT}/splash.cpp ${RT}/input_map.cpp ${RT}/gamepads.cpp ${RT}/pad_numbers.cpp ${RT}/ffb.cpp

@@ -210,7 +210,7 @@ static constexpr size_t kFeMaxBytes = 8u << 20;
 // kFeMaxFrames frames ahead of the front end (one, with one frame in each of the queues
 // after it: three frames from the guest to the screen when the renderer is the slow stage,
 // at the same frame rate as with two each, which made six), waiting at the end of a frame
-// (in real time only, so replays are unaffected). See also kMaxQueuedBatches in xf.cpp.
+// (in real time only, so replays are unaffected). See also kMaxQueuedBatches in batch_queue.cpp.
 static constexpr size_t kFeMaxFrames = 1;
 static std::deque<uint64_t> g_frame_ends;   // where each frame not yet processed ends
 static std::vector<uint8_t> g_skim_out;
