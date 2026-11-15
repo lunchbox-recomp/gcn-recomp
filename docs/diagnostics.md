@@ -735,7 +735,8 @@ the EFB copies'; in stereo `[eye-rt]` adds, per eye, the flat pass's time and th
 own). A batch whose textures took more than 5 ms also gets an `[rt-tex]` line: how many
 textures were deleted and in what time, and how many were uploaded, their size and time.
 Each frame the overlay draws its menu in, open or fading out, gets an `[overlay] frame` line:
-`[overlay] frame f<n> held <0|1> interval <ms>ms  cpu <ms>ms`. n counts the menu's frames in the
+`[overlay] frame f<n> held <0|1> interval <ms>ms  cpu <ms>ms  late <ms>ms  present <ms>ms  blur <ms>ms`.
+n counts the menu's frames in the
 process from 0 (`overlay_menu_frames`), not presented frames, so it doesn't match the n of an
 `[ft]` or `[rt]` line. held is 1 when the guest is held as the frame starts. The interval runs on
 the host clock (`host_ns`) from the start of the last frame that drew the menu to the start of this
@@ -743,7 +744,16 @@ one, and is 0 on the first frame after one without the menu. cpu is what `overla
 the steady clock, the notices and any `--dump-output` dump with it, but not the blurred backdrop
 (`render_overlay_blur`), which the frontend draws before it. It's on the steady clock rather than
 the thread's CPU clock so that a frame the driver blocks or the system holds off the CPU shows
-the time it really cost. The paused redraw interval is read
+the time it really cost. The last three are what came before the frame on the frontend's loop,
+which the interval carries, as it's stamped as `overlay_draw` starts. late is how far past its
+deadline the loop's last wait for a frame ended (`next_batch` in `main.cpp`). A held wait's
+deadline is the held period after the wait before it ended. A wait with the guest running that
+ended with nothing has the moment the guest held for one. A wait a frame ended, or one with no
+hold, has 0. A held wait
+that began after its deadline, as when the frame before took longer than the period, counts that
+time too. present is the time from the wait's end to the blurred backdrop, which is the frame's
+draw (`render_execute` for a frame that came, `render_present_last` for the held one drawn
+again), and blur is the backdrop's. The paused redraw interval is read
 from the `held 1` lines alone, since a fade out and the frames before the hold lands are paced
 by the guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
@@ -755,7 +765,8 @@ first menu frame there to 1.5 ms where `CI` is unset, read on the calling thread
 the calling thread, so with the warm-up taken out the first frame still reads 12 ms or more on
 that clock. Where `CI` is set, as on a CI runner's
 VM that draws in software at tens of ms a frame, it prints whether they were within it and
-doesn't fail.
+doesn't fail. The blurred backdrop is warmed there too ("Pausing", below), so the
+first held frame of a process doesn't compile its program.
 `GCN_XFSTATS=1` prints, per frame over every 64, what the vertex transform was asked
 for: vertices, how many carried a normal, how many had a lit colour or alpha channel,
 light evaluations, texgens, and the texgens with a post matrix or an emboss -- which is
@@ -792,20 +803,42 @@ the display the window is on, as SDL gives its rate, or a 60 Hz one where it's f
 the guest's frames come at 60 Hz. A rate SDL doesn't know, or under 23 Hz, is taken for 60 Hz,
 since Windows says 1 Hz for the hardware's default and SDL passes it on.
 
-The wait sleeps toward its time in the pacer's steps ("The clock", above) and waits out the
+The wait sleeps toward its time in steps like the pacer's ("The clock", above) and waits out the
 last of it, since a single timed wait ended 2 to 3 ms late on an M4 Max, as late at 16 ms as at 8.
 When the frontend waited 16 ms at a time, 300 held frames took 5.6 s in a hidden run, 18.7 ms
 each, and in a game the held interval had a p50 of 18.58 ms and a p99 of 19.87 ms.
 The held run in `test_ports --pages` at 90e840e, over no frame and no blur, gave 18.60 ms and
 19.69 ms with those waits, and 18.67 ms and 18.70 ms with one wait until the time.
 
-With the steps it gives a p50 of 16.70 ms and a p99 of 16.72 to 16.73 ms. They cost the loop's
+With the pacer's steps it gave a p50 of 16.70 ms and a p99 of 16.72 to 16.73 ms. They cost the loop's
 thread 0.15 to 0.16 ms of CPU a held frame, against 0.06 ms for the single wait, about 0.9% of a
 core at 60 Hz.
 
 Spinning the last of it, as the pacer does, gave 16.67 ms and 16.68 ms, idle or beside 16 busy
 processes, for 0.27 to 0.28 ms a held frame, about 1.6% of a core. The bar doesn't need the
 spin, so the wait goes without it.
+
+In a game at 3414x1920, over 21 opens each its process's first, the held redraw's 1,260
+intervals had a p50 of 16.67 ms, a p99 of 19.19 ms and a max of 26.64 ms. Of the 40 over 17 ms,
+21 were each open's first held interval and 19 ran 17.01 to 17.07 ms. Those 19 are within 0.40
+ms of the frame, which is how late the pacer's 1 ms step taken 1.6 ms out ends if it runs its
+whole length late, past the half again its steps allow for. So each step of the held wait
+(`pace_wait_sleep_ns` in `pace.h`) is half the wait left beyond 100 us, up to 1 ms. Even at
+twice its length it ends before the last 100 us. `test_ports --held` doesn't show the cluster,
+idle or beside one busy process. Its waits' lateness has a p99 of 0.05 ms either way. There the halves
+give a p50 of 16.71 to 16.72 ms and a p99 of 16.72 to 16.75 ms, against 16.70 ms and 16.72 ms
+with the pacer's steps, and the held wait alone takes 0.12 to 0.21 ms of the loop's thread CPU a
+frame, against 0.08 to 0.19 ms. The `late` field of the `[overlay] frame` lines says whether a
+game's long intervals are the wait's.
+
+The first held interval of an open is mostly the guest's own frame. The guest holds only at its
+next frame boundary, and the frame it finished there was still on its way to the frontend, which
+draws it as the first frame with the guest held. So that interval is the guest's last frame
+interval, which the hold doesn't change, with that frame's draw (`present` on its line) and the
+backdrop's first blur (`blur`). The blur's program and targets are made in `overlay_init`, so
+that first blur costs what any hold's does. Where no frame was on its way, the hold wakes the
+loop's wait for one (`gx::wake_batch_wait`, from `pause_gate`), which while the guest runs lasts
+up to 4 ms, and the held frame is drawn again at once.
 
 The display copy that presented the frame cleared the EFB, so the renderer keeps a copy of
 every frame it presents for a frontend that asks (`render_keep_last`), as the desktop one
@@ -877,6 +910,18 @@ dump shows it. `--eye` goes without, and a Metal present path would need its own
 timed with GL queries over a made-up frame, it adds 0.03 ms of GPU time to each held frame at
 1920x1080 and 0.035 to 0.09 ms at 3840x2160, and making it costs 0.06 ms and 0.11 ms once a hold.
 
+Its two targets, 3.3 MB at 3414x1920 and 4 MB at 3840x2160, are made in `overlay_init`
+(`render_overlay_blur_warm`) and kept until `render_keep_last(false)`, so a hold sizes them only
+after a resize. The warm-up draws with the blur program twice, with the blend off into a target as
+the passes do and on over the output as the backdrop does, at alpha 0 over one pixel, which leaves
+it as it was. macOS's GL compiles a program for each as it first draws with it. `bench_blur W H
+[warm]` times a hold's first frame against its later ones on this machine's GL in a hidden window,
+in a fresh process each run. At 3414x1920 on an M4 Max, without the warm-up the process's first
+hold took 0.44 to 1.56 ms of CPU in `render_overlay_blur`, and 1.0 to 5.0 ms more to `glFinish`.
+With it, 0.056 to 0.075 ms and 0.29 to 0.53 ms, against 0.04 to 0.09 ms for a later hold's. The
+warm-up takes 0.5 to 1.4 ms in `overlay_init`. With only the blend-off draw it left 0.18 to 0.54
+ms on the first hold.
+
 `test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`, its one runner) dumps
 each page that way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in
 `<build>/unit/test_overlay_pages` for a person to look at, the menu's backdrop dimming the grey.
@@ -888,12 +933,25 @@ it's skipped.
 `test_ports --held <dir>` (the `test_overlay_held` test in `ninja unit`) opens the menu over a
 held guest on a hidden window at 1920x1080 and runs the frontend's own wait and redraw
 (`next_batch` in `main.cpp`) for 300 waits, with the host clock the real one. It prints the held
-interval's p50, p99 and max from the `[overlay] frame` lines, with the loop's CPU time a frame.
-Where `CI` is unset it holds the p99 to a display frame and a third of a ms, 17 ms at 60 Hz.
+interval's p50, p99 and max from the `[overlay] frame` lines, for all of them, for the frames
+whose wait began with something moving and for those with nothing, and the waits' lateness, with
+the first held interval and its fields and the loop's CPU time a frame. Then it prints the held
+wait's own CPU time a display frame. Where `CI` is unset it holds the p99 to a display frame and
+a third of a ms, 17 ms at 60 Hz. It holds the p50 while something moves to within 0.5 ms of half
+a display frame, and once nothing does to within 0.5 ms of a whole one. The test's first held
+interval comes after the menu's first frame, which is the first this window draws. It runs 28 to
+124 ms, nearly all of it spent before its wait began (its `late`). The thread standing in for the guest holds at once
+and sends no frame,
+and the blur is a stub, so the game's first held interval isn't what this one shows. The blur's
+own cost is `bench_blur`'s to show.
 
-A stall of the machine makes a run's intervals long, so a run that misses tries again, up to
-three runs. Only a machine stalled through all three fails it. Where `CI` is set it prints
-whether the p99 was within and doesn't fail.
+A stall of the machine makes a run's intervals long, so a run that misses a bar tries again, up
+to three runs. Only a machine stalled through all three fails it. Where `CI` is set it prints
+whether each was within and doesn't fail.
+
+Before the window it checks that the loop's wait for a frame with the guest running, given 2 s
+(30 s where `CI` is set), ends with no frame as the guest holds 20 ms into it, within half that.
+Over the window it checks that `overlay_init` warms the blur once at the window's size in pixels.
 
 It checks too that the redraw is asked for no sooner than a period after the last wait's end,
 a bound a stall can only help. A frame queued before the wait, or sent into it, ends it within
