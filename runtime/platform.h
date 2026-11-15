@@ -75,7 +75,9 @@ long plat_utc_offset_seconds();
 // Windows keep one), so the time before main and the static constructors is counted too.
 // Where the OS can't say, since the first call.
 double plat_ms_since_start();
-// The calling thread's CPU time in ms, which its time off a core doesn't add to.
+// The calling thread's CPU time in ms, which its time off a core doesn't add to. On Windows it's
+// GetThreadTimes', which likely moves in scheduler ticks of about 15.6 ms, so a span under a ms
+// reads 0 or a whole tick there. Nothing builds the tests on Windows, so that's untested.
 double plat_thread_cpu_ms();
 
 // ---- the host ----

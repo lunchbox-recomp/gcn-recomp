@@ -755,9 +755,14 @@ time too. present is the time from the wait's end to the blurred backdrop, which
 draw (`render_execute` for a frame that came, `render_present_last` for the held one drawn
 again) with the wait for the gamepads' lock, which `show_frame` takes while the menu is due, and
 blur is the backdrop's. thread is the loop's thread CPU time over present and blur
-(`CLOCK_THREAD_CPUTIME_ID`), so a span that grows with thread growing beside it ran slower on the
-CPU, and one that grows without it was blocked or held off a core. swap is how long the frame
-before's `SDL_GL_SwapWindow` took on the steady clock, and the first frame's is 0. The paused redraw interval is read
+(`CLOCK_THREAD_CPUTIME_ID`), read inside their span, so a span that grows with thread growing
+beside it ran slower on the CPU, and one that grows without it was blocked or held off a core. On
+Windows it's `GetThreadTimes`, which likely moves in scheduler ticks of about 15.6 ms, so thread
+there reads 0 or a tick over spans under a ms. Nothing builds the tests there, so that's untested.
+swap is how long the frame before's `SDL_GL_SwapWindow` took on the steady clock, and it's 0 on the
+process's first frame. The frontend takes both CPU reads and the swap's time on every frame, with
+the menu closed, `GCN_FRAMETIME` unset or the overlay built out, at about 0.08 µs a read on an M4
+Max. The paused redraw interval is read
 from the `held 1` lines alone, since a fade out and the frames before the hold lands are paced
 by the guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
@@ -838,14 +843,35 @@ that also printed the core each held wait woke on (`pthread_cpu_number_np`) show
 opens' redraws a display frame apart, the 167 that woke on an efficiency core had a `present`
 of 0.251 ms and a menu `cpu` of 0.201 ms at the median, and 11 were over 17 ms. The 86 on a
 performance core had 0.038 ms and 0.061 ms, and none was over 17 ms. The thread was
-user-interactive QoS throughout. Its share on the efficiency cores grew with the time held, a
-quarter of the frames in the first 24 or less and three quarters from the 41st on, at either
-held period. Each step-up woke on an efficiency core after a frame on a performance one.
-Keeping the half period after the motion didn't stop the move and cost the loop's thread about
-1.9% more of a core. A time-constraint thread policy put more frames on the efficiency cores.
-A hidden run's task is a background application, and setting its role to a foreground one
-didn't stop the move either. macOS chooses the core and the frontend can't pin one, so the held
-redraw's p99 there rests on the OS. A frontmost window wasn't measured.
+user-interactive QoS throughout. Its share on the efficiency cores grew with the time held, 26%
+of the frames from the 1st to the 24th and 77% from the 41st on. Each step-up woke on an
+efficiency core after a frame on a performance one.
+
+Three changes were tried in the scratch build, each over three opens:
+
+- The half period kept after the motion. 75% of the frames from the 41st on still woke on the
+  efficiency cores. None was over 17 ms, but only because the period was half. The loop's thread
+  took about 1.9% more of a core.
+- A time-constraint thread policy on the loop's thread. 132 of the 180 held frames woke on the
+  efficiency cores.
+- A foreground task role. A hidden run's task is a background application, and the role was
+  taken, but the thread still moved.
+
+From those, macOS places the thread and none of them held it on a performance core. A thread
+can't be pinned to a core type. `THREAD_AFFINITY_POLICY` is only a hint to share an L2, and the
+loop's thread already runs at user-interactive QoS, as it measured. The routes below weren't
+tried. No header promises that any keeps a thread on a performance core.
+
+- an audio workgroup (`AudioWorkIntervalCreate`, `os_workgroup_join` and each frame's
+  `os_workgroup_interval_start` and `_finish`) with the time-constraint policy, which Apple
+  documents as feeding the CPU's balance of performance against power, though it's meant for
+  realtime audio threads
+- a wake from the display's link (`displayLinkWithTarget:selector:` on macOS 14, as
+  `CVDisplayLink` is deprecated in 15)
+- `THREAD_LATENCY_QOS_POLICY` and `THREAD_THROUGHPUT_QOS_POLICY`
+
+So the held redraw's p99 in a hidden run rests on where macOS puts the thread. A frontmost window
+wasn't measured.
 
 The first held interval of an open is mostly the guest's own frame. The guest holds only at its
 next frame boundary, and the frame it finished there was still on its way to the frontend, which
@@ -974,10 +1000,16 @@ With the hold lifted, the next such wait, given 50 ms with nothing queued, must 
 more, so the hold's wake is spent. Over the window it checks that `overlay_init` warms the blur
 once at the window's size in pixels. Its first run's `held 1` lines must have a `late` of 0 or
 more, and the first over 0. Each `thread` must lie between 0 and its `present` and `blur`, with
-0.005 ms over for the printing, and some line's must be over 0. Each `swap` must be 0 or more,
-their sum over 0. Then one redraw waits on the gamepads' lock, which another thread holds for 50
-ms from before the wait ends. Its `present` must take that wait and its `thread` stay under half
-of it. These hold where `CI` is set too.
+0.005 ms over for the printing, and some line's must be over 0. Where `CI` is set the room is 0.1
+ms. A runner's VM read 0.025 ms of `thread` over a 0.003 ms span while the last CPU read came
+after the steady one, and its thread clock may be coarser than a Mac's. Each `swap` must be 0 or
+more, their sum over 0. Then one redraw waits on the gamepads' lock, which another thread holds
+for 50 ms from before the wait ends. Its `present` must take that wait and its `thread` stay under
+half of it. A stall that leaves the lock let go under 10 ms after the wait has it tried again, up
+to three times. Then one redraw's swap is slowed 20 ms through `g_swap_window`, the frontend's
+swap, which the test stands in for. The next redraw's line must have a `swap` of 20 ms or more
+and a `present` under 20 ms, as its swap is the frame before's and comes ahead of its wait. These
+hold where `CI` is set too.
 
 It checks too that the redraw is asked for no sooner than a period after the last wait's end,
 a bound a stall can only help. A frame queued before the wait, or sent into it, ends it within
