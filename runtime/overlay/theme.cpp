@@ -11,7 +11,8 @@ namespace {
 
 // Function-local, because a game sets its theme from a static initializer in its SOURCES, which
 // may run before this file's and would have it built again over the game's (vr_config.cpp's hooks()).
-// It can't be constinit: its fonts are strings, built by overlay_fonts_default(), which isn't constexpr.
+// It can't be constinit: on macOS its fonts' paths and names are std::strings on the heap, which no
+// constant initializer can leave behind, whether overlay_fonts_default() is constexpr or not.
 OverlayTheme& stored() {
     static OverlayTheme t;
     return t;
