@@ -913,8 +913,8 @@ function(gcn_add_game)
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page
     # saves through settings.cpp, which is linked above. --pages draws the menu over a GL window
-    # and writes its PNGs with png.cpp, and runs the frontend's held redraw there, which waits on
-    # the batch queue in gx/batch_queue.cpp. Dear ImGui's asserts are on here, and with them every
+    # and writes its PNGs with png.cpp, and --held runs the frontend's held redraw there, which
+    # waits on the batch queue in gx/batch_queue.cpp. Dear ImGui's asserts are on here, and with them every
     # assert in test_ports.
     if(_gcn_overlay)
       target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp ${RT}/png.cpp ${RT}/ui_sound.cpp ${RT}/ui_sound_synth.cpp
@@ -1305,6 +1305,12 @@ function(gcn_add_game)
       set_tests_properties(test_overlay_pages PROPERTIES FIXTURES_REQUIRED unit_dirs SKIP_RETURN_CODE 77
                            TIMEOUT 60 ENVIRONMENT SDL_AUDIO_DRIVER=dummy)
       list(APPEND _unit_dirs ${_unit_work}/test_overlay_pages)
+      # The frontend's held redraw over the menu, its interval and its waits, on the real clock.
+      # Up to three 5 s runs here, and one on a CI runner, whose software GL draws it slower.
+      add_test(NAME test_overlay_held COMMAND test_ports --held ${_unit_work}/test_overlay_held)
+      set_tests_properties(test_overlay_held PROPERTIES FIXTURES_REQUIRED unit_dirs SKIP_RETURN_CODE 77
+                           TIMEOUT 120 ENVIRONMENT SDL_AUDIO_DRIVER=dummy)
+      list(APPEND _unit_dirs ${_unit_work}/test_overlay_held)
       # A theme and a page given before main, from a file linked ahead of the overlay's
       # (tools/test_overlay_early.cpp), kept through overlay_init and the menu's first frame.
       add_test(NAME test_overlay_init_order COMMAND test_ports --init-order ${_unit_work}/test_overlay_init_order)

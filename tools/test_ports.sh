@@ -6,8 +6,9 @@
 # --no-gamepads, the game resetting the console, the game shutting it down, the same exit with
 # the gamepads' lock held, a restart and a quit asked for from the frontend with the game
 # resetting the console as each ends, and a restart asked for in a replay. The menu's page
-# dumps (--pages) aren't run here: `ninja unit` runs them once, as test_overlay_pages, which
-# ctest shows as skipped where there's no GL window and a build without the overlay lacks.
+# dumps (--pages) and the held redraw (--held) aren't run here: `ninja unit` runs them once, as
+# test_overlay_pages and test_overlay_held, which ctest shows as skipped where there's no GL
+# window and a build without the overlay lacks.
 # The port checks include the ports remembered in saves/ports.txt under the work dir. SDL's virtual
 # joysticks stand in for the controllers. On macOS and Linux test_ports turns off SDL's
 # drivers that find real ones (kRealDriversOff in tools/test_ports.cpp) and clears

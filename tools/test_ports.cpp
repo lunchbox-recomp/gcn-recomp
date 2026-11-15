@@ -31,7 +31,7 @@
 // audio_frames_out) is stubbed, as is the memory card's note of a hold (exi_card_held), the
 // queue's stall timer (gx::StallTimer) and a batch's hand-back to xf.cpp's pool (gx::Batch's
 // destructor). The held frame's redraw (gx::render_present_last) draws nothing, and says it
-// drew once g_kept is set.
+// drew once g_kept is set, noting the host time it was asked in g_kept_at.
 //
 // The checks are in a file for each area, read in below after the frontend, as main.cpp is,
 // so that they see its statics: none of them is compiled on its own. What more than one area
@@ -62,10 +62,12 @@
 //        test_ports --restart-replay <empty work dir>   the menu, then a restart asked for,
 //                                                       in a replay past its log's end
 //        test_ports --pages <empty work dir>   each page of the menu dumped over a hidden GL
-//                                              window, with its frame time, then the notices,
-//                                              then the frontend's held redraw and its
-//                                              interval; exit 77 with no GL window or no
-//                                              overlay in the build
+//                                              window, with its frame time, then the notices;
+//                                              exit 77 with no GL window or no overlay in the
+//                                              build
+//        test_ports --held <empty work dir>   the frontend's held redraw over a hidden GL
+//                                             window, its interval and its waits; exit 77
+//                                             with no GL window or no overlay in the build
 //        test_ports --init-order <empty work dir>   the theme and the page given before main
 //                                                   by tools/test_overlay_early.cpp, kept
 //                                                   through overlay_init and the menu's first
@@ -149,12 +151,16 @@ void exi_card_held(uint64_t) {}
 void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display page's picture
 // The menu's dumps (--pages). No frame is kept here, so a dump has only GCN_OVERLAY_PLAIN's grey
 // to draw the menu over. g_kept has the held frame's redraw say it drew one, for the frontend's
-// loop (test_ports_held.cpp).
+// loop (test_ports_held.cpp), and g_kept_at is the host time it was last asked.
 static bool g_kept;
+static uint64_t g_kept_at;
 namespace gx {
 const char* g_dump_dir;
 bool g_dump_output;
-bool render_present_last() { return g_kept; }
+bool render_present_last() {
+    g_kept_at = host_ns();
+    return g_kept;
+}
 void render_overlay_blur(bool, float) {}
 void render_set_output_fbo(unsigned) {}
 StallTimer::StallTimer(Stall st) : s(st), t0(0) {}
@@ -186,7 +192,7 @@ Batch::~Batch() {}
 #include "test_ports_sounds.cpp"          // the menu's sounds as it raises them
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #include "test_ports_pages_toasts.cpp"    // the notices dumped over the same window, and their cost
-#include "test_ports_held.cpp"            // the frontend's held redraw over a GL window, and its interval
+#include "test_ports_held.cpp"            // --held: the frontend's held redraw over a GL window, and its waits
 #include "test_ports_init_order.cpp"      // a theme and a page given before main, kept
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
@@ -343,13 +349,18 @@ int main(int argc, char** argv) {
     if (argc == 3 && !strcmp(argv[1], "--restart-replay")) return run_restart_replay(argv[2]);
 #ifdef GCN_OVERLAY
     if (argc == 3 && !strcmp(argv[1], "--pages")) return run_pages(argv[2]);
+    if (argc == 3 && !strcmp(argv[1], "--held")) return run_held(argv[2]);
 #else
     if (argc == 3 && !strcmp(argv[1], "--pages")) {
         printf("test_ports pages: skipped, the build has no overlay\n");
         return 77;
     }
+    if (argc == 3 && !strcmp(argv[1], "--held")) {
+        printf("test_ports held: skipped, the build has no overlay\n");
+        return 77;
+    }
 #endif
     fprintf(stderr, "usage: test_ports [--record|--replay|--replay-no-sram|--replay-v4|--replay-console|--interrupt|"
-                    "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay|--pages|--init-order] <work dir>\n");
+                    "--no-gamepads|--reset|--shutdown|--exit-held|--restart|--quit|--restart-replay|--pages|--held|--init-order] <work dir>\n");
     return 2;
 }

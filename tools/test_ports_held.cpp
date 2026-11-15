@@ -1,21 +1,27 @@
-// ---- The held frame's redraw as the frontend's loop runs it (next_batch, main.cpp), over a hidden
-// GL window at 1920x1080 (gl_window, tools/test_ports_pages.cpp): the menu opened with F1 and the
-// guest held, with GCN_FRAMETIME set at overlay_init and the host clock running on with the steady
-// clock (g_host_steady_at), so each `[overlay] frame` line's interval is what a real wait took.
-// The redraw says a frame is kept (g_kept) and draws none, and the blur is a stub, so an interval
-// here is the loop's wait, the menu's draw and the swap. The `held 1` lines' intervals are printed,
-// p50, p99 and max, for all of them and for the frames whose wait began with nothing moving, with
-// the loop's thread CPU time a frame.
+// ---- test_ports --held: the held frame's redraw as the frontend's loop runs it (next_batch,
+// main.cpp), over a hidden GL window at 1920x1080 (gl_window, tools/test_ports_pages.cpp): the menu
+// opened with F1 and the guest held, with GCN_FRAMETIME set at overlay_init and the host clock
+// running on with the steady clock (g_host_steady_at), so each `[overlay] frame` line's interval is
+// what a real wait took. The redraw says a frame is kept (g_kept), noting the host time it was
+// asked (g_kept_at), and draws none, and the blur is a stub, so an interval here is the loop's
+// wait, the menu's draw and the swap. The `held 1` lines' intervals are printed, p50, p99 and max,
+// for all of them and for the frames whose wait began with nothing moving, with the loop's thread
+// CPU time a frame.
 //
 // Their p99 is held to a display frame and a third of a ms, 17 ms at 60 Hz, where CI is unset, and
 // printed without failing where it's set, as a CI runner's VM may hold the thread off its core for
 // a frame at a time. A stall of the machine makes a run's intervals long, so a run that misses the
 // bar is tried again, up to three runs, and only a machine stalled through all of them fails it.
-// Then, still held, the waits are checked against times far apart enough that no stall can make
-// them pass or fail: with the loop's last wait ended 300 ms ahead, the next draws the held frame
-// once and no sooner than that and a period; and with it 2 s ahead, a batch queued before the wait,
-// and one submitted 20 ms into it, each end the wait at once with that batch and draw nothing.
-// Read in by tools/test_ports.cpp after tools/test_ports_pages.cpp, with GCN_OVERLAY.
+//
+// Then, still held, the waits are checked. With the loop's last wait ended 300 ms ahead, the next
+// asks for the held frame's redraw once, no sooner than that and a period on the host clock, a
+// bound a stall can only help. With it 300 ms ahead, a batch queued before the wait ends it within
+// 150 ms with that batch and draws nothing, and so does each of ten submitted 20 ms into a wait.
+// Where CI is unset, the median time from those submits to the wait's end is held to 0.3 ms, in
+// one of three rounds of ten at most, so a batch has to end the wait, not the next 1 ms step.
+// Before any window, the display rates that give a 60 Hz frame (frame_at_hz) are checked.
+// Exit 77 with no GL window. Read in by tools/test_ports.cpp after tools/test_ports_pages.cpp,
+// with GCN_OVERLAY.
 #include "test_ports_support.h"
 
 namespace {
@@ -23,11 +29,16 @@ namespace {
 constexpr int kHeldWaits = 300;  // the loop's waits in each run, about 5 s of held frames
 constexpr int kBarRuns = 3;      // runs that may try for the bar
 constexpr double kBarOverMs = 1.0 / 3.0;  // the bar's room over a display frame
+constexpr int kSubmits = 10;              // batches submitted into a wait in each round
+constexpr int kSubmitRounds = 3;          // rounds that may try for the median
+constexpr double kSubmitBarMs = 0.3;      // the median's bar, from a submit to the wait's end
+constexpr int64_t kMsNs = 1000000;
 
 struct HeldWaits {
-    bool late = false;      // the wait 300 ms ahead drew once, no sooner than that and a period
-    bool queued = false;    // the batch queued before the wait ended it at once, drawing nothing
-    bool arriving = false;  // the batch submitted 20 ms into the wait ended it then, drawing nothing
+    bool late = false;      // the wait 300 ms ahead redrew once, no sooner than that and a period
+    bool queued = false;    // the batch queued before the wait ended it within 150 ms, drawing nothing
+    bool arriving = false;  // each batch submitted 20 ms into a wait ended it within 150 ms, drawing nothing
+    double submit_ms = -1;  // the last round's median from a submit to the wait's end
 };
 
 struct HeldRun {
@@ -38,41 +49,59 @@ struct HeldRun {
     HeldWaits waits;
 };
 
+std::chrono::steady_clock::time_point steady_at(int64_t ns) {
+    return std::chrono::steady_clock::time_point(std::chrono::nanoseconds(ns));
+}
+
 // The loop's waits with the guest held, the window `pw` by `ph` pixels, as the head of the file says.
-HeldWaits held_waits(SDL_Window* window, int pw, int ph) {
-    using clock = std::chrono::steady_clock;
-    using std::chrono::milliseconds;
+HeldWaits held_waits(SDL_Window* window, int pw, int ph, bool ci) {
     HeldWaits w;
     long frames = overlay_menu_frames();
-    const clock::duration period = held_period(window);
-    clock::time_point t0 = clock::now();
-    g_waited = t0 + milliseconds(300);
+    const int64_t period = std::chrono::nanoseconds(held_period(window)).count();
+    int64_t t0 = steady_ns();
+    const uint64_t host0 = g_host_ns + (uint64_t)(t0 - g_host_steady_at);  // host_ns() at t0
+    g_waited = steady_at(t0 + 300 * kMsNs);
     bool batch = next_batch(window, pw, ph) != nullptr;
-    w.late = !batch && clock::now() - t0 >= milliseconds(300) + period && overlay_menu_frames() == frames + 1;
+    w.late = !batch && g_kept_at >= host0 + (uint64_t)(300 * kMsNs + period) && overlay_menu_frames() == frames + 1;
 
     frames = overlay_menu_frames();
     gx::submit_batch(std::make_unique<gx::Batch>());
-    t0 = clock::now();
-    g_waited = t0 + milliseconds(2000);
+    t0 = steady_ns();
+    g_waited = steady_at(t0 + 300 * kMsNs);
     batch = next_batch(window, pw, ph) != nullptr;
-    w.queued = batch && clock::now() - t0 < milliseconds(1000) && overlay_menu_frames() == frames;
+    w.queued = batch && steady_ns() - t0 < 150 * kMsNs && overlay_menu_frames() == frames;
 
-    std::thread submit([] {
-        std::this_thread::sleep_for(milliseconds(20));
-        gx::submit_batch(std::make_unique<gx::Batch>());
-    });
-    t0 = clock::now();
-    g_waited = t0 + milliseconds(2000);
-    batch = next_batch(window, pw, ph) != nullptr;
-    const clock::duration took = clock::now() - t0;
-    submit.join();
-    w.arriving = batch && took >= milliseconds(20) && took < milliseconds(1000) && overlay_menu_frames() == frames;
+    bool each = true, quick = false;
+    for (int r = 0; r < kSubmitRounds && !quick; r++) {
+        std::vector<double> from_submit;
+        for (int i = 0; i < kSubmits; i++) {
+            std::atomic<int64_t> sent{0};
+            std::thread submit([&sent] {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                sent = steady_ns();
+                gx::submit_batch(std::make_unique<gx::Batch>());
+            });
+            t0 = steady_ns();
+            g_waited = steady_at(t0 + 300 * kMsNs);
+            batch = next_batch(window, pw, ph) != nullptr;
+            const int64_t back = steady_ns();
+            submit.join();
+            each = each && batch && back - t0 < 150 * kMsNs && overlay_menu_frames() == frames;
+            from_submit.push_back((double)(back - sent) / 1e6);
+        }
+        w.submit_ms = percentile(from_submit, 0.5);
+        printf("[held] a batch submitted into the held wait ends it a median %.3f ms later, over %d\n", w.submit_ms,
+               kSubmits);
+        quick = w.submit_ms <= kSubmitBarMs;
+        if (ci) break;
+    }
+    w.arriving = each && (ci || quick);
     return w;
 }
 
 // The menu opened with F1 over the guest, held for kHeldWaits of the loop's waits, then with
 // `waits` the waits checked (held_waits), then closed, its lines written to `said`.
-HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& said, bool waits) {
+HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& said, bool waits, bool ci) {
     g_window_id = SDL_GetWindowID(window);
     overlay_test_reset_pages();
     OverlayPicture picture;
@@ -102,7 +131,7 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
             guest_on(guest);
         }
         run.cpu_ms = thread_cpu_ms() - cpu0;
-        if (waits) run.waits = held_waits(window, pw, ph);
+        if (waits) run.waits = held_waits(window, pw, ph, ci);
         overlay_close();
         g_host_ns += (uint64_t)(steady_ns() - g_host_steady_at);
         g_host_steady_at = 0;
@@ -125,9 +154,25 @@ void print_intervals(const char* what, const std::vector<double>& v) {
            percentile(v, 0.99), percentile(v, 1.0), v.size());
 }
 
-void held_pace(const std::string& dir) {
+// Whether a display at `hz` gets a frame of `ms`, to 1 ns.
+bool frame_is(double hz, double ms) {
+    return std::llabs(std::chrono::nanoseconds(frame_at_hz(hz)).count() - std::llround(ms * 1e6)) <= 1;
+}
+
+int run_held(const std::string& dir) {
+    if (!sdl_up()) return 1;
+    no_controls(dir);
+    power_on(1);
+    gamepads_init();
+    const double k60 = 1000.0 / 60.0;
+    check(frame_is(0, k60) && frame_is(1, k60) && frame_is(22.9, k60) && frame_is(60, k60) && frame_is(120, k60) &&
+              frame_is(23, 1000.0 / 23.0) && frame_is(50, 20.0) && frame_is(59.94, 1000.0 / 59.94),
+          "a display at 23 Hz up to 60 gets a frame of its own, and one faster, under 23 Hz or of no rate a 60 Hz one");
     SDL_Window* window = gl_window(1920, 1080);
-    if (!window) return;
+    if (!window) {
+        printf("test_ports held: skipped\n");
+        return kSkipped;
+    }
     const std::string out = dir + "/held";
     plat_make_dirs(out);
     const double frame_ms = std::chrono::duration<double, std::milli>(display_frame(window)).count();
@@ -138,7 +183,7 @@ void held_pace(const std::string& dir) {
     HeldWaits waits;
     bool in_bar = false;
     for (int r = 0; r < kBarRuns && !in_bar; r++) {
-        const HeldRun run = held_run(window, out, out + "/held-stderr-" + std::to_string(r) + ".txt", r == 0);
+        const HeldRun run = held_run(window, out, out + "/held-stderr-" + std::to_string(r) + ".txt", r == 0, ci);
         if (r == 0) waits = run.waits;
         print_intervals("the held redraw's interval", run.held);
         print_intervals("the same once nothing moves", run.settled);
@@ -147,17 +192,25 @@ void held_pace(const std::string& dir) {
         in_bar = run.held.size() >= (size_t)kHeldWaits / 2 && percentile(run.held, 0.99) <= bar_ms;
         if (ci) break;
     }
-    if (ci)
+    if (ci) {
         printf("[held] the held redraw's p99 is %s the bar, not held where CI is set\n", in_bar ? "within" : "over");
-    else
+        printf("[held] the submits' median is %s the %.1f ms bar, not held where CI is set\n",
+               waits.submit_ms >= 0 && waits.submit_ms <= kSubmitBarMs ? "within" : "over", kSubmitBarMs);
+    } else {
         check(in_bar, "the held redraw's interval, over a run of the loop's waits with the menu open, has a p99 of a "
                       "display frame and a third of a ms or less, in one of three runs at most");
-    check(waits.late, "with the loop's last wait ended 300 ms ahead, the held wait draws the held frame once, no sooner "
-                      "than that and a period after");
-    check(waits.queued && waits.arriving,
-          "with it ended 2 s ahead, a batch queued before the held wait, or submitted 20 ms into it, ends the wait at "
-          "once with that batch and draws nothing");
+    }
+    check(waits.late, "with the loop's last wait ended 300 ms ahead, the held wait asks for the held frame's redraw "
+                      "once, no sooner than that and a period after");
+    check(waits.queued, "with it ended 300 ms ahead, a batch queued before the held wait ends it within 150 ms with "
+                        "that batch and draws nothing");
+    check(waits.arriving, ci ? "each of ten batches submitted 20 ms into a held wait ends it within 150 ms with that "
+                               "batch and draws nothing"
+                             : "each of ten batches submitted 20 ms into a held wait ends it within 150 ms with that "
+                               "batch and draws nothing, a median 0.3 ms or less after its submit in one of three "
+                               "rounds at most");
     gl_window_close(window);
+    return finish("held");
 }
 
 }  // namespace

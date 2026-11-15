@@ -12,8 +12,7 @@
 // look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
 // a view the menu closed from once the fade is over, that a reopen after a close starts its frame
 // lines with no interval, and that overlay_init's warm-up draw leaves
-// the GL state a game's renderer had as it found it. Last, the frontend's held redraw runs over a
-// window of its own (tools/test_ports_held.cpp). With no GL window, as on a machine with no
+// the GL state a game's renderer had as it found it. With no GL window, as on a machine with no
 // display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend,
 // with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -446,8 +445,6 @@ bool init_keeps_gl_state(SDL_Window* window, const std::string& out) {
 // tools/test_ports_pages_toasts.cpp's: the notices' review dump at a size, and their cost with the
 // menu closed.
 void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
-// tools/test_ports_held.cpp's: the frontend's held redraw over a window of its own, and its interval.
-void held_pace(const std::string& dir);
 
 // Whether each of the Buttons view's rows, as last drawn, was a gamepad of family `f`'s and has
 // its name whole left of its button, two item spacings short of it, and its button whole across
@@ -722,8 +719,6 @@ int run_pages(const std::string& dir) {
         buttons_review(window, dir + "/" + at, at);
         gl_window_close(window);
     }
-    // Last, since it runs the host clock on with the steady one.
-    held_pace(dir);
     return finish("pages");
 }
 
