@@ -294,7 +294,9 @@ int main(int argc, char** argv) {
     unsetenv(kSteamVirtualGamepads);
 #ifdef GCN_OVERLAY
     if (argc == 3 && !strcmp(argv[1], "--init-order")) return run_init_order(argv[2]);
-    overlay_test_reset_pages();  // tools/test_overlay_early.cpp's theme and page are --init-order's
+    // tools/test_overlay_early.cpp's theme, page and menu sound theme are --init-order's.
+    overlay_test_reset_pages();
+    ui_sound_set_theme(ui_sound_theme_default());
 #else
     if (argc == 3 && !strcmp(argv[1], "--init-order")) {
         printf("test_ports init-order: skipped, the build has no overlay\n");

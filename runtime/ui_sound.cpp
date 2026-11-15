@@ -103,4 +103,6 @@ std::vector<UiSound> ui_sound_take() {
     g_tail.store(tail, std::memory_order_release);
     return ids;
 }
+
+const UiSoundTheme& ui_sound_test_theme() { return g_theme; }
 #endif

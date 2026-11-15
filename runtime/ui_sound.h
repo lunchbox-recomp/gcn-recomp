@@ -38,4 +38,7 @@ int ui_sound_playing();
 // For a check with no audio thread (tools/test_ports_sounds.cpp): the ids queued, in order,
 // taken off the queue as a pull takes them, but not played.
 std::vector<UiSound> ui_sound_take();
+// The theme the voices are made from, as ui_sound_set_theme last left it
+// (tools/test_ports_init_order.cpp).
+const UiSoundTheme& ui_sound_test_theme();
 #endif

@@ -1,12 +1,13 @@
-// ---- --init-order: a theme, a page and a telemetry default given before main, from the static
-// initializer of a file linked ahead of the overlay's and telemetry.cpp
-// (tools/test_overlay_early.cpp), as a game's are. The storage of each, built after it, must not
-// take them back: all three are there at main, and the theme and the page at overlay_init and at
-// the menu's first frame. Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
+// ---- --init-order: a theme, a page, a telemetry default and a menu sound theme given before
+// main, from the static initializer of a file linked ahead of the overlay's, ui_sound.cpp and
+// telemetry.cpp (tools/test_overlay_early.cpp), as a game's are. The storage of each, built
+// after it, must not take them back: all four are there at main, and the theme and the page at
+// overlay_init and at the menu's first frame. Read in by tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 
 extern const uint32_t kEarlyPanel;  // tools/test_overlay_early.cpp's
 extern const float kEarlyGain;
+extern const float kEarlyPeak;
 extern int g_early_draws;
 
 namespace {
@@ -23,6 +24,8 @@ int run_init_order(const std::string& dir) {
     check(overlay_test_pages() == pages, "a page added before main is the menu's third at main");
     check(theme_now().panel == kEarlyPanel, "a theme set before main is the menu's at main");
     check(telemetry::get("early_gain", 0.0f) == kEarlyGain, "a telemetry default set before main is there at main");
+    check(ui_sound_test_theme().peak_dbfs == kEarlyPeak && kEarlyPeak != ui_sound_theme_default().peak_dbfs,
+          "a menu sound theme set before main is there at main");
     if (!sdl_up()) return 1;
     no_controls(dir);
     power_on(1);

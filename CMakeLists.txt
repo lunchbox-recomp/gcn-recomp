@@ -846,8 +846,9 @@ function(gcn_add_game)
   # game: tools/test_ports.cpp includes main.cpp and hw/si.cpp itself, then its checks from
   # tools/test_ports_*.cpp, which aren't compiled on their own. macOS and Linux.
   # tools/test_overlay_early.cpp stands for a game's file, whose static initializer gives the
-  # overlay a theme and a page and telemetry a default (--init-order), so it comes ahead of the
-  # overlay's files and telemetry.cpp, as a game's come ahead of them in the desktop executable.
+  # overlay a theme, a page and its sounds' theme and telemetry a default (--init-order), so it
+  # comes ahead of the overlay's files, ui_sound.cpp and telemetry.cpp, as a game's come ahead of
+  # them in the desktop executable.
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID
      AND NOT WIN32)
     add_executable(test_ports EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ports.cpp
