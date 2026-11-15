@@ -587,9 +587,10 @@ the real console.
 
 The wait sleeps toward the time and spins the last of it, since a sleep ends whenever the
 scheduler gets back to the thread. Each sleep is two thirds of the wait left beyond the
-last 100 us, capped at 1 ms. A sleep under 50 us is skipped. The steps are in `pace.h`, and
-the frontend's held redraw waits with them too ("Pausing", below), each sleep a wait on the
-batch queue that a batch ends.
+last 100 us, capped at 1 ms. A sleep under 50 us is skipped.
+
+The steps are in `pace.h`, and the frontend's held redraw waits with them too ("Pausing",
+below), each sleep a wait on the batch queue that a batch ends.
 
 The steps are for Apple platforms, which coalesce timers. A sleep there may end late by a
 share of its length, up to half of it at latency tier 2. A small test program's 16 ms sleep
@@ -783,20 +784,22 @@ leaves it out too.
 While the guest is held, the desktop frontend waits for a frame until a display frame has
 passed since its last wait ended and, when none comes, draws the last one again
 (`render_present_last`), fitted to the output aspect at the window's size then, as a running
-frame is. A frame that comes, as the resume brings, ends the wait at once. The display frame
-is that of the display the window is on, as SDL gives its rate, or a 60 Hz one where SDL
-doesn't know it or it's faster, since the guest's frames come at 60 Hz. With `--eye` it draws
-the eye's last frame again. Each one drawn is a host frame.
+frame is. With `--eye` it draws the eye's last frame again. Each one drawn is a host frame.
+
+A frame that comes, as the resume brings, ends the wait at once. The display frame is that of
+the display the window is on, as SDL gives its rate, or a 60 Hz one where SDL doesn't know it
+or it's faster, since the guest's frames come at 60 Hz.
 
 The wait sleeps toward its time and spins the last of it, as the pacer does ("The clock",
 above), since a single timed wait ended 2 to 3 ms late on an M4 Max, as late at 16 ms as at 8.
 When the frontend waited 16 ms at a time, 300 held frames took 5.6 s in a hidden run, 18.7 ms
 each, and in a game the held interval had a p50 of 18.58 ms and a p99 of 19.87 ms.
 `test_ports --pages`, which draws the menu over no frame and no blur, gave 18.60 ms and
-19.69 ms with those waits, and 18.67 ms and 18.70 ms with one wait until the time. With the
-steps it gives 16.67 ms and 16.68 ms, idle or beside 16 busy processes. They cost the loop's
-thread 0.27 ms of CPU a held frame, against 0.06 ms for the single wait, about 1.3% of a core
-at 60 Hz.
+19.69 ms with those waits, and 18.67 ms and 18.70 ms with one wait until the time.
+
+With the steps it gives 16.67 ms and 16.68 ms, idle or beside 16 busy processes. They cost the
+loop's thread 0.27 ms of CPU a held frame, against 0.06 ms for the single wait, about 1.3% of a
+core at 60 Hz.
 
 The display copy that presented the frame cleared the EFB, so the renderer keeps a copy of
 every frame it presents for a frontend that asks (`render_keep_last`), as the desktop one
@@ -873,16 +876,20 @@ each page that way over a hidden window at 1920x1080 and 1440x1080 with no game.
 `<build>/unit/test_overlay_pages` for a person to look at, the menu's backdrop dimming the grey.
 It prints each page's menu frame time on the CPU too. Then, with the menu closed, it dumps two
 notices as `toasts/overlay_toasts.png` and prints `overlay_draw`'s CPU time with no notice and
-with two showing, and how many frames of notices each laid out. Last it opens the menu over a
-held guest and runs the frontend's own wait and redraw (`next_batch` in `main.cpp`) for 300
-waits, with the host clock the real one, and prints the held interval's p50, p99 and max from
-the `[overlay] frame` lines and the loop's CPU time a frame. Where `CI` is unset it holds the
-p99 to a display frame and a third of a ms, 17 ms at 60 Hz. A stall of the machine makes a run's
-intervals long, so it tries three runs at most, and only a machine stalled through all three
-fails it. Where `CI` is set it prints whether the p99 was within and doesn't fail. It checks
-too, against times too far apart for a stall to sway, that the wait keeps to the last one's end
-and that a frame queued before it or sent into it ends it at once. Where SDL can make no GL
-window it's skipped.
+with two showing, and how many frames of notices each laid out. Where SDL can make no GL window
+it's skipped.
+
+Last, `--pages` opens the menu over a held guest and runs the frontend's own wait and redraw
+(`next_batch` in `main.cpp`) for 300 waits, with the host clock the real one. It prints the held
+interval's p50, p99 and max from the `[overlay] frame` lines, with the loop's CPU time a frame.
+Where `CI` is unset it holds the p99 to a display frame and a third of a ms, 17 ms at 60 Hz.
+
+A stall of the machine makes a run's intervals long, so a run that misses tries again, up to
+three runs. Only a machine stalled through all three fails it. Where `CI` is set it prints
+whether the p99 was within and doesn't fail.
+
+It checks too, against times too far apart for a stall to sway, that the wait keeps to the last
+one's end. A frame queued before the wait, or sent into it, ends it at once.
 
 The sound ring isn't told about a pause. It plays out its cushion and fades as it runs dry,
 then fades back in once the cushion has refilled after the resume, as after any stall. Under
