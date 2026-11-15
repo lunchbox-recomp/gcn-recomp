@@ -15,6 +15,7 @@
 #include "runtime.h"  // host_ns
 #include "ui_sound.h"
 #include <SDL3/SDL.h>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -77,6 +78,10 @@ long g_at_left;             // draws over the held frame left before GCN_OVERLAY
 int g_page = -1;            // GCN_OVERLAY_PAGE's, 0 for Display, -1 for none
 bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the held frame
 ReviewWatch g_watch;        // the menu's frame settling for its dump, from each open
+// GCN_FRAMETIME, read at overlay_init: a line for each overlay_draw that lays out the menu, with
+// the interval from the start of the one before and the CPU time this one took (overlay_draw).
+bool g_frametime;
+std::chrono::steady_clock::time_point g_last_frame;  // that start, none after a draw without the menu
 
 // What showed in place of a page ends with nothing done: Restart? or Quit?, the press-A order,
 // and the Buttons view with any press-to-bind.
@@ -192,6 +197,8 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     const char* page = getenv_nonempty("GCN_OVERLAY_PAGE");
     g_page = page ? review_parse_page(page, 1 + menu_added_pages()) : -1;
     g_plain = getenv_nonempty("GCN_OVERLAY_PLAIN") != nullptr;
+    g_frametime = getenv_nonempty("GCN_FRAMETIME") != nullptr;
+    g_last_frame = {};
     if (!window) return;
     g_gl = SDL_GL_GetCurrentContext() != nullptr;
     fonts_build(theme_now().fonts);  // the atlas both contexts are made on
@@ -255,21 +262,24 @@ void overlay_menu_frame() {
     notices_frame();
 }
 
-void overlay_draw() {
-    if (!g_window || !g_gl) return;
+namespace {
+
+// overlay_draw's frame, and whether it laid out the menu.
+bool draw_frame() {
     fonts_new_frame();  // once a frame, before the menu's and the notices' (fonts.h)
     // Opening ends a view left from the last close itself (overlay_set_open).
     if (at_frame_due()) {
         g_at_frame = -1;
         overlay_set_open(true);
     }
-    if (menu_lays_out()) {
+    const bool menu = menu_lays_out();
+    if (menu) {
         ImGui_ImplOpenGL3_NewFrame();
         menu_frame();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
     notices_frame();
-    if (!g_open || !paused()) return;
+    if (!g_open || !paused()) return menu;
     // The dump waits for a frame that looks as the ones before it did (review.cpp).
     const bool dumps = gx::g_dump_output && gx::g_dump_dir;
     if (!g_dumped && dumps && review_settled(g_watch, ImGui::GetDrawData())) {
@@ -280,4 +290,30 @@ void overlay_draw() {
         if (dumps && !g_dumped) fprintf(stderr, "[overlay] the menu closed before its frame settled, so there's no dump\n");
         overlay_set_open(false);
     }
+    return menu;
+}
+
+double ms_between(std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
+    return std::chrono::duration<double, std::milli>(b - a).count();
+}
+
+}  // namespace
+
+void overlay_draw() {
+    if (!g_window || !g_gl) return;
+    if (!g_frametime) {
+        draw_frame();
+        return;
+    }
+    const auto start = std::chrono::steady_clock::now();
+    const long frame = overlay_menu_frames();
+    if (!draw_frame()) {
+        g_last_frame = {};
+        return;
+    }
+    const double cpu = ms_between(start, std::chrono::steady_clock::now());
+    // The first frame the menu shows in, as it opens, has no interval.
+    const double interval = g_last_frame.time_since_epoch().count() ? ms_between(g_last_frame, start) : 0.0;
+    fprintf(stderr, "[overlay] frame f%ld interval %6.2fms  cpu %6.3fms\n", frame, interval, cpu);
+    g_last_frame = start;
 }

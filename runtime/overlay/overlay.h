@@ -209,7 +209,8 @@ OverlayAsk overlay_asking();
 // is merged into `p`.
 void overlay_gate(int port, PadState& p);
 // Draws the menu over the window's framebuffer while it's open, after the frame and before the
-// swap.
+// swap. With GCN_FRAMETIME set at overlay_init, each draw of the menu prints an `[overlay] frame`
+// line on stderr (docs/diagnostics.md).
 void overlay_draw();
 // For gx::render_overlay_blur, ahead of overlay_draw: whether the open menu holds the guest with
 // the theme's blur_backdrop on, which --dump-output turns off, and how far the blur has faded in,
