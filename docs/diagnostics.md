@@ -739,7 +739,10 @@ interval. With the menu closed there's no line. The menu's and the notices' GL r
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
 or alpha, because macOS's GL compiles a program as it first draws with it. In `test_ports
 --pages` at 1920x1080 that compile put 12 to 15 ms of CPU on the process's first menu frame, and
-now lands in `overlay_init`, before the game's first frame.
+now lands in `overlay_init`, before the game's first frame. `test_ports --pages` holds each page's
+first menu frame there to 1.5 ms of CPU where `CI` is unset. Where it's set, as on a CI runner's
+VM that draws in software at tens of ms a frame, it prints whether they were within it and
+doesn't fail.
 `GCN_XFSTATS=1` prints, per frame over every 64, what the vertex transform was asked
 for: vertices, how many carried a normal, how many had a lit colour or alpha channel,
 light evaluations, texgens, and the texgens with a post matrix or an emboss -- which is
