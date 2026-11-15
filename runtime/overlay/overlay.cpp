@@ -102,22 +102,28 @@ void end_view() {
 // window's framebuffer as overlay_draw does, a triangle with no area and no alpha, which touches
 // no pixel. It samples a 1x1 RGBA texture of its own, as a frame samples the atlas's, since with
 // none bound macOS's GL logs the unit as unloadable. It lays out no frame. The renderer puts back
-// the GL state it sets but the framebuffer and the texture this binds, which this puts back. If
-// the program can't be made, nothing is drawn, and the first frame tries again
-// (ImGui_ImplOpenGL3_NewFrame).
+// the GL state it sets but the framebuffer and the texture and unpack buffer this binds, which
+// this puts back. If the program can't be made, nothing is drawn here. A shader that didn't
+// compile leaves no program, so the first frame tries again (ImGui_ImplOpenGL3_NewFrame); a
+// program that didn't link is kept, and isn't tried again.
 void renderer_warm() {
     if (!ImGui_ImplOpenGL3_CreateDeviceObjects()) {
         fprintf(stderr, "[overlay] the GL renderer couldn't make its shader program at init\n");
         return;
     }
-    GLint bound = 0;
+    GLint bound = 0, unpack = 0;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+    glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpack);
     GLuint tex = 0;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    // With an unpack buffer bound the pointer would be an offset into it, so none is, for the call.
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    const uint8_t clear[4] = {};
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, clear);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, (GLuint)unpack);
     glBindTexture(GL_TEXTURE_2D, (GLuint)bound);
     ImDrawList list(ImGui::GetDrawListSharedData());
     list._ResetForNewFrame();
