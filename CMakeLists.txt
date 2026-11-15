@@ -948,6 +948,24 @@ function(gcn_add_game)
       target_compile_options(bench_splash PRIVATE -ffunction-sections)
       target_link_options(bench_splash PRIVATE -Wl,--gc-sections)
     endif()
+    # The menu's blurred backdrop's benchmark (tools/bench_blur.cpp): the held draws' CPU time
+    # before the menu's, a hold's first frame against its later ones, on the same GL.
+    add_executable(bench_blur EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/bench_blur.cpp
+      ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp ${RT}/platform.cpp)
+    if(NOT APPLE OR GCN_GL_ES)
+      target_sources(bench_blur PRIVATE ${GLAD_SOURCE})
+    endif()
+    _gcn_set_standards(bench_blur)
+    target_include_directories(bench_blur PRIVATE ${RT} ${GLAD_INCLUDE_DIR})
+    target_link_libraries(bench_blur PRIVATE ${GCN_SDL_TARGET} ${GCN_PLATFORM_LIBS} Threads::Threads)
+    target_compile_options(bench_blur PRIVATE ${GCN_RUNTIME_WARNINGS})
+    target_compile_definitions(bench_blur PRIVATE ${GCN_GAME_DEFS} ${GCN_GL_DEFS})
+    if(APPLE)
+      target_link_options(bench_blur PRIVATE -Wl,-dead_strip)
+    else()
+      target_compile_options(bench_blur PRIVATE -ffunction-sections)
+      target_link_options(bench_blur PRIVATE -Wl,--gc-sections)
+    endif()
   endif()
 
   # The audio ring checks (tools/test_audio_ring.cpp): audio.cpp's mix against a device
