@@ -19,6 +19,8 @@
 // 150 ms with that batch and draws nothing, and so does each of ten submitted 20 ms into a wait.
 // Where CI is unset, the median time from those submits to the wait's end is held to 0.3 ms, in
 // one of three rounds of ten at most, so a batch has to end the wait, not the next 1 ms step.
+// Where it's set, a runner may start the submitting thread late, so those waits' deadline is 30 s
+// ahead, each must end before it with that batch and draw nothing, and the times are printed.
 // Before any window, the display rates that give a 60 Hz frame (frame_at_hz) are checked.
 // Exit 77 with no GL window. Read in by tools/test_ports.cpp after tools/test_ports_pages.cpp,
 // with GCN_OVERLAY.
@@ -37,7 +39,7 @@ constexpr int64_t kMsNs = 1000000;
 struct HeldWaits {
     bool late = false;      // the wait 300 ms ahead redrew once, no sooner than that and a period
     bool queued = false;    // the batch queued before the wait ended it within 150 ms, drawing nothing
-    bool arriving = false;  // each batch submitted 20 ms into a wait ended it within 150 ms, drawing nothing
+    bool arriving = false;  // each batch submitted 20 ms into a wait ended it, drawing nothing, as the head says
     double submit_ms = -1;  // the last round's median from a submit to the wait's end
 };
 
@@ -71,30 +73,51 @@ HeldWaits held_waits(SDL_Window* window, int pw, int ph, bool ci) {
     batch = next_batch(window, pw, ph) != nullptr;
     w.queued = batch && steady_ns() - t0 < 150 * kMsNs && overlay_menu_frames() == frames;
 
+    // Where CI is set the deadline is 30 s ahead, so only the batch can end the wait before it
+    // however late a runner starts the submitting thread, and the times are printed, not held.
+    const int64_t deadline = (ci ? 30000 : 300) * kMsNs;
     bool each = true, quick = false;
-    for (int r = 0; r < kSubmitRounds && !quick; r++) {
+    for (int r = 0; r < kSubmitRounds && each && !quick; r++) {
         std::vector<double> from_submit;
-        for (int i = 0; i < kSubmits; i++) {
+        double into_max = 0, wait_max = 0;
+        for (int i = 0; i < kSubmits && each; i++) {
             std::atomic<int64_t> sent{0};
-            std::thread submit([&sent] {
+            std::atomic<gx::Batch*> sent_batch{nullptr};
+            std::thread submit([&sent, &sent_batch] {
                 std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                auto b = std::make_unique<gx::Batch>();
+                sent_batch = b.get();
                 sent = steady_ns();
-                gx::submit_batch(std::make_unique<gx::Batch>());
+                gx::submit_batch(std::move(b));
             });
             t0 = steady_ns();
-            g_waited = steady_at(t0 + 300 * kMsNs);
-            batch = next_batch(window, pw, ph) != nullptr;
+            g_waited = steady_at(t0 + deadline);
+            const std::unique_ptr<gx::Batch> got = next_batch(window, pw, ph);
             const int64_t back = steady_ns();
             submit.join();
-            each = each && batch && back - t0 < 150 * kMsNs && overlay_menu_frames() == frames;
+            const bool drew = overlay_menu_frames() != frames;
+            const double into = (double)(sent - t0) / 1e6, wait = (double)(back - t0) / 1e6;
+            const bool ok = got && got.get() == sent_batch && !drew && back - t0 < (ci ? deadline : 150 * kMsNs);
+            if (!ok || wait >= 150)
+                printf("[held] submit %d of round %d came %.3f ms into its wait, which ended %.3f ms in, %s that "
+                       "batch%s\n",
+                       i + 1, r + 1, into, wait, got && got.get() == sent_batch ? "with" : "without",
+                       drew ? ", and drew a frame" : "");
+            each = each && ok;
+            into_max = std::max(into_max, into);
+            wait_max = std::max(wait_max, wait);
             from_submit.push_back((double)(back - sent) / 1e6);
         }
+        if (!each) break;
         w.submit_ms = percentile(from_submit, 0.5);
-        printf("[held] a batch submitted into the held wait ends it a median %.3f ms later, over %d\n", w.submit_ms,
-               kSubmits);
+        printf("[held] a batch submitted into the held wait ends it a median %.3f ms later, over %d, the latest "
+               "submit %.3f ms into its wait and the longest wait %.3f ms\n",
+               w.submit_ms, kSubmits, into_max, wait_max);
         quick = w.submit_ms <= kSubmitBarMs;
         if (ci) break;
     }
+    while (gx::take_batch_until(std::chrono::steady_clock::now())) {
+    }  // a batch that came after its wait ended
     w.arriving = each && (ci || quick);
     return w;
 }
@@ -204,8 +227,8 @@ int run_held(const std::string& dir) {
                       "once, no sooner than that and a period after");
     check(waits.queued, "with it ended 300 ms ahead, a batch queued before the held wait ends it within 150 ms with "
                         "that batch and draws nothing");
-    check(waits.arriving, ci ? "each of ten batches submitted 20 ms into a held wait ends it within 150 ms with that "
-                               "batch and draws nothing"
+    check(waits.arriving, ci ? "each of ten batches submitted 20 ms into a held wait 30 s long ends it before then "
+                               "with that batch and draws nothing"
                              : "each of ten batches submitted 20 ms into a held wait ends it within 150 ms with that "
                                "batch and draws nothing, a median 0.3 ms or less after its submit in one of three "
                                "rounds at most");

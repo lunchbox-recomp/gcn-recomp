@@ -900,6 +900,10 @@ a bound a stall can only help. A frame queued before the wait, or sent into it, 
 150 ms with a 300 ms deadline, and where `CI` is unset ten sent into waits end them a median
 0.3 ms or less after the send, in one of three rounds at most.
 
+A CI runner may start the sending thread late, so where `CI` is set each of the ten waits has a
+deadline 30 s ahead. It must end before then with the frame sent and draw nothing, and the
+times are printed.
+
 It's a mode of its own so that `test_overlay_pages` keeps its time. A display rate under 23 Hz
 or of none is checked to give a 60 Hz frame. Where SDL can make no GL window it's skipped.
 
