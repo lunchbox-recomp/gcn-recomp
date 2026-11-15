@@ -2,7 +2,8 @@
 // GCN_OVERLAY_PAGE opens it on each page in turn, and --dump-output writes each page once its
 // frame has settled, over GCN_OVERLAY_PLAIN's grey, since no game frame is kept here. Each
 // page's menu frame time, overlay_draw's on the CPU, is printed. At 16:9 GCN_FRAMETIME is set, and
-// each page's `[overlay] frame` lines are checked against the test's own timing of overlay_draw,
+// each page's `[overlay] frame` lines are checked against the host clock, which the test steps by
+// known amounts, against whether the guest was held, and against the test's own timing of overlay_draw,
 // and each page's first menu frame, the process's first too, is held to 1.5 ms of CPU where CI is
 // unset, and printed without failing where it's set; at 4:3 it's unset, and there are none.
 // After every page, the Buttons
@@ -123,18 +124,24 @@ struct PageRun {
     double init_ms = 0;      // overlay_init on the CPU, which makes the GL renderers' objects
     double first_ms = -1;    // overlay_draw on the CPU as it first drew, making the atlas's texture
     std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
-    // Each overlay_draw that laid out the menu: its frame, when it started, and its time on the CPU.
+    // Each overlay_draw that laid out the menu: its frame, the host clock as it started, whether
+    // the guest was held then, and its time on the CPU.
     struct Drawn {
         int f;
-        std::chrono::steady_clock::time_point start;
+        uint64_t host;
+        bool held;
         double ms;
     };
     std::vector<Drawn> drawn;
 };
 
+// The host clock's step before each frame of open_on, in turn, so the line's intervals are known.
+constexpr uint64_t kHostSteps[] = {1000000, 2500000, 16670000};
+
 // An `[overlay] frame` line (GCN_FRAMETIME).
 struct FrameLine {
     long f = 0;
+    int held = -1;
     double interval = 0, cpu = 0;
 };
 std::vector<FrameLine> frame_lines(const std::string& said) {
@@ -142,7 +149,8 @@ std::vector<FrameLine> frame_lines(const std::string& said) {
     const std::string text = read_file(said);
     for (size_t at = 0; (at = text.find("[overlay] frame f", at)) != std::string::npos; at++) {
         FrameLine l;
-        if (sscanf(text.c_str() + at, "[overlay] frame f%ld interval %lfms cpu %lfms", &l.f, &l.interval, &l.cpu) == 3)
+        if (sscanf(text.c_str() + at, "[overlay] frame f%ld held %d interval %lfms cpu %lfms", &l.f, &l.held,
+                   &l.interval, &l.cpu) == 4)
             out.push_back(l);
     }
     return out;
@@ -152,24 +160,22 @@ std::vector<FrameLine> frame_lines(const std::string& said) {
 // frame of an open is held to too: overlay_init has made the GL renderers' objects (overlay.cpp).
 constexpr double kFrameBarMs = 1.5;
 
-// How far the line's timing may be from the test's own around overlay_draw: the two clocks are
-// read a few instructions apart, unless the thread is put off the CPU between them.
-constexpr double kLineSlackMs = 0.5;
-
 // Whether `lines` are one for each frame `run` drew the menu in, numbered on from the first's,
-// the first with no interval and each after it the time from the start of the one before, and
-// each one's cpu no more than the test timed around its overlay_draw, nor much less.
+// each saying whether the guest was held as it started, with frames of both, the first with no
+// interval and each after it the host clock's steps since the one before to the printed 0.01 ms,
+// and each one's cpu above 0 and no more than the test timed around its overlay_draw.
 bool lines_match(const std::vector<FrameLine>& lines, const PageRun& run) {
     bool ok = !lines.empty() && lines.size() == run.drawn.size() && lines[0].interval == 0.0;
+    bool held = false, running = false;
     for (size_t i = 0; ok && i < lines.size(); i++) {
         const PageRun::Drawn& d = run.drawn[i];
-        ok = lines[i].f == lines[0].f + (long)i && lines[i].cpu <= d.ms + 0.001 && lines[i].cpu >= d.ms - kLineSlackMs;
-        if (ok && i > 0) {
-            const double since = std::chrono::duration<double, std::milli>(d.start - run.drawn[i - 1].start).count();
-            ok = std::abs(lines[i].interval - since) <= kLineSlackMs;
-        }
+        ok = lines[i].f == lines[0].f + (long)i && lines[i].held == (d.held ? 1 : 0) && lines[i].cpu > 0.0 &&
+             lines[i].cpu <= d.ms + 0.001;
+        if (ok && i > 0) ok = std::abs(lines[i].interval - (double)(d.host - run.drawn[i - 1].host) / 1e6) < 0.006;
+        held = held || d.held;
+        running = running || !d.held;
     }
-    return ok;
+    return ok && held && running;
 }
 
 // Whether the notices' context is on the atlas the menu's is made on, and each draw command of
@@ -217,6 +223,9 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         update_pads(0);
         const bool was_open = overlay_open() || overlay_menu_due();
         const int atlas_frame = fonts_atlas()->Builder->FrameCount;
+        g_host_ns += kHostSteps[f % std::size(kHostSteps)];
+        const uint64_t host = g_host_ns;
+        const bool held_then = paused();
         const auto t0 = std::chrono::steady_clock::now();
         overlay_draw();
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -229,7 +238,7 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         const bool dumping = run.dumped_at < 0 && exists_path(png);
         if (any && run.first_ms < 0) run.first_ms = ms;
         else if (any && !dumping) run.ms.push_back(ms);
-        if (was_open) run.drawn.push_back({f, t0, ms});
+        if (was_open) run.drawn.push_back({f, host, held_then, ms});
         if (drew && run.first_drawn < 0) {
             run.first_drawn = f;
             run.on_page = overlay_page() == expect && overlay_test_pages()[expect] == kTitles[expect];
@@ -458,17 +467,18 @@ int run_pages(const std::string& dir) {
             if (timed) {
                 check(lines_match(lines, run),
                       (at + ": GCN_FRAMETIME=1 prints an [overlay] frame line for each frame overlay_draw lays out "
-                            "the menu in, with the interval from the last one's start and its CPU time")
+                            "the menu in, with whether the guest was held, the host clock's interval from the last "
+                            "one's start and its CPU time")
                           .c_str());
                 first_in_bar = first_in_bar && run.first_ms >= 0 && run.first_ms <= kFrameBarMs;
                 std::vector<double> cpu, interval;
                 for (size_t i = 0; i < lines.size() && i < run.drawn.size(); i++) {
                     if (run.drawn[i].f == run.dumped_at) continue;  // a game draws no dump
                     cpu.push_back(lines[i].cpu);
-                    if (i > 0) interval.push_back(lines[i].interval);
+                    if (i > 0 && lines[i].held == 1) interval.push_back(lines[i].interval);
                 }
-                printf("[pages] %s: [overlay] frame lines past the dump's, cpu p50 %.3f ms, p99 %.3f ms; interval p99 "
-                       "%.2f ms, unpaced here; over %zu frames\n",
+                printf("[pages] %s: [overlay] frame lines past the dump's, cpu p50 %.3f ms, p99 %.3f ms; held interval "
+                       "p99 %.2f ms, on the host clock this test steps; over %zu frames\n",
                        at.c_str(), percentile(cpu, 0.5), percentile(cpu, 0.99), percentile(interval, 0.99), cpu.size());
             } else {
                 check(lines.empty() && !run.drawn.empty(),

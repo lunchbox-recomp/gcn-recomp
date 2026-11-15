@@ -731,11 +731,15 @@ the EFB copies'; in stereo `[eye-rt]` adds, per eye, the flat pass's time and th
 own). A batch whose textures took more than 5 ms also gets an `[rt-tex]` line: how many
 textures were deleted and in what time, and how many were uploaded, their size and time.
 Each frame the overlay draws its menu in, open or fading out, gets an `[overlay] frame` line:
-`[overlay] frame f<n> interval <ms>ms  cpu <ms>ms`, where n counts the menu's frames from 0, the
-interval runs from the start of the last frame it drew the menu in to the start of this one, and
-cpu is what `overlay_draw` took, notices and any `--dump-output` dump with it. The first frame
-after it opens has an interval of 0. While the guest is held, the interval is the paused redraw
-interval. With the menu closed there's no line. The menu's and the notices' GL renderers make
+`[overlay] frame f<n> held <0|1> interval <ms>ms  cpu <ms>ms`. n counts the menu's frames in the
+process from 0 (`overlay_menu_frames`), not presented frames, so it doesn't match the n of an
+`[ft]` or `[rt]` line. held is 1 when the guest is held as the frame starts. The interval runs on
+the host clock (`host_ns`) from the start of the last frame that drew the menu to the start of this
+one, and is 0 on the first frame after one without the menu. cpu is what `overlay_draw` took on
+the steady clock, the notices and any `--dump-output` dump with it, but not the blurred backdrop
+(`render_overlay_blur`), which the frontend draws before it. The paused redraw interval is read
+from the `held 1` lines alone: a fade out and the frames before the hold lands are paced by the
+guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
 or alpha, because macOS's GL compiles a program as it first draws with it. In `test_ports
 --pages` at 1920x1080 that compile put 12 to 15 ms of CPU on the process's first menu frame, and

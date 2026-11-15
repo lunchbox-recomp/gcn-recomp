@@ -80,9 +80,11 @@ int g_page = -1;            // GCN_OVERLAY_PAGE's, 0 for Display, -1 for none
 bool g_plain;               // GCN_OVERLAY_PLAIN: dumps over plain grey, not the held frame
 ReviewWatch g_watch;        // the menu's frame settling for its dump, from each open
 // GCN_FRAMETIME, read at overlay_init: a line for each overlay_draw that lays out the menu, with
-// the interval from the start of the one before and the CPU time this one took (overlay_draw).
+// whether the guest is held, the interval on the host clock from the start of the one before, and
+// the CPU time this one took (overlay_draw).
 bool g_frametime;
-std::chrono::steady_clock::time_point g_last_frame;  // that start, none after a draw without the menu
+bool g_had_frame;       // the draw before laid out the menu
+uint64_t g_last_frame;  // and started at this host_ns
 
 // What showed in place of a page ends with nothing done: Restart? or Quit?, the press-A order,
 // and the Buttons view with any press-to-bind.
@@ -230,7 +232,7 @@ void overlay_init(SDL_Window* window, const char* title, const OverlayPicture& p
     g_page = page ? review_parse_page(page, 1 + menu_added_pages()) : -1;
     g_plain = getenv_nonempty("GCN_OVERLAY_PLAIN") != nullptr;
     g_frametime = getenv_nonempty("GCN_FRAMETIME") != nullptr;
-    g_last_frame = {};
+    g_had_frame = false;
     if (!window) return;
     g_gl = SDL_GL_GetCurrentContext() != nullptr;
     fonts_build(theme_now().fonts);  // the atlas both contexts are made on
@@ -326,10 +328,6 @@ bool draw_frame() {
     return menu;
 }
 
-double ms_between(std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
-    return std::chrono::duration<double, std::milli>(b - a).count();
-}
-
 }  // namespace
 
 void overlay_draw() {
@@ -338,15 +336,20 @@ void overlay_draw() {
         draw_frame();
         return;
     }
+    // The interval is on host_ns, the clock the menu's motion runs on, which is the wall clock in a
+    // game; the CPU time on the steady clock, as the other GCN_FRAMETIME lines take theirs.
+    const uint64_t at = host_ns();
     const auto start = std::chrono::steady_clock::now();
     const long frame = overlay_menu_frames();
+    const bool held = paused();
     if (!draw_frame()) {
-        g_last_frame = {};
+        g_had_frame = false;
         return;
     }
-    const double cpu = ms_between(start, std::chrono::steady_clock::now());
+    const double cpu = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
     // The first frame the menu shows in, as it opens, has no interval.
-    const double interval = g_last_frame.time_since_epoch().count() ? ms_between(g_last_frame, start) : 0.0;
-    fprintf(stderr, "[overlay] frame f%ld interval %6.2fms  cpu %6.3fms\n", frame, interval, cpu);
-    g_last_frame = start;
+    const double interval = g_had_frame ? (double)(at - g_last_frame) / 1e6 : 0.0;
+    fprintf(stderr, "[overlay] frame f%ld held %d interval %6.2fms  cpu %6.3fms\n", frame, held ? 1 : 0, interval, cpu);
+    g_had_frame = true;
+    g_last_frame = at;
 }
