@@ -738,8 +738,8 @@ the host clock (`host_ns`) from the start of the last frame that drew the menu t
 one, and is 0 on the first frame after one without the menu. cpu is what `overlay_draw` took on
 the steady clock, the notices and any `--dump-output` dump with it, but not the blurred backdrop
 (`render_overlay_blur`), which the frontend draws before it. The paused redraw interval is read
-from the `held 1` lines alone: a fade out and the frames before the hold lands are paced by the
-guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
+from the `held 1` lines alone, since a fade out and the frames before the hold lands are paced
+by the guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
 or alpha, because macOS's GL compiles a program as it first draws with it. In `test_ports
 --pages` at 1920x1080 that compile put 12 to 15 ms of CPU on the process's first menu frame, and
