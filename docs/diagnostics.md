@@ -939,8 +939,8 @@ the first held interval and its fields and the loop's CPU time a frame. Then it 
 wait's own CPU time a display frame. Where `CI` is unset it holds the p99 to a display frame and
 a third of a ms, 17 ms at 60 Hz. It holds the p50 while something moves to within 0.5 ms of half
 a display frame, and once nothing does to within 0.5 ms of a whole one. The test's first held
-interval comes after the menu's first frame, which is the first this window draws. It runs 28 to
-124 ms, nearly all of it spent before its wait began (its `late`). The thread standing in for the guest holds at once
+interval comes after the menu's first frame, which is the first this window draws. It has run 9.8
+to 124 ms, all but its half-frame period in its `late`. The thread standing in for the guest holds at once
 and sends no frame,
 and the blur is a stub, so the game's first held interval isn't what this one shows. The blur's
 own cost is `bench_blur`'s to show.
