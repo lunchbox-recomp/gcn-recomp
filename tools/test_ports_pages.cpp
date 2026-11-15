@@ -9,7 +9,8 @@
 // After every page, the Buttons
 // view is dumped at each size too, as it opens and at its foot. The PNGs are for a person to
 // look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
-// a view the menu closed from once the fade is over, and that overlay_init's warm-up draw leaves
+// a view the menu closed from once the fade is over, that a reopen after a close starts its frame
+// lines with no interval, and that overlay_init's warm-up draw leaves
 // the GL state a game's renderer had as it found it. With no GL window, as on a machine with no
 // display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend,
 // with GCN_OVERLAY.
@@ -295,6 +296,56 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
     overlay_test_end();
     gx::g_dump_output = true;
     return asked && kept && ended;
+}
+
+// The menu opened with F1, closed, drawn closed past its fade, and opened again, all after one
+// overlay_init with GCN_FRAMETIME set and the host clock 16 ms on at each frame. Whether the
+// reopen's first `[overlay] frame` line has no interval, though its last line before was over a
+// second earlier on that clock, and the fade's frames before it printed lines.
+bool reopen_starts_fresh(SDL_Window* window, const std::string& out) {
+    g_window_id = SDL_GetWindowID(window);
+    overlay_test_reset_pages();
+    OverlayPicture picture;
+    picture.path = out + "/reopen-settings.txt";
+    gx::g_dump_output = false;  // dumping turns the menu's motion off, and with it the fade
+    const std::string said = out + "/reopen-stderr.txt";
+    long reopened = -1;
+    capture(said, [&] {
+        setenv("GCN_FRAMETIME", "1", 1);
+        overlay_init(window, "Test title", picture);
+        unsetenv("GCN_FRAMETIME");
+        Guest guest;
+        const auto frame = [&] {
+            pump_events();
+            update_pads(0);
+            g_host_ns += 16000000;
+            overlay_draw();
+            SDL_GL_SwapWindow(window);
+            guest_on(guest);
+        };
+        const auto f1 = [&] {
+            push_key(SDL_SCANCODE_F1, SDLK_F1, true);
+            push_key(SDL_SCANCODE_F1, SDLK_F1, false);
+            frame();
+        };
+        f1();
+        for (int i = 0; i < 4; i++) frame();
+        f1();
+        for (int i = 0; i < 70; i++) frame();  // past the fade, the menu drawn no more
+        reopened = overlay_menu_frames();
+        f1();
+        frame();
+        overlay_close();
+    });
+    overlay_test_end();
+    gx::g_dump_output = true;
+    const std::vector<FrameLine> lines = frame_lines(said);
+    bool fresh = false, faded = false;
+    for (const FrameLine& l : lines) {
+        fresh = fresh || (l.f == reopened && l.interval == 0.0);
+        faded = faded || l.f == reopened - 1;
+    }
+    return reopened > 0 && fresh && faded && lines.size() < 70;
 }
 
 // The GL state the warm-up's draw at overlay_init (overlay.cpp) must leave as it found it.
@@ -594,6 +645,9 @@ int run_pages(const std::string& dir) {
                   "a GCN_OVERLAY_PAGE past the last page or not a number says so once and opens on the first page");
             check(order_ends_at_draw(window, out + "/bare"),
                   "at overlay_draw's frames, the press-A order up as the menu closes ends once the fade is over");
+            check(reopen_starts_fresh(window, out + "/bare"),
+                  "with GCN_FRAMETIME, the menu opened again after closing, in one overlay_init, starts its lines "
+                  "with no interval");
             check(init_keeps_gl_state(window, out + "/bare"),
                   "overlay_init's warm-up draw leaves the draw and read framebuffers, viewport, scissor box, program, "
                   "blend and active texture unit as it found them");
