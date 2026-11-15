@@ -43,8 +43,10 @@ bool menu_drawn() {
 
 // A page as a game might add one, with the kinds of widget the menu's own pages use and a
 // slider, so the dumps show each kind. The slider's value is beside it, as the Buttons view has
-// its own, not on its grab (theme.h).
+// its own, not on its grab (theme.h). It moves the host clock on by 0.5 ms as it's drawn, inside
+// overlay_draw, so a line's interval timed from the end of the frame before shows it short.
 void sample_page(void*) {
+    g_host_ns += 500000;
     static bool on = true;
     static int pick = 1;
     static float level = 0.6f;
