@@ -9,7 +9,8 @@
 // After every page, the Buttons
 // view is dumped at each size too, as it opens and at its foot. The PNGs are for a person to
 // look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
-// a view the menu closed from once the fade is over. With no GL window, as on a machine with no
+// a view the menu closed from once the fade is over, and that overlay_init's warm-up draw leaves
+// the GL state a game's renderer had as it found it. With no GL window, as on a machine with no
 // display, the mode is skipped (exit 77). Read in by tools/test_ports.cpp after the frontend,
 // with GCN_OVERLAY.
 #include "test_ports_support.h"
@@ -296,6 +297,50 @@ bool order_ends_at_draw(SDL_Window* window, const std::string& out) {
     return asked && kept && ended;
 }
 
+// The GL state the warm-up's draw at overlay_init (overlay.cpp) must leave as it found it.
+struct GlState {
+    GLint draw = 0, read = 0, program = 0, active = 0, viewport[4] = {}, scissor[4] = {};
+    GLboolean blend = GL_FALSE;
+    bool operator==(const GlState&) const = default;
+};
+GlState gl_state() {
+    GlState s;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &s.draw);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &s.read);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &s.program);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &s.active);
+    glGetIntegerv(GL_VIEWPORT, s.viewport);
+    glGetIntegerv(GL_SCISSOR_BOX, s.scissor);
+    s.blend = glIsEnabled(GL_BLEND);
+    return s;
+}
+
+// overlay_init over a GL state as a game's renderer might leave it: render_init leaves the EFB's
+// framebuffer bound, so here the draw and read framebuffers are two of the test's own, apart, and
+// the viewport, scissor box, blend and active texture unit are away from what the overlay's
+// renderer sets. Whether all of it, and the program, is as it was after.
+bool init_keeps_gl_state(SDL_Window* window, const std::string& out) {
+    GLuint fbos[2];
+    glGenFramebuffers(2, fbos);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, fbos[0]);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, fbos[1]);
+    glViewport(3, 4, 50, 60);
+    glScissor(5, 6, 70, 80);
+    glDisable(GL_BLEND);
+    glActiveTexture(GL_TEXTURE3);
+    const GlState before = gl_state();
+    overlay_test_reset_pages();
+    OverlayPicture picture;
+    picture.path = out + "/state-settings.txt";
+    capture(out + "/state-stderr.txt", [&] { overlay_init(window, "Test title", picture); });
+    const GlState after = gl_state();
+    overlay_test_end();
+    glActiveTexture(GL_TEXTURE0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(2, fbos);
+    return before.draw == (GLint)fbos[0] && before.read == (GLint)fbos[1] && after == before;
+}
+
 // tools/test_ports_pages_toasts.cpp's: the notices' review dump at a size, and their cost with the
 // menu closed.
 void toasts_review(SDL_Window* window, const std::string& out, const std::string& at);
@@ -549,6 +594,9 @@ int run_pages(const std::string& dir) {
                   "a GCN_OVERLAY_PAGE past the last page or not a number says so once and opens on the first page");
             check(order_ends_at_draw(window, out + "/bare"),
                   "at overlay_draw's frames, the press-A order up as the menu closes ends once the fade is over");
+            check(init_keeps_gl_state(window, out + "/bare"),
+                  "overlay_init's warm-up draw leaves the draw and read framebuffers, viewport, scissor box, program, "
+                  "blend and active texture unit as it found them");
         }
         gl_window_close(window);
     }
