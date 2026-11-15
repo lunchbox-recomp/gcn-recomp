@@ -5,13 +5,16 @@
 // what a real wait took. The redraw says a frame is kept (g_kept), noting the host time it was
 // asked (g_kept_at), and draws none, and the blur is a stub, so an interval here is the loop's
 // wait, the menu's draw and the swap. The `held 1` lines' intervals are printed, p50, p99 and max,
-// for all of them and for the frames whose wait began with nothing moving, with the loop's thread
-// CPU time a frame.
+// for all of them, for the frames whose wait began with something moving and for those with
+// nothing, and the waits' lateness the lines carry, with the first held interval and its fields and
+// the loop's thread CPU time a frame. After the runs, the held wait's own CPU time is printed.
 //
 // Their p99 is held to a display frame and a third of a ms, 17 ms at 60 Hz, where CI is unset, and
 // printed without failing where it's set, as a CI runner's VM may hold the thread off its core for
-// a frame at a time. A stall of the machine makes a run's intervals long, so a run that misses the
-// bar is tried again, up to three runs, and only a machine stalled through all of them fails it.
+// a frame at a time. So are the p50s, while something moves to within 0.5 ms of half a display
+// frame and once nothing does of a whole one, the periods held_period (main.cpp) gives. A stall of
+// the machine makes a run's intervals long, so a run that misses a bar is tried again, up to three
+// runs, and only a machine stalled through all of them fails it.
 //
 // Then, still held, the waits are checked. With the loop's last wait ended 300 ms ahead, the next
 // asks for the held frame's redraw once, no sooner than that and a period on the host clock, a
@@ -37,6 +40,7 @@ constexpr double kBarOverMs = 1.0 / 3.0;  // the bar's room over a display frame
 constexpr int kSubmits = 10;              // batches submitted into a wait in each round
 constexpr int kSubmitRounds = 3;          // rounds that may try for the median
 constexpr double kSubmitBarMs = 0.3;      // the median's bar, from a submit to the wait's end
+constexpr double kNearMs = 0.5;           // how near half a frame and a frame the p50s must be
 constexpr int64_t kMsNs = 1000000;
 
 struct HeldWaits {
@@ -48,7 +52,10 @@ struct HeldWaits {
 
 struct HeldRun {
     std::vector<double> held;     // each `held 1` line's interval in ms, the first's left out
-    std::vector<double> settled;  // the same for the frames whose wait began with nothing moving
+    std::vector<double> moving;   // the same for the frames whose wait began with something moving
+    std::vector<double> settled;  // and for those whose wait began with nothing moving
+    std::vector<double> late;     // each of those lines' lateness, how late its wait ended
+    FrameLine first;              // the first of them, the first held interval
     size_t frames = 0;            // the frames the menu drew
     double cpu_ms = 0;            // the loop's thread CPU time over its waits, the draws' with it
     bool warmed = false;          // overlay_init warmed the blur once, at the window's pixel size
@@ -200,8 +207,10 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
     run.frames = moving.size();
     for (size_t i = 1; i < lines.size() && i < moving.size(); i++) {
         if (lines[i].held != 1) continue;
+        if (run.held.empty()) run.first = lines[i];
         run.held.push_back(lines[i].interval);
-        if (!moving[i]) run.settled.push_back(lines[i].interval);
+        run.late.push_back(lines[i].late);
+        (moving[i] ? run.moving : run.settled).push_back(lines[i].interval);
     }
     return run;
 }
@@ -209,6 +218,16 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
 void print_intervals(const char* what, const std::vector<double>& v) {
     printf("[held] %s: p50 %.2f ms, p99 %.2f ms, max %.2f ms over %zu frames\n", what, percentile(v, 0.5),
            percentile(v, 0.99), percentile(v, 1.0), v.size());
+}
+
+// The held wait's own CPU time on the loop's thread, a mean over kWaitCpuWaits waits of a display
+// frame each with nothing to end them, in ms a wait.
+constexpr int kWaitCpuWaits = 30;
+double wait_cpu_ms(SDL_Window* window) {
+    const auto period = display_frame(window);
+    const double cpu0 = thread_cpu_ms();
+    for (int i = 0; i < kWaitCpuWaits; i++) gx::take_batch_until(std::chrono::steady_clock::now() + period);
+    return (thread_cpu_ms() - cpu0) / kWaitCpuWaits;
 }
 
 // Whether a display at `hz` gets a frame of `ms`, to 1 ns.
@@ -240,27 +259,45 @@ int run_held(const std::string& dir) {
     printf("[held] the display says %.2f Hz, so a display frame is %.2f ms and the bar %.2f ms\n", display_hz(window),
            frame_ms, bar_ms);
     HeldWaits waits;
-    bool in_bar = false, warmed = false;
-    for (int r = 0; r < kBarRuns && !in_bar; r++) {
+    bool in_bar = false, half = false, whole = false, warmed = false;
+    const auto near = [](const std::vector<double>& v, double ms) {
+        return !v.empty() && std::fabs(percentile(v, 0.5) - ms) <= kNearMs;
+    };
+    for (int r = 0; r < kBarRuns && !(in_bar && half && whole); r++) {
         const HeldRun run = held_run(window, out, out + "/held-stderr-" + std::to_string(r) + ".txt", r == 0, ci);
         if (r == 0) {
             waits = run.waits;
             warmed = run.warmed;
         }
         print_intervals("the held redraw's interval", run.held);
+        print_intervals("the same while something moves", run.moving);
         print_intervals("the same once nothing moves", run.settled);
+        print_intervals("their waits' lateness", run.late);
+        printf("[held] the first held interval %.2f ms, its wait %.3f ms late, %.3f ms from it to the blur and %.3f "
+               "ms of blur\n",
+               run.first.interval, run.first.late, run.first.present, run.first.blur);
         const double frames = run.frames ? (double)run.frames : 1.0;
         printf("[held] the loop's thread CPU %.3f ms a frame, overlay_draw's with it\n", run.cpu_ms / frames);
-        in_bar = run.held.size() >= (size_t)kHeldWaits / 2 && percentile(run.held, 0.99) <= bar_ms;
+        in_bar = in_bar || (run.held.size() >= (size_t)kHeldWaits / 2 && percentile(run.held, 0.99) <= bar_ms);
+        half = half || near(run.moving, frame_ms / 2);
+        whole = whole || near(run.settled, frame_ms);
         if (ci) break;
     }
+    printf("[held] the held wait alone takes %.3f ms of the loop's thread CPU a display frame\n", wait_cpu_ms(window));
     if (ci) {
         printf("[held] the held redraw's p99 is %s the bar, not held where CI is set\n", in_bar ? "within" : "over");
+        printf("[held] the p50 while something moves is %s half a display frame, and once nothing moves %s a whole "
+               "one, not held where CI is set\n",
+               half ? "near" : "not near", whole ? "near" : "not near");
         printf("[held] the submits' median is %s the %.1f ms bar, not held where CI is set\n",
                waits.submit_ms >= 0 && waits.submit_ms <= kSubmitBarMs ? "within" : "over", kSubmitBarMs);
     } else {
         check(in_bar, "the held redraw's interval, over a run of the loop's waits with the menu open, has a p99 of a "
                       "display frame and a third of a ms or less, in one of three runs at most");
+        check(half, "while the menu moves, the held redraw's p50 is within 0.5 ms of half a display frame, in one of "
+                    "three runs at most");
+        check(whole, "once nothing moves, its p50 is within 0.5 ms of a whole display frame, in one of three runs at "
+                     "most");
     }
     check(warmed, "overlay_init over a GL window warms the blurred backdrop once, at the window's size in pixels");
     check(waits.late, "with the loop's last wait ended 300 ms ahead, the held wait asks for the held frame's redraw "
