@@ -913,10 +913,12 @@ function(gcn_add_game)
     # The overlay's checks, with no window and then one with no GL context, from SDL's dummy
     # video driver: opening it pauses the guest, which pause.cpp holds, and its Display page
     # saves through settings.cpp, which is linked above. --pages draws the menu over a GL window
-    # and writes its PNGs with png.cpp. Dear ImGui's asserts are on here, and with them every
+    # and writes its PNGs with png.cpp, and runs the frontend's held redraw there, which waits on
+    # the batch queue in gx/batch_queue.cpp. Dear ImGui's asserts are on here, and with them every
     # assert in test_ports.
     if(_gcn_overlay)
-      target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp ${RT}/png.cpp ${RT}/ui_sound.cpp ${RT}/ui_sound_synth.cpp)
+      target_sources(test_ports PRIVATE ${OVERLAY_SOURCES} ${RT}/pause.cpp ${RT}/png.cpp ${RT}/ui_sound.cpp ${RT}/ui_sound_synth.cpp
+        ${RT}/gx/batch_queue.cpp)
       if(NOT APPLE)
         target_sources(test_ports PRIVATE ${GLAD_SOURCE} ${RT}/gx/gl_load.cpp)
       endif()

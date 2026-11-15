@@ -356,6 +356,19 @@ static void show_frame(SDL_Window* win) {
     SDL_GL_SwapWindow(win);
 }
 
+// The loop's wait for the guest's next batch, which it returns, the window being dw by dh pixels.
+// While the guest is held (pause.h) no batch comes, so each wait that ends with nothing draws the
+// newest frame again (batch_wait_ms), and each one drawn is a host frame to the pause. Before any
+// frame there's nothing to draw, and no host frame.
+static std::unique_ptr<gx::Batch> next_batch(SDL_Window* win, int dw, int dh) {
+    auto b = gx::take_batch(batch_wait_ms());
+    if (!b && paused() && (g_eye_mode ? eye_to_window(dw, dh) : gx::render_present_last())) {
+        show_frame(win);
+        pause_host_frame();
+    }
+    return b;
+}
+
 // The game started again in a fresh process, as a power cycle would -- except in a replay,
 // which would only replay itself from the start again, so there the caller's exit follows.
 // `why`, if there's one, goes on stderr first as a [reset] line, so that a tool reading the
@@ -917,17 +930,8 @@ int main(int argc, char** argv) {
         SDL_GetWindowSizeInPixels(win, &dw, &dh);
         gx::render_set_window_size(dw, dh);
         if (g_aspect_window && dh > 0) gx::render_set_output_aspect((float)dw / (float)dh);
-        // While the guest is held (pause.h) no batch comes, so each wait that ends with nothing
-        // draws the newest frame again (batch_wait_ms), and each one drawn is a host frame to the
-        // pause. Before any frame there's nothing to draw, and no host frame.
-        auto b = gx::take_batch(batch_wait_ms());
-        if (!b) {
-            if (paused() && (g_eye_mode ? eye_to_window(dw, dh) : gx::render_present_last())) {
-                show_frame(win);
-                pause_host_frame();
-            }
-            continue;
-        }
+        auto b = next_batch(win, dw, dh);
+        if (!b) continue;
         // GCN_STEREOLOG=1: what the game's stereo hook (vr_game.h) would have a headset
         // show, whenever the answer changes, numbered as the frame dumps are.
         static const bool stereolog = getenv_nonempty("GCN_STEREOLOG") != nullptr;

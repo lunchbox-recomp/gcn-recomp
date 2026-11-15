@@ -21,12 +21,17 @@
 // guest threads' quit (threads_request_quit), which only --restart's and --quit's ends of the
 // run reach, and where the first resets the console on another thread for them
 // (g_reset_in_finish), and the host clock (host_ns), which reads g_host_ns, moved by hand for
-// the overlay's chord. reset.cpp is linked, for the game's reset (guest_reset). The disc
+// the overlay's chord, or runs on from it with the steady clock once g_host_steady_at is set.
+// A movie is never made (record::active). reset.cpp is linked, for the game's reset
+// (guest_reset). The disc
 // speed the drive takes at boot (g_fast_disc, hw/di.cpp's) is defined here, fast as there,
 // and a check sets it as settings.txt or --disc would and reads back what a replay left.
-// With GCN_OVERLAY, overlay/*.cpp, pause.cpp, ui_sound.cpp and ui_sound_synth.cpp are linked,
-// and the clock they read (host_ns and clock_hold above, and audio_frames_out) is stubbed, as
-// is the memory card's note of a hold (exi_card_held).
+// With GCN_OVERLAY, overlay/*.cpp, pause.cpp, ui_sound.cpp, ui_sound_synth.cpp and
+// gx/batch_queue.cpp are linked, and the clock they read (host_ns and clock_hold above, and
+// audio_frames_out) is stubbed, as is the memory card's note of a hold (exi_card_held), the
+// queue's stall timer (gx::StallTimer) and a batch's hand-back to xf.cpp's pool (gx::Batch's
+// destructor). The held frame's redraw (gx::render_present_last) draws nothing, and says it
+// drew once g_kept is set.
 //
 // The checks are in a file for each area, read in below after the frontend, as main.cpp is,
 // so that they see its statics: none of them is compiled on its own. What more than one area
@@ -57,9 +62,10 @@
 //        test_ports --restart-replay <empty work dir>   the menu, then a restart asked for,
 //                                                       in a replay past its log's end
 //        test_ports --pages <empty work dir>   each page of the menu dumped over a hidden GL
-//                                              window, with its frame time, then the notices;
-//                                              exit 77 with no GL window or no overlay in the
-//                                              build
+//                                              window, with its frame time, then the notices,
+//                                              then the frontend's held redraw and its
+//                                              interval; exit 77 with no GL window or no
+//                                              overlay in the build
 //        test_ports --init-order <empty work dir>   the theme and the page given before main
 //                                                   by tools/test_overlay_early.cpp, kept
 //                                                   through overlay_init and the menu's first
@@ -77,6 +83,7 @@
 #undef main
 #include "hw/si.cpp"
 #include "ffb.h"
+#include "gx/gx.h"
 #include "gx/render.h"
 #include "test_ports_support.h"
 
@@ -111,7 +118,16 @@ void fatal(const char* fmt, ...) {
 static std::atomic<int> g_relaunching{0};  // how many times session_relaunching has been called
 void session_relaunching() { g_relaunching++; }
 static std::atomic<uint64_t> g_host_ns{0};  // the host clock, which a check moves by hand
-uint64_t host_ns() { return g_host_ns; }
+// Set, the steady clock's ns when the host clock began to run on from g_host_ns with it.
+static std::atomic<int64_t> g_host_steady_at{0};
+static int64_t steady_ns() {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
+uint64_t host_ns() {
+    const int64_t at = g_host_steady_at;
+    return at ? g_host_ns + (uint64_t)(steady_ns() - at) : g_host_ns.load();
+}
 void clock_hold(uint64_t) {}
 // Set, the end of a movie resets the console on another thread first, as a game may while
 // end_run runs, and gives that reset time to act.
@@ -122,6 +138,8 @@ void finish() {
     std::thread(guest_reset, 0u, 0u).detach();
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
 }
+bool active() { return false; }
+void frame(unsigned, int, int) {}
 }
 void threads_request_quit() {}
 bool g_fast_disc = true;
@@ -130,13 +148,18 @@ uint64_t audio_frames_out() { return 0; }
 void exi_card_held(uint64_t) {}
 void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display page's picture
 // The menu's dumps (--pages). No frame is kept here, so a dump has only GCN_OVERLAY_PLAIN's grey
-// to draw the menu over.
+// to draw the menu over. g_kept has the held frame's redraw say it drew one, for the frontend's
+// loop (test_ports_held.cpp).
+static bool g_kept;
 namespace gx {
 const char* g_dump_dir;
 bool g_dump_output;
-bool render_present_last() { return false; }
+bool render_present_last() { return g_kept; }
 void render_overlay_blur(bool, float) {}
 void render_set_output_fbo(unsigned) {}
+StallTimer::StallTimer(Stall st) : s(st), t0(0) {}
+StallTimer::~StallTimer() {}
+Batch::~Batch() {}
 }
 #endif
 
@@ -163,6 +186,7 @@ void render_set_output_fbo(unsigned) {}
 #include "test_ports_sounds.cpp"          // the menu's sounds as it raises them
 #include "test_ports_pages.cpp"           // each page dumped over a GL window, and its frame time
 #include "test_ports_pages_toasts.cpp"    // the notices dumped over the same window, and their cost
+#include "test_ports_held.cpp"            // the frontend's held redraw over a GL window, and its interval
 #include "test_ports_init_order.cpp"      // a theme and a page given before main, kept
 #endif
 #include "test_ports_replay.cpp"  // --record and the replays
