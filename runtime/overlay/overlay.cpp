@@ -100,13 +100,29 @@ void end_view() {
 // drew with it: 12 to 15 ms of CPU in a process that hadn't compiled it before, where the next
 // context's first frame took under 1 ms. So the renderer makes them here and draws once, into the
 // window's framebuffer as overlay_draw does, a triangle with no area and no alpha, which touches
-// no pixel. It takes no texture and lays out no frame. The renderer puts back the GL state it
-// sets but the framebuffer, which this puts back.
+// no pixel. It samples a 1x1 RGBA texture of its own, as a frame samples the atlas's, since with
+// none bound macOS's GL logs the unit as unloadable. It lays out no frame. The renderer puts back
+// the GL state it sets but the framebuffer and the texture this binds, which this puts back. If
+// the program can't be made, nothing is drawn, and the first frame tries again
+// (ImGui_ImplOpenGL3_NewFrame).
 void renderer_warm() {
-    ImGui_ImplOpenGL3_CreateDeviceObjects();
+    if (!ImGui_ImplOpenGL3_CreateDeviceObjects()) {
+        fprintf(stderr, "[overlay] the GL renderer couldn't make its shader program at init\n");
+        return;
+    }
+    GLint bound = 0;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &bound);
+    GLuint tex = 0;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glBindTexture(GL_TEXTURE_2D, (GLuint)bound);
     ImDrawList list(ImGui::GetDrawListSharedData());
     list._ResetForNewFrame();
     list.PushClipRect(ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+    list.PushTexture(ImTextureRef((ImTextureID)(intptr_t)tex));
     list.PrimReserve(3, 3);
     for (int i = 0; i < 3; i++) {
         list.PrimWriteVtx(ImVec2(0.0f, 0.0f), ImVec2(0.0f, 0.0f), 0);
@@ -124,6 +140,7 @@ void renderer_warm() {
     ImGui_ImplOpenGL3_RenderDrawData(&data);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)draw);
     glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)read);
+    glDeleteTextures(1, &tex);
 }
 
 // GCN_OVERLAY_AT's frame has been presented, so overlay_draw opens the menu.
