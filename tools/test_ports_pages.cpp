@@ -2,8 +2,9 @@
 // GCN_OVERLAY_PAGE opens it on each page in turn, and --dump-output writes each page once its
 // frame has settled, over GCN_OVERLAY_PLAIN's grey, since no game frame is kept here. Each
 // page's menu frame time, overlay_draw's on the CPU, is printed. At 16:9 GCN_FRAMETIME is set, and
-// each page's `[overlay] frame` lines are checked against the test's own timing of overlay_draw;
-// at 4:3 it's unset, and there are none. After every page, the Buttons
+// each page's `[overlay] frame` lines are checked against the test's own timing of overlay_draw,
+// and each page's first menu frame, the process's first too, is held to 1.5 ms of CPU; at 4:3
+// it's unset, and there are none. After every page, the Buttons
 // view is dumped at each size too, as it opens and at its foot. The PNGs are for a person to
 // look at, never goldens. With a GL window here, it also checks that overlay_draw's frames end
 // a view the menu closed from once the fade is over. With no GL window, as on a machine with no
@@ -118,7 +119,8 @@ struct PageRun {
     bool notices_on_atlas = false;  // the notices' context was on it and last drew with its texture
     bool atlas_each_draw = true;  // the atlas's own update came once at each overlay_draw (fonts_new_frame)
     bool let_go = false;     // Display, picked after the dump, was still selected near the end
-    double first_ms = -1;    // overlay_draw on the CPU as it first drew, making its GL objects
+    double init_ms = 0;      // overlay_init on the CPU, which makes the GL renderers' objects
+    double first_ms = -1;    // overlay_draw on the CPU as it first drew, making the atlas's texture
     std::vector<double> ms;  // the same for each frame after that but the dump's, the backdrop's alone too
     // Each overlay_draw that laid out the menu: its frame, when it started, and its time on the CPU.
     struct Drawn {
@@ -144,6 +146,10 @@ std::vector<FrameLine> frame_lines(const std::string& said) {
     }
     return out;
 }
+
+// "Smooth while animating"'s bar for the menu's CPU time a frame at 1920x1080, which the first
+// frame of an open is held to too: overlay_init has made the GL renderers' objects (overlay.cpp).
+constexpr double kFrameBarMs = 1.5;
 
 // How far the line's timing may be from the test's own around overlay_draw: the two clocks are
 // read a few instructions apart, unless the thread is put off the CPU between them.
@@ -196,12 +202,14 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
     OverlayPicture picture;
     picture.path = out + "/settings.txt";
     picture.apply = record_apply;
+    PageRun run;
+    const auto init_at = std::chrono::steady_clock::now();
     overlay_init(window, "Test title", picture);
+    run.init_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - init_at).count();
     unsetenv("GCN_OVERLAY_PAGE");
     unsetenv("GCN_OVERLAY_PLAIN");
     unsetenv("GCN_OVERLAY_AT");
     const std::string png = out + "/overlay_page" + std::to_string(expect) + ".png";
-    PageRun run;
     Guest guest;
     for (int f = 0; f < held + 5; f++) {
         pump_events();
@@ -435,6 +443,7 @@ int run_pages(const std::string& dir) {
         bool each_draw = true;
         // GCN_FRAMETIME at the first size, read as each open_on inits the overlay, and not at the second.
         const bool timed = size.w == kSizes[0].w;
+        bool first_in_bar = true;
         for (int page = 0; page < 3; page++) {
             const std::string said = out + "/page" + std::to_string(page) + "-stderr.txt";
             PageRun run;
@@ -450,6 +459,7 @@ int run_pages(const std::string& dir) {
                       (at + ": GCN_FRAMETIME=1 prints an [overlay] frame line for each frame overlay_draw lays out "
                             "the menu in, with the interval from the last one's start and its CPU time")
                           .c_str());
+                first_in_bar = first_in_bar && run.first_ms >= 0 && run.first_ms <= kFrameBarMs;
                 std::vector<double> cpu, interval;
                 for (size_t i = 0; i < lines.size() && i < run.drawn.size(); i++) {
                     if (run.drawn[i].f == run.dumped_at) continue;  // a game draws no dump
@@ -473,10 +483,16 @@ int run_pages(const std::string& dir) {
                   (at + " is dumped at the window's size, its backdrop over GCN_OVERLAY_PLAIN's grey").c_str());
             check(run.first_drawn >= 0 && run.dumped_at > run.first_drawn + 1 && lines_with(said, "settled") == 0,
                   (at + " is dumped once its frame has settled, not at its first drawn frame").c_str());
-            printf("[pages] %s: menu frame first %.3f ms, then p50 %.3f ms, p99 %.3f ms, max %.3f ms over %zu frames\n",
-                   at.c_str(), run.first_ms, percentile(run.ms, 0.5), percentile(run.ms, 0.99), percentile(run.ms, 1.0),
-                   run.ms.size());
+            printf("[pages] %s: overlay_init %.3f ms; menu frame first %.3f ms, then p50 %.3f ms, p99 %.3f ms, max %.3f ms "
+                   "over %zu frames\n",
+                   at.c_str(), run.init_ms, run.first_ms, percentile(run.ms, 0.5), percentile(run.ms, 0.99),
+                   percentile(run.ms, 1.0), run.ms.size());
         }
+        if (timed)
+            check(first_in_bar, (std::to_string(pw) + "x" + std::to_string(ph) +
+                                 ": each page's first menu frame, the process's first open's too, takes 1.5 ms or "
+                                 "less of overlay_draw's CPU")
+                                    .c_str());
         check(each_draw, (std::to_string(pw) + "x" + std::to_string(ph) +
                           ": the shared atlas has its own update once at each overlay_draw, which no context makes")
                              .c_str());

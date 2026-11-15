@@ -94,7 +94,7 @@ void toasts_review(SDL_Window* window, const std::string& out, const std::string
           (at + ": with the menu closed, no notice lays out no frame of notices, two showing one a host frame, and "
                 "neither a frame of the menu")
               .c_str());
-    const std::vector<double> after(two.begin() + 1, two.end());  // past the first, which makes GL objects
+    const std::vector<double> after(two.begin() + 1, two.end());  // past the first, which makes the atlas's texture
     printf("[pages] %s toasts, menu closed: none, %ld notice frames, overlay_draw p50 %.3f ms, p99 %.3f ms; two "
            "showing, %ld notice frames, first %.3f ms, then p50 %.3f ms, p99 %.3f ms, max %.3f ms; over %d frames, "
            "%ld menu frames\n",

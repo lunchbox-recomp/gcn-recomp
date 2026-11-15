@@ -735,7 +735,12 @@ Each frame the overlay draws its menu in, open or fading out, gets an `[overlay]
 interval runs from the start of the last frame it drew the menu in to the start of this one, and
 cpu is what `overlay_draw` took, notices and any `--dump-output` dump with it. The first frame
 after it opens has an interval of 0. While the guest is held, the interval is the paused redraw
-interval. With the menu closed there's no line. `GCN_XFSTATS=1` prints, per frame over every 64, what the vertex transform was asked
+interval. With the menu closed there's no line. The menu's and the notices' GL renderers make
+their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
+or alpha, because macOS's GL compiles a program as it first draws with it. In `test_ports
+--pages` at 1920x1080 that compile put 12 to 15 ms of CPU on the process's first menu frame, and
+now lands in `overlay_init`, before the game's first frame.
+`GCN_XFSTATS=1` prints, per frame over every 64, what the vertex transform was asked
 for: vertices, how many carried a normal, how many had a lit colour or alpha channel,
 light evaluations, texgens, and the texgens with a post matrix or an emboss -- which is
 what decides where the transform's time goes. `GCN_APPLYSTATS=1` prints every 64th frame, per pass, how

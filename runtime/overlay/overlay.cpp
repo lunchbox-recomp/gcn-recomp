@@ -10,6 +10,7 @@
 #include "overlay/ring.h"
 #include "overlay/state.h"
 #include "overlay/tabs.h"
+#include "gx/gl.h"
 #include "gx/render_gl.h"
 #include "pause.h"
 #include "runtime.h"  // host_ns
@@ -90,6 +91,37 @@ void end_view() {
     footer_end_ask();
     controllers_stop();
     bindings_stop();
+}
+
+// The current context's GL renderer made ready for its first frame, which would otherwise make
+// its shader program and buffers as it began and, in macOS's GL, compile the program as it first
+// drew with it: 12 to 15 ms of CPU in a process that hadn't compiled it before, where the next
+// context's first frame took under 1 ms. So the renderer makes them here and draws once, into the
+// window's framebuffer as overlay_draw does, a triangle with no area and no alpha, which touches
+// no pixel. It takes no texture and lays out no frame. The renderer puts back the GL state it
+// sets but the framebuffer, which this puts back.
+void renderer_warm() {
+    ImGui_ImplOpenGL3_CreateDeviceObjects();
+    ImDrawList list(ImGui::GetDrawListSharedData());
+    list._ResetForNewFrame();
+    list.PushClipRect(ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+    list.PrimReserve(3, 3);
+    for (int i = 0; i < 3; i++) {
+        list.PrimWriteVtx(ImVec2(0.0f, 0.0f), ImVec2(0.0f, 0.0f), 0);
+        list.PrimWriteIdx((ImDrawIdx)i);
+    }
+    ImDrawData data;
+    data.Valid = true;
+    data.DisplaySize = ImVec2(1.0f, 1.0f);
+    data.FramebufferScale = ImVec2(1.0f, 1.0f);
+    data.AddDrawList(&list);
+    GLint draw = 0, read = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    ImGui_ImplOpenGL3_RenderDrawData(&data);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)draw);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)read);
 }
 
 // GCN_OVERLAY_AT's frame has been presented, so overlay_draw opens the menu.
@@ -221,6 +253,7 @@ void overlay_imgui_context(SDL_Window* window, bool gl) {
     if (gl) {
         ImGui_ImplSDL3_InitForOpenGL(window, SDL_GL_GetCurrentContext());
         ImGui_ImplOpenGL3_Init();
+        renderer_warm();
     } else {
         // Nothing draws it, so the texture its font is baked into is never made.
         ImGui_ImplSDL3_InitForOther(window);
