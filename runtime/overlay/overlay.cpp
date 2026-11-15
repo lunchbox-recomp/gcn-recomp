@@ -63,7 +63,10 @@ void overlay_style_fit(SDL_Window* window);
 
 namespace {
 
-bool g_ready, g_open;
+// Read by overlay_set_theme and overlay_add_page, which a game may call from a static
+// initializer before this file's, so constinit: a dynamic initializer here won't compile.
+constinit bool g_ready;
+bool g_open;
 bool g_view_left;  // it closed from a view in place of a page, drawn as it fades (overlay_set_open)
 SDL_Window* g_window;  // null in tests, which draw nothing
 bool g_gl;             // the window has a GL context to draw the menu with, which tests' don't

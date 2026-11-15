@@ -10,9 +10,11 @@ constexpr int kQueue = 16;   // ids waiting for the next pull
 constexpr int kVoices = 8;   // voices playing at once
 constexpr int kChunk = 512;  // samples the mix sums at a time
 
-// What the main thread made and the audio thread reads once an id is queued.
-UiSoundTheme g_theme;
-bool g_made;
+// What the main thread made and the audio thread reads once an id is queued. A game may set the
+// theme from a static initializer before this file's, so it and g_made are constinit: a dynamic
+// initializer here won't compile.
+constinit UiSoundTheme g_theme;
+constinit bool g_made;
 std::vector<int16_t> g_voices[kUiSounds];
 std::atomic<bool> g_on{false};
 

@@ -37,10 +37,10 @@ struct AddedPage {
     void* user;
 };
 // A game adds its pages from a static initializer in its SOURCES, which may run before this
-// file's. So the added pages are constant-initialized, and every page's title, in order, is
+// file's. So the added pages are constinit, and every page's title, in order, is
 // function-local: built at namespace scope, it would be built again over the game's titles
 // (vr_config.cpp's hooks()).
-std::vector<AddedPage> g_pages;
+constinit std::vector<AddedPage> g_pages;
 constexpr const char* kOwnPages[] = {"Display", "Controllers"};
 std::vector<std::string>& titles() {
     static std::vector<std::string> t(std::begin(kOwnPages), std::end(kOwnPages));

@@ -30,12 +30,14 @@ struct Notice {
     Tween slot;      // its place in the stack, 0 the lowest (toasts.h)
     bool over;       // queued over another, so it rises no further than the gap (toasts.h)
 };
-std::vector<Notice> g_notices;
+// A notice may be queued from a static initializer before this file's, and expire() reads
+// g_motion, so both are constinit: a dynamic initializer here won't compile.
+constinit std::vector<Notice> g_notices;
 ImGuiContext* g_context;  // their own, null with no window
 SDL_Window* g_window;     // the one they show over
 bool g_gl;                // drawn, not only laid out
 long g_frames;            // frames they've been laid out in
-bool g_motion = true;
+constinit bool g_motion = true;
 int g_review;             // GCN_OVERLAY_TOASTS's count, 0 for none or once they're dumped
 bool g_plain;             // GCN_OVERLAY_PLAIN: dumped over plain grey, not the held frame
 ReviewWatch g_watch;      // their frame settling for the dump
