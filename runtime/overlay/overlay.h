@@ -214,8 +214,9 @@ void overlay_gate(int port, PadState& p);
 void overlay_draw();
 // What the frontend did ahead of the next overlay_draw, for its `[overlay] frame` line, in ms:
 // how late the loop's last wait ended (main.cpp's next_batch), and the time from the wait's end
-// to the blurred backdrop, the frame's draw in it, and the backdrop's. The line's interval
-// carries them, as it's stamped as overlay_draw starts. A draw that follows none gets zeros.
+// to the blurred backdrop, the frame's draw in it with the wait for the gamepads' lock the
+// frontend takes while the menu is due, and the backdrop's. The line's interval carries them, as
+// it's stamped as overlay_draw starts. A draw that follows none gets zeros.
 struct OverlayFramePre {
     double late_ms = 0, present_ms = 0, blur_ms = 0;
 };

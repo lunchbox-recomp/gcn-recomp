@@ -753,7 +753,8 @@ hold, has 0. A held wait
 that began after its deadline, as when the frame before took longer than the period, counts that
 time too. present is the time from the wait's end to the blurred backdrop, which is the frame's
 draw (`render_execute` for a frame that came, `render_present_last` for the held one drawn
-again), and blur is the backdrop's. The paused redraw interval is read
+again) with the wait for the gamepads' lock, which `show_frame` takes while the menu is due, and
+blur is the backdrop's. The paused redraw interval is read
 from the `held 1` lines alone, since a fade out and the frames before the hold lands are paced
 by the guest. With the menu closed there's no line. The menu's and the notices' GL renderers make
 their shader programs and buffers in `overlay_init` and draw once there, a triangle with no area
@@ -905,8 +906,9 @@ timed with GL queries over a made-up frame, it adds 0.03 ms of GPU time to each 
 1920x1080 and 0.035 to 0.09 ms at 3840x2160, and making it costs 0.06 ms and 0.11 ms once a hold.
 
 Its two targets, 3.3 MB at 3414x1920 and 4 MB at 3840x2160, are made in `overlay_init`
-(`render_overlay_blur_warm`) and kept until `render_keep_last(false)`, so a hold sizes them only
-after a resize. The warm-up draws with the blur program twice, with the blend off into a target as
+(`render_overlay_blur_warm`) and kept until `render_keep_last(false)`. The desktop frontend never
+calls that, so they're kept for the process. A hold sizes them only after a resize. The warm-up
+draws with the blur program twice, with the blend off into a target as
 the passes do and on over the output as the backdrop does, at alpha 0 over one pixel, which leaves
 it as it was. macOS's GL compiles a program for each as it first draws with it. `bench_blur W H
 [warm]` times a hold's first frame against its later ones on this machine's GL in a hidden window,
@@ -914,7 +916,8 @@ in a fresh process each run. At 3414x1920 on an M4 Max, without the warm-up the 
 hold took 0.44 to 1.56 ms of CPU in `render_overlay_blur`, and 1.0 to 5.0 ms more to `glFinish`.
 With it, 0.056 to 0.075 ms and 0.29 to 0.53 ms, against 0.04 to 0.09 ms for a later hold's. The
 warm-up takes 0.5 to 1.4 ms in `overlay_init`. With only the blend-off draw it left 0.18 to 0.54
-ms on the first hold.
+ms on the first hold. The warm-up runs under `--eye` too, which never blurs, since
+`overlay_init` doesn't know the mode.
 
 `test_ports --pages <dir>` (the `test_overlay_pages` test in `ninja unit`, its one runner) dumps
 each page that way over a hidden window at 1920x1080 and 1440x1080 with no game. The PNGs land in

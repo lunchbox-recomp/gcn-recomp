@@ -77,7 +77,8 @@ bool render_present_last();
 // held frame, and the --eye path, which draws the window from its own target, goes without.
 void render_overlay_blur(bool hold, float alpha);
 // The blur made ready for a hold's first frame, for a window `win_w` by `win_h` pixels: its targets
-// made at a quarter of that, kept from here until render_keep_last(false), and a draw with its
+// made at a quarter of that, kept from here until render_keep_last(false), which the desktop
+// frontend never calls, so for the process, and a draw with its
 // program as each of its draws is made, with the blend off into a target and on over the output,
 // since macOS's GL compiles a program for each as it first draws with it. The draw over the output
 // is at alpha 0 over one pixel, which leaves it as it was. The overlay calls it at overlay_init.

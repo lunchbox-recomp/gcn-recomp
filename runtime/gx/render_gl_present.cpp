@@ -251,8 +251,9 @@ void present(const EfbCopyCmd& c) {
 // The menu's blurred backdrop (render_overlay_blur): two targets a quarter of the window's size,
 // the blur ending in the first, and what it was made at, so a new hold, a resize, a new output
 // aspect or a frame presented after the hold began makes it again. 4 MB of targets at 3840x2160,
-// made at the warm-up (render_overlay_blur_warm) and kept until render_keep_last(false), so a
-// hold's first frame allocates none. g_blur_tex_w by g_blur_tex_h is the size they were given.
+// made at the warm-up (render_overlay_blur_warm) and kept until render_keep_last(false), which
+// the desktop frontend never calls, so they're kept for the process and a hold's first frame
+// allocates none. g_blur_tex_w by g_blur_tex_h is the size they were given.
 static GLuint g_blur_tex[2], g_blur_fbo[2];
 static int g_blur_tex_w, g_blur_tex_h;
 static int g_blur_win_w, g_blur_win_h;
