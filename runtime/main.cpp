@@ -333,13 +333,16 @@ static void open_controllers(const char* controls) {
 // How long the loop waits for the guest's next batch while it runs, in ms.
 static constexpr int kRunWaitMs = 4;
 
-// A frame of the display the window is on, or of a 60 Hz one where SDL doesn't know the display's
-// rate or it's faster: the guest's frames come at 60 Hz, so a held one drawn again more often
-// shows nothing new.
-static std::chrono::nanoseconds display_frame(SDL_Window* win) {
-    const double hz = display_hz(win);
-    return std::chrono::nanoseconds(std::llround(1e9 / (hz > 0.0 && hz < 60.0 ? hz : 60.0)));
+// A frame of a display at `hz`, or of a 60 Hz one where it's faster or below 23 Hz: the guest's
+// frames come at 60 Hz, so a held one drawn again more often shows nothing new, and a rate below
+// film's is taken for one SDL doesn't know. Windows says 1 Hz for the hardware's default, and SDL
+// passes it on.
+static std::chrono::nanoseconds frame_at_hz(double hz) {
+    return std::chrono::nanoseconds(std::llround(1e9 / (hz >= 23.0 && hz < 60.0 ? hz : 60.0)));
 }
+
+// A frame of the display the window is on (frame_at_hz).
+static std::chrono::nanoseconds display_frame(SDL_Window* win) { return frame_at_hz(display_hz(win)); }
 
 // While the guest is held (pause.h) no batch comes, and the held frame is drawn again a display
 // frame after the loop's last wait ended, or half of one while the overlay's menu or a notice is
