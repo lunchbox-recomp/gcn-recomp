@@ -2,7 +2,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches-ignore: ['topic/**', 'pr/**']
+    branches: [dragoon]
 permissions:
   contents: read
 jobs:
