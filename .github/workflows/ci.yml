@@ -2,11 +2,13 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [dragoon]
 permissions:
   contents: read
 jobs:
   unit:
+    # A branch's commits run once, through its pull request. Pushes run only on the
+    # branch the repo variable CI_PUSH_BRANCH names, where pull requests land.
+    if: github.event_name == 'pull_request' || github.ref_name == vars.CI_PUSH_BRANCH
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
