@@ -22,7 +22,7 @@ function(_gcn_dead_strip target)
 endfunction()
 
 # A benchmark on this machine's GL in a hidden window, with no disc or game: tools/NAME.cpp,
-# which reads tools/gl_bench.h, and the sources after NAME. gcn_add_game() calls it, and it reads
+# which reads tools/gl_tool.h, and the sources after NAME. gcn_add_game() calls it, and it reads
 # that function's variables. Not a check: it measures, and `ninja unit` leaves it out.
 function(_gcn_add_gl_bench name)
   add_executable(${name} EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/${name}.cpp ${ARGN})

@@ -12,7 +12,7 @@
 // carries (main.cpp's show_frame stamps the menu's frame after it), and the time to glFinish
 // after it beside it. The process's first hold is the one a game's first menu open has: run it
 // as a fresh process each time.
-#include "gl_bench.h"
+#include "gl_tool.h"
 #include "runtime.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
@@ -23,7 +23,7 @@
 #include <cstdlib>
 #include <cstring>
 
-// What the renderer reaches of the rest of the runtime beyond gl_bench.h's.
+// What the renderer reaches of the rest of the runtime beyond gl_tool.h's.
 uint32_t vi_display_height() { return 0; }  // each display copy a whole frame
 namespace gx {
 static float g_aspect = 4.0f / 3.0f;  // xf.cpp's, which would bring the whole front end

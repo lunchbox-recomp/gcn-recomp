@@ -89,7 +89,7 @@
 #include "gx/gx.h"
 #include "gx/render.h"
 #include "test_ports_support.h"
-#include "gl_bench.h"  // fatal, and the GL window of --pages and --held
+#include "gl_tool.h"  // fatal, and the GL window of --pages and --held
 
 static float g_output_aspect;  // what the frontend last gave the renderer, 0 before any
 static int g_internal_scale;

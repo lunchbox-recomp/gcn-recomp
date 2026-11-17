@@ -12,7 +12,7 @@
 //
 // A load prints the renderer's own `[shaders] ... in N ms` line, the time the two are compared
 // by, and the splash its `[splash]` line. The cache is rewritten by each load, as a run does.
-#include "gl_bench.h"
+#include "gl_tool.h"
 #include "splash.h"
 #include "banner.h"
 #include "runtime.h"
