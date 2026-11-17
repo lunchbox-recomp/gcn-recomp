@@ -1,7 +1,6 @@
 // The notices over the game about controllers (overlay.h).
 #include "overlay/overlay.h"
 #include "overlay/fonts.h"
-#include "overlay/notices.h"
 #include "overlay/review.h"
 #include "overlay/state.h"
 #include "overlay/theme.h"

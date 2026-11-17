@@ -10,7 +10,7 @@
 // tools/test_ports.cpp after the frontend, with GCN_OVERLAY.
 #include "test_ports_support.h"
 #include "overlay/footer.h"
-#include "overlay/overlay_display.h"  // display_init, which the Display page's checks call again
+#include "overlay/state.h"  // display_init, which the Display page's checks call again
 
 namespace {
 

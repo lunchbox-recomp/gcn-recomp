@@ -2,9 +2,6 @@
 // what it holds back from the game.
 #include "overlay/overlay.h"
 #include "overlay/footer.h"
-#include "overlay/overlay_bindings.h"
-#include "overlay/overlay_controllers.h"
-#include "overlay/overlay_input.h"
 #include "overlay/state.h"
 #include "gamepads.h"
 #include "input_map.h"

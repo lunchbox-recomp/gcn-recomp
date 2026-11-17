@@ -1,9 +1,7 @@
 // The overlay's Controllers page: each player's controllers, the press-A order, swaps and
 // removals (overlay.h).
 #include "overlay/overlay.h"
-#include "overlay/overlay_bindings.h"
-#include "overlay/overlay_controllers.h"
-#include "overlay/overlay_input.h"
+#include "overlay/state.h"
 #include "gamepads.h"
 #include "input_map.h"
 #include "ui_sound.h"

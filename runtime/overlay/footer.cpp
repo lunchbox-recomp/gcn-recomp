@@ -3,8 +3,6 @@
 #include "overlay/fonts.h"
 #include "overlay/glyph.h"
 #include "overlay/overlay.h"
-#include "overlay/overlay_bindings.h"
-#include "overlay/overlay_input.h"
 #include "overlay/state.h"
 #include "overlay/theme.h"
 #include "frontend.h"

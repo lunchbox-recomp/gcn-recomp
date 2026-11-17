@@ -1,7 +1,7 @@
 // The overlay's Display page: the aspect, fullscreen, the menu's sounds and the internal scale
 // (overlay.h).
 #include "overlay/overlay.h"
-#include "overlay/overlay_display.h"
+#include "overlay/state.h"
 #include "gx/render_gl.h"
 #include "ui_sound.h"
 #include <SDL3/SDL.h>
