@@ -145,7 +145,7 @@ void contrasts(const OverlayTheme& t) {
     char said[160];
     snprintf(said, sizeof(said), "the confirm's text, the panel's colour, on danger is %.2f:1, at least 4.5:1", confirm);
     check(confirm >= 4.5, said);
-    for (const auto& ring : {std::pair<const char*, uint32_t>{"the focus ring", t.accent}, {"its pulse", t.accent_light}}) {
+    for (const auto& ring : {std::pair<const char*, uint32_t>{"the focus ring", t.accent}, {"a held slider's grab", t.accent_light}}) {
         const double r = worst(t, ring.second, 0);
         char what[160];
         snprintf(what, sizeof(what), "%s on the panel is %.2f:1, at least 3:1", ring.first, r);
