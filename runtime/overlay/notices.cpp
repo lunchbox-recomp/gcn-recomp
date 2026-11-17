@@ -179,15 +179,6 @@ bool notices_moving(uint64_t now) {
     });
 }
 
-std::vector<std::string> overlay_notices() {
-    expire(host_ns());
-    std::vector<std::string> out;
-    for (const Notice& n : queued()) out.push_back(n.text);
-    return out;
-}
-
-long overlay_notice_frames() { return g_frames; }
-
 // overlay.cpp's, before the menu's context is made. The game's cursor is left as it is, and so
 // is the mouse's capture: this context gets no events, so its backend would let go of the one
 // the menu's took, at each frame of notices.
@@ -256,4 +247,13 @@ void notices_test_end() {
 ImGuiContext* overlay_test_notices_context() { return g_context; }
 
 const std::vector<OverlayTestToast>& overlay_test_toasts() { return g_laid; }
+
+std::vector<std::string> overlay_notices() {
+    expire(host_ns());
+    std::vector<std::string> out;
+    for (const Notice& n : queued()) out.push_back(n.text);
+    return out;
+}
+
+long overlay_notice_frames() { return g_frames; }
 #endif

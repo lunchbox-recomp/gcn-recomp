@@ -256,8 +256,8 @@ const char* overlay_bindings_cancel() {
     if (SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_BACK)) return "Back";
     return SDL_GamepadHasButton(g, SDL_GAMEPAD_BUTTON_GUIDE) ? "Guide" : nullptr;
 }
-const std::string& overlay_bindings_said() { return g_said; }
 #ifdef GCN_OVERLAY_TEST
+const std::string& overlay_bindings_said() { return g_said; }
 const std::vector<OverlayGlyph>& overlay_bindings_test_glyphs() { return g_glyphs; }
 float overlay_bindings_test_glyph_height() { return g_glyph_height; }
 void overlay_bindings_test_last_row(float rect[4]) {

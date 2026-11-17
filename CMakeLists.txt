@@ -1070,12 +1070,14 @@ function(gcn_add_game)
 
     # The menu's sounds checks (tools/test_ui_sound.cpp): each voice as it's made, the queue and
     # the mix, and audio.cpp's GCN_WAV recording left without them, in a work dir. Needs no disc
-    # image, device or SDL. macOS and Linux.
+    # image, device or SDL. macOS and Linux. GCN_OVERLAY_TEST builds in the queue's and the mix's
+    # counts it reads (ui_sound.h).
     add_executable(test_ui_sound EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_ui_sound.cpp ${RT}/ui_sound.cpp ${RT}/ui_sound_synth.cpp)
     _gcn_set_standards(test_ui_sound)
     target_include_directories(test_ui_sound PRIVATE ${RT})
     target_link_libraries(test_ui_sound PRIVATE Threads::Threads)
     target_compile_options(test_ui_sound PRIVATE ${GCN_RUNTIME_WARNINGS})
+    target_compile_definitions(test_ui_sound PRIVATE GCN_OVERLAY_TEST)
 
     # The port memory checks (tools/test_port_memory.cpp): which port each gamepad gets from
     # what ports.txt remembers, and loading and saving that file in a work dir. Needs no

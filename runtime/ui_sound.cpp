@@ -30,7 +30,9 @@ struct Playing {
 };
 Playing g_playing[kVoices];
 int g_count;
-std::atomic<int> g_count_seen{0};
+#ifdef GCN_OVERLAY_TEST
+std::atomic<int> g_count_seen{0};  // g_count as the last mix left it, for ui_sound_playing
+#endif
 
 }  // namespace
 
@@ -85,16 +87,18 @@ void ui_sound_mix(int16_t* out, int frames) {
         }
         for (size_t i = 0; i < len; i++) out[from + i] = (int16_t)std::clamp(sum[i], -32768, 32767);
     }
+#ifdef GCN_OVERLAY_TEST
     g_count_seen.store(g_count, std::memory_order_relaxed);
+#endif
 }
 
+#ifdef GCN_OVERLAY_TEST
 size_t ui_sound_queued() {
     return g_head.load(std::memory_order_acquire) - g_tail.load(std::memory_order_acquire);
 }
 
 int ui_sound_playing() { return g_count_seen.load(std::memory_order_relaxed); }
 
-#ifdef GCN_OVERLAY_TEST
 std::vector<UiSound> ui_sound_take() {
     std::vector<UiSound> ids;
     const uint32_t head = g_head.load(std::memory_order_acquire);

@@ -237,9 +237,6 @@ void overlay_display_change(const Settings& next);
 // A notice about a controller (notices.cpp), `name` then `what` happened to it, and its
 // `[pads]` line.
 void overlay_pads_notice(const std::string& name, const std::string& what);
-// The notices still showing, oldest first, and how many frames have shown them. For the tests.
-std::vector<std::string> overlay_notices();
-long overlay_notice_frames();
 // How many frames have laid out the menu. For the tests.
 long overlay_menu_frames();
 // What the Controllers page's Set player order does. For the tests.
@@ -258,9 +255,12 @@ bool overlay_bindings_listening();
 // with no Back, or null while it isn't listening and on one with neither, as a GameCube pad on
 // Nintendo's adapter, each of whose buttons is the binding's.
 const char* overlay_bindings_cancel();
-// What the view says the last change did. For the tests.
-const std::string& overlay_bindings_said();
 #ifdef GCN_OVERLAY_TEST
+// The notices still showing, oldest first, and how many frames have shown them.
+std::vector<std::string> overlay_notices();
+long overlay_notice_frames();
+// What the Buttons view says the last change did.
+const std::string& overlay_bindings_said();
 // The glyphs the view's rows last drew (overlay/glyph.h), one for each row bound to a button or
 // a trigger, in the rows' order. Sticks' rows are named in words and have none.
 struct OverlayGlyph;
