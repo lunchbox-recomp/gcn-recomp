@@ -744,7 +744,7 @@ one, and is 0 on the first frame after one without the menu. cpu is what `overla
 the steady clock, the notices and any `--dump-output` dump with it, but not the blurred backdrop
 (`render_overlay_blur`), which the frontend draws before it. It's on the steady clock rather than
 the thread's CPU clock so that a frame the driver blocks or the system holds off the CPU shows
-the time it really cost. The last three are what came before the frame on the frontend's loop,
+the time it really cost. The last five are what came before the frame on the frontend's loop,
 which the interval carries, as it's stamped as `overlay_draw` starts. late is how far past its
 deadline the loop's last wait for a frame ended (`next_batch` in `main.cpp`). A held wait's
 deadline is the held period after the wait before it ended. A wait with the guest running that
