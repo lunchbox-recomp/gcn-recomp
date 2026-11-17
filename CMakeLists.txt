@@ -618,8 +618,9 @@ function(gcn_add_game)
   # The renderer, a file per job; runtime/gx/render_gl_internal.h is what they share.
   set(RENDER_GL_SOURCES ${RT}/gx/render_gl.cpp ${RT}/gx/render_gl_batch.cpp ${RT}/gx/render_gl_copy.cpp
     ${RT}/gx/render_gl_eye.cpp ${RT}/gx/render_gl_filter.cpp ${RT}/gx/render_gl_passes.cpp
-    ${RT}/gx/render_gl_present.cpp ${RT}/gx/render_gl_programs.cpp ${RT}/gx/render_gl_state.cpp
-    ${RT}/gx/render_gl_textures.cpp ${RT}/gx/render_gl_view.cpp ${RT}/gx/clear_draw.cpp)
+    ${RT}/gx/render_gl_present.cpp ${RT}/gx/render_gl_blur.cpp ${RT}/gx/render_gl_programs.cpp
+    ${RT}/gx/render_gl_state.cpp ${RT}/gx/render_gl_textures.cpp ${RT}/gx/render_gl_view.cpp
+    ${RT}/gx/clear_draw.cpp)
   # Everything below the renderer and the SDL frontend -- the CPU, OS, hardware and GX
   # front end, including the batch queue in gx/batch_queue.cpp -- is free of both GL and SDL.
   set(CORE_SOURCES ${RUNTIME_SOURCES})

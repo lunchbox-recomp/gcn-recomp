@@ -902,7 +902,7 @@ before the movie tap, so a `GCN_WAV` recording never holds one and a `--record` 
 by default.
 
 With the theme's `blur_backdrop` on, the default, the GL present path blurs the held frame
-behind the backdrop (`render_overlay_blur` in `runtime/gx/render_gl_present.cpp`). It fits the
+behind the backdrop (`render_overlay_blur` in `runtime/gx/render_gl_blur.cpp`). It fits the
 frame into a target a quarter of the window's size and runs two Kawase passes over it, once when
 the hold starts and again only when the window's size or the output aspect changes, or when a
 frame the front end had queued presents during the hold. The blur crossfades in from the sharp

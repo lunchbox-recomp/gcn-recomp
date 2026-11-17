@@ -191,6 +191,16 @@ extern const char* g_dump_suffix;
 extern GLuint g_output_fbo;
 void xfbs_free();
 void present(const EfbCopyCmd& c);
+// The window's size (render_set_window_size), and the frame kept for a redraw: its texture and
+// that texture's size, the rect of it shown, the internal scale it was kept at, and whether one is.
+extern int g_win_w, g_win_h;
+extern GLuint g_last_tex;
+extern uint32_t g_last_tex_w, g_last_tex_h, g_last_rect[4];
+extern int g_last_scale;
+extern bool g_have_last;
+
+// render_gl_blur.cpp: the menu's blurred backdrop. Its targets freed (render_keep_last(false)).
+void blur_free();
 
 // render_gl_view.cpp: where an eye looks from.
 extern bool g_vr_active;

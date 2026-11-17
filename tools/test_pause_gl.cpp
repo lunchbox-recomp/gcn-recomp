@@ -1,6 +1,7 @@
 // The paused redraw's checks, which tools/test_pause.cpp runs: render_gl_present.cpp's
-// present(), render_present_last() and the menu's blurred backdrop over a fake GL, and
-// render_set_internal_scale(), which the overlay's Display page calls while the game is paused.
+// present() and render_present_last() and render_gl_blur.cpp's blurred backdrop for the menu
+// over a fake GL, and render_set_internal_scale(), which the overlay's Display page calls while
+// the game is paused.
 //
 // The renderer's files are compiled into this one as their GL ES build, whose entry points are
 // glad's pointers, and the ones those functions reach are pointed at fakes. The fake keeps
@@ -19,6 +20,7 @@
 #include "gx/render_gl_filter.cpp"
 #include "gx/render_gl_passes.cpp"
 #include "gx/render_gl_present.cpp"
+#include "gx/render_gl_blur.cpp"
 #include "gx/render_gl_programs.cpp"
 #include "gx/render_gl_state.cpp"
 #include "gx/render_gl_textures.cpp"
