@@ -1,7 +1,7 @@
 // What more than one area of the gamepad port checks uses: the checks' count, SDL's virtual
 // gamepads, a frame of the frontend and a port as the guest reads it, the work dir's files and
-// stderr, and with GCN_OVERLAY a GameCube pad's buttons, a thread for the guest and the menu's
-// keys and tabs.
+// stderr, and with GCN_OVERLAY a GameCube pad's buttons, a thread for the guest, the menu's
+// keys and tabs, and the GL window, frame lines and percentiles of --pages and --held.
 // tools/test_ports_support.cpp defines them. tools/test_ports.cpp reads this, that and each
 // area's file in after the frontend it compiles in, so all of them see the frontend's statics.
 #pragma once
@@ -10,6 +10,7 @@
 #include <functional>
 #include <initializer_list>
 #include <string>
+#include <vector>
 #ifdef GCN_OVERLAY
 #include "imgui.h"  // what the menu's navigation reads of the gamepads
 #ifdef GCN_OVERLAY_TEST
@@ -197,6 +198,23 @@ bool pick_page(Guest& g, const char* title);
 // frame, as while the menu or a notice moves, or a whole one, as once nothing does.
 bool held_wait_half();
 bool held_wait_whole();
+
+// A hidden window of `w` by `h` pixels, whatever the display's pixel density, with a GL context
+// current, for --pages and --held. Null, having said why, if SDL can't make one.
+SDL_Window* gl_window(int w, int h);
+void gl_window_close(SDL_Window* window);
+// An `[overlay] frame` line (GCN_FRAMETIME).
+struct FrameLine {
+    long f = 0;
+    int held = -1;
+    double interval = 0, cpu = 0;
+    double late = 0, present = 0, blur = 0;  // what the frontend did before it (overlay_frame_pre)
+    double thread = 0, swap = 0;
+};
+// The `[overlay] frame` lines in the file at `said`, in order.
+std::vector<FrameLine> frame_lines(const std::string& said);
+// The `p` quantile of `v`, from 0 to 1, as the nearest of its values; 0 for none.
+double percentile(std::vector<double> v, double p);
 #endif
 
 }  // namespace

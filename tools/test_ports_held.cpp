@@ -1,5 +1,5 @@
 // ---- test_ports --held: the held frame's redraw as the frontend's loop runs it (next_batch,
-// main.cpp), over a hidden GL window at 1920x1080 (gl_window, tools/test_ports_pages.cpp): the menu
+// main.cpp), over a hidden GL window at 1920x1080 (gl_window, tools/test_ports_support.h): the menu
 // opened with F1 and the guest held, with GCN_FRAMETIME set at overlay_init and the host clock
 // running on with the steady clock (g_host_steady_at), so each `[overlay] frame` line's interval is
 // what a real wait took. The redraw says a frame is kept (g_kept), noting the host time it was
@@ -277,7 +277,7 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
         Guest guest;
         push_key(SDL_SCANCODE_F1, SDLK_F1, true);
         push_key(SDL_SCANCODE_F1, SDLK_F1, false);
-        const double cpu0 = thread_cpu_ms();
+        const double cpu0 = plat_thread_cpu_ms();
         for (int i = 0; i < kHeldWaits; i++) {
             pump_events();
             update_pads(0);
@@ -287,7 +287,7 @@ HeldRun held_run(SDL_Window* window, const std::string& dir, const std::string& 
             if (overlay_menu_frames() != frames) moving.push_back(was_moving);
             guest_on(guest);
         }
-        run.cpu_ms = thread_cpu_ms() - cpu0;
+        run.cpu_ms = plat_thread_cpu_ms() - cpu0;
         if (waits) {
             for (int a = 0; a < kBarRuns && run.blocked_ms < kLockHoldMs / 5; a++) {
                 run.blocked.f = overlay_menu_frames();
@@ -338,9 +338,9 @@ void print_intervals(const char* what, const std::vector<double>& v) {
 constexpr int kWaitCpuWaits = 30;
 double wait_cpu_ms(SDL_Window* window) {
     const auto period = display_frame(window);
-    const double cpu0 = thread_cpu_ms();
+    const double cpu0 = plat_thread_cpu_ms();
     for (int i = 0; i < kWaitCpuWaits; i++) gx::take_batch_until(std::chrono::steady_clock::now() + period);
-    return (thread_cpu_ms() - cpu0) / kWaitCpuWaits;
+    return (plat_thread_cpu_ms() - cpu0) / kWaitCpuWaits;
 }
 
 // Whether a display at `hz` gets a frame of `ms`, to 1 ns.

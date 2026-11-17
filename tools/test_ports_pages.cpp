@@ -21,16 +21,8 @@
 #include "overlay/review.h"  // the Buttons view's dumps
 #include <cmath>
 #include <cstdio>
-#include <ctime>
 
 namespace {
-
-// The calling thread's CPU time in ms. Time the process spends off the CPU doesn't add to it.
-double thread_cpu_ms() {
-    timespec ts{};
-    clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts);
-    return (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
-}
 
 constexpr int kSkipped = 77;  // ctest's SKIP_RETURN_CODE for this mode
 constexpr int kHeldFrames = 40;  // GCN_OVERLAY_AT's host frames for each page
@@ -69,39 +61,6 @@ void sample_page(void*) {
     ImGui::Text("Level %.2f", level);
     ImGui::TextDisabled("A dimmed note.");
     ImGui::Button("A button");
-}
-
-// A hidden window of `w` by `h` pixels, whatever the display's pixel density, with a GL context
-// current. Null, having said why, if SDL can't make one.
-SDL_Window* gl_window(int w, int h) {
-    if (!SDL_InitSubSystem(SDL_INIT_VIDEO)) {
-        printf("no video: %s\n", SDL_GetError());
-        return nullptr;
-    }
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, GCN_GL_MAJOR);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, GCN_GL_MINOR);
-    SDL_Window* window =
-        SDL_CreateWindow("test_ports pages", w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    const float density = window ? SDL_GetWindowPixelDensity(window) : 1.0f;
-    if (density > 1.0f) SDL_SetWindowSize(window, (int)(w / density), (int)(h / density));
-    SDL_GLContext ctx = window ? SDL_GL_CreateContext(window) : nullptr;
-    if (!ctx) {
-        printf("no GL window: %s\n", SDL_GetError());
-        if (window) SDL_DestroyWindow(window);
-        return nullptr;
-    }
-    SDL_GL_MakeCurrent(window, ctx);
-#ifndef __APPLE__
-    gl_load_with((GLLoadProc)SDL_GL_GetProcAddress);
-#endif
-    return window;
-}
-
-void gl_window_close(SDL_Window* window) {
-    SDL_GL_DestroyContext(SDL_GL_GetCurrentContext());
-    SDL_DestroyWindow(window);
 }
 
 // What png.cpp wrote at `path`: IHDR's width and height, and the first pixel, which follows the
@@ -151,28 +110,6 @@ struct PageRun {
 
 // The host clock's step before each frame of open_on, in turn, so the line's intervals are known.
 constexpr uint64_t kHostSteps[] = {1000000, 2500000, 16670000};
-
-// An `[overlay] frame` line (GCN_FRAMETIME).
-struct FrameLine {
-    long f = 0;
-    int held = -1;
-    double interval = 0, cpu = 0;
-    double late = 0, present = 0, blur = 0;  // what the frontend did before it (overlay_frame_pre)
-    double thread = 0, swap = 0;
-};
-std::vector<FrameLine> frame_lines(const std::string& said) {
-    std::vector<FrameLine> out;
-    const std::string text = read_file(said);
-    for (size_t at = 0; (at = text.find("[overlay] frame f", at)) != std::string::npos; at++) {
-        FrameLine l;
-        if (sscanf(text.c_str() + at,
-                   "[overlay] frame f%ld held %d interval %lfms cpu %lfms late %lfms present %lfms blur %lfms "
-                   "thread %lfms swap %lfms",
-                   &l.f, &l.held, &l.interval, &l.cpu, &l.late, &l.present, &l.blur, &l.thread, &l.swap) == 9)
-            out.push_back(l);
-    }
-    return out;
-}
 
 // "Smooth while animating"'s bar for the menu's CPU time a frame at 1920x1080, which the first
 // frame of an open is held to too: overlay_init has made the GL renderers' objects (overlay.cpp).
@@ -247,9 +184,9 @@ PageRun open_on(SDL_Window* window, const char* page, int expect, bool plain, co
         const uint64_t host = g_host_ns;
         const bool held_then = paused();
         const auto t0 = std::chrono::steady_clock::now();
-        const double c0 = thread_cpu_ms();
+        const double c0 = plat_thread_cpu_ms();
         overlay_draw();
-        const double thread_ms = thread_cpu_ms() - c0;
+        const double thread_ms = plat_thread_cpu_ms() - c0;
         const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         // A new atlas's count starts from fonts_new_frame's, which rises across atlases.
         const int counted = fonts_atlas()->Builder->FrameCount;
@@ -573,12 +510,6 @@ void buttons_review(SDL_Window* window, const std::string& out, const std::strin
     check(top && end, (at + ": the Buttons view is dumped as it opens and at Done, the item with the focus and the "
                             "footer's hints whole on the panel at each")
                           .c_str());
-}
-
-double percentile(std::vector<double> v, double p) {
-    if (v.empty()) return 0.0;
-    std::sort(v.begin(), v.end());
-    return v[std::min(v.size() - 1, (size_t)(p * (v.size() - 1) + 0.5))];
 }
 
 int run_pages(const std::string& dir) {
