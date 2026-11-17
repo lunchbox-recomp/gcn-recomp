@@ -59,6 +59,7 @@ int g_blur_passes, g_blur_draws;     // draws with the blur program into a targe
 GLenum g_blend_eq, g_blur_draw_eq;  // the blend equation set, and the last blur draw to the window's
 bool g_blend, g_pass_blend = true, g_blur_draw_blend;  // GL_BLEND, and as the last of each blur draw had it
 int g_images;                       // glTexImage2D calls
+bool g_pass_feedback;               // a blur pass sampled the texture it drew into
 // The blur program's u_alpha and u_step as set, each draw into a target's step, and the last draw
 // to the window's alpha and step.
 float g_alpha = -1, g_blur_draw_alpha = -1;
@@ -108,6 +109,7 @@ void GLAD_API_PTR draw_arrays(GLenum, GLint, GLsizei) {
     if (g_program == gx::g_blur_prog) {
         (g_draw ? g_blur_passes : g_blur_draws)++;
         if (g_draw) {
+            if (g_attach[g_draw] == g_bound_tex) g_pass_feedback = true;
             g_pass_steps.push_back(g_step);
             g_pass_blend = g_blend;
         } else {
@@ -285,6 +287,7 @@ void blur_checks() {
     check(g_blur_passes == 9 * kMake && g_tex[gx::g_blur_tex[0]] == 23 && g_window == 23,
           "a frame the front end had queued, presented after the hold began, is blurred once in place of the "
           "one before");
+    check(!g_pass_feedback, "no blur pass, the warm-up's either, samples the target it draws into");
     gx::render_overlay_blur(false, 0.0f);
 }
 
