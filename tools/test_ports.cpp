@@ -149,7 +149,6 @@ bool g_fast_disc = true;
 #ifdef GCN_OVERLAY
 uint64_t audio_frames_out() { return 0; }
 void exi_card_held(uint64_t) {}
-void display_init(const OverlayPicture& picture);  // overlay.cpp's: the Display page's picture
 // The menu's dumps (--pages). No frame is kept here, so a dump has only GCN_OVERLAY_PLAIN's grey
 // to draw the menu over. g_kept has the held frame's redraw say it drew one, for the frontend's
 // loop (test_ports_held.cpp), and g_kept_at is the host time it was last asked.

@@ -6,6 +6,12 @@
 #include "overlay/appear.h"
 #include "overlay/fonts.h"
 #include "overlay/footer.h"
+#include "overlay/notices.h"
+#include "overlay/overlay_bindings.h"
+#include "overlay/overlay_controllers.h"
+#include "overlay/overlay_display.h"
+#include "overlay/overlay_input.h"
+#include "overlay/overlay_menu.h"
 #include "overlay/review.h"
 #include "overlay/ring.h"
 #include "overlay/state.h"
@@ -23,45 +29,6 @@
 #include "imgui.h"
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
-
-// overlay_display.cpp's.
-void display_init(const OverlayPicture& picture);
-// overlay_controllers.cpp's and overlay_bindings.cpp's.
-void controllers_stop();
-void bindings_stop();
-// notices.cpp's.
-void notices_init(SDL_Window* window, bool gl);
-void notices_motion(bool on);
-bool notices_moving(uint64_t now);
-void notices_frame();
-// overlay_input.cpp's: the gamepads held for the menu, and the buttons each has down kept out of
-// the menu until each is let go.
-void overlay_hold_pads();
-void overlay_latch_pads();
-// overlay_menu.cpp's: the menu set up with its title on its first page, how many pages a game
-// added, the menu opened on a page (-1 for where it was) at a time, and its frame.
-void menu_init(const char* title);
-int menu_added_pages();
-void menu_opened(int page, uint64_t now);
-void menu_frame();
-#ifdef GCN_OVERLAY_TEST
-void menu_clear_pages();
-#endif
-// Below, for the notices too: a Dear ImGui context over `window`, made current, with the GL
-// backend where `gl` says the window has a GL context and none otherwise, so it's laid out and
-// never drawn. It writes no file, opens no link, offers no item picker and reads no gamepad
-// itself. The menu and the notices each have one, so a frame of notices with the menu closed
-// leaves the menu's focus as it was. Its style is the theme's at the window's height.
-void overlay_imgui_context(SDL_Window* window, bool gl);
-#ifdef GCN_OVERLAY_TEST
-// Below, for the notices too: the current context's backends, GL's where `gl` says it has one,
-// shut down and the context destroyed. And notices.cpp's, which does that to theirs.
-void overlay_imgui_context_end(bool gl);
-void notices_test_end();
-#endif
-// Below, for the notices too: the current context's style built again from the theme if the
-// window's height has changed since it was last built, before a frame.
-void overlay_style_fit(SDL_Window* window);
 
 namespace {
 
@@ -322,31 +289,26 @@ bool overlay_animating() {
 
 void overlay_close() { overlay_set_open(false); }
 
-void overlay_menu_frame() {
-    if (!g_window) return;
-    fonts_new_frame();
-    if (menu_lays_out()) menu_frame();
-    notices_frame();
-}
-
 namespace {
 
-// overlay_draw's frame, and whether it laid out the menu.
-bool draw_frame() {
+// A frame, and whether it laid out the menu. With `gl`, overlay_draw's: GCN_OVERLAY_AT's open,
+// the menu drawn, and its dump and close. Without, overlay_menu_frame's for a window with no GL
+// context: the menu takes its input and lays out its frame, and that's all.
+bool draw_frame(bool gl) {
     fonts_new_frame();  // once a frame, before the menu's and the notices' (fonts.h)
     // Opening ends a view left from the last close itself (overlay_set_open).
-    if (at_frame_due()) {
+    if (gl && at_frame_due()) {
         g_at_frame = -1;
         overlay_set_open(true);
     }
     const bool menu = menu_lays_out();
     if (menu) {
-        ImGui_ImplOpenGL3_NewFrame();
+        if (gl) ImGui_ImplOpenGL3_NewFrame();
         menu_frame();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (gl) ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
     }
     notices_frame();
-    if (!g_open || !paused()) return menu;
+    if (!gl || !g_open || !paused()) return menu;
     // The dump waits for a frame that looks as the ones before it did (review.cpp).
     const bool dumps = gx::g_dump_output && gx::g_dump_dir;
     if (!g_dumped && dumps && review_settled(g_watch, ImGui::GetDrawData())) {
@@ -362,10 +324,16 @@ bool draw_frame() {
 
 }  // namespace
 
+#ifdef GCN_OVERLAY_TEST
+void overlay_menu_frame() {
+    if (g_window) draw_frame(false);
+}
+#endif
+
 void overlay_draw() {
     if (!g_window || !g_gl) return;
     if (!g_frametime) {
-        draw_frame();
+        draw_frame(true);
         return;
     }
     // The interval is on host_ns, the clock the menu's motion runs on, which is the wall clock in a
@@ -374,7 +342,7 @@ void overlay_draw() {
     const auto start = std::chrono::steady_clock::now();
     const long frame = overlay_menu_frames();
     const bool held = paused();
-    if (!draw_frame()) {
+    if (!draw_frame(true)) {
         g_had_frame = false;
         return;
     }

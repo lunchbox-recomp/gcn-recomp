@@ -3,6 +3,11 @@
 #include "overlay/overlay.h"
 #include "overlay/appear.h"
 #include "overlay/footer.h"
+#include "overlay/overlay_bindings.h"
+#include "overlay/overlay_controllers.h"
+#include "overlay/overlay_display.h"
+#include "overlay/overlay_input.h"
+#include "overlay/overlay_menu.h"
 #include "overlay/ring.h"
 #include "overlay/state.h"
 #include "overlay/tabs.h"
@@ -18,15 +23,6 @@
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_internal.h"  // where the focus moved to, and what was pressed
-
-// overlay.cpp's: the current context's style fitted to the window.
-void overlay_style_fit(SDL_Window* window);
-// overlay_input.cpp's: the held gamepads read for the menu's frame.
-void overlay_read_pads();
-// overlay_display.cpp's, overlay_controllers.cpp's and overlay_bindings.cpp's.
-void display_page(SDL_Window* window);
-void controllers_page();
-void bindings_page();
 
 namespace {
 

@@ -2,6 +2,9 @@
 // what it holds back from the game.
 #include "overlay/overlay.h"
 #include "overlay/footer.h"
+#include "overlay/overlay_bindings.h"
+#include "overlay/overlay_controllers.h"
+#include "overlay/overlay_input.h"
 #include "overlay/state.h"
 #include "gamepads.h"
 #include "input_map.h"
@@ -14,11 +17,6 @@
 #include <vector>
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
-
-// overlay_controllers.cpp's and overlay_bindings.cpp's.
-bool controllers_event(const SDL_Event& e);
-bool bindings_event(const SDL_Event& e);
-void bindings_poll();
 
 namespace {
 

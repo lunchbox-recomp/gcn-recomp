@@ -1,6 +1,9 @@
 // The overlay's Controllers page: each player's controllers, the press-A order, swaps and
 // removals (overlay.h).
 #include "overlay/overlay.h"
+#include "overlay/overlay_bindings.h"
+#include "overlay/overlay_controllers.h"
+#include "overlay/overlay_input.h"
 #include "gamepads.h"
 #include "input_map.h"
 #include "ui_sound.h"
@@ -8,9 +11,6 @@
 #include <algorithm>
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
-
-void overlay_latch_pads();  // overlay_input.cpp's
-bool bindings_back();       // overlay_bindings.cpp's
 
 namespace {
 

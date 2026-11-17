@@ -4,6 +4,8 @@
 #include "overlay/overlay.h"
 #include "overlay/glyph.h"
 #include "overlay/fonts.h"
+#include "overlay/overlay_bindings.h"
+#include "overlay/overlay_input.h"
 #include "overlay/theme.h"
 #include "gamepads.h"
 #include "input_map.h"
@@ -16,8 +18,6 @@
 #include <optional>
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
-
-void overlay_latch_pads();  // overlay_input.cpp's
 
 namespace {
 

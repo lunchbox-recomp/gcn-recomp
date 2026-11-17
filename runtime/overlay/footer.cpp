@@ -3,6 +3,8 @@
 #include "overlay/fonts.h"
 #include "overlay/glyph.h"
 #include "overlay/overlay.h"
+#include "overlay/overlay_bindings.h"
+#include "overlay/overlay_input.h"
 #include "overlay/state.h"
 #include "overlay/theme.h"
 #include "frontend.h"
@@ -14,9 +16,6 @@
 #include <cstring>
 #include "imgui.h"
 #include "imgui_internal.h"  // ImGui::FocusItem
-
-SDL_Gamepad* overlay_last_pad();  // overlay_input.cpp's
-SDL_Gamepad* bindings_pad();      // overlay_bindings.cpp's
 
 namespace {
 

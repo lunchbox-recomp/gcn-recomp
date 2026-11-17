@@ -149,6 +149,17 @@ struct OverlayPicture {
 // What the menu is asking before it does it, if anything.
 enum class OverlayAsk { none, restart, quit };
 
+// What the frontend did ahead of the next overlay_draw, for its `[overlay] frame` line, in ms:
+// how late the loop's last wait ended (main.cpp's next_batch), and the time from the wait's end
+// to the blurred backdrop, the frame's draw in it with the wait for the gamepads' lock the
+// frontend takes while the menu is due, and the backdrop's. Then the loop's thread CPU time over
+// those two, which falls short of them by the time the thread was blocked or off a core, and how
+// long the last frame's swap took. The line's interval carries them, as it's stamped as
+// overlay_draw starts. A draw that follows none gets zeros.
+struct OverlayFramePre {
+    double late_ms = 0, present_ms = 0, blur_ms = 0, thread_ms = 0, swap_ms = 0;
+};
+
 #ifdef GCN_OVERLAY
 // Add a page after Display and Controllers before overlay_init. The callback draws that page
 // with ImGui. A page added after overlay_init, with an empty or taken title or with no callback,
@@ -212,25 +223,13 @@ void overlay_gate(int port, PadState& p);
 // swap. With GCN_FRAMETIME set at overlay_init, each draw of the menu prints an `[overlay] frame`
 // line on stderr (docs/diagnostics.md).
 void overlay_draw();
-// What the frontend did ahead of the next overlay_draw, for its `[overlay] frame` line, in ms:
-// how late the loop's last wait ended (main.cpp's next_batch), and the time from the wait's end
-// to the blurred backdrop, the frame's draw in it with the wait for the gamepads' lock the
-// frontend takes while the menu is due, and the backdrop's. Then the loop's thread CPU time over
-// those two, which falls short of them by the time the thread was blocked or off a core, and how
-// long the last frame's swap took. The line's interval carries them, as it's stamped as
-// overlay_draw starts. A draw that follows none gets zeros.
-struct OverlayFramePre {
-    double late_ms = 0, present_ms = 0, blur_ms = 0, thread_ms = 0, swap_ms = 0;
-};
+// The next overlay_draw's OverlayFramePre.
 void overlay_frame_pre(const OverlayFramePre& pre);
 // For gx::render_overlay_blur, ahead of overlay_draw: whether the open menu holds the guest with
 // the theme's blur_backdrop on, which --dump-output turns off, and how far the blur has faded in,
 // from 0 to 1 on the host clock, 0 with it off.
 bool overlay_blur_hold();
 float overlay_blur_alpha();
-// What overlay_draw does short of drawing, for a window with no GL context: while it's open, the
-// menu takes its input and lays out its frame. With no window, there's no ImGui frame.
-void overlay_menu_frame();
 // What the Display page does with `next`, the picture with its change made: the frontend applies
 // it, and each key where it differs from the picture now is saved.
 void overlay_display_change(const Settings& next);
@@ -256,6 +255,9 @@ bool overlay_bindings_listening();
 // Nintendo's adapter, each of whose buttons is the binding's.
 const char* overlay_bindings_cancel();
 #ifdef GCN_OVERLAY_TEST
+// What overlay_draw does short of drawing, for a window with no GL context: while it's open, the
+// menu takes its input and lays out its frame. With no window, there's no ImGui frame.
+void overlay_menu_frame();
 // The notices still showing, oldest first, and how many frames have shown them.
 std::vector<std::string> overlay_notices();
 long overlay_notice_frames();
@@ -294,9 +296,6 @@ inline bool overlay_animating() { return false; }
 inline void overlay_close() {}
 inline void overlay_gate(int, PadState&) {}
 inline void overlay_draw() {}
-struct OverlayFramePre {
-    double late_ms = 0, present_ms = 0, blur_ms = 0, thread_ms = 0, swap_ms = 0;
-};
 inline void overlay_frame_pre(const OverlayFramePre&) {}
 inline bool overlay_blur_hold() { return false; }
 inline float overlay_blur_alpha() { return 0.0f; }

@@ -1,7 +1,9 @@
 // The notices over the game about controllers (overlay.h).
 #include "overlay/overlay.h"
 #include "overlay/fonts.h"
+#include "overlay/notices.h"
 #include "overlay/review.h"
+#include "overlay/state.h"
 #include "overlay/theme.h"
 #include "overlay/toasts.h"
 #include "env.h"
@@ -17,9 +19,6 @@
 #include "imgui_impl_opengl3.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_internal.h"  // ImTextCharFromUtf8
-
-void overlay_imgui_context(SDL_Window* window, bool gl);  // overlay.cpp's
-void overlay_style_fit(SDL_Window* window);              // overlay.cpp's
 
 namespace {
 
@@ -232,8 +231,6 @@ void notices_frame() {
 }
 
 #ifdef GCN_OVERLAY_TEST
-void overlay_imgui_context_end(bool gl);  // overlay.cpp's
-
 // overlay.cpp's, for overlay_test_end.
 void notices_test_end() {
     if (!g_context) return;
