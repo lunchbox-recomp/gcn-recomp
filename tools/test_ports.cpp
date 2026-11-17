@@ -89,6 +89,7 @@
 #include "gx/gx.h"
 #include "gx/render.h"
 #include "test_ports_support.h"
+#include "gl_bench.h"  // fatal, and the GL window of --pages and --held
 
 static float g_output_aspect;  // what the frontend last gave the renderer, 0 before any
 static int g_internal_scale;
@@ -110,14 +111,6 @@ void ffb_update(bool motor) { g_ffb_motor = motor ? 1 : 0; }
 void ffb_shutdown() {}
 uint8_t* g_mem;  // on_interrupt's GCN_RAM_DUMP, which nothing here sets
 void debug_dump_threads() {}
-void fatal(const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    fputc('\n', stderr);
-    exit(1);
-}
 static std::atomic<int> g_relaunching{0};  // how many times session_relaunching has been called
 void session_relaunching() { g_relaunching++; }
 static std::atomic<uint64_t> g_host_ns{0};  // the host clock, which a check moves by hand

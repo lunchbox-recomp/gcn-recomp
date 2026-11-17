@@ -12,6 +12,7 @@
 //
 // A load prints the renderer's own `[shaders] ... in N ms` line, the time the two are compared
 // by, and the splash its `[splash]` line. The cache is rewritten by each load, as a run does.
+#include "gl_bench.h"
 #include "splash.h"
 #include "banner.h"
 #include "runtime.h"
@@ -21,8 +22,6 @@
 #include "gx/splash_look.h"
 #include <SDL3/SDL.h>
 #include <algorithm>
-#include <atomic>
-#include <cstdarg>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -31,37 +30,9 @@
 #include <string>
 #include <vector>
 
-// What the renderer reaches of the rest of the runtime, which this links none of.
-void fatal(const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    fputc('\n', stderr);
-    exit(1);
-}
 bool write_png(const char* path, const uint8_t* rgba, int w, int h);  // runtime/png.cpp
-namespace gx {
-std::atomic<bool> g_renderer_writes_back{false};
-}
 
 namespace {
-
-void* gl_proc(const char* name) { return (void*)SDL_GL_GetProcAddress(name); }
-
-SDL_Window* open_window(int w, int h) {
-    if (!SDL_Init(SDL_INIT_VIDEO)) return nullptr;
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_Window* win = SDL_CreateWindow("bench_splash", w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
-    if (!win || !SDL_GL_CreateContext(win)) return nullptr;
-    SDL_GL_SetSwapInterval(0);
-    if (gl_load_with(gl_proc) < GCN_GL_VERSION_MIN) return nullptr;
-    return win;
-}
 
 bool pump() {
     SDL_Event e;
@@ -190,7 +161,7 @@ int cache(int n, const char* path) {
 int main(int argc, char** argv) {
     const char* mode = argc > 1 ? argv[1] : "";
     if (!strcmp(mode, "cache") && argc == 4) return cache(atoi(argv[2]), argv[3]);
-    SDL_Window* win = open_window(1280, 960);
+    SDL_Window* win = gl_bench_window("bench_splash", 1280, 960);
     if (!win) {
         fprintf(stderr, "bench_splash: no GL window (%s)\n", SDL_GetError());
         return 1;

@@ -10,6 +10,33 @@ function(_gcn_set_standards target)
   set_target_properties(${target} PROPERTIES C_STANDARD 11 CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 endfunction()
 
+# The linker drops what nothing in TARGET calls, for a program that links a file of which it
+# calls a little.
+function(_gcn_dead_strip target)
+  if(APPLE)
+    target_link_options(${target} PRIVATE -Wl,-dead_strip)
+  elseif(NOT MSVC)
+    target_compile_options(${target} PRIVATE -ffunction-sections)
+    target_link_options(${target} PRIVATE -Wl,--gc-sections)
+  endif()
+endfunction()
+
+# A benchmark on this machine's GL in a hidden window, with no disc or game: tools/NAME.cpp,
+# which reads tools/gl_bench.h, and the sources after NAME. gcn_add_game() calls it, and it reads
+# that function's variables. Not a check: it measures, and `ninja unit` leaves it out.
+function(_gcn_add_gl_bench name)
+  add_executable(${name} EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/${name}.cpp ${ARGN})
+  if(NOT APPLE OR GCN_GL_ES)
+    target_sources(${name} PRIVATE ${GLAD_SOURCE})
+  endif()
+  _gcn_set_standards(${name})
+  target_include_directories(${name} PRIVATE ${RT} ${GLAD_INCLUDE_DIR})
+  target_link_libraries(${name} PRIVATE ${GCN_SDL_TARGET} ${GCN_PLATFORM_LIBS} Threads::Threads)
+  target_compile_options(${name} PRIVATE ${GCN_RUNTIME_WARNINGS})
+  target_compile_definitions(${name} PRIVATE ${GCN_GAME_DEFS} ${GCN_GL_DEFS})
+  _gcn_dead_strip(${name})
+endfunction()
+
 # Appends link option OPT to the list OUT as it goes on a link line: LINKER:a,b through the
 # compiler's linker wrapper flag, SHELL:a b split into arguments, anything else as it is.
 # One it can't write leaves the reason in OUT_PROBLEM.
@@ -863,12 +890,7 @@ function(gcn_add_game)
     target_compile_definitions(test_ports PRIVATE ${GCN_GAME_DEFS} ${GCN_ENTRY_DEFS} ${GCN_GL_DEFS})
     # main.cpp's own main() is renamed, and nothing else of it is called: the linker drops
     # the rest, which would otherwise want the whole runtime.
-    if(APPLE)
-      target_link_options(test_ports PRIVATE -Wl,-dead_strip)
-    elseif(NOT MSVC)
-      target_compile_options(test_ports PRIVATE -ffunction-sections)
-      target_link_options(test_ports PRIVATE -Wl,--gc-sections)
-    endif()
+    _gcn_dead_strip(test_ports)
     # The overlay theme's checks (tools/test_overlay_theme.cpp): the default theme's contrast and
     # sizes, and the style built from it, on a Dear ImGui context with no window.
     if(_gcn_overlay)
@@ -928,44 +950,13 @@ function(gcn_add_game)
   endif()
 
   # The boot splash's benchmark (tools/bench_splash.cpp): a splash frame's cost and the shader
-  # cache's load with and without it, on this machine's GL in a hidden window. Needs no disc
-  # image or game. Not a check: it measures, and `ninja unit` leaves it out.
+  # cache's load with and without it. The menu's blurred backdrop's (tools/bench_blur.cpp): the
+  # held draws' CPU time before the menu's, a hold's first frame against its later ones.
   if(NOT CMAKE_CROSSCOMPILING AND NOT GCN_BENCH_ONLY AND NOT GCN_VISIONOS AND NOT ANDROID AND NOT WIN32)
-    add_executable(bench_splash EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/bench_splash.cpp
-      ${RT}/splash.cpp ${RT}/gx/splash_look.cpp ${RT}/banner.cpp ${RT}/ready_file.cpp ${RT}/platform.cpp
-      ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp)
-    if(NOT APPLE OR GCN_GL_ES)
-      target_sources(bench_splash PRIVATE ${GLAD_SOURCE})
-    endif()
-    _gcn_set_standards(bench_splash)
-    target_include_directories(bench_splash PRIVATE ${RT} ${GLAD_INCLUDE_DIR})
-    target_link_libraries(bench_splash PRIVATE ${GCN_SDL_TARGET} ${GCN_PLATFORM_LIBS} Threads::Threads)
-    target_compile_options(bench_splash PRIVATE ${GCN_RUNTIME_WARNINGS})
-    target_compile_definitions(bench_splash PRIVATE ${GCN_GAME_DEFS} ${GCN_GL_DEFS})
-    if(APPLE)
-      target_link_options(bench_splash PRIVATE -Wl,-dead_strip)
-    else()
-      target_compile_options(bench_splash PRIVATE -ffunction-sections)
-      target_link_options(bench_splash PRIVATE -Wl,--gc-sections)
-    endif()
-    # The menu's blurred backdrop's benchmark (tools/bench_blur.cpp): the held draws' CPU time
-    # before the menu's, a hold's first frame against its later ones, on the same GL.
-    add_executable(bench_blur EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/bench_blur.cpp
-      ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp ${RT}/platform.cpp)
-    if(NOT APPLE OR GCN_GL_ES)
-      target_sources(bench_blur PRIVATE ${GLAD_SOURCE})
-    endif()
-    _gcn_set_standards(bench_blur)
-    target_include_directories(bench_blur PRIVATE ${RT} ${GLAD_INCLUDE_DIR})
-    target_link_libraries(bench_blur PRIVATE ${GCN_SDL_TARGET} ${GCN_PLATFORM_LIBS} Threads::Threads)
-    target_compile_options(bench_blur PRIVATE ${GCN_RUNTIME_WARNINGS})
-    target_compile_definitions(bench_blur PRIVATE ${GCN_GAME_DEFS} ${GCN_GL_DEFS})
-    if(APPLE)
-      target_link_options(bench_blur PRIVATE -Wl,-dead_strip)
-    else()
-      target_compile_options(bench_blur PRIVATE -ffunction-sections)
-      target_link_options(bench_blur PRIVATE -Wl,--gc-sections)
-    endif()
+    _gcn_add_gl_bench(bench_splash ${RT}/splash.cpp ${RT}/gx/splash_look.cpp ${RT}/banner.cpp ${RT}/ready_file.cpp
+      ${RT}/platform.cpp ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp)
+    _gcn_add_gl_bench(bench_blur ${RENDER_GL_SOURCES} ${RT}/gx/shadergen.cpp ${RT}/gx/gl_load.cpp ${RT}/png.cpp
+      ${RT}/platform.cpp)
   endif()
 
   # The audio ring checks (tools/test_audio_ring.cpp): audio.cpp's mix against a device

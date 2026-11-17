@@ -12,52 +12,26 @@
 // carries (main.cpp's show_frame stamps the menu's frame after it), and the time to glFinish
 // after it beside it. The process's first hold is the one a game's first menu open has: run it
 // as a fresh process each time.
+#include "gl_bench.h"
 #include "runtime.h"
 #include "gx/gl.h"
 #include "gx/render_gl.h"
 #include "gx/render_gl_internal.h"
 #include <SDL3/SDL.h>
-#include <atomic>
 #include <chrono>
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
-// What the renderer reaches of the rest of the runtime, which this links none of.
-void fatal(const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
-    va_end(ap);
-    fputc('\n', stderr);
-    exit(1);
-}
+// What the renderer reaches of the rest of the runtime beyond gl_bench.h's.
 uint32_t vi_display_height() { return 0; }  // each display copy a whole frame
 namespace gx {
-std::atomic<bool> g_renderer_writes_back{false};
 static float g_aspect = 4.0f / 3.0f;  // xf.cpp's, which would bring the whole front end
 void render_set_output_aspect(float aspect) { g_aspect = aspect; }
 float output_aspect() { return g_aspect; }
 }
 
 namespace {
-
-void* gl_proc(const char* name) { return (void*)SDL_GL_GetProcAddress(name); }
-
-SDL_Window* open_window() {
-    if (!SDL_Init(SDL_INIT_VIDEO)) return nullptr;
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    SDL_Window* win = SDL_CreateWindow("bench_blur", 1280, 720, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
-    if (!win || !SDL_GL_CreateContext(win)) return nullptr;
-    SDL_GL_SetSwapInterval(0);
-    if (gl_load_with(gl_proc) < GCN_GL_VERSION_MIN) return nullptr;
-    return win;
-}
 
 double ms(std::chrono::steady_clock::time_point a, std::chrono::steady_clock::time_point b) {
     return std::chrono::duration<double, std::milli>(b - a).count();
@@ -99,7 +73,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "usage: bench_blur W H [warm]\n");
         return 2;
     }
-    SDL_Window* win = open_window();
+    SDL_Window* win = gl_bench_window("bench_blur", 1280, 720);
     if (!win) {
         fprintf(stderr, "bench_blur: no GL window (%s)\n", SDL_GetError());
         return 1;

@@ -378,21 +378,11 @@ SDL_Window* gl_window(int w, int h) {
         printf("no video: %s\n", SDL_GetError());
         return nullptr;
     }
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, GCN_GL_MAJOR);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, GCN_GL_MINOR);
-    SDL_Window* window =
-        SDL_CreateWindow("test_ports pages", w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-    const float density = window ? SDL_GetWindowPixelDensity(window) : 1.0f;
-    if (density > 1.0f) SDL_SetWindowSize(window, (int)(w / density), (int)(h / density));
-    SDL_GLContext ctx = window ? SDL_GL_CreateContext(window) : nullptr;
-    if (!ctx) {
+    SDL_Window* window = gl_hidden_window("test_ports pages", w, h, GCN_GL_MAJOR, GCN_GL_MINOR, true);
+    if (!window) {
         printf("no GL window: %s\n", SDL_GetError());
-        if (window) SDL_DestroyWindow(window);
         return nullptr;
     }
-    SDL_GL_MakeCurrent(window, ctx);
 #ifndef __APPLE__
     gl_load_with((GLLoadProc)SDL_GL_GetProcAddress);
 #endif
