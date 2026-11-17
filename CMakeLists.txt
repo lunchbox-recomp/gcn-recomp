@@ -10,13 +10,13 @@ function(_gcn_set_standards target)
   set_target_properties(${target} PROPERTIES C_STANDARD 11 CXX_STANDARD 20 CXX_STANDARD_REQUIRED ON)
 endfunction()
 
-# The linker drops what nothing in TARGET calls, for a program that links a file of which it
-# calls a little.
+# The linker drops what nothing in TARGET uses, for a program that links a file of which it
+# uses a little.
 function(_gcn_dead_strip target)
   if(APPLE)
     target_link_options(${target} PRIVATE -Wl,-dead_strip)
   elseif(NOT MSVC)
-    target_compile_options(${target} PRIVATE -ffunction-sections)
+    target_compile_options(${target} PRIVATE -ffunction-sections -fdata-sections)
     target_link_options(${target} PRIVATE -Wl,--gc-sections)
   endif()
 endfunction()
@@ -1125,12 +1125,7 @@ function(gcn_add_game)
     target_include_directories(test_pause PRIVATE ${RT} ${RT}/gx/glad_es/include)
     target_link_libraries(test_pause PRIVATE Threads::Threads)
     target_compile_options(test_pause PRIVATE ${GCN_RUNTIME_WARNINGS})
-    if(APPLE)
-      target_link_options(test_pause PRIVATE -Wl,-dead_strip)
-    else()
-      target_compile_options(test_pause PRIVATE -ffunction-sections -fdata-sections)
-      target_link_options(test_pause PRIVATE -Wl,--gc-sections)
-    endif()
+    _gcn_dead_strip(test_pause)
 
     # The bot link checks (tools/test_bot_link.cpp): runtime/bot_link.cpp stepped through the SI
     # layer's pad_get by a bot on a Unix socket in a work dir, with scripts and the input log as
@@ -1160,12 +1155,7 @@ function(gcn_add_game)
     _gcn_set_standards(test_clock)
     target_include_directories(test_clock PRIVATE ${RT})
     target_compile_options(test_clock PRIVATE ${GCN_RUNTIME_WARNINGS})
-    if(APPLE)
-      target_link_options(test_clock PRIVATE -Wl,-dead_strip)
-    else()
-      target_compile_options(test_clock PRIVATE -ffunction-sections -fdata-sections)
-      target_link_options(test_clock PRIVATE -Wl,--gc-sections)
-    endif()
+    _gcn_dead_strip(test_clock)
 
     # The GCN_SESSION checks (tools/test_session.cpp): session.cpp's directories, switches and
     # session.json in a work dir. Needs no disc image, device or SDL.
