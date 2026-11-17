@@ -814,64 +814,26 @@ since Windows says 1 Hz for the hardware's default and SDL passes it on.
 
 The wait sleeps toward its time in the pacer's steps ("The clock", above) and waits out the
 last of it, since a single timed wait ended 2 to 3 ms late on an M4 Max, as late at 16 ms as at 8.
-When the frontend waited 16 ms at a time, 300 held frames took 5.6 s in a hidden run, 18.7 ms
-each, and in a game the held interval had a p50 of 18.58 ms and a p99 of 19.87 ms.
-The held run in `test_ports --pages` at 90e840e, over no frame and no blur, gave 18.60 ms and
-19.69 ms with those waits, and 18.67 ms and 18.70 ms with one wait until the time.
+The held run in `test_ports --pages` at 90e840e, over no frame and no blur, gave a p50 of 16.70 ms
+and a p99 of 16.72 to 16.73 ms with the steps, for 0.15 to 0.16 ms of the loop's thread's CPU a
+held frame, about 0.9% of a core at 60 Hz. Spinning the last of it, as the pacer does, gave
+16.67 ms and 16.68 ms for about 1.6% of a core. The bar doesn't need the spin, so the wait goes
+without it.
 
-With the steps it gives a p50 of 16.70 ms and a p99 of 16.72 to 16.73 ms. They cost the loop's
-thread 0.15 to 0.16 ms of CPU a held frame, against 0.06 ms for the single wait, about 0.9% of a
-core at 60 Hz.
-
-Spinning the last of it, as the pacer does, gave 16.67 ms and 16.68 ms, idle or beside 16 busy
-processes, for 0.27 to 0.28 ms a held frame, about 1.6% of a core. The bar doesn't need the
-spin, so the wait goes without it.
-
-In a game at 3414x1920, over 21 opens each its process's first, the held redraw's 1,260
-intervals had a p50 of 16.67 ms, a p99 of 19.19 ms and a max of 26.64 ms. Of the 40 over 17 ms,
-21 were each open's first held interval and 19 ran 17.01 to 17.07 ms. `test_ports --held`
-doesn't show those 19, idle or beside one busy process, as its waits' lateness has a p99 of 0.05
-ms either way. The `late` field of the `[overlay] frame` lines says whether a game's long
-intervals are the wait's.
-
-They weren't. In the same game measure at 882fa56 the intervals had a p50 of 16.65 ms, a p99 of
-17.03 ms and a max of 17.58 ms, 16 over 17 ms. Most came on a frame where `present` stepped from
-about 0.03 ms to 0.3 or 0.4 ms with `late` near 0.04 ms, and `thread` stepped with it. Over the
-639 held lines whose `present` and `blur` came to 0.1 ms or more, `thread` was 0.995 of them at
-the median. So the loop's thread ran slower and wasn't blocked. A scratch build
-that also printed the core each held wait woke on (`pthread_cpu_number_np`) showed why. Of seven
-opens' redraws a display frame apart, the 167 that woke on an efficiency core had a `present`
-of 0.251 ms and a menu `cpu` of 0.201 ms at the median, and 11 were over 17 ms. The 86 on a
-performance core had 0.038 ms and 0.061 ms, and none was over 17 ms. The thread was
-user-interactive QoS throughout. Its share on the efficiency cores grew with the time held, 26%
-of the frames from the 1st to the 24th and 77% from the 41st on. Each step-up woke on an
-efficiency core after a frame on a performance one.
-
-Three changes were tried in the scratch build, each over three opens:
-
-- The half period kept after the motion. 75% of the frames from the 41st on still woke on the
-  efficiency cores. None was over 17 ms, but only because the period was half. The loop's thread
-  took about 1.9% more of a core.
-- A time-constraint thread policy on the loop's thread. 132 of the 180 held frames woke on the
-  efficiency cores.
-- A foreground task role. A hidden run's task is a background application, and the role was
-  taken, but the thread still moved.
-
-From those, macOS places the thread and none of them held it on a performance core. A thread
-can't be pinned to a core type. `THREAD_AFFINITY_POLICY` is only a hint to share an L2, and the
-loop's thread already runs at user-interactive QoS, as it measured. The routes below weren't
-tried. No header promises that any keeps a thread on a performance core.
-
-- an audio workgroup (`AudioWorkIntervalCreate`, `os_workgroup_join` and each frame's
-  `os_workgroup_interval_start` and `_finish`) with the time-constraint policy, which Apple
-  documents as feeding the CPU's balance of performance against power, though it's meant for
-  realtime audio threads
-- a wake from the display's link (`displayLinkWithTarget:selector:` on macOS 14, as
-  `CVDisplayLink` is deprecated in 15)
-- `THREAD_LATENCY_QOS_POLICY` and `THREAD_THROUGHPUT_QOS_POLICY`
-
-So the held redraw's p99 in a hidden run rests on where macOS puts the thread. A frontmost window
-wasn't measured.
+In a game at 3414x1920 at 882fa56, the held redraw's intervals had a p50 of 16.65 ms, a p99 of
+17.03 ms and a max of 17.58 ms. Its long intervals are the loop's thread running slower, not
+blocked and not a late wait. `present` steps from about 0.03 ms to 0.3 or 0.4 ms with `late` near
+0.04 ms, and `thread` steps with it. They come when the thread wakes on an efficiency core, which
+macOS does more the longer the guest is held, though the thread runs at user-interactive QoS. A
+time-constraint thread policy, a foreground task role and a half period didn't keep it on a
+performance core, and a thread can't be pinned to a core type, as `THREAD_AFFINITY_POLICY` is only a
+hint to share an L2. An audio workgroup with the time-constraint policy, a wake from the display's
+link and `THREAD_LATENCY_QOS_POLICY` or `THREAD_THROUGHPUT_QOS_POLICY` weren't tried, and no header
+promises that any keeps a thread on a performance core. So the held redraw's p99 in a hidden run
+rests on where macOS puts the thread. A frontmost window wasn't measured. The `late`, `present`
+and `thread` fields of the `[overlay] frame` lines say which a game's long intervals are. The
+rounds of measures behind this are in the game project's `docs/dev/status.md`, in its pin
+sections.
 
 The first held interval of an open is mostly the guest's own frame. The guest holds only at its
 next frame boundary, and the frame it finished there was still on its way to the frontend, which
