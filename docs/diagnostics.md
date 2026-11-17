@@ -814,7 +814,7 @@ since Windows says 1 Hz for the hardware's default and SDL passes it on.
 
 The wait sleeps toward its time in the pacer's steps ("The clock", above) and waits out the
 last of it, since a single timed wait ended 2 to 3 ms late on an M4 Max, as late at 16 ms as at 8.
-The held run in `test_ports --pages` at 90e840e, over no frame and no blur, gave a p50 of 16.70 ms
+The held run in `test_ports --held`, over no frame and no blur, gives a p50 of 16.70 ms
 and a p99 of 16.72 to 16.73 ms with the steps, for 0.15 to 0.16 ms of the loop's thread's CPU a
 held frame, about 0.9% of a core at 60 Hz. Spinning the last of it, as the pacer does, gave
 16.67 ms and 16.68 ms for about 1.6% of a core. The bar doesn't need the spin, so the wait goes
@@ -827,13 +827,16 @@ blocked and not a late wait. `present` steps from about 0.03 ms to 0.3 or 0.4 ms
 macOS does more the longer the guest is held, though the thread runs at user-interactive QoS. A
 time-constraint thread policy, a foreground task role and a half period didn't keep it on a
 performance core, and a thread can't be pinned to a core type, as `THREAD_AFFINITY_POLICY` is only a
-hint to share an L2. An audio workgroup with the time-constraint policy, a wake from the display's
-link and `THREAD_LATENCY_QOS_POLICY` or `THREAD_THROUGHPUT_QOS_POLICY` weren't tried, and no header
-promises that any keeps a thread on a performance core. So the held redraw's p99 in a hidden run
-rests on where macOS puts the thread. A frontmost window wasn't measured. The `late`, `present`
-and `thread` fields of the `[overlay] frame` lines say which a game's long intervals are. The
-rounds of measures behind this are in the game project's `docs/dev/status.md`, in its pin
-sections.
+hint to share an L2. An audio workgroup with the time-constraint policy (`AudioWorkIntervalCreate`,
+`os_workgroup_join` and each frame's `os_workgroup_interval_start` and `_finish`), a wake from the
+display's link (`displayLinkWithTarget:selector:` on macOS 14, as `CVDisplayLink` is deprecated in
+15) and `THREAD_LATENCY_QOS_POLICY` or `THREAD_THROUGHPUT_QOS_POLICY` weren't tried, and no header
+promises that any keeps a thread on a performance core. `test_ports --held` doesn't reproduce the
+game's long intervals, idle or beside one busy process, as its waits' lateness has a p99 of 0.05 ms.
+So the held redraw's p99 in a hidden run rests on where macOS puts the thread. A frontmost window
+wasn't measured. The `late`, `present` and `thread` fields of the `[overlay] frame` lines say which
+a game's long intervals are. The rounds of measures behind this are in the game project's
+`docs/dev/status.md`, in its pin sections.
 
 The first held interval of an open is mostly the guest's own frame. The guest holds only at its
 next frame boundary, and the frame it finished there was still on its way to the frontend, which
