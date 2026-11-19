@@ -110,6 +110,12 @@ const FixedFp kFixedFp[] = {
     {kOneAndHalfNeg, kHalf, kTwoAndHalf, 0, gqr(3, 63), 0x3F000000u},
     {kHalf, kTwoAndHalf, kOneAndHalfNeg, 0xF8, gqr(4, 0), 0x40200000u},
     {kTwoAndHalf, kOneAndHalfNeg, kHalf, 0, gqr(5, 1), 0xBFC00000u},
+    // Doubles in fC, which the single-precision multiplies round to 25 bits (ROUND_FRC): one whose
+    // rounding turns a product by 1 from over a tie to on it, a tie that carries into the exponent,
+    // and a denormal by 2^1023, rounded from its leading one.
+    {kOne, kOneNeg, 0x3FF0000014000000ull, 0, gqr(6, 1), 0x3F800000u},
+    {kOneNeg, kHalf, 0x3FFFFFFFF8000000ull, 1, gqr(7, 31), 0xBF800000u},
+    {0x7FE0000000000000ull, kZero, 0x000800000A000000ull, 0, gqr(1, 63), 0x00000001u},
 };
 constexpr int kFixedFpCount = sizeof kFixedFp / sizeof *kFixedFp;
 

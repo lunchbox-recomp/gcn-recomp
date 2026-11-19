@@ -16,9 +16,9 @@ namespace {
 // translate59, whose results are all rounded to single and go to both lanes. fnmsubs and fnmadds
 // negate after the rounding, which gives the same value translate's C does. With the negation inside
 // the switch, clang folds it into an FNMSUB or FNMADD, which gives +0 where -fma gives -0 and can give
-// a NaN the other sign.
+// a NaN the other sign. C is read as the multiplies read it (ROUND_FRC), and only they use it.
 InterpStep op59(CPU* c, uint32_t i) {
-    const double A = c->f[insn_a(i)].d, B = c->f[insn_b(i)].d, C = c->f[insn_c(i)].d;
+    const double A = c->f[insn_a(i)].d, B = c->f[insn_b(i)].d, C = ROUND_FRC(c->f[insn_c(i)].d);
     double r;
     bool neg = false;
     switch (insn_xo5(i)) {

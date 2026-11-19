@@ -543,18 +543,25 @@ FPRF_S = ' c->fprf_v = v; c->fprf_pending = 2;'
 FPRF_D = ' c->fprf_v = v; c->fprf_pending = 1;'
 
 
+def FRC(x):
+    """frC as a single-precision multiply reads it, its significand rounded to 25 bits
+    (ROUND_FRC in runtime/recomp.h)."""
+    return f'ROUND_FRC({x})'
+
+
 def translate59(pc, i, d, a, b, cc, rc):
     xo = (i >> 1) & 0x1F
+    C = FRC(F(cc))
     ops = {
         18: f'{F(a)} / {F(b)}',
         20: f'{F(a)} - {F(b)}',
         21: f'{F(a)} + {F(b)}',
-        25: f'{F(a)} * {F(cc)}',
+        25: f'{F(a)} * {C}',
         24: f'1.0 / {F(b)}',
-        28: f'fma({F(a)}, {F(cc)}, -{F(b)})',
-        29: f'fma({F(a)}, {F(cc)}, {F(b)})',
-        30: f'-fma({F(a)}, {F(cc)}, -{F(b)})',
-        31: f'-fma({F(a)}, {F(cc)}, {F(b)})',
+        28: f'fma({F(a)}, {C}, -{F(b)})',
+        29: f'fma({F(a)}, {C}, {F(b)})',
+        30: f'-fma({F(a)}, {C}, -{F(b)})',
+        31: f'-fma({F(a)}, {C}, {F(b)})',
     }
     if xo in ops:
         return f'{{ double v = (double)(float)({ops[xo]}); {F(d)} = v; {P1(d)} = v;{FPRF_S} }}' + cr1(rc)
@@ -627,6 +634,7 @@ def translate4(pc, i, d, a, b, cc, rc):
     A0, A1 = F(a), P1(a)
     B0, B1 = F(b), P1(b)
     C0, C1 = F(cc), P1(cc)
+    M0, M1 = FRC(C0), FRC(C1)  # frC as the multiplies read it
 
     def pair(e0, e1, rnd=True):
         fprf = ''
@@ -651,7 +659,7 @@ def translate4(pc, i, d, a, b, cc, rc):
     if xo5 == 21:
         return pair(f'{A0} + {B0}', f'{A1} + {B1}')
     if xo5 == 25:
-        return pair(f'{A0} * {C0}', f'{A1} * {C1}')
+        return pair(f'{A0} * {M0}', f'{A1} * {M1}')
     if xo5 == 24:
         return pair(f'1.0 / {B0}', f'1.0 / {B1}')
     if xo5 == 26:
@@ -659,25 +667,25 @@ def translate4(pc, i, d, a, b, cc, rc):
     if xo5 == 23:
         return pair(f'({A0} >= 0.0) ? {C0} : {B0}', f'({A1} >= 0.0) ? {C1} : {B1}', rnd=False)
     if xo5 == 28:
-        return pair(f'fma({A0}, {C0}, -{B0})', f'fma({A1}, {C1}, -{B1})')
+        return pair(f'fma({A0}, {M0}, -{B0})', f'fma({A1}, {M1}, -{B1})')
     if xo5 == 29:
-        return pair(f'fma({A0}, {C0}, {B0})', f'fma({A1}, {C1}, {B1})')
+        return pair(f'fma({A0}, {M0}, {B0})', f'fma({A1}, {M1}, {B1})')
     if xo5 == 30:
-        return pair(f'-fma({A0}, {C0}, -{B0})', f'-fma({A1}, {C1}, -{B1})')
+        return pair(f'-fma({A0}, {M0}, -{B0})', f'-fma({A1}, {M1}, -{B1})')
     if xo5 == 31:
-        return pair(f'-fma({A0}, {C0}, {B0})', f'-fma({A1}, {C1}, {B1})')
+        return pair(f'-fma({A0}, {M0}, {B0})', f'-fma({A1}, {M1}, {B1})')
     if xo5 == 10:  # ps_sum0
         return pair(f'{A0} + {B1}', C1)
     if xo5 == 11:  # ps_sum1
         return pair(C0, f'{A0} + {B1}')
     if xo5 == 12:  # ps_muls0
-        return pair(f'{A0} * {C0}', f'{A1} * {C0}')
+        return pair(f'{A0} * {M0}', f'{A1} * {M0}')
     if xo5 == 13:
-        return pair(f'{A0} * {C1}', f'{A1} * {C1}')
+        return pair(f'{A0} * {M1}', f'{A1} * {M1}')
     if xo5 == 14:  # ps_madds0
-        return pair(f'fma({A0}, {C0}, {B0})', f'fma({A1}, {C0}, {B1})')
+        return pair(f'fma({A0}, {M0}, {B0})', f'fma({A1}, {M0}, {B1})')
     if xo5 == 15:
-        return pair(f'fma({A0}, {C1}, {B0})', f'fma({A1}, {C1}, {B1})')
+        return pair(f'fma({A0}, {M1}, {B0})', f'fma({A1}, {M1}, {B1})')
 
     if xo == 0:  # ps_cmpu0
         return f'c->cr[{d >> 2}] = FCMP({A0}, {B0});'
@@ -745,14 +753,14 @@ def translate_step(pc, i, x, p=1.0):
         raise Unimpl(f'step op31 xo {xo9} x={x}')
     if op in (59, 63):
         xo5 = (i >> 1) & 0x1F
-        A, B, C = F(a), F(b), F(cc)
+        A, B, C = F(a), F(b), (FRC(F(cc)) if op == 59 else F(cc))
         e = step_expr(xo5, A, B, C, x, S, pc, P)
         if op == 59:
             return f'{{ double v = (double)(float)({e}); {F(d)} = v; {P1(d)} = v; }}' + cr1(rc)
         return f'{F(d)} = {e};' + cr1(rc)
     if op == 4:
         xo5 = (i >> 1) & 0x1F
-        A0, A1, B0, B1, C0, C1 = F(a), P1(a), F(b), P1(b), F(cc), P1(cc)
+        A0, A1, B0, B1, C0, C1 = F(a), P1(a), F(b), P1(b), FRC(F(cc)), FRC(P1(cc))
         if xo5 in (12, 14):  # ps_muls0, ps_madds0: lane 1 uses C's lane 0
             e0 = step_expr(25 if xo5 == 12 else 29, A0, B0, C0, x, S, pc, P)
             e1 = step_expr(25 if xo5 == 12 else 29, A1, B1, C0, x, S, pc, P)

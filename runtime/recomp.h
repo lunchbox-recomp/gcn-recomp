@@ -269,6 +269,42 @@ static inline uint8_t fcmp(double a, double b) {
 }
 #define FCMP(a, b) fcmp((a), (b))
 
+/* frC as Gekko's single-precision multiplies read it. fmuls, fmadds, fmsubs, fnmadds and
+   fnmsubs, and the paired singles' ps_mul, ps_muls0, ps_muls1, ps_madd, ps_madds0, ps_madds1,
+   ps_msub, ps_nmadd and ps_nmsub, round frC's significand to 25 bits before they multiply,
+   to nearest with a tie going away from zero. frA and frB go in whole, and the double-precision
+   forms round nothing. A single, which is what lfs, psq_l and every single-precision result
+   leave, has nothing below its 24th fraction bit and comes through unchanged, so only a double
+   in frC, such as frsqrte's result or a double-precision op's, is changed.
+   - A normal double keeps its top 24 fraction bits. The 28 under them go, and one is added at
+     the 24th when the first of them is set. A carry into the exponent stays, so a value within
+     half a step of 2^1024 rounds to infinity.
+   - A double denormal keeps 25 bits from its leading one, so one of 25 bits or fewer is
+     unchanged. The carry can make it the least normal.
+   - Zeros and infinities are unchanged. A NaN is left as it is, since no source here says
+     whether the 750 rounds a NaN's payload too. */
+static inline uint64_t round_frc_denormal(uint64_t u) {
+    const uint64_t f = u & 0x000FFFFFFFFFFFFFull;
+    const uint32_t hi = (uint32_t)(f >> 32);
+    const int lead = hi ? 63 - (int)GCN_CLZ32(hi) : 31 - (int)GCN_CLZ32((uint32_t)f);
+    if (lead < 25) return u;  /* zero, or 25 bits or fewer */
+    const uint64_t half = 1ull << (lead - 25);
+    return (u + half) & ~((half << 1) - 1);
+}
+static inline double ROUND_FRC(double x) {
+    uint64_t u;
+    memcpy(&u, &x, 8);
+    const uint64_t e = u & 0x7FF0000000000000ull;
+    if (LIKELY(e - 0x0010000000000000ull < 0x7FE0000000000000ull))
+        u = (u + 0x0000000008000000ull) & ~0x000000000FFFFFFFull;
+    else if (e == 0)
+        u = round_frc_denormal(u);
+    else
+        return x;
+    memcpy(&x, &u, 8);
+    return x;
+}
+
 static inline int32_t FCTIWZ(double d) {
     if (d != d) return INT32_MIN;
     if (d >= 2147483647.0) return INT32_MAX;

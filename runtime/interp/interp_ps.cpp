@@ -4,7 +4,8 @@
 //
 // Each case reads its registers in the order translate's text names them. That gives the operand order
 // translate's C compiles to on its own, and when both operands are NaNs the order decides which comes
-// out. Read up front, ps_muls0's lane 1 would get A1's NaN where translate's C alone gets C0's.
+// out. ps_muls0 and ps_muls1 are the exception: with frC rounded once for both lanes, translate's C
+// alone gives lane 1 A1's NaN, which reading A's lanes before frC gives here too.
 //
 // In a larger function, clang orders a sum's or a product's operands by where their values come from.
 // So which of two different NaNs native code gives in a ps add, mul, muls or sum form depends on the
@@ -48,24 +49,27 @@ InterpStep interp_ps(CPU* c, uint32_t i) {
     const auto B1 = [=] { return c->ps1[b]; };
     const auto C0 = [=] { return c->f[cc].d; };
     const auto C1 = [=] { return c->ps1[cc]; };
+    // frC as the multiplies read it (ROUND_FRC). ps_sel and the sums take it whole.
+    const auto M0 = [=] { return ROUND_FRC(c->f[cc].d); };
+    const auto M1 = [=] { return ROUND_FRC(c->ps1[cc]); };
     switch (insn_xo5(i)) {
     case 18: PAIR(A0() / B0(), A1() / B1(), true);                          // ps_div
     case 20: PAIR(A0() - B0(), A1() - B1(), true);                          // ps_sub
     case 21: PAIR(A0() + B0(), A1() + B1(), true);                          // ps_add
-    case 25: PAIR(A0() * C0(), A1() * C1(), true);                          // ps_mul
+    case 25: PAIR(A0() * M0(), A1() * M1(), true);                          // ps_mul
     case 24: PAIR(1.0 / B0(), 1.0 / B1(), true);                            // ps_res
     case 26: PAIR(1.0 / sqrt(B0()), 1.0 / sqrt(B1()), true);                // ps_rsqrte
     case 23: PAIR((A0() >= 0.0) ? C0() : B0(), (A1() >= 0.0) ? C1() : B1(), false);  // ps_sel
-    case 28: PAIR(fma(A0(), C0(), -B0()), fma(A1(), C1(), -B1()), true);    // ps_msub
-    case 29: PAIR(fma(A0(), C0(), B0()), fma(A1(), C1(), B1()), true);      // ps_madd
-    case 30: PAIR(-fma(A0(), C0(), -B0()), -fma(A1(), C1(), -B1()), true);  // ps_nmsub
-    case 31: PAIR(-fma(A0(), C0(), B0()), -fma(A1(), C1(), B1()), true);    // ps_nmadd
+    case 28: PAIR(fma(A0(), M0(), -B0()), fma(A1(), M1(), -B1()), true);    // ps_msub
+    case 29: PAIR(fma(A0(), M0(), B0()), fma(A1(), M1(), B1()), true);      // ps_madd
+    case 30: PAIR(-fma(A0(), M0(), -B0()), -fma(A1(), M1(), -B1()), true);  // ps_nmsub
+    case 31: PAIR(-fma(A0(), M0(), B0()), -fma(A1(), M1(), B1()), true);    // ps_nmadd
     case 10: PAIR(A0() + B1(), C1(), true);                                 // ps_sum0
     case 11: PAIR(C0(), A0() + B1(), true);                                 // ps_sum1
-    case 12: PAIR(A0() * C0(), A1() * C0(), true);                          // ps_muls0
-    case 13: PAIR(A0() * C1(), A1() * C1(), true);                          // ps_muls1
-    case 14: PAIR(fma(A0(), C0(), B0()), fma(A1(), C0(), B1()), true);      // ps_madds0
-    case 15: PAIR(fma(A0(), C1(), B0()), fma(A1(), C1(), B1()), true);      // ps_madds1
+    case 12: { const double a0 = A0(), a1 = A1(), m = M0(); PAIR(a0 * m, a1 * m, true); }  // ps_muls0
+    case 13: { const double a0 = A0(), a1 = A1(), m = M1(); PAIR(a0 * m, a1 * m, true); }  // ps_muls1
+    case 14: PAIR(fma(A0(), M0(), B0()), fma(A1(), M0(), B1()), true);      // ps_madds0
+    case 15: PAIR(fma(A0(), M1(), B0()), fma(A1(), M1(), B1()), true);      // ps_madds1
     }
     const uint32_t crf = insn_d(i) >> 2;
     switch (insn_xo(i)) {
