@@ -339,5 +339,5 @@ benchmark and the Android and visionOS builds leave it out.
 gcn-recomp is MIT (`LICENSE`), except for one file. `runtime/gekko_estimate.h`, the tables and
 arithmetic behind the fres and frsqrte estimates, comes from [Cemu](https://github.com/cemu-project/Cemu)
 and stays under the [Mozilla Public License 2.0](https://mozilla.org/MPL/2.0/), as its header says.
-The MPL covers that file alone, so changes to it stay under the MPL with their source available.
+`LICENSE.MPL-2.0` holds the licence's text and names the file's Cemu source. The MPL covers that file alone, so changes to it stay under the MPL with their source available.
 The rest of the code stays MIT.
