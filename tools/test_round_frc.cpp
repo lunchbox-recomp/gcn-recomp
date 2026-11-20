@@ -10,31 +10,12 @@
 // usage: test_round_frc
 // Exits 0 only if every check passes.
 #include "recomp.h"
+#include "test_fp_bits.h"
 #include <cstdio>
-#include <cstring>
 
 namespace {
 
 int g_failed;
-
-uint64_t bits(double d) {
-    uint64_t u;
-    memcpy(&u, &d, 8);
-    return u;
-}
-
-double value(uint64_t u) {
-    double d;
-    memcpy(&d, &u, 8);
-    return d;
-}
-
-uint32_t single_bits(double d) {
-    const float f = (float)d;
-    uint32_t u;
-    memcpy(&u, &f, 4);
-    return u;
-}
 
 void rounds(uint64_t in, uint64_t want, const char* what) {
     const uint64_t got = bits(ROUND_FRC(value(in)));

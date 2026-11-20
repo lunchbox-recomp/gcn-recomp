@@ -5,7 +5,8 @@ Run them with `python3 -m unittest discover -s recomp -p 'test_*.py'`.
 Each reads frB through GEKKO_FRES or GEKKO_FRSQRTE (runtime/recomp.h), in each lane it writes,
 and none divides or takes a square root. Then translate's C is built and run: fres writes its
 estimate to both lanes, frsqrte to ps0 alone, and the paired forms take each lane's, ps_rsqrte's
-rounded to the nearest single. tools/test_gekko_estimate.cpp checks the estimates themselves.
+rounded to the nearest single. The manual says toward zero; this matches Dolphin.
+tools/test_gekko_estimate.cpp checks the estimates themselves.
 """
 import os
 import shutil
@@ -51,7 +52,8 @@ class Run(unittest.TestCase):
         ('fres', a_form(59, 24, a=0, c=0), (THREE, TWO), (0x3FD5550000000000, 0x3FD5550000000000)),
         ('frsqrte', a_form(63, 26, a=0, c=0), (TWO, FOUR), (0x3FE69FA000000000, UNTOUCHED)),
         ('ps_res', a_form(4, 24, a=0, c=0), (THREE, NEG_SEVEN_QUARTERS), (0x3FD5550000000000, 0xBFE2488000000000)),
-        # frsqrte(0.3) is 0x3FFD368178000000, over halfway to the next single.
+        # frsqrte(0.3) is 0x3FFD368178000000, over halfway to the next single, so nearest
+        # gives 0x3FFD368180000000 where toward zero would give 0x3FFD368160000000.
         ('ps_rsqrte', a_form(4, 26, a=0, c=0), (POINT_THREE, FOUR), (0x3FFD368180000000, 0x3FDFFE8000000000)),
     ]
 

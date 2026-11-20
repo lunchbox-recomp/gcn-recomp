@@ -12,32 +12,13 @@
 // usage: test_gekko_estimate
 // Exits 0 only if every check passes.
 #include "recomp.h"
+#include "test_fp_bits.h"
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 
 namespace {
 
 int g_failed;
-
-uint64_t bits(double d) {
-    uint64_t u;
-    memcpy(&u, &d, 8);
-    return u;
-}
-
-double value(uint64_t u) {
-    double d;
-    memcpy(&d, &u, 8);
-    return d;
-}
-
-uint32_t single_bits(double d) {
-    const float f = (float)d;
-    uint32_t u;
-    memcpy(&u, &f, 4);
-    return u;
-}
 
 void check(bool ok, const char* what) {
     if (!ok) {
@@ -51,17 +32,6 @@ void gives(double (*f)(double), uint64_t in, uint64_t want, const char* what) {
     if (got != want) {
         std::printf("FAIL: %s: %016llX gave %016llX, not %016llX\n", what, (unsigned long long)in,
                     (unsigned long long)got, (unsigned long long)want);
-        g_failed++;
-    }
-}
-
-// fres's result as a single's bits, checking it's a single.
-void gives_single(uint64_t in, uint32_t want, const char* what) {
-    const double r = GEKKO_FRES(value(in));
-    const uint32_t got = single_bits(r);
-    if (got != want || bits((double)(float)r) != bits(r)) {
-        std::printf("FAIL: %s: %016llX gave %016llX (single %08X), not single %08X\n", what,
-                    (unsigned long long)in, (unsigned long long)bits(r), got, want);
         g_failed++;
     }
 }
@@ -153,14 +123,16 @@ void special() {
     gives(GEKKO_FRES, 0xB7E0000000000000ull, kGreatestSingle | 0x8000000000000000ull, "fres(-2^-129)");
     gives(GEKKO_FRES, 0x0000000000000001ull, kGreatestSingle, "fres of the least denormal");
     gives(GEKKO_FRES, 0x800FFFFFFFFFFFFFull, kGreatestSingle | 0x8000000000000000ull, "fres of a negative denormal");
-    // Under it: a single denormal with its low bits cut, then a zero of the operand's sign.
-    gives_single(0x47D0000000000000ull, 0x007FFC00u, "fres(2^126)");
-    gives_single(0xC7D0000000000000ull, 0x807FFC00u, "fres(-2^126)");
-    gives_single(0x47D0002000000000ull, 0x007FFB07u, "fres(2^126 + a step), cut and not rounded");
-    gives_single(0x4930000000000000ull, 0x00000001u, "fres(2^148), the least denormal");
-    gives_single(0x4940000000000000ull, 0x00000000u, "fres(2^149) is +0");
-    gives_single(0xC940000000000000ull, 0x80000000u, "fres(-2^149) is -0");
-    gives_single(0x7FEFFFFFFFFFFFFFull, 0x00000000u, "fres of the greatest double is +0");
+    // Under it, from 2^126 up: a zero of the operand's sign, as Dolphin gives, not a single
+    // denormal. The operand just under 2^126 still gives the least normal exponent.
+    check(bits(GEKKO_FRES(value(0x47CFFFFFFFFFFFFFull))) >> 52 == 897,
+          "fres just under 2^126 keeps the least normal single's exponent");
+    gives(GEKKO_FRES, 0x47D0000000000000ull, 0x0000000000000000ull, "fres(2^126) is +0");
+    gives(GEKKO_FRES, 0xC7D0000000000000ull, 0x8000000000000000ull, "fres(-2^126) is -0");
+    gives(GEKKO_FRES, 0x47D0002000000000ull, 0x0000000000000000ull, "fres(2^126 + a step) is +0");
+    gives(GEKKO_FRES, 0x4930000000000000ull, 0x0000000000000000ull, "fres(2^148) is +0");
+    gives(GEKKO_FRES, 0x7FEFFFFFFFFFFFFFull, 0x0000000000000000ull, "fres of the greatest double is +0");
+    gives(GEKKO_FRES, 0xFFEFFFFFFFFFFFFFull, 0x8000000000000000ull, "fres of the least double is -0");
 }
 
 }  // namespace

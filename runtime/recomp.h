@@ -283,10 +283,13 @@ static inline uint8_t fcmp(double a, double b) {
      unchanged. The carry can make it the least normal.
    - Zeros and infinities are unchanged. A NaN is left as it is, since no source here says
      whether the 750 rounds a NaN's payload too. */
-static inline uint64_t round_frc_denormal(uint64_t u) {
-    const uint64_t f = u & 0x000FFFFFFFFFFFFFull;
+/* The position of a 52-bit fraction's leading one, 0 to 51, or -1 for a zero fraction. */
+static inline int gekko_lead(uint64_t f) {
     const uint32_t hi = (uint32_t)(f >> 32);
-    const int lead = hi ? 63 - (int)GCN_CLZ32(hi) : 31 - (int)GCN_CLZ32((uint32_t)f);
+    return hi ? 63 - (int)GCN_CLZ32(hi) : 31 - (int)GCN_CLZ32((uint32_t)f);
+}
+static inline uint64_t round_frc_denormal(uint64_t u) {
+    const int lead = gekko_lead(u & 0x000FFFFFFFFFFFFFull);
     if (lead < 25) return u;  /* zero, or 25 bits or fewer */
     const uint64_t half = 1ull << (lead - 25);
     return (u + half) & ~((half << 1) - 1);
@@ -309,21 +312,30 @@ static inline double ROUND_FRC(double x) {
    estimate, not the exact 1/b and 1/sqrt(b). The tables and the arithmetic for an ordinary
    operand are in gekko_estimate.h (MPL-2.0, from Cemu). The rest is here, from the IBM 750CL
    User's Manual: the special-value tables for fres (page 424), frsqrte (427), ps_res (594)
-   and ps_rsqrte (595), and its operand and result rules (Tables 2-24 and 2-25), in IEEE mode,
-   since nothing here models FPSCR[NI]. FPRF follows from the result as for any op; the
-   exception bits these set (ZX, VXSNAN, VXSQRT, OX, UX) aren't modelled.
-   - +0 and -0 give infinity of the same sign. A QNaN comes through as it is, and an SNaN
-     comes back quiet with its sign, as the manual says, and its fraction, the quiet bit set.
-   - A denormal operand is normalized first (Table 2-24), so its estimate reads its leading
-     bits as a normal's would, with an exponent of 0 or below.
-   - frsqrte of +inf is +0. Of -inf or any other negative operand it's a QNaN made for an
-     invalid operation, which the manual gives a sign of zero: 0x7FF8000000000000.
+   and ps_rsqrte (595), and its operand rules (Table 2-24), in IEEE mode, since nothing here
+   models FPSCR[NI]. The NaN rules are from the PowerPC Programming Environments Manual for
+   32-bit implementations (MPCFPE32B), which the 750CL manual defers to. FPRF follows from the
+   result as for any op; the exception bits these set (ZX, VXSNAN, VXSQRT, OX, UX) aren't
+   modelled.
+   - +0 and -0 give infinity of the same sign. A QNaN comes through as it is. An SNaN comes
+     back quiet, its sign and fraction kept and the quiet bit set, as the PEM's
+     round-to-single model (D.4.1) quiets one.
+   - A denormal operand is normalized first, as Table 2-24 has IEEE mode do to any operand.
+     That the estimate then reads its leading bits as a normal's would, with an exponent of
+     0 or below, is inferred; no table here shows a denormal's estimate.
+   - frsqrte of +inf is +0. Of -inf or any other negative operand it's the QNaN an invalid
+     operation generates, which the PEM gives a sign of zero (3.3.1.7, Figure 3-17):
+     0x7FF8000000000000.
    - fres of an infinity is a zero of its sign. Its result is single-precision, and the
      estimate rounds toward zero (page 95), so a result above the single range is the
      greatest single of the operand's sign, as IEEE 754 has an overflow toward zero give. The
      manual doesn't say this case outright; an operand under 2^-128, any denormal among them,
-     gets it. A result under the least normal single is a single denormal, its low bits cut
-     (Table 2-25), down to a zero of the operand's sign. */
+     gets it.
+   - fres of an operand from 2^126 up, whose estimate is under the least normal single, is a
+     zero of the operand's sign. The manual's Table 2-25 suggests otherwise, a single
+     denormal with trailing zeros; the zero matches Dolphin.
+   - ps_rsqrte rounds each lane's estimate to the nearest single, as every paired result is
+     rounded. The manual says toward zero (page 95); this matches Dolphin. */
 #include "gekko_estimate.h"
 
 static inline double gekko_from_bits(uint64_t u) {
@@ -340,8 +352,7 @@ static inline int gekko_normalize(uint64_t mag, uint64_t* frac) {
     uint64_t f = mag & 0x000FFFFFFFFFFFFFull;
     int e = (int)(mag >> 52);
     if (e == 0) {
-        const uint32_t hi = (uint32_t)(f >> 32);
-        const int lead = hi ? 63 - (int)GCN_CLZ32(hi) : 31 - (int)GCN_CLZ32((uint32_t)f);
+        const int lead = gekko_lead(f);
         f = (f << (52 - lead)) & 0x000FFFFFFFFFFFFFull;
         e = 1 - (52 - lead);
     }
@@ -372,12 +383,8 @@ static inline double GEKKO_FRES(double x) {
     const int eo = gekko_fres_exponent(e);
     const uint32_t f = gekko_fres_fraction(frac);
     if (eo > 1150) return gekko_from_bits(sign | 0x47EFFFFFE0000000ull); /* the greatest single */
-    if (eo >= 897) return gekko_from_bits(sign | ((uint64_t)eo << 52) | ((uint64_t)f << 29));
-    const int cut = 897 - eo; /* a single denormal: the 24-bit significand shifted down */
-    const uint32_t s = (uint32_t)(sign >> 32) | (cut > 24 ? 0u : (0x800000u | f) >> cut);
-    float r;
-    memcpy(&r, &s, 4);
-    return (double)r;
+    if (eo < 897) return gekko_from_bits(sign); /* under the least normal single */
+    return gekko_from_bits(sign | ((uint64_t)eo << 52) | ((uint64_t)f << 29));
 }
 
 static inline int32_t FCTIWZ(double d) {
