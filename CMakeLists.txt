@@ -995,6 +995,13 @@ function(gcn_add_game)
     target_include_directories(test_round_frc PRIVATE ${RT})
     target_compile_options(test_round_frc PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The fres and frsqrte estimate checks (tools/test_gekko_estimate.cpp): GEKKO_FRES and
+    # GEKKO_FRSQRTE in runtime/recomp.h, with runtime/gekko_estimate.h.
+    add_executable(test_gekko_estimate EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_gekko_estimate.cpp)
+    _gcn_set_standards(test_gekko_estimate)
+    target_include_directories(test_gekko_estimate PRIVATE ${RT})
+    target_compile_options(test_gekko_estimate PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The draw anchor checks (tools/test_anchor.cpp): runtime/gx/anchor.h on its own.
     add_executable(test_anchor EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_anchor.cpp)
     _gcn_set_standards(test_anchor)
@@ -1279,7 +1286,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_round_frc test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_pause
+    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_round_frc test_gekko_estimate test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_ui_sound test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_ready_file test_code_table test_code_watch test_aid)

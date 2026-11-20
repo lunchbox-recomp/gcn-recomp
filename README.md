@@ -333,3 +333,11 @@ libusb only as a static library stops, since libusb's license rules out linking 
 The menu over the game needs Dear ImGui 1.92.9b, whose source archive the first configure
 downloads and checks by its SHA-256. `-DGCN_OVERLAY=OFF` builds without the menu, and the
 benchmark and the Android and visionOS builds leave it out.
+
+## License
+
+gcn-recomp is MIT (`LICENSE`), except for one file. `runtime/gekko_estimate.h`, the tables and
+arithmetic behind the fres and frsqrte estimates, comes from [Cemu](https://github.com/cemu-project/Cemu)
+and stays under the [Mozilla Public License 2.0](https://mozilla.org/MPL/2.0/), as its header says.
+The MPL covers that file alone, so changes to it stay under the MPL with their source available.
+The rest of the code stays MIT.

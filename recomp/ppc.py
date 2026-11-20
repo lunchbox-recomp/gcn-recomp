@@ -557,7 +557,7 @@ def translate59(pc, i, d, a, b, cc, rc):
         20: f'{F(a)} - {F(b)}',
         21: f'{F(a)} + {F(b)}',
         25: f'{F(a)} * {C}',
-        24: f'1.0 / {F(b)}',
+        24: f'GEKKO_FRES({F(b)})',
         28: f'fma({F(a)}, {C}, -{F(b)})',
         29: f'fma({F(a)}, {C}, {F(b)})',
         30: f'-fma({F(a)}, {C}, -{F(b)})',
@@ -576,7 +576,7 @@ def translate63(pc, i, d, a, b, cc, rc):
         20: f'{F(a)} - {F(b)}',
         21: f'{F(a)} + {F(b)}',
         25: f'{F(a)} * {F(cc)}',
-        26: f'1.0 / sqrt({F(b)})',
+        26: f'GEKKO_FRSQRTE({F(b)})',
         28: f'fma({F(a)}, {F(cc)}, -{F(b)})',
         29: f'fma({F(a)}, {F(cc)}, {F(b)})',
         30: f'-fma({F(a)}, {F(cc)}, -{F(b)})',
@@ -661,9 +661,9 @@ def translate4(pc, i, d, a, b, cc, rc):
     if xo5 == 25:
         return pair(f'{A0} * {M0}', f'{A1} * {M1}')
     if xo5 == 24:
-        return pair(f'1.0 / {B0}', f'1.0 / {B1}')
+        return pair(f'GEKKO_FRES({B0})', f'GEKKO_FRES({B1})')
     if xo5 == 26:
-        return pair(f'1.0 / sqrt({B0})', f'1.0 / sqrt({B1})')
+        return pair(f'GEKKO_FRSQRTE({B0})', f'GEKKO_FRSQRTE({B1})')
     if xo5 == 23:
         return pair(f'({A0} >= 0.0) ? {C0} : {B0}', f'({A1} >= 0.0) ? {C1} : {B1}', rnd=False)
     if xo5 == 28:

@@ -305,6 +305,81 @@ static inline double ROUND_FRC(double x) {
     return x;
 }
 
+/* fres and ps_res (GEKKO_FRES), frsqrte and ps_rsqrte (GEKKO_FRSQRTE) give the 750's
+   estimate, not the exact 1/b and 1/sqrt(b). The tables and the arithmetic for an ordinary
+   operand are in gekko_estimate.h (MPL-2.0, from Cemu). The rest is here, from the IBM 750CL
+   User's Manual: the special-value tables for fres (page 424), frsqrte (427), ps_res (594)
+   and ps_rsqrte (595), and its operand and result rules (Tables 2-24 and 2-25), in IEEE mode,
+   since nothing here models FPSCR[NI]. FPRF follows from the result as for any op; the
+   exception bits these set (ZX, VXSNAN, VXSQRT, OX, UX) aren't modelled.
+   - +0 and -0 give infinity of the same sign. A QNaN comes through as it is, and an SNaN
+     comes back quiet with its sign, as the manual says, and its fraction, the quiet bit set.
+   - A denormal operand is normalized first (Table 2-24), so its estimate reads its leading
+     bits as a normal's would, with an exponent of 0 or below.
+   - frsqrte of +inf is +0. Of -inf or any other negative operand it's a QNaN made for an
+     invalid operation, which the manual gives a sign of zero: 0x7FF8000000000000.
+   - fres of an infinity is a zero of its sign. Its result is single-precision, and the
+     estimate rounds toward zero (page 95), so a result above the single range is the
+     greatest single of the operand's sign, as IEEE 754 has an overflow toward zero give. The
+     manual doesn't say this case outright; an operand under 2^-128, any denormal among them,
+     gets it. A result under the least normal single is a single denormal, its low bits cut
+     (Table 2-25), down to a zero of the operand's sign. */
+#include "gekko_estimate.h"
+
+static inline double gekko_from_bits(uint64_t u) {
+    double d;
+    memcpy(&d, &u, 8);
+    return d;
+}
+static inline uint64_t gekko_quiet(uint64_t u) {
+    return u | 0x0008000000000000ull;
+}
+/* A positive, finite, nonzero magnitude's biased exponent and 52-bit fraction, a denormal
+   normalized so that its leading one becomes the implicit bit. */
+static inline int gekko_normalize(uint64_t mag, uint64_t* frac) {
+    uint64_t f = mag & 0x000FFFFFFFFFFFFFull;
+    int e = (int)(mag >> 52);
+    if (e == 0) {
+        const uint32_t hi = (uint32_t)(f >> 32);
+        const int lead = hi ? 63 - (int)GCN_CLZ32(hi) : 31 - (int)GCN_CLZ32((uint32_t)f);
+        f = (f << (52 - lead)) & 0x000FFFFFFFFFFFFFull;
+        e = 1 - (52 - lead);
+    }
+    *frac = f;
+    return e;
+}
+static inline double GEKKO_FRSQRTE(double x) {
+    uint64_t u, frac;
+    memcpy(&u, &x, 8);
+    const uint64_t mag = u & 0x7FFFFFFFFFFFFFFFull;
+    if (mag == 0) return gekko_from_bits(u | 0x7FF0000000000000ull);
+    if (mag > 0x7FF0000000000000ull) return gekko_from_bits(gekko_quiet(u));
+    if (u >> 63) return gekko_from_bits(0x7FF8000000000000ull);
+    if (mag == 0x7FF0000000000000ull) return 0.0;
+    const int e = gekko_normalize(mag, &frac);
+    return gekko_from_bits(((uint64_t)gekko_frsqrte_exponent(e) << 52) |
+                           ((uint64_t)gekko_frsqrte_fraction(e, frac) << 26));
+}
+static inline double GEKKO_FRES(double x) {
+    uint64_t u, frac;
+    memcpy(&u, &x, 8);
+    const uint64_t sign = u & 0x8000000000000000ull;
+    const uint64_t mag = u ^ sign;
+    if (mag == 0) return gekko_from_bits(sign | 0x7FF0000000000000ull);
+    if (mag > 0x7FF0000000000000ull) return gekko_from_bits(gekko_quiet(u));
+    if (mag == 0x7FF0000000000000ull) return gekko_from_bits(sign);
+    const int e = gekko_normalize(mag, &frac);
+    const int eo = gekko_fres_exponent(e);
+    const uint32_t f = gekko_fres_fraction(frac);
+    if (eo > 1150) return gekko_from_bits(sign | 0x47EFFFFFE0000000ull); /* the greatest single */
+    if (eo >= 897) return gekko_from_bits(sign | ((uint64_t)eo << 52) | ((uint64_t)f << 29));
+    const int cut = 897 - eo; /* a single denormal: the 24-bit significand shifted down */
+    const uint32_t s = (uint32_t)(sign >> 32) | (cut > 24 ? 0u : (0x800000u | f) >> cut);
+    float r;
+    memcpy(&r, &s, 4);
+    return (double)r;
+}
+
 static inline int32_t FCTIWZ(double d) {
     if (d != d) return INT32_MIN;
     if (d >= 2147483647.0) return INT32_MAX;

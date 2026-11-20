@@ -57,8 +57,8 @@ InterpStep interp_ps(CPU* c, uint32_t i) {
     case 20: PAIR(A0() - B0(), A1() - B1(), true);                          // ps_sub
     case 21: PAIR(A0() + B0(), A1() + B1(), true);                          // ps_add
     case 25: PAIR(A0() * M0(), A1() * M1(), true);                          // ps_mul
-    case 24: PAIR(1.0 / B0(), 1.0 / B1(), true);                            // ps_res
-    case 26: PAIR(1.0 / sqrt(B0()), 1.0 / sqrt(B1()), true);                // ps_rsqrte
+    case 24: PAIR(GEKKO_FRES(B0()), GEKKO_FRES(B1()), true);                // ps_res
+    case 26: PAIR(GEKKO_FRSQRTE(B0()), GEKKO_FRSQRTE(B1()), true);          // ps_rsqrte
     case 23: PAIR((A0() >= 0.0) ? C0() : B0(), (A1() >= 0.0) ? C1() : B1(), false);  // ps_sel
     case 28: PAIR(fma(A0(), M0(), -B0()), fma(A1(), M1(), -B1()), true);    // ps_msub
     case 29: PAIR(fma(A0(), M0(), B0()), fma(A1(), M1(), B1()), true);      // ps_madd

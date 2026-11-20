@@ -26,7 +26,7 @@ InterpStep op59(CPU* c, uint32_t i) {
     case 20: r = A - B; break;                        // fsubs
     case 21: r = A + B; break;                        // fadds
     case 25: r = A * C; break;                        // fmuls
-    case 24: r = 1.0 / B; break;                      // fres
+    case 24: r = GEKKO_FRES(B); break;                // fres
     case 28: r = fma(A, C, -B); break;                // fmsubs
     case 29: r = fma(A, C, B); break;                 // fmadds
     case 30: r = fma(A, C, -B); neg = true; break;    // fnmsubs
@@ -52,7 +52,7 @@ bool op63_a(CPU* c, uint32_t i) {
     case 20: v = A - B; break;              // fsub
     case 21: v = A + B; break;              // fadd
     case 25: v = A * C; break;              // fmul
-    case 26: v = 1.0 / sqrt(B); break;      // frsqrte
+    case 26: v = GEKKO_FRSQRTE(B); break;   // frsqrte
     case 28: v = fma(A, C, -B); break;      // fmsub
     case 29: v = fma(A, C, B); break;       // fmadd
     case 30: v = -fma(A, C, -B); break;     // fnmsub

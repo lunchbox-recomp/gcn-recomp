@@ -116,6 +116,13 @@ const FixedFp kFixedFp[] = {
     {kOne, kOneNeg, 0x3FF0000014000000ull, 0, gqr(6, 1), 0x3F800000u},
     {kOneNeg, kHalf, 0x3FFFFFFFF8000000ull, 1, gqr(7, 31), 0xBF800000u},
     {0x7FE0000000000000ull, kZero, 0x000800000A000000ull, 0, gqr(1, 63), 0x00000001u},
+    // fB for the estimates (GEKKO_FRES, GEKKO_FRSQRTE): an operand a step into a table entry, a
+    // denormal they normalize and whose fres is the greatest single, one whose fres is a single
+    // denormal cut short, and -inf.
+    {kOne, 0x3FD3333333333333ull, kHalf, 0, gqr(2, 0), 0x3F800000u},
+    {kHalf, 0x000C000000000000ull, kOne, 1, gqr(3, 1), 0x00000001u},
+    {kOne, 0x47D0002000000000ull, kOneNeg, 2, gqr(4, 31), 0x807FFFFFu},
+    {kOneNeg, kInfNeg, kOne, 0xF8, gqr(5, 32), 0xFF800000u},
 };
 constexpr int kFixedFpCount = sizeof kFixedFp / sizeof *kFixedFp;
 
