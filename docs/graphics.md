@@ -870,6 +870,26 @@ A copy of the EFB into a texture reads alpha as full on those formats too.
 `EfbCopyCmd::efb_alpha` carries the format's answer to the copy shader (`u_alpha` in
 `kCopyFS`), and the clear that goes with a copy leaves alpha alone on a format that has none.
 
+## The pixel centre
+
+The console takes a pixel as covered when the point 7/12 of the way across it and 7/12 of
+the way down it is inside a primitive, with antialiasing off. GL samples at 1/2. Left as it
+was, every edge that isn't on a whole pixel came out about 0.09 of a pixel right of and below
+where the console puts it, measured against Dolphin. So the flat path draws every vertex
+1/12 of a sample left and up: `flat_viewport` (`runtime/gx/viewport.h`) takes it off the
+constant terms of `u_vp_a` on the CPU, after the anchor's squeeze. The vertex shader doesn't
+change, so neither do the programs or the shader cache, and a draw costs nothing more.
+
+It's 1/12 of a sample of the target drawn into, at any internal scale, as Dolphin does. 1/12
+of a 1x pixel is half a sample at 6x, which would leave a whole-frame quad's last column and
+row undrawn from 6x up. It is the same at every output aspect, since the sample is in the
+EFB. It's fixed on the screen, so a mirrored viewport moves left too. The eye paths draw
+into their own targets and keep GL's centre. EFB copies and the XFB read whole pixels and
+take no correction, as in Dolphin. `tools/test_viewport.cpp` pins all of this.
+
+This was learned from Dolphin's behaviour (VideoCommon's pixel centre correction); no
+console documentation found states it. The code is gcn-recomp's own.
+
 ## Depth past the viewport's range
 
 GX clips depth before the viewport, at `-w <= z <= 0` in clip space, and clamps the depth

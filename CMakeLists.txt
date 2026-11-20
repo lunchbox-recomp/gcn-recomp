@@ -1008,6 +1008,12 @@ function(gcn_add_game)
     target_include_directories(test_anchor PRIVATE ${RT})
     target_compile_options(test_anchor PRIVATE ${GCN_RUNTIME_WARNINGS})
 
+    # The flat viewport checks (tools/test_viewport.cpp): runtime/gx/viewport.h on its own.
+    add_executable(test_viewport EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_viewport.cpp)
+    _gcn_set_standards(test_viewport)
+    target_include_directories(test_viewport PRIVATE ${RT})
+    target_compile_options(test_viewport PRIVATE ${GCN_RUNTIME_WARNINGS})
+
     # The blend factor checks (tools/test_blend.cpp): runtime/gx/blend.h on its own.
     add_executable(test_blend EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_blend.cpp)
     _gcn_set_standards(test_blend)
@@ -1286,7 +1292,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_round_frc test_gekko_estimate test_anchor test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_pause
+    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_round_frc test_gekko_estimate test_anchor test_viewport test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_ui_sound test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_ready_file test_code_table test_code_watch test_aid)

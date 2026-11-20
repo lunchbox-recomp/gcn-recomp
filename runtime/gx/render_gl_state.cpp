@@ -2,6 +2,7 @@
 // from what GL already holds.
 #include "render_gl_internal.h"
 #include "blend.h"
+#include "viewport.h"
 
 namespace gx {
 
@@ -122,16 +123,12 @@ AnchorMap draw_anchor_map(const PixelState& st) {
     return anchor_map((Anchor)st.anchor, st.anchor_x0, st.anchor_x1, anchor_scale(output_aspect(), g_eye_frame));
 }
 
-// u_vp_a for a state, less the scissor offset, with the anchor's remap of its x terms.
+// u_vp_a for a state, less the scissor offset, with the anchor's remap of its x terms and the
+// console's pixel centre (flat_viewport).
 void viewport_a(const PixelState& st, const AnchorMap& an, float vpa[4]) {
     int xoff, yoff;
     scissor_offset(st.bp, xoff, yoff);
-    const float* vp = st.viewport;
-    vpa[0] = 2.0f * (vp[3] - xoff) / EFB_W - 1.0f;
-    vpa[1] = 2.0f * vp[0] / EFB_W;
-    vpa[2] = 2.0f * (vp[4] - yoff) / EFB_H - 1.0f;
-    vpa[3] = 2.0f * vp[1] / EFB_H;
-    anchor_viewport(an.a, an.x0, an.x1, an.k, EFB_W, vpa);
+    flat_viewport(st.viewport, xoff, yoff, an, EFB_W, EFB_H, g_scale, vpa);
 }
 
 // The texture offset a point's coordinates run across (SU_LPSIZE bits 19-21: 1/16 to 1),

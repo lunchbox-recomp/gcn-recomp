@@ -383,6 +383,12 @@ middle, and a remapped viewport uniform lands every point where the remapped x d
 Stretched to 16:9, 16:10, 21:9 or 32:9, an anchored element sits at its 4:3 distance from
 its edge.
 
+`ninja test_viewport` builds `tools/test_viewport.cpp`, which checks the flat path's
+viewport terms (`runtime/gx/viewport.h`, graphics.md "The pixel centre") with no window or
+GL. A vertex lands 1/12 of a sample left of and above GX's place at 1x to 8x, anchored at
+16:9 and in a mirrored viewport. GL's sample at 1/2 then covers the pixels the console's at
+7/12 does, and a whole-frame quad covers every sample up to 8x.
+
 ## Recording a movie
 
 `--record=<file>` makes a movie of what the window shows -- in a headset (`--vr`) that is
