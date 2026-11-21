@@ -208,6 +208,7 @@ extern "C" void hle_set_fpscr(CPU* c, uint32_t v) {
     c->fpscr = v;
     c->fprf_pending = 0;  // an explicit write supersedes the last result's class
     // rounding mode bits 30-31 (RN); only nearest is honoured for now
+    gcn_fp_follow(v);  // NI, non-IEEE mode (recomp.h)
 }
 
 enum { SPR_DEC = 22, SPR_SDR1 = 25, SPR_SRR0 = 26, SPR_SRR1 = 27, SPR_TBL_R = 268, SPR_TBU_R = 269,
