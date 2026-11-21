@@ -230,12 +230,77 @@ static inline void ST64(uint32_t a, uint64_t v) {
     if (UNLIKELY(IS_MMIO(a))) { mmio_write32(a, (uint32_t)(v >> 32)); mmio_write32(a + 4, (uint32_t)v); return; }
     v = GCN_BSWAP64(v); memcpy(HOST_W(a), &v, 8);
 }
-static inline double LDF32(uint32_t a) {
-    uint32_t v = LD32(a); float f; memcpy(&f, &v, 4); return (double)f;
+/* Gekko's non-IEEE mode, FPSCR[NI]. The SDK's OSInit sets it (PPCSetFpNonIEEEMode). The IBM
+   750CL User's Manual's operand and result tables (Tables 2-24 and 2-25, the IEEE columns of
+   which the estimates below follow; Tables 2-5 and 2-6 in the 750GX/GL manual) say what it
+   does: a denormalized operand is zeroed where IEEE mode normalizes it, and a single or double
+   denormalized result returns zero. The host's own flush mode does both for every operation the
+   translated C does in the FPU, with a zero of the right sign: FPCR.FZ on AArch64, MXCSR's FTZ
+   and DAZ on x86-64. A single-precision result is a double rounded to single by a conversion,
+   which the mode flushes too, and fabs, fneg and the moves are bit operations it doesn't touch.
+   The host mode is a host thread's, and each guest thread runs on a host thread of its own, so
+   gcn_fp_follow sets it from a CPU's FPSCR wherever that changes: hle_set_fpscr, and where a
+   host thread takes up a guest context (runtime/threads.cpp). On any other host the mode isn't
+   modelled and denormals go through as in IEEE mode.
+   Loads and stores aren't arithmetic, so neither mode changes them, and they are done here in
+   integers wherever the host's conversion would flush: lfs of a single denormal gives its exact
+   double, and stfs of a double in a single denormal's range gives the PEM's denormalized single
+   (gekko_single_bits). */
+#define FPSCR_NI 0x4u
+#if defined(__aarch64__) && (defined(__GNUC__) || defined(__clang__))
+static inline uint64_t gcn_fpcr(void) { uint64_t v; __asm__ volatile("mrs %0, fpcr" : "=r"(v)); return v; }
+static inline int gcn_fp_flushing(void) { return (int)((gcn_fpcr() >> 24) & 1); }
+static inline void gcn_fp_set_flushing(int on) {
+    const uint64_t v = gcn_fpcr(), want = on ? (v | (1ull << 24)) : (v & ~(1ull << 24));
+    if (want != v) __asm__ volatile("msr fpcr, %0" : : "r"(want) : "memory");
 }
-static inline void STF32(uint32_t a, double d) {
-    float f = (float)d; uint32_t v; memcpy(&v, &f, 4); ST32(a, v);
+#elif defined(__x86_64__) || defined(_M_X64)
+#include <xmmintrin.h>
+#define GCN_MXCSR_FLUSH 0x8040u /* FTZ and DAZ */
+static inline int gcn_fp_flushing(void) { return (_mm_getcsr() & GCN_MXCSR_FLUSH) == GCN_MXCSR_FLUSH; }
+static inline void gcn_fp_set_flushing(int on) {
+    const unsigned v = _mm_getcsr(), want = on ? (v | GCN_MXCSR_FLUSH) : (v & ~GCN_MXCSR_FLUSH);
+    if (want != v) _mm_setcsr(want);
 }
+#else
+static inline int gcn_fp_flushing(void) { return 0; }
+static inline void gcn_fp_set_flushing(int on) { (void)on; }
+#endif
+static inline void gcn_fp_follow(uint32_t fpscr) { gcn_fp_set_flushing((fpscr & FPSCR_NI) != 0); }
+
+/* A single's word as the double lfs gives. A denormal is built in integers, exact in either
+   mode: its fraction times 2^-149 is a normal double. */
+static inline double gekko_single_value(uint32_t v) {
+    if (UNLIKELY((v & 0x7F800000u) == 0 && (v & 0x007FFFFFu) != 0)) {
+        const double m = (double)(v & 0x007FFFFFu) * 0x1p-149;
+        return (v >> 31) ? -m : m;
+    }
+    float f;
+    memcpy(&f, &v, 4);
+    return (double)f;
+}
+/* The word stfs stores for a double. From the least normal single up, and for zeros,
+   infinities and NaNs, it's the conversion to single, rounded to nearest as before. Under it the
+   PowerPC PEM (MPCFPE32B, "Floating-Point Store Instructions") denormalizes: the significand,
+   its implicit one included, shifts right until the exponent is -126, and the bits shifted out
+   are dropped, not rounded. A double with a biased exponent under 874, a double denormal among
+   them, shifts every bit out and stores a zero of its sign. */
+static inline uint32_t gekko_single_bits(double d) {
+    uint64_t u;
+    memcpy(&u, &d, 8);
+    const uint32_t e = (uint32_t)(u >> 52) & 0x7FF;
+    if (LIKELY(e > 896 || (u << 1) == 0)) {
+        float f = (float)d;
+        uint32_t v;
+        memcpy(&v, &f, 4);
+        return v;
+    }
+    const uint32_t sign = (uint32_t)(u >> 32) & 0x80000000u;
+    if (e < 874) return sign;
+    return sign | (uint32_t)(((u & 0x000FFFFFFFFFFFFFull) | 0x0010000000000000ull) >> (926 - e));
+}
+static inline double LDF32(uint32_t a) { return gekko_single_value(LD32(a)); }
+static inline void STF32(uint32_t a, double d) { ST32(a, gekko_single_bits(d)); }
 
 /* ---- condition register / xer ---- */
 #define CRB(n) ((c->cr[(n) >> 2] >> (3 - ((n) & 3))) & 1)
@@ -312,17 +377,19 @@ static inline double ROUND_FRC(double x) {
    estimate, not the exact 1/b and 1/sqrt(b). The tables and the arithmetic for an ordinary
    operand are in gekko_estimate.h (MPL-2.0, from Cemu). The rest is here, from the IBM 750CL
    User's Manual: the special-value tables for fres (page 424), frsqrte (427), ps_res (594)
-   and ps_rsqrte (595), and its operand rules (Table 2-24), in IEEE mode, since nothing here
-   models FPSCR[NI]. The NaN rules are from the PowerPC Programming Environments Manual for
+   and ps_rsqrte (595), and its operand rules (Table 2-24) in both modes. The NaN rules are
+   from the PowerPC Programming Environments Manual for
    32-bit implementations (MPCFPE32B), which the 750CL manual defers to. FPRF follows from the
    result as for any op; the exception bits these set (ZX, VXSNAN, VXSQRT, OX, UX) aren't
    modelled.
    - +0 and -0 give infinity of the same sign. A QNaN comes through as it is. An SNaN comes
      back quiet, its sign and fraction kept and the quiet bit set, as the PEM's
      round-to-single model (D.4.1) quiets one.
-   - A denormal operand is normalized first, as Table 2-24 has IEEE mode do to any operand.
-     That the estimate then reads its leading bits as a normal's would, with an exponent of
-     0 or below, is inferred; no table here shows a denormal's estimate.
+   - In IEEE mode a denormal operand is normalized first, as Table 2-24 has IEEE mode do to
+     any operand. That the estimate then reads its leading bits as a normal's would, with an
+     exponent of 0 or below, is inferred; no table here shows a denormal's estimate. In
+     non-IEEE mode the table zeroes it, so it gives infinity of its sign as a zero does. The
+     estimates are integer arithmetic, so the host's flush mode doesn't do this for them.
    - frsqrte of +inf is +0. Of -inf or any other negative operand it's the QNaN an invalid
      operation generates, which the PEM gives a sign of zero (3.3.1.7, Figure 3-17):
      0x7FF8000000000000.
@@ -363,7 +430,8 @@ static inline double GEKKO_FRSQRTE(double x) {
     uint64_t u, frac;
     memcpy(&u, &x, 8);
     const uint64_t mag = u & 0x7FFFFFFFFFFFFFFFull;
-    if (mag == 0) return gekko_from_bits(u | 0x7FF0000000000000ull);
+    if (mag == 0 || (mag < 0x0010000000000000ull && gcn_fp_flushing()))
+        return gekko_from_bits((u & 0x8000000000000000ull) | 0x7FF0000000000000ull);
     if (mag > 0x7FF0000000000000ull) return gekko_from_bits(gekko_quiet(u));
     if (u >> 63) return gekko_from_bits(0x7FF8000000000000ull);
     if (mag == 0x7FF0000000000000ull) return 0.0;
@@ -376,7 +444,8 @@ static inline double GEKKO_FRES(double x) {
     memcpy(&u, &x, 8);
     const uint64_t sign = u & 0x8000000000000000ull;
     const uint64_t mag = u ^ sign;
-    if (mag == 0) return gekko_from_bits(sign | 0x7FF0000000000000ull);
+    if (mag == 0 || (mag < 0x0010000000000000ull && gcn_fp_flushing()))
+        return gekko_from_bits(sign | 0x7FF0000000000000ull);
     if (mag > 0x7FF0000000000000ull) return gekko_from_bits(gekko_quiet(u));
     if (mag == 0x7FF0000000000000ull) return gekko_from_bits(sign);
     const int e = gekko_normalize(mag, &frac);

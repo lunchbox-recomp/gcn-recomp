@@ -158,6 +158,7 @@ static Binding* wait_for_baton(HostThread* self) {
 [[noreturn]] static void resume_binding(HostThread* self, Binding* b) {
     self->cpu = b->snapshot;
     self->cpu.host = self;
+    gcn_fp_follow(self->cpu.fpscr);
     if (b->kind == BIND_SAVED) self->cpu.r[3] = 1;
     b->kind = BIND_NONE;
     irq_request();  // re-evaluate pending interrupts after a switch
@@ -218,6 +219,7 @@ static void* host_thread_main(void* arg) {
     CPU* c = &self->cpu;
     uint32_t pc = mem_r32(self->start_ctx + CTX_SRR0);
     context_to_cpu(c, self->start_ctx);
+    gcn_fp_follow(c->fpscr);  // the host mode for the context's FPSCR[NI] (recomp.h)
     mem_w16(self->start_ctx + CTX_STATE, mem_r16(self->start_ctx + CTX_STATE) & ~OS_CONTEXT_STATE_EXC);
     LOG(LOG_THREAD, "host thread %d starting guest context %08X at %08X", self->id, self->start_ctx, pc);
     call_indirect(c, pc);
