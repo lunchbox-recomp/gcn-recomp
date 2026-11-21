@@ -8,7 +8,9 @@ host's flush mode from FPSCR[NI], and hle_set_fpscr and the thread switches call
 here runs translate's C for its words from set registers in IEEE mode and again in non-IEEE
 mode, and checks the bits fD holds in each. Loads and stores aren't arithmetic, so lfs's and
 stfs's conversions, gekko_single_value and gekko_single_bits, give the same bits in both modes,
-and stfs denormalizes as the PowerPC PEM says, dropping the bits it shifts out.
+and stfs denormalizes as the PowerPC PEM says, dropping the bits it shifts out. A new guest
+thread's FPSCR comes from gcn_fresh_fpscr, which takes NI from the thread that loads it when the
+context holds no saved FPU registers.
 
 The first case lerps from a table entry of 2^-147, a single denormal, to the next entry's 0, as
 b - a, then (b - a) * t + a. In IEEE mode that gives a denormal. In non-IEEE mode a is zeroed
@@ -33,6 +35,7 @@ INF, NEG_INF = 0x7FF0000000000000, 0xFFF0000000000000
 QNAN = 0x7FF8000000000000
 GREATEST_SINGLE = 0x47EFFFFFE0000000
 DOUBLE_DENORMAL = 0x0000000000000001
+GREATEST_DENORMAL = 0x000FFFFFFFFFFFFF
 # Each input goes through a volatile, so the compiler can't work a case out in IEEE mode while
 # it builds it, as clang does at -O1 with constants it can see.
 # The hosts recomp.h sets a flush mode on, by platform.machine().
@@ -65,6 +68,11 @@ CASES = [
      ppc.translate(PC, a_form(59, 24, d=1, a=0, b=3, c=0)), 'c->f[1].u', GREATEST_SINGLE, INF),
     ('frsqrte of a negative double denormal', regs(f3=0x8000000000000001),
      ppc.translate(PC, a_form(63, 26, d=1, a=0, b=3, c=0)), 'c->f[1].u', QNAN, NEG_INF),
+    # The greatest double denormal, at the top of the range non-IEEE mode zeroes.
+    ('fres of the greatest double denormal', regs(f3=GREATEST_DENORMAL),
+     ppc.translate(PC, a_form(59, 24, d=1, a=0, b=3, c=0)), 'c->f[1].u', GREATEST_SINGLE, INF),
+    ('frsqrte of the greatest double denormal', regs(f3=GREATEST_DENORMAL),
+     ppc.translate(PC, a_form(63, 26, d=1, a=0, b=3, c=0)), 'c->f[1].u', 0x5FE000082C000000, INF),
     ('fcmpu of a double denormal against zero', regs(f2=DOUBLE_DENORMAL, f3=0),
      ppc.translate(PC, 63 << 26 | 0 << 21 | 2 << 16 | 3 << 11), 'c->cr[0]', 4, 2),
     ('lfs of a single denormal', '', '', 'u(gekko_single_value((uint32_t)opq(0x00000004u)))', TINY, TINY),
@@ -81,6 +89,16 @@ CASES = [
      0x80000000, 0x80000000),
     ('stfs of the least normal single', '', '', 'gekko_single_bits(d(opq(0x3810000000000000ull)))',
      0x00800000, 0x00800000),
+    # A new guest thread's context has FPSCR 0 and no FPSAVED, and takes NI from the thread
+    # that loads it. A context whose FPU registers were saved keeps its own FPSCR.
+    ('a new context takes NI from its loader', '', '',
+     'gcn_fresh_fpscr((uint32_t)opq(0), (uint32_t)opq(0), (uint32_t)opq(0x80000004u))', 4, 4),
+    ('a new context takes no other bit', '', '',
+     'gcn_fresh_fpscr((uint32_t)opq(0x00000001u), (uint32_t)opq(0x02u), (uint32_t)opq(0x80000003u))', 1, 1),
+    ('a saved context keeps its FPSCR', '', '',
+     'gcn_fresh_fpscr((uint32_t)opq(0x00000001u), (uint32_t)opq(0x01u), (uint32_t)opq(0x00000004u))', 1, 1),
+    ('a saved context keeps its NI', '', '',
+     'gcn_fresh_fpscr((uint32_t)opq(0x00000004u), (uint32_t)opq(0x03u), (uint32_t)opq(0x00000000u))', 4, 4),
 ]
 
 

@@ -267,6 +267,18 @@ static inline int gcn_fp_flushing(void) { return 0; }
 static inline void gcn_fp_set_flushing(int on) { (void)on; }
 #endif
 static inline void gcn_fp_follow(uint32_t fpscr) { gcn_fp_set_flushing((fpscr & FPSCR_NI) != 0); }
+/* The FPSCR a guest thread starts with, from its context's FPSCR and state. The SDK switches
+   the FPU lazily: OSLoadFPUContext loads a context's FPU registers only when its state has
+   OS_CONTEXT_STATE_FPSAVED (0x01), so a thread that has never saved them takes the FPU as the
+   thread before it left it. A new thread's context has neither, FPSCR 0 and no FPSAVED, and on
+   the console it runs in the non-IEEE mode OSInit set. So a context without FPSAVED takes NI
+   from LIVE, the FPSCR of the guest thread that loads it. Only NI is taken, since NI is the
+   only FPSCR mode bit the runtime models. */
+#define GCN_CONTEXT_FPSAVED 0x01u
+static inline uint32_t gcn_fresh_fpscr(uint32_t fpscr, uint32_t state, uint32_t live) {
+    if (state & GCN_CONTEXT_FPSAVED) return fpscr;
+    return (fpscr & ~FPSCR_NI) | (live & FPSCR_NI);
+}
 
 /* A single's word as the double lfs gives. A denormal is built in integers, exact in either
    mode: its fraction times 2^-149 is a normal double. */
@@ -280,11 +292,15 @@ static inline double gekko_single_value(uint32_t v) {
     return (double)f;
 }
 /* The word stfs stores for a double. From the least normal single up, and for zeros,
-   infinities and NaNs, it's the conversion to single, rounded to nearest as before. Under it the
-   PowerPC PEM (MPCFPE32B, "Floating-Point Store Instructions") denormalizes: the significand,
-   its implicit one included, shifts right until the exponent is -126, and the bits shifted out
-   are dropped, not rounded. A double with a biased exponent under 874, a double denormal among
-   them, shifts every bit out and stores a zero of its sign. */
+   infinities and NaNs, it's the conversion to single, rounded to nearest as gcn-recomp always
+   did. The PEM's store model copies the top fraction bits there, which truncates a double with
+   more bits than a single holds; a single-precision op's result has none, so only a double
+   stored as a single sees the difference, and this doesn't model it. Under the least normal
+   single the PowerPC PEM (MPCFPE32B, "Floating-Point Store Instructions") denormalizes: the
+   significand, its implicit one included, shifts right until the exponent is -126, and the
+   bits shifted out are dropped, not rounded. Under a biased exponent of 874, a double denormal
+   among them, the PEM leaves the result undefined. Storing a zero of its sign there is
+   gcn-recomp's choice. */
 static inline uint32_t gekko_single_bits(double d) {
     uint64_t u;
     memcpy(&u, &d, 8);

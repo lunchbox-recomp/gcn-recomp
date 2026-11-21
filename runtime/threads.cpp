@@ -45,6 +45,7 @@ struct HostThread {
     bool run = false;
     Binding* resume = nullptr;   // set by whoever wakes us
     uint32_t start_ctx = 0;      // for fresh threads
+    uint32_t live_fpscr = 0;     // and the FPSCR of the guest thread that loaded it (gcn_fresh_fpscr)
     bool retired = false;        // its guest thread is gone: exit when woken
 };
 
@@ -219,6 +220,7 @@ static void* host_thread_main(void* arg) {
     CPU* c = &self->cpu;
     uint32_t pc = mem_r32(self->start_ctx + CTX_SRR0);
     context_to_cpu(c, self->start_ctx);
+    c->fpscr = gcn_fresh_fpscr(c->fpscr, mem_r16(self->start_ctx + CTX_STATE), self->live_fpscr);
     gcn_fp_follow(c->fpscr);  // the host mode for the context's FPSCR[NI] (recomp.h)
     mem_w16(self->start_ctx + CTX_STATE, mem_r16(self->start_ctx + CTX_STATE) & ~OS_CONTEXT_STATE_EXC);
     LOG(LOG_THREAD, "host thread %d starting guest context %08X at %08X", self->id, self->start_ctx, pc);
@@ -270,6 +272,7 @@ extern "C" void hle_OSLoadContext(CPU* c) {
     // Never-run context: start a new host thread for it.
     HostThread* h = new_host_thread();
     h->start_ctx = ctx;
+    h->live_fpscr = c->fpscr;
     LOG(LOG_THREAD, "load fresh ctx %08X -> new host thread %d", ctx, h->id);
     spawn(h);
     switch_to(self, h, nullptr);
