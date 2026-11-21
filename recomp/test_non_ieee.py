@@ -15,6 +15,7 @@ b - a, then (b - a) * t + a. In IEEE mode that gives a denormal. In non-IEEE mod
 and the result is 0, as Dolphin gives.
 """
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -34,6 +35,8 @@ GREATEST_SINGLE = 0x47EFFFFFE0000000
 DOUBLE_DENORMAL = 0x0000000000000001
 # Each input goes through a volatile, so the compiler can't work a case out in IEEE mode while
 # it builds it, as clang does at -O1 with constants it can see.
+# The hosts recomp.h sets a flush mode on, by platform.machine().
+FLUSHING_HOSTS = {'arm64', 'aarch64', 'x86_64', 'amd64'}
 OPAQUE = 'static uint64_t opq(uint64_t v) { volatile uint64_t x = v; return x; }\n'
 
 
@@ -86,6 +89,8 @@ class Run(unittest.TestCase):
         cc = shutil.which(os.environ.get('CC', 'cc'))
         if not cc:
             self.skipTest('no C compiler')
+        if platform.machine().lower() not in FLUSHING_HOSTS:
+            self.skipTest('recomp.h sets no flush mode on this host')
         lines = []
         for mode in (0, 1):
             lines.append(f'    gcn_fp_follow({mode} ? FPSCR_NI : 0);')
@@ -102,8 +107,6 @@ class Run(unittest.TestCase):
                                 '-lm'], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, r.stderr)
             out = subprocess.run([exe], capture_output=True, text=True, check=True).stdout.splitlines()
-        if out[len(CASES) + 1] == 'flushing 0':
-            self.skipTest('this host has no flush mode recomp.h sets')
         self.assertEqual((out[0], out[len(CASES) + 1]), ('flushing 0', 'flushing 1'))
         got = {}
         for line in out:
