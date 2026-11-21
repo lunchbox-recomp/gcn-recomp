@@ -878,7 +878,9 @@ static uint32_t snapshot_state(bool view_space) {
 // records its decoded vertices and which snapshot of each XF region it saw (a region is
 // copied only when it has changed since the last draw), and the transform runs after the
 // frame is submitted, on worker threads, while the guest gets on with the next frame. The
-// output is the same either way.
+// output is the same either way but for denormals. The workers run out of Gekko's non-IEEE
+// mode (plat_thread_role), and the guest thread runs in it once the game sets it, flushing
+// them to zero (recomp.h), so GCN_XF_SYNC=1 can differ where a transform meets a denormal.
 //
 // GCN_XF_SYNC=1 transforms each draw as it arrives instead, which the diagnostics that
 // read transformed vertices on the guest thread (GCN_TRACE_FRAME, GCN_GXSTATS,

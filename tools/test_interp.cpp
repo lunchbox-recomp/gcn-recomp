@@ -67,6 +67,7 @@ void hle_set_fpscr(CPU* c, uint32_t v) {
     note("hle_set_fpscr", v);
     c->fpscr = v;
     c->fprf_pending = 0;
+    gcn_fp_follow(v);  // as runtime/cpu.cpp's does
 }
 void hle_dcbz(CPU*, uint32_t ea) { note("hle_dcbz", ea); }
 void hle_dcbz_l(CPU*, uint32_t ea) { note("hle_dcbz_l", ea); }
@@ -266,6 +267,7 @@ bool step_refuses(int form, uint32_t insn, uint32_t pc, const char* who) {
     random_cpu(&st, r);
     load_ram(g_windows[0].data());
     g_calls.clear();
+    gcn_fp_follow(st.fpscr);
     CPU in = st;
     std::string what;
     if (interp_step(&in, pc, insn) != INTERP_UNIMPL)
@@ -283,6 +285,7 @@ bool branch_refuses(int form, uint32_t insn, uint32_t pc, const char* who) {
     Rng r = rng_for(insn, pc, 0);
     CPU st;
     random_cpu(&st, r);
+    gcn_fp_follow(st.fpscr);
     CPU in = st;
     InterpBranch out{};
     std::string what;
@@ -315,6 +318,7 @@ bool run_step(const CaseStep& k, int s) {
 
     start_ram();
     g_calls.clear();
+    gcn_fp_follow(st.fpscr);  // each run starts in the host mode its FPSCR asks for
     CPU nat = st;
     k.fn(&nat);
     const std::vector<Call> nat_calls = g_calls;
@@ -325,6 +329,7 @@ bool run_step(const CaseStep& k, int s) {
 
     start_ram();
     g_calls.clear();
+    gcn_fp_follow(st.fpscr);
     CPU in = st;
     const InterpStep ret = interp_step(&in, k.pc, k.insn);
     std::string what;
@@ -351,11 +356,13 @@ bool run_branch(const CaseBranch& k, int s) {
     CPU st;
     random_cpu(&st, r);
     g_calls.clear();
+    gcn_fp_follow(st.fpscr);  // each run starts in the host mode its FPSCR asks for
     CPU nat = st;
     int taken = 0;
     uint32_t target = 0;
     k.fn(&nat, &taken, &target);
     if (k.link && k.kind != CASE_B) (taken ? g_link_taken : g_link_not_taken)[k.form]++;
+    gcn_fp_follow(st.fpscr);
     CPU in = st;
     InterpBranch out{};
     std::string what;

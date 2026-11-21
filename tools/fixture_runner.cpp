@@ -231,6 +231,7 @@ void hle_set_fpscr(CPU* c, uint32_t v) {
     note("hle_set_fpscr", v);
     c->fpscr = v;
     c->fprf_pending = 0;
+    gcn_fp_follow(v);  // as runtime/cpu.cpp's does
 }
 void hle_dcbz(CPU*, uint32_t ea) { note("hle_dcbz", ea); }
 void hle_dcbz_l(CPU*, uint32_t ea) { note("hle_dcbz_l", ea); }

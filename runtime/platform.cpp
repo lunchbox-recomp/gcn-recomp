@@ -1,6 +1,7 @@
 // Host OS services: POSIX and Windows implementations of platform.h.
 #include "env.h"
 #include "platform.h"
+#include "recomp.h"
 #include <atomic>
 #include <cctype>
 #include <cerrno>
@@ -532,6 +533,10 @@ static void (*g_role_listener)(ThreadRole, long);
 
 void plat_thread_role(ThreadRole role, const char* name) {
     set_thread_name(name);
+    // Every thread starts out of Gekko's non-IEEE mode (recomp.h). On Linux and Android a thread
+    // takes its creator's flush mode, so a render thread a guest thread spawned would flush
+    // denormals. A guest thread sets the mode from its FPSCR after this (threads.cpp).
+    gcn_fp_set_flushing(0);
     const long tid = current_tid();
 #if defined(__linux__)
     // The render workers (the vertex transform) yield to the rest when cores are short. A

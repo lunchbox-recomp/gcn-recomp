@@ -1176,6 +1176,15 @@ function(gcn_add_game)
     target_compile_options(test_clock PRIVATE ${GCN_RUNTIME_WARNINGS})
     _gcn_dead_strip(test_clock)
 
+    # Gekko's non-IEEE mode on the host thread (tools/test_fp_mode.cpp): cpu.cpp's hle_set_fpscr
+    # turning the flush mode on and off, and platform.cpp's plat_thread_role clearing it.
+    add_executable(test_fp_mode EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_fp_mode.cpp ${RT}/platform.cpp)
+    _gcn_set_standards(test_fp_mode)
+    target_include_directories(test_fp_mode PRIVATE ${RT})
+    target_link_libraries(test_fp_mode PRIVATE Threads::Threads)
+    target_compile_options(test_fp_mode PRIVATE ${GCN_RUNTIME_WARNINGS})
+    _gcn_dead_strip(test_fp_mode)
+
     # The GCN_SESSION checks (tools/test_session.cpp): session.cpp's directories, switches and
     # session.json in a work dir. Needs no disc image, device or SDL.
     add_executable(test_session EXCLUDE_FROM_ALL ${GCN_RECOMP_DIR}/tools/test_session.cpp
@@ -1292,7 +1301,7 @@ function(gcn_add_game)
     set(CMAKE_TESTING_ENABLED ON PARENT_SCOPE)
     set(_unit_work ${CMAKE_CURRENT_BINARY_DIR}/unit)
     file(MAKE_DIRECTORY ${_unit_work})
-    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_round_frc test_gekko_estimate test_anchor test_viewport test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_pause
+    set(_unit_plain test_pad_glyph test_audio_ring test_ax test_drive test_aspect test_round_frc test_gekko_estimate test_anchor test_viewport test_anchor_env test_shader_env test_step_env test_blend test_clear_draw test_banner test_splash_look test_clock test_fp_mode test_pause
         test_interp test_interp_run test_interp_run_trace)
     set(_unit_in_dir test_settings test_ui_sound test_port_memory test_pad_bindings test_sram test_exi test_session test_disc_overlay test_feed_dump
         test_ram_patches test_bot_link test_ready_file test_code_table test_code_watch test_aid)
